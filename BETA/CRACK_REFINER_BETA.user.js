@@ -487,7 +487,7 @@ IMPORTANT for replacements:
     box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:8px;width:100%;max-width:400px;padding:20px;box-shadow:0 10px 25px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:12px;';
 
     const title = document.createElement('div');
-    title.textContent = '✏️ AI 응답 교정 제안';
+    title.textContent = 'AI 응답 교정 제안';
     title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;margin-bottom:4px;';
 
     const reasonTitle = document.createElement('div');
