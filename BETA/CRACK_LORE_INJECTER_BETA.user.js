@@ -376,9 +376,6 @@ Conversation Log:
     settings.load();
   });
 
-  const injLog=[]; // 레거시 호환용, 제거 예정
-  const extLog=[]; // 레거시 호환용, 제거 예정
-
   // 유틸리티
   function getCurUrl(){return window.location.pathname;}
 
@@ -419,6 +416,11 @@ Conversation Log:
     settings.config.urlExtLogs[url] = logs;
     settings.save();
   }
+  function clearExtLog(url) {
+    if(!settings.config.urlExtLogs) settings.config.urlExtLogs = {};
+    settings.config.urlExtLogs[url] = [];
+    settings.save();
+  }
 
   function getInjLog(url) {
     if(!settings.config.urlInjLogs) settings.config.urlInjLogs = {};
@@ -430,6 +432,11 @@ Conversation Log:
     logs.unshift(logItem);
     if(logs.length > 100) logs.length = 100;
     settings.config.urlInjLogs[url] = logs;
+    settings.save();
+  }
+  function clearInjLog(url) {
+    if(!settings.config.urlInjLogs) settings.config.urlInjLogs = {};
+    settings.config.urlInjLogs[url] = [];
     settings.save();
   }
 
@@ -994,7 +1001,12 @@ Conversation Log:
   async function fetchLogsFallback(fetchCount){
     let recentMsgs=[];
     try{
-      const chatId=CrackUtil.path().chatRoom();
+      let chatId=null;
+      try{chatId=CrackUtil.path().chatRoom();}catch(e){}
+      if(!chatId){
+        const match=window.location.pathname.match(/\/episodes\/([a-f0-9]+)/);
+        if(match)chatId=match[1];
+      }
       if(chatId){
         const items=await CrackUtil.chatRoom().extractLogs(chatId,{maxCount:fetchCount});
         if(!(items instanceof Error)&&Array.isArray(items)){
@@ -1019,20 +1031,33 @@ Conversation Log:
   // 자동 추출
   async function runAutoExtract(isManual=false){
     const _url = getCurUrl();
-    if(!settings.config.autoExtKey&&!settings.config.geminiKey){
-      if(isManual)alert('API 키가 설정되지 않음.');
+    const apiType = settings.config.autoExtApiType || settings.config.geminiApiType || 'key';
+    const isVertex = apiType === 'vertex';
+    const hasKey = settings.config.autoExtKey || settings.config.geminiKey;
+    const hasJson = settings.config.autoExtVertexJson || settings.config.geminiVertexJson;
+
+    if(isVertex ? !hasJson : !hasKey){
+      if(isManual)alert('API 설정이 완료되지 않음 (Key 또는 Vertex JSON 누락).');
       return;
     }
+
     const scanR=settings.config.autoExtScanRange||6;
     const fetchCount=(scanR+settings.config.autoExtOffset)*2;
     let recentMsgs=await fetchLogsFallback(fetchCount>0?fetchCount:20);
+    console.log(`[Lore] 자동 추출 시도: 획득한 메시지 ${recentMsgs.length}개`);
     if(!recentMsgs.length){
-      if(isManual)alert('분석할 대화 기록이 없음.');
+      if(isManual)alert('분석할 대화 기록이 없음 (또는 채팅방 인식 실패).');
       return;
     }
     const offsetCount=settings.config.autoExtOffset*2;
-    if(offsetCount>0&&recentMsgs.length>offsetCount){
-      recentMsgs=recentMsgs.slice(0,recentMsgs.length-offsetCount);
+    if(offsetCount>0){
+      if(recentMsgs.length>offsetCount){
+        recentMsgs=recentMsgs.slice(0,recentMsgs.length-offsetCount);
+        console.log(`[Lore] 오프셋 적용 후 남은 메시지: ${recentMsgs.length}개`);
+      }else{
+        console.log(`[Lore] 메시지 부족(${recentMsgs.length} <= ${offsetCount})으로 오프셋을 최소화합니다.`);
+        // 오프셋을 적용하지 않고 최소한의 스캔 범위를 확보함 (혹은 무시)
+      }
     }
     const context=recentMsgs.map(m=>m.role+': '+m.message).join('\n');
     let entriesText = '[]';
@@ -1051,7 +1076,12 @@ Conversation Log:
     let personaPrefix='';
     if(settings.config.autoExtIncludePersona){
       try{
-        const _chatId=CrackUtil.path().chatRoom();
+        let _chatId=null;
+        try{_chatId=CrackUtil.path().chatRoom();}catch(e){}
+        if(!_chatId){
+          const match=window.location.pathname.match(/\/episodes\/([a-f0-9]+)/);
+          if(match)_chatId=match[1];
+        }
         if(_chatId){
           const persona=await CrackUtil.chatRoom().currentPersona(_chatId);
           if(persona&&!(persona instanceof Error)&&persona.name){
@@ -1077,14 +1107,14 @@ Conversation Log:
 
       if(Array.isArray(parsed)&&parsed.length>0){
         const cnt=await mergeExtractedData(parsed, _url);
-        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:cnt,isManual:isManual,status:'성공', api:apiLog});
+        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:cnt,msgs:recentMsgs.length,isManual:isManual,status:'성공', api:apiLog});
         if(isManual)alert(`${cnt}개 로어 추출 및 병합됨.`);
       }else{
-        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,isManual:isManual,status:'추출 내용 없음', api:apiLog});
+        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,msgs:recentMsgs.length,isManual:isManual,status:'추출 내용 없음', api:apiLog});
         if(isManual)alert('새로운 설정 정보 발견되지 않음.');
       }
     }catch(err){
-      addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,isManual:isManual,status:'실패',error:err.message, api:apiLog});
+      addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,msgs:recentMsgs.length,isManual:isManual,status:'실패',error:err.message, api:apiLog});
       if(isManual)alert(`추출 실패: ${err.message}`);
     }
   }
@@ -1767,12 +1797,44 @@ Conversation Log:
     })
 
     .createSubMenu('실행 로그',(m)=>{
-      m.replaceContentPanel((panel)=>{
-        const currentInjLog = getInjLog(getCurUrl());
-        if(!currentInjLog.length){panel.addText('실행 기록 없음.');return;}
-        panel.addTitleText('최근 로어 주입 기록');
-        for(const l of currentInjLog.slice(0,30)){
-          panel.addBoxedField('','',{onInit:(nd)=>{
+      const renderInjLogPanel = async (panel) => {
+        const _url = getCurUrl();
+        const currentInjLog = getInjLog(_url);
+
+        panel.addBoxedField('','',{onInit:(nd)=>{
+          setFullWidth(nd);
+          const headerRow = document.createElement('div');
+          headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid #333;margin-bottom:8px;';
+
+          const title = document.createElement('div');
+          title.textContent = '최근 로어 주입 기록';
+          title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;';
+
+          const delBtn = document.createElement('button');
+          delBtn.textContent = '로그 초기화';
+          delBtn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:transparent;color:#d66;border:1px solid #d66;font-weight:bold;';
+          delBtn.onclick = () => {
+            if(confirm('이 대화방의 모든 주입 로그를 삭제하시겠습니까?')){
+              clearInjLog(_url);
+              m.replaceContentPanel(renderInjLogPanel, '실행 로그');
+            }
+          };
+
+          headerRow.appendChild(title);
+          if (currentInjLog.length > 0) headerRow.appendChild(delBtn);
+          nd.appendChild(headerRow);
+
+          if(!currentInjLog.length){
+            const empty = document.createElement('div');
+            empty.textContent = '실행 기록 없음.';
+            empty.style.cssText = 'font-size:12px;color:#888;padding:10px 0;';
+            nd.appendChild(empty);
+          }
+        }});
+
+        if(currentInjLog.length){
+          for(const l of currentInjLog.slice(0,30)){
+            panel.addBoxedField('','',{onInit:(nd)=>{
             setFullWidth(nd);
             const t=document.createElement('div');t.textContent=`${l.turn}번째 턴 (${l.time})`;t.style.cssText='font-size:13px;color:#ccc;font-weight:bold;margin-bottom:4px;';
             const c=document.createElement('div');
@@ -1783,10 +1845,11 @@ Conversation Log:
             }
             c.style.cssText='font-size:12px;color:#888;';
             nd.appendChild(t);nd.appendChild(c);
-
           }});
+          }
         }
-      },'실행 로그');
+      };
+      m.replaceContentPanel(renderInjLogPanel,'실행 로그');
     })
 
     .createSubMenu('도움말',(m)=>{
@@ -1996,15 +2059,32 @@ Conversation Log:
       resetBtn2.onclick=()=>{if(confirm('기본값으로 복원함?')){ta2.value=DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;settings.config.autoExtPromptWithDb=DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;settings.save();}};
       nd.appendChild(ta2);
 
-      const logHdr=document.createElement('div');logHdr.textContent='추출 실행 기록';logHdr.style.cssText='font-size:13px;color:#ccc;font-weight:bold;margin-top:16px;margin-bottom:8px;';
-      nd.appendChild(logHdr);
+      const logHdrRow=document.createElement('div');logHdrRow.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-top:16px;margin-bottom:8px;';
+      const logHdr=document.createElement('div');logHdr.textContent='추출 실행 기록';logHdr.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
+      const clearBtn=document.createElement('button');clearBtn.textContent='로그 초기화';
+      clearBtn.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #d66;color:#d66;cursor:pointer;';
+
+      logHdrRow.appendChild(logHdr);
+      logHdrRow.appendChild(clearBtn);
+      nd.appendChild(logHdrRow);
 
       const logBox=document.createElement('div');
       logBox.style.cssText='width:100%;height:120px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:11px;font-family:monospace;overflow-y:auto;box-sizing:border-box;';
-      if(!extLog.length){
+
+      const currentExtLogs = getExtLog(getCurUrl());
+
+      clearBtn.onclick = () => {
+        if(confirm('추출 실행 기록을 삭제하시겠습니까?')){
+          clearExtLog(getCurUrl());
+          m.replaceContentPanel((p)=>renderAutoExtractUI(p,m),'대화 자동 DB화');
+        }
+      };
+
+      if(!currentExtLogs.length){
         logBox.textContent='기록 없음.';
+        clearBtn.style.display='none';
       }else{
-        extLog.forEach(l=>{
+        currentExtLogs.forEach(l=>{
           const div=document.createElement('div');
           div.style.marginBottom='6px';
           div.style.borderBottom='1px dashed #222';
@@ -2012,6 +2092,7 @@ Conversation Log:
 
           let msg=`[${l.time}] ${l.isManual?'수동':'자동'} - ${l.status}`;
           if(l.count>0) msg+=` (${l.count}개 병합됨)`;
+          if(l.msgs) msg+=` | 분석 대상: ${l.msgs}개`;
 
           const p1 = document.createElement('span');
           p1.textContent = msg;
