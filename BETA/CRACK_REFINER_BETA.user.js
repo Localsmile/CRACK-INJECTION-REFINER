@@ -978,9 +978,7 @@ IMPORTANT for replacements:
     if (refineQueue.some(item => item.fingerprint === fingerprint)) {
       return; // 큐에 이미 있음
     }
-    // fingerprint 등록 (재처리 방지)
-    processedFingerprints.add(fingerprint);
-    saveProcessedFingerprints();
+    // fingerprint는 처리 완료 후 등록 (processQueue에서)
     refineQueue.push({ text, fingerprint, enqueuedAt: Date.now() });
     console.log(`[교정기] 큐에 추가됨 (큐 크기: ${refineQueue.length})`);
     processQueue();
@@ -1010,6 +1008,10 @@ IMPORTANT for replacements:
       console.error('[교정기] 큐 처리 에러:', e);
       hideStatusBadge();
     }
+
+    // 처리 완료 후 fingerprint 등록 (성공/실패 무관 — 무한 재시도 방지)
+    processedFingerprints.add(item.fingerprint);
+    saveProcessedFingerprints();
 
     workerBusy = false;
 
@@ -1077,8 +1079,7 @@ IMPORTANT for replacements:
         lastMsgLength = lastMsg.message.length;
         idleCount = 0;
         _needsWarmup = false;
-        processedFingerprints.add(msgId);
-        saveProcessedFingerprints();
+        // fingerprint는 등록하지 않음 — warmup은 상태 스냅샷만 하고, 실제 dedup은 enqueueRefine에서
         return;
       }
 
@@ -1425,6 +1426,17 @@ IMPORTANT for replacements:
             ta.onchange = () => { settings.config.customPrompt = ta.value; settings.save(); };
             resetPromptBtn.onclick = () => { if(confirm('프롬프트를 기본값으로 복원함?')){ ta.value=DEFAULT_PROMPT; settings.config.customPrompt=DEFAULT_PROMPT; settings.save(); } };
             nd.appendChild(ta);
+
+            const clearFpBtn = document.createElement('button');
+            clearFpBtn.textContent = '처리 기록 삭제 (큐 막힘 시)';
+            clearFpBtn.style.cssText = 'width:100%;padding:8px;margin-top:12px;background:#654;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-size:12px;';
+            clearFpBtn.onclick = () => {
+              processedFingerprints.clear();
+              _ls.removeItem(_PROCESSED_KEY);
+              console.log('[교정기] 처리 기록 삭제 완료');
+              if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show('처리 기록 삭제됨 — 다음 응답부터 재검수', { duration: 2000, background: '#654' });
+            };
+            nd.appendChild(clearFpBtn);
 
             const resetBtn = document.createElement('button');
             resetBtn.textContent = '모든 설정 및 로그 초기화';
