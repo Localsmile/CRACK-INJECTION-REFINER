@@ -769,8 +769,8 @@ IMPORTANT for replacements:
     }
     const url = getCurUrl();
 
-    // (status block repair removed — handled by prompt)
-    if (false) { // status block repair disabled — handled by AI prompt
+    // 상태 블록 복구 제거하고 프롬프트화
+    if (false) { 
       try {
         const repaired = null;
         if (repaired && repaired !== assistantText) {
@@ -1009,7 +1009,7 @@ IMPORTANT for replacements:
 
   async function processQueue() {
     if (refineQueue.length === 0) return;
-    // workerBusy 타임아웃 방어: 90초 이상 멏힘면 강제 해제
+    // workerBusy 타임아웃 방어: 90초 이상 멈추면 강제 해제
     if (workerBusy) {
       if (Date.now() - workerStartTime > WORKER_TIMEOUT) {
         console.warn('[교정기] workerBusy 타임아웃 — 강제 해제');
