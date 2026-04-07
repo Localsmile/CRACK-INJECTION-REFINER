@@ -80,6 +80,7 @@ NEVER ALTER:
 - Markdown formatting, line breaks, structural elements (except to repair truncation)
 - Content not directly related to the factual error or truncation
 - Tone, mood, or emotional register
+- Adding arbitrary metatext that undermines RP immersion
 
 PRINCIPLE: Make the MINIMUM surgical fix. Preserve everything else byte-for-byte.
 
@@ -232,43 +233,60 @@ IMPORTANT for replacements:
   }
 
   function getCurrentChatId() {
+    let id = null;
     const provider = getIgnitorProvider();
-    if (!provider) return null;
-    try {
-      return provider.getCurrentId() || null;
-    } catch (e) {
-      console.warn('[교정기] getCurrentId 실패:', e);
-      return null;
+    if (provider) {
+      try { id = provider.getCurrentId(); } catch (e) {}
     }
+    if (!id) {
+      try { id = typeof CrackUtil !== 'undefined' ? CrackUtil.path().chatRoom() : null; } catch (e) {}
+    }
+    if (!id) {
+      const match = window.location.pathname.match(/\/episodes\/([a-f0-9]+)/);
+      if (match) id = match[1];
+    }
+    return id || null;
   }
 
   async function fetchLogsFallback(fetchCount) {
-    const provider = getIgnitorProvider();
-    if (!provider) {
-      console.warn('[교정기] Ignitor PlatformProvider를 찾을 수 없음.');
-      return [];
+    let recentMsgs = [];
+    const chatId = getCurrentChatId();
+    if (chatId) {
+      try {
+        const items = await CrackUtil.chatRoom().extractLogs(chatId, { maxCount: fetchCount });
+        if (!(items instanceof Error) && Array.isArray(items)) {
+          recentMsgs = items.map(m => ({
+            id: m.content ? m.content.slice(0, 30) : '',
+            role: m.role,
+            userName: m.userName || '',
+            message: m.content
+          }));
+        }
+      } catch (e) { /* ignore */ }
     }
-    try {
-      const fetcher = provider.getFetcher();
-      if (!fetcher || !fetcher.isValid()) {
-        console.warn('[교정기] PlatformMessageFetcher가 유효하지 않음.');
-        return [];
+
+    if (recentMsgs.length === 0) {
+      const provider = getIgnitorProvider();
+      if (provider) {
+        try {
+          const fetcher = provider.getFetcher();
+          if (fetcher && fetcher.isValid()) {
+            const msgs = await fetcher.fetch(fetchCount);
+            if (!(msgs instanceof Error)) {
+              recentMsgs = msgs.map(m => ({
+                id: m.message ? m.message.slice(0, 30) : '',
+                role: m.role,
+                userName: m.userName || '',
+                message: m.message
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('[교정기] fetchLogsFallback 예외:', e);
+        }
       }
-      const msgs = await fetcher.fetch(fetchCount);
-      if (msgs instanceof Error) {
-        console.warn('[교정기] 메시지 fetch 에러:', msgs.message);
-        return [];
-      }
-      return msgs.map(m => ({
-        id: m.message ? m.message.slice(0, 30) : '',
-        role: m.role,
-        userName: m.userName || '',
-        message: m.message
-      }));
-    } catch (e) {
-      console.warn('[교정기] fetchLogsFallback 예외:', e);
-      return [];
     }
+    return recentMsgs;
   }
 
   // 데이터 수집
@@ -891,7 +909,12 @@ IMPORTANT for replacements:
 
         const applyRefinement = async (newText) => {
           try {
-            const _cid = CrackUtil.path().chatRoom();
+            const _cid = getCurrentChatId();
+            if (!_cid) {
+              console.warn('[교정기] 교정 적용 실패: 채팅방 ID를 찾을 수 없음');
+              if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show('서버 수정 실패: 채팅방 인식 불가', { duration: 3000, background: '#a55' });
+              return;
+            }
             const lastBot = await CrackUtil.chatRoom().findLastBotMessage(_cid);
             if (lastBot && !(lastBot instanceof Error)) {
               // GM_xmlhttpRequest 경유로 CORS 우회
