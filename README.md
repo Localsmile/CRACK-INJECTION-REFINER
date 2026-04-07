@@ -1,5 +1,6 @@
 # CRACK-INJECTION-REFINER
 [비공식] crystallized-chasm 기반 연동 확장 스크립트
+
 [crack.wrtn.ai](http://crack.wrtn.ai) 전용 RP 로어 자동 주입 — WebSocket 인터셉트 기반, Gemini API 연동 대화 분석 및 세계관 DB 자동 구축
 
 ## crystallized-chasm 프로젝트 (milkyway0308)
