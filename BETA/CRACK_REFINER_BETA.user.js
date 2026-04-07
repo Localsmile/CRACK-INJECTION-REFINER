@@ -42,7 +42,7 @@
   console.log('[교정기] UI 초기화 시작...');
 
   // 상수 및 설정
-  const VER = 'v1.0.1';
+  const VER = 'v1.0.0';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
