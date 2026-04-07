@@ -40,6 +40,7 @@ https://github.com/milkyway0308/crystallized-chasm
 # 설치방법
 1. Tampermonkey / Violentmonkey 설치
 2. 유저스크립트 설치
+
 [필수] [캐즘 이그나이터](https://github.com/milkyway0308/crystallized-chasm/raw/refs/heads/main/crack/ignitor.user.js)
 
 [선택] [로어 인젝터](링크1)
