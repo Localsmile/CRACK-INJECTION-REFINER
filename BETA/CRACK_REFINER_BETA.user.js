@@ -23,6 +23,7 @@
 // ==/UserScript==
 
 // Ignitor 연동 플러그인
+
 !(async function () {
   'use strict';
 
@@ -42,7 +43,7 @@
   console.log('[교정기] UI 초기화 시작...');
 
   // 상수 및 설정
-  const VER = 'v1.0.0';
+  const VER = 'v1.0.1';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -163,7 +164,7 @@ IMPORTANT for replacements:
     try { const raw = _ls.getItem(_SKEY); if (raw) syncSettings(raw); } catch (e) { /* noop */ }
   });
 
-  // 처리 완료 fingerprint 추적 (localStorage 영속)
+  // 처리 완료 fingerprint 추적 (localStorage에 넣자)
   const _PROCESSED_KEY = 'speech-refiner-processed';
   const processedFingerprints = new Set();
   try {
@@ -512,6 +513,7 @@ IMPORTANT for replacements:
   }
 
   // DOM 헬퍼
+
   // 마크다운 구문을 제거하여 평문 추출 (DOM 텍스트 매칭용)
   function stripMarkdown(text) {
     return text
@@ -530,8 +532,8 @@ IMPORTANT for replacements:
       .trim();
   }
 
-  // 평문 스니펫을 포함하는 가장 구체적인(=가장 작은) DOM 요소 탐색 시도
-  // 텍스트 길이가 짧고 자식 div가 적은 요소 우선 (일단 임시 땜빵용)
+  // 평문 스니펫을 포함하는 가장 구체적인(=가장 작은) DOM 요소 서칭
+  // 텍스트 길이가 짧고 자식 div가 적은 요소를 우선 (일단 땜빵 처리)
   function findDeepestMatchingElement(searchPlainText) {
     // 스니펫 길이를 20자로 줄여 매칭 확률 상승
     const snippet = (searchPlainText.length > 20 ? searchPlainText.slice(-20) : searchPlainText).trim();
@@ -565,8 +567,8 @@ IMPORTANT for replacements:
     return best;
   }
 
-  //React Fiber props의 메시지 데이터를 교정본으로 패치
-  // React 재조정(reconciliation) 시 DOM 롤백방지 (일단 땜빵용)
+  // React Fiber props의 메시지 데이터를 교정본 패치
+  // React 재조정(reconciliation) 시 DOM 롤백방지
   function tryPatchReactFiber(element, originalText, newText) {
     try {
       const fiberKey = Object.keys(element).find(k =>
@@ -617,8 +619,8 @@ IMPORTANT for replacements:
       .replace(/\n/g, '<br>');
   }
 
-  // SWR/React Query의 revalidateOnFocus를 트리거
-  // visibilityState를 일시적으로 hidden→visible로 전환 및 데이터 재검증 유도
+  // SWR/React Query의 revalidateOnFocus 트리거.
+  // visibilityState 일시적으로 hidden→visible로 전환, 데이터 재검증 유도. (땜빵용)
   function triggerSWRRevalidation() {
     try {
       const origDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')
@@ -654,12 +656,12 @@ IMPORTANT for replacements:
     }
   }
 
-  // 마크다운 렌더링을 유지하면서 메시지 DOM을 즉시 갱신, React 재조정에 대비하여 10초간 500ms 간격으로 반복적용.
-  // SWR 재검증을 트리거하여 서버 데이터 재요청을 유도합니다.
+  // 마크다운 렌더링 유지, 메시지 DOM 즉시 갱신
+  // React 재조정 대비, 10초간 500ms 간격으로 반복 적용
+  // 추가로 SWR 재검증을 트리거, 서버 데이터 재요청 유도
   // @param {string} originalText 원본 메시지 (마크다운)
   // @param {string} newText 교정된 메시지 (마크다운)
   // @returns {boolean} 초기 적용 성공 여부
-  // 시발 좀 되라.
   function refreshMessageInDOM(originalText, newText) {
     const oldPlain = stripMarkdown(originalText);
     const newPlain = stripMarkdown(newText);
@@ -963,6 +965,8 @@ IMPORTANT for replacements:
 
   const refineQueue = [];
   let workerBusy = false;
+  let workerStartTime = 0;
+  const WORKER_TIMEOUT = 90000; // 90초 타임아웃
 
   function enqueueRefine(text) {
     const fingerprint = text.slice(0, 40);
@@ -983,8 +987,19 @@ IMPORTANT for replacements:
   }
 
   async function processQueue() {
-    if (workerBusy || refineQueue.length === 0) return;
+    if (refineQueue.length === 0) return;
+    // workerBusy 타임아웃 방어: 90초 이상 멏힘면 강제 해제
+    if (workerBusy) {
+      if (Date.now() - workerStartTime > WORKER_TIMEOUT) {
+        console.warn('[교정기] workerBusy 타임아웃 — 강제 해제');
+        workerBusy = false;
+        hideStatusBadge();
+      } else {
+        return;
+      }
+    }
     workerBusy = true;
+    workerStartTime = Date.now();
 
     const item = refineQueue.shift();
     console.log(`[교정기] 큐 처리 시작 (남은 큐: ${refineQueue.length})`);
@@ -1012,6 +1027,7 @@ IMPORTANT for replacements:
   let idleCount = 0;
   let _pollLogOnce = true;
   let _needsWarmup = true; // OFF→ON 전환 시 기존 메시지 무시용
+  let _lastKnownUrl = getCurUrl(); // 채팅방 URL 변경 감지용
 
   setInterval(async () => {
     if (!settings.config.enabled) {
@@ -1022,6 +1038,17 @@ IMPORTANT for replacements:
       return;
     }
     _pollLogOnce = true;
+
+    // URL 변경 감지 → 자동 warmup 재설정
+    const currentUrl = getCurUrl();
+    if (currentUrl !== _lastKnownUrl) {
+      console.log('[교정기] 채팅방 변경 감지 → warmup 재설정');
+      _lastKnownUrl = currentUrl;
+      lastAssistantMsgId = null;
+      lastMsgLength = 0;
+      idleCount = 0;
+      _needsWarmup = true;
+    }
 
     const provider = getIgnitorProvider();
     if (!provider) return;
@@ -1042,14 +1069,14 @@ IMPORTANT for replacements:
 
       const msgId = lastMsg.message ? lastMsg.message.slice(0, 40) : '';
 
-      // OFF→ON warmup: 현재 메시지를 "이미 본 것"으로 등록하고 실제 처리는 안 함
+      // Warmup: 현재 메시지를 "이미 본 것"으로 등록하고 실제 처리는 안 함
+      // (OFF→ON 전환 시 또는 채팅방 변경 시 자동 트리거)
       if (_needsWarmup) {
         console.log('[교정기] Warmup: 기존 메시지 스냅샷, 새 응답부터 감지 시작');
         lastAssistantMsgId = msgId;
         lastMsgLength = lastMsg.message.length;
         idleCount = 0;
         _needsWarmup = false;
-        // warmup된 메시지도 fingerprint 등록 (삭제 후 재감지 방지)
         processedFingerprints.add(msgId);
         saveProcessedFingerprints();
         return;
@@ -1149,7 +1176,7 @@ IMPORTANT for replacements:
     return wrap;
   }
 
-  /** 펼치기/접기 텍스트 박스를 만드는 헬퍼 */
+  // 펼치기,접기 텍스트 박스를 만드는 헬퍼
   function createCollapsibleBox(label, text, borderColor, copyLabel) {
     const container = document.createElement('div');
     container.style.cssText = 'margin-bottom:6px;';
