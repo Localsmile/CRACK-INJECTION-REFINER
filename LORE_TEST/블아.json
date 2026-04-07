@@ -1,0 +1,4793 @@
+[
+  {
+    "type": "location",
+    "name": "키보토스",
+    "triggers": [
+      "학원도시&&거대",
+      "학원도시&&총기",
+      "학원도시&&키보토스",
+      "키보토스",
+      "학원도시&&연합",
+      "샬레&&선생님",
+      "연방학생회"
+    ],
+    "scan_range": 3,
+    "summary": "수천 학원 밀집 거대 학원 도시 연합체. / 학생들이 자치권을 행사하며 국가 기관 역할을 수행하는 거대 학원 도시. / 수많은 학원이 밀집한 거대 학원도시. / 수천 개 학원 밀집 거대 학원 도시. / 수천 개 학원이 결집한 거대 학원 도시. / 수천 개 학원 밀집 거대 학원도시.",
+    "detail": {
+      "attributes": "학생 헤일로 보유. 총기 휴대 일상화. 독자 자치 구역 분할. 일본어 기반 다국어 사회. 라틴어, 영어, 독일어 혼용. 아라비아 숫자 및 행정용 갖은자 사용. 서울 및 도쿄 번화가 혼합 경관. 일본식 교통 및 철도 체계. 북반구 위치. 북극항로 보유. 학원 도시. 총기 휴대 보편화. 헤일로 발현. 총기 휴대 일상화. 학생 전원 헤일로 보유. 자치 구역 분할 체제. 전원 총기 휴대. 헤일로 보유. 고내구성 신체.",
+      "personality_or_nature": "학원별 자치권 중심. 활기차고 혼란스러운 분위기. 이름 호출 중심 문화. 성씨 호출은 격식 또는 거리감의 표현. 학생-선생 간 상호 존대 혹은 평어 사용 혼재. 치안 극도로 불안정. 정세 혼란. 소말리아 이상의 무법지대. 청춘. 밀리터리. 미스터리 공존.",
+      "background_or_history": "총학생회장 실종 후 학원 간 균형 붕괴 및 치안 악화. 학교가 행정 및 치안 담당. 중학생 연령대 노동 및 아르바이트 허용 사회 구조. 학원별 자치구 구성. 연방학생회장 실종 상태. 연방학생회 관리 하의 독립 자치 구역 연합체. 총학생회장 실종 이후 행정 공백 및 혼란 발생. 연방학생회장 실종. 도시 행정 공백 및 자치구 간 혼란 발생.",
+      "relations": [
+        "연방학생회 - 행정 총괄",
+        "연방학생회 - 도시 행정 총괄",
+        "연방수사동아리 샬레 - 도시 내 기관",
+        "트리니티 종합학원 - 소속 학원",
+        "게헨나 학원 - 소속 학원",
+        "샬레 - 수사 기구",
+        "샬레 - 선생 직속 수사 기구"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "샬레",
+    "triggers": [
+      "샬레",
+      "SCHALE",
+      "연방수사동아리",
+      "선생님&&샬레"
+    ],
+    "scan_range": 3,
+    "summary": "총학생회장 직속 연방 수사 동아리. 초법적 기구. / 연방학생회 직속 초법적 수사 기구.",
+    "detail": {
+      "attributes": "전역 수사권 보유. 학생 자발적 협력 기반. 키보토스 전역 수사권 보유. 학생 동원 및 지휘 권한. 외부인 고문 체제.",
+      "relations": [
+        "연방학생회 - 직속 기관",
+        "선생님 - 소속 고문",
+        "연방학생회 - 상위 행정 기관",
+        "키보토스 학원들 - 협력 및 수사 대상",
+        "선생님 - 고문 지휘관"
+      ],
+      "abilities_or_effects": [
+        "생존신호 확인 및 지휘",
+        "싯딤의 상자 운용"
+      ],
+      "background_or_history": "총학생회장 실종 전 마지막 설립 조직. 외부인 '선생님' 영입 운영."
+    }
+  },
+  {
+    "type": "character",
+    "name": "선생님",
+    "triggers": [
+      "선생님",
+      "선생님&&샬레",
+      "지휘관&&학생",
+      "어른&&카드",
+      "샬레&&선생님",
+      "기적&&일상",
+      "선생님&&키보토스"
+    ],
+    "scan_range": 3,
+    "summary": "샬레 고문 교사. 키보토스 유일 외부 성인. / 샬레 소속 유일 성인 조력자이자 지휘관. / 키보토스 학생 조력자. 연방수사동아리 샬레 고문 교사.",
+    "detail": {
+      "attributes": "싯딤의 상자 소유. 학생 보호자. 어른의 카드 소지. 비전투원. 뛰어난 전술 지휘 능력. 어른, 교사, 지휘관",
+      "relations": [
+        "학생들 - 제자",
+        "학생들 - 스승 및 조력자",
+        "학생들 - 지도 대상",
+        "연방학생회 - 협력 관계",
+        "아로나 - AI 비서"
+      ],
+      "abilities_or_effects": [
+        "전술 지휘",
+        "어른의 카드",
+        "어른의 카드 사용"
+      ],
+      "background_or_history": "총학생회장 부름으로 부임. 학생 성장 조력 및 위기 해결. 외부에서 키보토스로 부임한 유일한 인간 어른.",
+      "personality_or_nature": "학생 보호 최우선. 책임감 강함. 헌신적 지도자. 학생 성장 지지. 책임감 강함. 이타적."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "게헨나 학원 미등장 동아리",
+    "triggers": [
+      "게헨나&&야구부",
+      "게헨나&&역사연구부",
+      "게헨나&&보드게임연구부",
+      "게헨나&&화력연구부"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 소속 미공개 활동 부서.",
+    "detail": {
+      "attributes": "야구부, 역사연구부, 캐치볼 동호회, 보드게임연구부, 화력연구부, 도서부"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "밀레니엄 사이언스 스쿨 미등장 동아리",
+    "triggers": [
+      "밀레니엄&&고대역사연구회",
+      "밀레니엄&&신소재개발클럽",
+      "밀레니엄&&해양생물연구부",
+      "밀레니엄&&농업기술연구부"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 사이언스 스쿨 소속 미공개 연구 및 운동 부서.",
+    "detail": {
+      "attributes": "야구부, 고대역사연구회, 신소재개발클럽, 농구부, 배구부, 해양생물연구부, 다이어트부, 생활건강부, 농업기술연구부"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "트리니티 종합학원 미등장 동아리",
+    "triggers": [
+      "트리니티&&순문학부",
+      "트리니티&&다도부",
+      "트리니티&&CQB연구부"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 소속 미공개 문화 및 전술 부서.",
+    "detail": {
+      "attributes": "순문학부, 다도부, 귀가부, CQB 연구부",
+      "abilities_or_effects": [
+        "트리니티 자경단 연막탄 및 그물망 사용"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "백귀야행 연합학원 미등장 동아리",
+    "triggers": [
+      "백귀야행&&인력거부",
+      "백귀야행&&피트니스라쿠고부",
+      "백귀야행&&배틀카루타부"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원 소속 미공개 전통 및 취미 부서.",
+    "detail": {
+      "attributes": "미쿠리인력거부, 클로렐라 생태관찰부, SF 전락부, 시뮬레이션 쇼기부, 피트니스 라쿠고부, 배틀 카루타부, 종이접기부, 엑스트라부"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은겨울 연방학원 미등장 동아리",
+    "triggers": [
+      "민트초코해방전선",
+      "지식해방전선",
+      "한겨울냉수마찰총연맹",
+      "183호 특별반"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 내 다양한 자치 조직 및 혁명 단체.",
+    "detail": {
+      "attributes": "지식해방전선, 급양부, 붉은곰 편집국, 전산국, 종자보관소, 민트초코해방전선, 가라아게 레몬 반대 혁명가 모임, 한겨울냉수마찰총연맹, 183호 특별반"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "발키리 경찰학교 부서",
+    "triggers": [
+      "발키리&&경찰청장",
+      "발키리&&수사국장",
+      "발키리&&경비국장"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 치안 유지 기구 발키리 경찰학교의 내부 행정 부서.",
+    "detail": {
+      "attributes": "경찰청, 경비국, 생활안전국, 해양경찰국, 소방국, 교통국, 정보통신국, 수사국"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "하이랜더 철도학원",
+    "triggers": [
+      "하이랜더&&철도학원",
+      "감리실장",
+      "Highlander&&Railroad",
+      "중앙관제센터장"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 철도망 관리 및 운송 담당 학원. / 키보토스의 철도 운용 및 관리를 담당하는 학원.",
+    "detail": {
+      "attributes": "중앙관제센터(CCC), 감리실, 화물운송관리부",
+      "relations": [
+        "히카리 - 소속 학생",
+        "와일드헌트 예술학원 - 인접 학원",
+        "노조미 - 소속 학생"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "우루와시 마나미",
+    "triggers": [
+      "우루와시 마나미",
+      "마나미&&예술평의회"
+    ],
+    "scan_range": 3,
+    "summary": "와일드헌트 예술학원 예술 평의회장.",
+    "detail": {
+      "attributes": "예술 평의회장",
+      "relations": [
+        "와일드헌트 예술학원 - 소속"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "와일드헌트 예술학원",
+    "triggers": [
+      "자유외출부",
+      "와일드헌트&&예술",
+      "와일드헌트 예술학원",
+      "배경음악부",
+      "와일드헌트&&학원",
+      "와일드헌트&&예술학원",
+      "Wild Hunt&&Academy"
+    ],
+    "scan_range": 3,
+    "summary": "예술 특화 학원. / 키보토스 내 예술 특화 교육 기관. / 키보토스의 예술 특화 교육 기관. / 예술 활동 특화 학원. 유럽 민속 전설 및 오컬트 요소 기반 학풍. / 학생들의 출입과 생활을 엄격하게 관리하는 폐쇄적인 예술 전문 교육 기관. / 키보토스의 고풍스러운 유럽풍 예술 전문 학원. 엄격한 교칙으로 학생들의 예술적 광기를 억제함.",
+    "detail": {
+      "attributes": "사감대장, 자유외출부, 배경음악부 예술학원. 키보토스 소속 학교. 예술 중심 교풍. 엄격한 동아리 승인 규정. 르네상스 성형 요새 자치구. 19세기 빅토리아풍 벽돌 건축. 이탈리아·프랑스 문화권 양식. 엄격한 외출 허가제. 학생 통제 중심. 예술 특화. 방패 형태 교표(블라우그라나 및 금색 배색). 고전적 유럽 건축 양식. 소속 학생들의 전반적인 미인상.",
+      "relations": [
+        "사감대 - 학내 통제 기구",
+        "밀레니엄 사이언스 스쿨 - 예술품 담보 거래 관계",
+        "하이랜더 철도학원 - 인접 세력",
+        "배경음악부 - 소속 동아리",
+        "시이나 츠무기 - 소속 학생",
+        "키요스미 아키라 - 소속 학생",
+        "우루와시 마나미 - 예술 평의회장",
+        "게헨나 학원 - 광기 및 자유분방함의 대조군",
+        "자유외출부 - 규율 위반 단체"
+      ],
+      "personality_or_nature": "보수적인 행정 체계. 학생들의 자율적 소모임 활성화. 예술적. 오컬트 지향. 기독교 제외 유럽 민속 신앙 및 마법 요소 반영. 예술가 특유의 비대한 자아. '예술은 폭발'이라는 철학 공유. 통제된 사회 속에서 분출되는 광기.",
+      "background_or_history": "공식 동아리 활동이 거의 인정되지 않는 특유의 교풍 보유. 이로 인해 룸메이트 간의 친목회 형태가 동아리 역할을 대신함. 서유럽·북유럽 전설 '와일드헌트' 유래. 발푸르기스의 밤 및 마녀 전설 반영.",
+      "abilities_or_effects": [
+        "베레타 BM59 자동소총 운용",
+        "베레타 ARX-160 돌격소총 운용",
+        "프랑키 LF-57 기관단총 운용",
+        "베레타 8000/Px4 Storm 혼합형 권총 운용"
+      ],
+      "lore_or_steps": [
+        "와일드헌트식 포도 고기찜: 학원 특색 요리",
+        "천재 학생의 그림이 밀레니엄의 채무 담보물로 유입됨.",
+        "오컬트 동호회가 소환 의식을 위해 실제 폭발물을 사용함.",
+        "학원제 개최 및 예술 활동 중심의 자치구 운영."
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "오디세이아 해양학교",
+    "triggers": [
+      "오디세이아 해양학교",
+      "Odyssey&&Maritime",
+      "오디세이아&&해양학교",
+      "오디세이아&&학생회",
+      "골든 플리스 호"
+    ],
+    "scan_range": 3,
+    "summary": "해양 활동 중심 학원. / 다수의 학원함으로 구성된 해양 전문 교육 기관. / 키보토스의 해양 관련 활동을 주관하는 학원.",
+    "detail": {
+      "background_or_history": "골든 플리스 호 소속 바니걸 가드 존재. 네임드 학생 미확인. 소속 선박인 골든 플리스 호의 운영 및 내부 활동 통제 불가.",
+      "attributes": "학원함 연합체. 현재까지 식별된 네임드 학생이 존재하지 않는 유일한 주요 학원.",
+      "relations": [
+        "골든 플리스 호 - 소속 학원함"
+      ]
+    }
+  },
+  {
+    "type": "concept",
+    "name": "일곱 죄수",
+    "triggers": [
+      "키보토스&&죄수",
+      "칠수인",
+      "일곱 죄수",
+      "교정국&&탈옥수"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 최악의 범죄자 집단. / 키보토스 교정국을 탈옥한 최악의 흉악범 7인. 각 분야의 범죄 정점에 군림하는 인물들.",
+    "detail": {
+      "background_or_history": "총 7명 중 2명의 정보 미공개 상태. 키보토스 전역을 위협하는 초법적 범죄 집단. 개개인이 국가급 재난 수준의 위험도 보유. 현재 5인의 정체 확인됨.",
+      "attributes": "탈옥수, 현상수배범, 각 분야의 정점, 흉악성.",
+      "relations": [
+        "히죽히죽 교수 - 조력자",
+        "신타니 카이 - 멤버",
+        "키요스미 아키라 - 멤버",
+        "쿠리하마 아케미 - 멤버",
+        "코사카 와카모 - 멤버",
+        "미츠이 쿄코 - 멤버"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "총학생회 간부진",
+    "triggers": [
+      "총학생회&&문화실장",
+      "총학생회&&보건실장",
+      "총학생회&&방위차장"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 행정 총괄 기구 총학생회의 미등장 실무진.",
+    "detail": {
+      "attributes": "문화실장, 보건실장, 인재자원실장, 방위차장"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "크로노스 스쿨",
+    "triggers": [
+      "크로노스&&스쿨",
+      "크로노스&&학원",
+      "크로노스&&보도부장",
+      "Kronos&&School",
+      "크로노스&&회장"
+    ],
+    "scan_range": 3,
+    "summary": "언론 및 보도 특화 학원. / 키보토스 언론 및 보도 전문 학원.",
+    "detail": {
+      "attributes": "회장, 보도부장 보도부 비행선 운용. 고유 로고 보유.",
+      "relations": [
+        "메리 - 학생"
+      ],
+      "background_or_history": "키보토스 전역 소식 전달 미디어 중심지."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "무한초밥전대 카이텐져",
+    "triggers": [
+      "카이텐져",
+      "무한초밥전대"
+    ],
+    "scan_range": 3,
+    "summary": "정체불명의 복면 5인조 전대.",
+    "detail": {
+      "personality_or_nature": "가면 속 정체 불명. 기존 학생의 이중생활 의혹 존재."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "크로노스 보도부",
+    "triggers": [
+      "Journalism&&Club",
+      "보도부&&크로노스",
+      "크로노스&&보도부"
+    ],
+    "scan_range": 3,
+    "summary": "크로노스 스쿨 핵심 보도 조직.",
+    "detail": {
+      "attributes": "비행선 기지. '월간 키보토스' 발행.",
+      "abilities_or_effects": [
+        "현장 취재",
+        "인터뷰",
+        "리포트 작성",
+        "뉴스 영상 제작"
+      ],
+      "lore_or_steps": [
+        "키보토스 뉴스 영상 특별편 제작",
+        "스케반 검거 현장 인터뷰",
+        "황륜대제 인터뷰"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "카자마키 마이",
+    "triggers": [
+      "Kazamaki Mai",
+      "카자마키 마이",
+      "마이&&보도부"
+    ],
+    "scan_range": 3,
+    "summary": "크로노스 보도부 편집장. '월간 키보토스' 저자.",
+    "detail": {
+      "attributes": "현장 취재원. 리포터. 시논의 선배.",
+      "personality_or_nature": "특종 집착. 겉보기와 달리 문제적 성향.",
+      "relations": [
+        "카와루 시논 - 후배"
+      ],
+      "background_or_history": "전술 대회 소개 및 여름 하늘의 프로미스 미니 게임 등장."
+    }
+  },
+  {
+    "type": "character",
+    "name": "카와루 시논",
+    "triggers": [
+      "Kawaru Shinon",
+      "카와루 시논",
+      "시논&&보도부"
+    ],
+    "scan_range": 3,
+    "summary": "크로노스 보도부 부원.",
+    "detail": {
+      "attributes": "마이의 후배.",
+      "personality_or_nature": "강한 불호 속성. 악명 높은 성격.",
+      "relations": [
+        "카자마키 마이 - 선배"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "메리코",
+    "triggers": [
+      "Meriko",
+      "메리코",
+      "메리코&&DJ"
+    ],
+    "scan_range": 3,
+    "summary": "크로노스 소속 심야 라디오 DJ.",
+    "detail": {
+      "attributes": "라디오 진행자.",
+      "relations": [
+        "타마 - 인연 스토리 접점",
+        "유우카 - 인연 스토리 접점"
+      ],
+      "background_or_history": "심야 라디오 방송 진행."
+    }
+  },
+  {
+    "type": "location",
+    "name": "골든 플리스 호",
+    "triggers": [
+      "골든 플리스 호",
+      "골든 플리스&&유람선",
+      "골든 플리스&&카지노"
+    ],
+    "scan_range": 3,
+    "summary": "오디세이아 해양학교 소속 카지노 유람선. 독자적 운영 및 학생회 통제 거부.",
+    "detail": {
+      "attributes": "도박과 바니걸의 유람선. 오디세이아 학원함 중 한 척.",
+      "personality_or_nature": "강한 자치권. 운영비 독자 조달. 폐쇄적 정보 공유. 학생회 방치 상태.",
+      "relations": [
+        "오디세이아 해양학교 - 소속 학원",
+        "바니걸 가드 - 보안 인력"
+      ],
+      "lore_or_steps": [
+        "카지노 성적 기반 D~S 등급 서비스 차등",
+        "S등급 달성 시 모든 규정 면책 및 VIP 대우"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "바니걸 가드",
+    "triggers": [
+      "바니걸 가드",
+      "골든 플리스&&가드"
+    ],
+    "scan_range": 3,
+    "summary": "골든 플리스 호 내부 치안 유지 및 보안 담당 인력.",
+    "detail": {
+      "attributes": "바니걸 복장. 무장 경비.",
+      "relations": [
+        "골든 플리스 호 - 소속처"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "아네모네 학원",
+    "triggers": [
+      "아네모네 학원",
+      "아네모네&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 폐교된 군소 학원.",
+    "detail": {
+      "attributes": "폐교 상태. 군소 규모."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "사립 히아신스 학원",
+    "triggers": [
+      "히아신스 학원",
+      "히아신스&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 폐교된 사립 교육 기관.",
+    "detail": {
+      "attributes": "폐교 상태. 사립 학원."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "리나리아 학원",
+    "triggers": [
+      "리나리아 학원",
+      "리나리아&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 폐교된 군소 학원.",
+    "detail": {
+      "attributes": "폐교 상태."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "공립 루피나스 학원",
+    "triggers": [
+      "루피나스 학원",
+      "루피나스&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 폐교된 공립 교육 기관.",
+    "detail": {
+      "attributes": "폐교 상태. 공립 학원."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "쿠로유리 학원",
+    "triggers": [
+      "쿠로유리 학원",
+      "쿠로유리&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 폐교된 군소 학원.",
+    "detail": {
+      "attributes": "폐교 상태."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "사립 네프티스 중학교",
+    "triggers": [
+      "네프티스 중학교",
+      "네프티스&&중학교"
+    ],
+    "scan_range": 3,
+    "summary": "네프티스 그룹 관련 폐교된 중등 교육 기관.",
+    "detail": {
+      "attributes": "폐교 상태. 사립 중학교.",
+      "relations": [
+        "네프티스 그룹 - 관련 기업"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "아비도스 공립 제1중학교",
+    "triggers": [
+      "아비도스 공립 제1중학교",
+      "아비도스&&중학교"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 자치구 내 존재했던 공립 중학교.",
+    "detail": {
+      "attributes": "폐교 상태. 공립 중학교.",
+      "relations": [
+        "아비도스 고등학교 - 지역 내 상급 학교"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "에비스 분교",
+    "triggers": [
+      "에비스 분교",
+      "에비스&&분교"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 폐교된 분교 형태의 교육 기관.",
+    "detail": {
+      "attributes": "폐교 상태. 분교."
+    }
+  },
+  {
+    "type": "character",
+    "name": "코사카 와카모",
+    "triggers": [
+      "와카모",
+      "코사카 와카모",
+      "Wakamo&&Seven",
+      "칠신인&&와카모",
+      "재액의 여우"
+    ],
+    "scan_range": 3,
+    "summary": "일곱 죄수 중 1인. '재액의 여우'로 불리는 파괴적인 흉악범이자 선생을 연모하는 소녀. / 키보토스 교정국에서 탈옥한 '칠신인' 중 일원.",
+    "detail": {
+      "attributes": "여우 가면, 기모노, 소총, 파괴광. 여우 가면. 기모노풍 복장. 파괴적 무력.",
+      "personality_or_nature": "선생 한정 헌신적, 순종적, 순애보. 타인에게는 극도로 잔인하고 무자비함. 광기 어린 집착. 신출귀몰.",
+      "relations": [
+        "선생 - 연모 대상 및 행동 원리"
+      ],
+      "abilities_or_effects": [
+        "대규모 파괴 공작",
+        "단독 교전 능력"
+      ],
+      "background_or_history": "출몰 시 출몰 지역 피난령 발령. 키보토스 내 가장 흉악한 죄수로 정평. 대규모 테러 및 파괴 행위로 수감되었으나 탈옥."
+    }
+  },
+  {
+    "type": "character",
+    "name": "키요스미 아키라",
+    "triggers": [
+      "아키라&&괴도",
+      "자애의 괴도",
+      "키요스미 아키라"
+    ],
+    "scan_range": 3,
+    "summary": "일곱 죄수 중 2인. '자애의 괴도'로 불리는 예술 지상주의 대도.",
+    "detail": {
+      "attributes": "괴도, 예고장, 예술품, 은신.",
+      "personality_or_nature": "인명 피해 불허 신조. 낭만적, 철저한 미학 추구.",
+      "abilities_or_effects": [
+        "난해한 예고장 발송",
+        "신출귀몰한 절도 기술",
+        "잠입 및 탈출"
+      ],
+      "background_or_history": "절도류 범죄의 정점. 고가의 예술적 귀중품만을 표적으로 삼음."
+    }
+  },
+  {
+    "type": "character",
+    "name": "신타니 카이",
+    "triggers": [
+      "신타니 카이",
+      "오욕의 미후",
+      "카이&&산해경"
+    ],
+    "scan_range": 3,
+    "summary": "일곱 죄수 중 3인. '오욕의 미후'로 불리는 산해경 연단방 출신의 매드 사이언티스트.",
+    "detail": {
+      "attributes": "연금술사, 비약, 매드 사이언티스트, 산해경.",
+      "personality_or_nature": "악질적, 탐욕적, 정보 통제 능숙.",
+      "relations": [
+        "야쿠시 사야 - 연단방 후임"
+      ],
+      "abilities_or_effects": [
+        "비약 제조",
+        "연금술",
+        "정보 조작"
+      ],
+      "background_or_history": "산해경 연단방 전 부장. 비약 재료 밀수 및 내부 기밀 유출 혐의. 일곱 죄수 중 가장 무거운 중죄 수감."
+    }
+  },
+  {
+    "type": "character",
+    "name": "쿠리하마 아케미",
+    "triggers": [
+      "쿠리하마 아케미",
+      "전설의 스케반",
+      "아케미&&스케반"
+    ],
+    "scan_range": 3,
+    "summary": "일곱 죄수 중 4인. '전설의 스케반'으로 불리는 키보토스 최강의 무투파.",
+    "detail": {
+      "attributes": "압도적 피지컬, 호흡법, 화력, 스케반.",
+      "personality_or_nature": "의리파, 높은 인망, 내면은 감수성 풍부한 아가씨.",
+      "abilities_or_effects": [
+        "독자적 호흡법을 통한 신체 강화",
+        "압도적 화력 구사",
+        "스케반 조직 통솔"
+      ],
+      "background_or_history": "전성기 시절 수많은 스케반 조직을 무력으로 통합. 현재도 따르는 추종자 다수 존재."
+    }
+  },
+  {
+    "type": "character",
+    "name": "미츠이 쿄코",
+    "triggers": [
+      "미츠이 쿄코",
+      "쿄코&&죄수",
+      "쿄코&&심령"
+    ],
+    "scan_range": 3,
+    "summary": "일곱 죄수 중 5인. 심령 현상을 조작하는 철두철미한 성격의 미스테리 인물.",
+    "detail": {
+      "attributes": "심령 현상, 도시전설, 철두철미.",
+      "abilities_or_effects": [
+        "심령 현상 유발",
+        "도시전설 실체화"
+      ],
+      "lore_or_steps": [
+        "페로로지라 출현의 근본 원인으로 추정됨"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "히죽히죽 교수",
+    "triggers": [
+      "히죽히죽 교수",
+      "교수&&조력자"
+    ],
+    "scan_range": 3,
+    "summary": "일곱 죄수와 협력 관계에 있는 정체불명의 인물.",
+    "detail": {
+      "attributes": "미스터리, 조력자, 배후 인물.",
+      "relations": [
+        "일곱 죄수 - 협력 관계"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "하츠네 미쿠",
+    "triggers": [
+      "하츠네 미쿠",
+      "미쿠&&키보토스",
+      "미쿠&&특별공연"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 특별 공연을 위해 소환된 버추얼 싱어.",
+    "detail": {
+      "attributes": "버추얼 싱어. 청록색 트윈테일. 전자음성.",
+      "personality_or_nature": "밝고 긍정적. 노래를 통한 감정 전달 중시.",
+      "abilities_or_effects": [
+        "노래를 통한 아군 치유 및 강화"
+      ],
+      "background_or_history": "키보토스 내 특별 이벤트 공연을 위해 등장. 실체가 없는 데이터 존재이나 학생들과 교류함."
+    }
+  },
+  {
+    "type": "character",
+    "name": "미사카 미코토",
+    "triggers": [
+      "미사카 미코토",
+      "미코토&&레일건",
+      "미코토&&토키와다이"
+    ],
+    "scan_range": 3,
+    "summary": "학원도시에서 전이된 레벨 5 전격술사.",
+    "detail": {
+      "attributes": "토키와다이 중학교 2학년. 일렉트로 마스터. 갈색 단발.",
+      "personality_or_nature": "강한 정의감. 시원시원한 성격. 게코타 캐릭터 애호.",
+      "relations": [
+        "쇼쿠호 미사키 - 라이벌",
+        "사텐 루이코 - 친구"
+      ],
+      "abilities_or_effects": [
+        "레일건(초전자포)",
+        "전자기력 조작",
+        "해킹"
+      ],
+      "background_or_history": "키보토스 내 이상 현상 조사 중 전이. 키보토스 학생들과 협력하여 사건 해결."
+    }
+  },
+  {
+    "type": "character",
+    "name": "쇼쿠호 미사키",
+    "triggers": [
+      "쇼쿠호 미사키",
+      "미사키&&멘탈아웃",
+      "미사키&&여왕"
+    ],
+    "scan_range": 3,
+    "summary": "학원도시에서 전이된 레벨 5 심리 장악 능력자.",
+    "detail": {
+      "attributes": "토키와다이 중학교 2학년. 멘탈 아웃. 긴 금발. 리모컨 소지.",
+      "personality_or_nature": "고압적인 말투 뒤의 세심함. 운동 신경 전무.",
+      "relations": [
+        "미사카 미코토 - 라이벌",
+        "사텐 루이코 - 친구"
+      ],
+      "abilities_or_effects": [
+        "기억 조작",
+        "감정 제어",
+        "의지 장악"
+      ],
+      "background_or_history": "미사카 미코토와 함께 키보토스로 전이. 특유의 능력으로 정보 수집 및 상황 통제."
+    }
+  },
+  {
+    "type": "character",
+    "name": "사텐 루이코",
+    "triggers": [
+      "사텐 루이코",
+      "사텐&&야구배트",
+      "사텐&&도시전설"
+    ],
+    "scan_range": 3,
+    "summary": "학원도시에서 전이된 도시전설 애호가.",
+    "detail": {
+      "attributes": "사쿠라가와 중학교 1학년. 레벨 0(무능력자). 검은 긴 생머리. 야구 배트 소지.",
+      "personality_or_nature": "사교적. 왕성한 호기심. 뛰어난 적응력.",
+      "relations": [
+        "미사카 미코토 - 친구",
+        "쇼쿠호 미사키 - 친구"
+      ],
+      "background_or_history": "키보토스 전이 후 특유의 친화력으로 현지 적응. 도시전설 수집 중 사건에 휘말림."
+    }
+  },
+  {
+    "type": "character",
+    "name": "후도 안",
+    "triggers": [
+      "후도 안",
+      "부동산 관리 중개부&&안"
+    ],
+    "scan_range": 3,
+    "summary": "부동산 관리 중개부 소속 학생. 키보토스 내 부동산 매매 및 관리 담당.",
+    "detail": {
+      "attributes": "키보토스 학생. 부동산 중개인. 실무 중심적 사고.",
+      "relations": [
+        "흥신소 68 - 업무적 접점 및 대립"
+      ],
+      "background_or_history": "부동산 관리 중개부 소속으로 활동. 건물 관리 및 부동산 계약 관련 사건을 통해 흥신소 68 멤버들과 조우."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "부동산 관리 중개부",
+    "triggers": [
+      "부동산 관리 중개부"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 부동산 거래, 중개 및 건물 관리를 전담하는 자치 조직.",
+    "detail": {
+      "attributes": "부동산 중개. 임대차 계약 관리. 건물 유지 보수.",
+      "lore_or_steps": [
+        "키보토스 내 토지 및 건물 매매 중개",
+        "부동산 관련 분쟁 조정 및 관리비 징수"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "용역",
+    "triggers": [
+      "용역&&학생",
+      "용역&&키보토스",
+      "용역&&헬멧"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 전역 활동 범용 용역 집단. 보수 기반 각종 작업 및 전투 대행 수행.",
+    "detail": {
+      "attributes": "방독면 또는 헬멧 착용. 다양한 총기 및 장비 무장. 수적 우세 기반 전술.",
+      "personality_or_nature": "철저한 자본주의 논리. 고용주 계약에 따른 행동. 감정 배제된 업무 수행.",
+      "background_or_history": "키보토스 거리 및 분쟁 지역 상주 엑스트라 세력. 특정 학원에 소속되지 않은 부랑 학생 또는 아르바이트생 구성."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "전국 트랜스포터 연맹",
+    "triggers": [
+      "전국 트랜스포터 연맹",
+      "부릉부릉질주연합",
+      "폭주족&&배달",
+      "폭주족&&화물"
+    ],
+    "scan_range": 3,
+    "summary": "도로 위의 무법자를 표방하는 폭주족 연합체. 배달 업무를 수행하나 속도에만 치중하여 화물을 파손시키는 집단.",
+    "detail": {
+      "attributes": "도로 무법자. 배달 전문. 화물 파손광.",
+      "personality_or_nature": "속도 지상주의. 난폭함. 특정 호칭에 대한 집착.",
+      "relations": [
+        "총장 - 연맹의 우두머리. '대장'이라 불리는 것을 거부하고 '총장' 호칭을 강요함."
+      ],
+      "background_or_history": "하이랜더 철도폭주사건의 주동 세력. 빠른 배송만을 목적으로 활동하며 운반물 보존에는 무관심함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "게헨나 학원 선도부",
+    "triggers": [
+      "게헨나&&선도부",
+      "Gehenna&&Disciplinary"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 내 치안 유지 및 규율 집행 기구",
+    "detail": {
+      "attributes": "압도적 무력, 공포 정치, 경장갑 보병",
+      "personality_or_nature": "강압적, 원칙주의적",
+      "relations": [
+        "아비도스 대책위원회 - 교전 관계",
+        "보충수업부 - 적대 및 오해"
+      ],
+      "abilities_or_effects": [
+        "집단 전술 사격",
+        "화력 제압"
+      ],
+      "background_or_history": "게헨나의 무법 학생들을 통제하기 위해 설립. 에덴조약 체결 과정에서 트리니티와 충돌 및 협력."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "게헨나 학원 온천개발부",
+    "triggers": [
+      "온천개발부",
+      "Hot&&Springs&&Development"
+    ],
+    "scan_range": 3,
+    "summary": "온천 발굴을 위해 수단과 방법을 가리지 않는 게헨나 소속 동아리",
+    "detail": {
+      "attributes": "폭파 전문가, 중화기 무장",
+      "personality_or_nature": "광기 어린 집착, 파괴적",
+      "relations": [
+        "카스미 - 부장",
+        "메구 - 부부장"
+      ],
+      "abilities_or_effects": [
+        "지형 파괴",
+        "무차별 폭격"
+      ],
+      "background_or_history": "온천 맥이 흐르는 곳이라면 학교 건물이라도 폭파하고 굴착함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "아리우스 분교 학생",
+    "triggers": [
+      "아리우스&&학생",
+      "Arius&&Students"
+    ],
+    "scan_range": 3,
+    "summary": "버려진 아리우스 자치구에서 생존해온 학생 집단",
+    "detail": {
+      "attributes": "방독면, 전술 장비, 테러화 상태",
+      "personality_or_nature": "허무주의, 살벌함",
+      "relations": [
+        "아즈사 - 배신자 및 적대"
+      ],
+      "abilities_or_effects": [
+        "게릴라 전술",
+        "사후 소멸"
+      ],
+      "background_or_history": "일반 학생과 테러화 학생으로 구분. 테러화된 개체는 쓰러질 시 재가 되어 소멸함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "유스티나 성도회",
+    "triggers": [
+      "유스티나 성도회",
+      "Justina&&Saints"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원의 과거를 상징하는 고대 종교 무장 조직",
+    "detail": {
+      "attributes": "구 공산권 총기 사용, 수녀복, 유령 형상",
+      "personality_or_nature": "기계적, 맹목적",
+      "relations": [
+        "암브로시우스 - 간부",
+        "바르바라 - 간부",
+        "플라비아 - 간부"
+      ],
+      "abilities_or_effects": [
+        "화염 방사",
+        "정밀 저격"
+      ],
+      "background_or_history": "에덴조약 사건 당시 복제된 형상으로 나타나 트리니티를 위협함. AK47, SVD 등 구식 화기 운용."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "망량즈",
+    "triggers": [
+      "망량즈",
+      "Mouryous"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원에서 활동하는 가면 쓴 불량학생 집단",
+    "detail": {
+      "attributes": "한냐 가면, 텐구 탈, 횻토코 탈",
+      "personality_or_nature": "난폭함, 축제 방해",
+      "abilities_or_effects": [
+        "집단 난동",
+        "중화기 투사"
+      ],
+      "background_or_history": "백귀야행의 각종 축제와 행사에서 소란을 피우는 주요 골칫덩이."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은겨울 친위대",
+    "triggers": [
+      "붉은겨울&&친위대",
+      "Red&&Winter&&Guard"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 사무국 보안위원회 소속 정예 병력",
+    "detail": {
+      "attributes": "탄력 장갑, 정예 소대장",
+      "personality_or_nature": "충성심, 관료주의",
+      "abilities_or_effects": [
+        "방어선 구축",
+        "돌격 사격"
+      ],
+      "background_or_history": "체리노의 권력을 유지하기 위한 무력 집단. 학원 내 반란 진압 및 치안 담당."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "산해경 현무상회",
+    "triggers": [
+      "현무상회",
+      "Genmu&&Merchant"
+    ],
+    "scan_range": 3,
+    "summary": "산해경 고급중학교의 거대 상인 조합",
+    "detail": {
+      "attributes": "푸드트럭, 항아리 폭탄",
+      "personality_or_nature": "상업적, 기회주의적",
+      "abilities_or_effects": [
+        "화염 장판 생성",
+        "물자 보급"
+      ],
+      "background_or_history": "산해경의 경제권을 쥐고 있으며, 이권 개입을 위해 무력을 행사하기도 함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "발키리 경찰학교 경비국",
+    "triggers": [
+      "발키리&&경비국",
+      "Valkyrie&&Security"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스의 공공 치안을 담당하는 경찰 조직",
+    "detail": {
+      "attributes": "진압 방패, 드론 소환",
+      "personality_or_nature": "무능함과 정의감 공존",
+      "relations": [
+        "RABBIT 소대 - 대립 및 협력",
+        "카이저 PMC - 적대"
+      ],
+      "abilities_or_effects": [
+        "지원 포격",
+        "실드 전개"
+      ],
+      "background_or_history": "장비를 불량학생들에게 탈취당하는 등 수난이 잦으나, 위기 상황에서는 시민을 보호함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "하이랜더 철도학원 승무원",
+    "triggers": [
+      "하이랜더&&승무원",
+      "Highlander&&Railroad"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 철도망을 관리하고 수호하는 학생들",
+    "detail": {
+      "attributes": "서부시대 총기, 철도 제복",
+      "personality_or_nature": "교활함, 철저한 직업정신",
+      "abilities_or_effects": [
+        "중기관총 거치",
+        "열차 전술"
+      ],
+      "background_or_history": "열차 내 질서 유지를 위해 윈체스터, 콜트 등 빈티지 화기로 무장함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "와일드헌트 사감대",
+    "triggers": [
+      "와일드헌트&&사감대",
+      "Wildhunt&&Discipline"
+    ],
+    "scan_range": 3,
+    "summary": "예술과 규율을 동시에 집행하는 와일드헌트 학원 보안 기구",
+    "detail": {
+      "attributes": "베레타 화기, 예술 전공자",
+      "personality_or_nature": "우아함, 결벽증",
+      "abilities_or_effects": [
+        "실드 전개(문학)",
+        "자가 버프(미술)",
+        "발레 특수 사격(무용)"
+      ],
+      "background_or_history": "문학, 미술, 무용 전공자들이 각자의 예술적 특색을 전투 기술에 접목함."
+    }
+  },
+  {
+    "type": "race",
+    "name": "수인",
+    "triggers": [
+      "수인&&키보토스",
+      "동물&&주민",
+      "수인&&시민"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스의 보편적인 일반인 종족. 동물의 외형을 한 주민들.",
+    "detail": {
+      "attributes": "다양한 동물 종의 외형. 남성형이 주류이나 여성형도 존재.",
+      "personality_or_nature": "사회 구성원으로서 다양한 직업 종사. 학생이 아닌 일반 시민 계층 형성.",
+      "abilities_or_effects": [
+        "인간과 동일한 지성",
+        "직업별 전문 기술 보유"
+      ],
+      "lore_or_steps": [
+        "퍼그: 정장 차림의 소심한 사무원 및 소시민.",
+        "시바견: 상인, 요리사, 장인 역할. 자신감 넘치는 태도.",
+        "웰시 코기: 트렌치코트 차림의 부상자 또는 정비복 차림의 기술직.",
+        "고양이: 백귀야행, 산해경 등 동양풍 배경의 장인 및 주민.",
+        "참새: 참새정 주인. 최초로 확인된 여성 수인 주민.",
+        "흰머리오목눈이: 어린 여자아이 포지션의 주민.",
+        "레서판다: 어촌의 젊은 어부 계층.",
+        "북극곰: 하와이안 셔츠 차림의 행인 및 관광객.",
+        "슈나우저: 우락부락한 근육을 가진 베테랑 노인 어부.",
+        "다람쥐: 안전모를 착용한 공사 인부 및 시설 관리자."
+      ]
+    }
+  },
+  {
+    "type": "race",
+    "name": "로봇",
+    "triggers": [
+      "로봇&&키보토스",
+      "안드로이드&&키보토스",
+      "기계&&주민"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 기업 및 사회 시스템을 구성하는 기계 지성체.",
+    "detail": {
+      "attributes": "얼굴 화면을 통한 표정 출력. 인간과 대등한 사회적 지위.",
+      "personality_or_nature": "식사 가능. 질병 및 배탈 등 생리적 현상 경험. 주로 남성형 외형.",
+      "relations": [
+        "텐도 아리스 - 유일하게 학생과 동일한 신체를 가진 안드로이드"
+      ],
+      "abilities_or_effects": [
+        "기업 운영",
+        "시설 관리",
+        "교직 업무 수행"
+      ],
+      "background_or_history": "키보토스 전역에서 평범한 시민으로 거주. 기업 말단부터 고위 임원까지 폭넓은 분포.",
+      "lore_or_steps": [
+        "럭비공 머리 로봇: 검은 정장 차림. 기업 말단, 관리직, 학교 교직원 담당. 감정 표현 풍부.",
+        "사각형 머리 로봇: 줄무늬 정장 차림. 고위직 임원 및 악역 포지션 빈번."
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "마스터 시바",
+    "triggers": [
+      "마스터 시바",
+      "시바세키 라면",
+      "Master Shiba",
+      "시바세키&&마스터"
+    ],
+    "scan_range": 3,
+    "summary": "시바세키 라멘의 주인이자 시바견 수인. / 시바세키 라면 가게 점주. / 시바세키 라멘을 운영하는 시바견 수인 점주.",
+    "detail": {
+      "attributes": "시바견 수인. 요리사 복장. 시바견 수인. 라면 장인.",
+      "personality_or_nature": "자신감 넘치는 장인 정신. 인자함. 학생들에게 호의적. 대인배적 면모.",
+      "relations": [
+        "아비도스 대책위원회 - 조력자",
+        "세리카 - 아르바이트생"
+      ],
+      "abilities_or_effects": [
+        "가게 운영",
+        "라멘 조리",
+        "학생 상담"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "냥텐마루",
+    "triggers": [
+      "냥텐마루"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원 등에서 활동하는 고양이 수인 장인.",
+    "detail": {
+      "attributes": "고등어 줄무늬 고양이. 하카마와 하오리 착용.",
+      "personality_or_nature": "전통적인 장인 기질."
+    }
+  },
+  {
+    "type": "character",
+    "name": "카메지마 고로",
+    "triggers": [
+      "카메지마 고로",
+      "검은거북파&&두목"
+    ],
+    "scan_range": 3,
+    "summary": "검은거북파 소속의 사각형 머리 로봇.",
+    "detail": {
+      "attributes": "갈색 줄무늬 정장. 사각형 머리 로봇.",
+      "personality_or_nature": "권위적이며 주로 악역으로 등장."
+    }
+  },
+  {
+    "type": "character",
+    "name": "쿠마가이",
+    "triggers": [
+      "쿠마가이&&어부"
+    ],
+    "scan_range": 3,
+    "summary": "어촌에 거주하는 레서판다 수인 어부.",
+    "detail": {
+      "attributes": "카키색 후드티. 멜빵바지.",
+      "personality_or_nature": "젊은 어부의 활기."
+    }
+  },
+  {
+    "type": "character",
+    "name": "사랑은 잉어",
+    "triggers": [
+      "사랑은 잉어",
+      "금단의 연애&&소설"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스의 유명 연애 소설가.",
+    "detail": {
+      "attributes": "필명 사용. 정체불명. 학생 추정.",
+      "lore_or_steps": [
+        "소설 '금단의 연애 ~허락되지 않아서, 더욱 아름다운 사랑~' 저술",
+        "여러 학생들의 인연 스토리에서 언급됨"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "DJ B.o.B",
+    "triggers": [
+      "DJ B.o.B",
+      "Sheside Outside"
+    ],
+    "scan_range": 3,
+    "summary": "블랙 마켓의 유명 DJ.",
+    "detail": {
+      "attributes": "요크셔테리어 수인. 소심한 겁쟁이. 허세.",
+      "relations": [
+        "조마에 사오리 - 아르바이트 고용 및 갑질",
+        "아리우스 스쿼드 - 폭행 및 훈육 관계"
+      ],
+      "background_or_history": "헬멧단 연합 바다 축제 디제잉 담당. 사오리 혹사 중 아리우스 스쿼드에게 보복당함. 불량배 습격 시 도주."
+    }
+  },
+  {
+    "type": "character",
+    "name": "코기 브레이브스 감독",
+    "triggers": [
+      "코기 브레이브스",
+      "코기 브레이브스&&감독"
+    ],
+    "scan_range": 3,
+    "summary": "만년 패배 야구팀 코기 브레이브스의 감독.",
+    "detail": {
+      "attributes": "웰시코기 수인. 무능함.",
+      "background_or_history": "189전 189패 기록. 개껌 공장 폭파 협박 사건의 피해자. 참담한 경기력으로 인해 팬들에게 가해자보다 더한 비난을 받음."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "슬럼피아 어뮤즈 돌",
+    "triggers": [
+      "슬럼피아&&로봇",
+      "어뮤즈돌",
+      "쿠마봇",
+      "우사기봇"
+    ],
+    "scan_range": 3,
+    "summary": "버려진 테마파크 슬럼피아의 마스코트형 로봇 군단.",
+    "detail": {
+      "attributes": "인형탈 외형. 헤일로 없음. 기계 생명체. 중장갑 및 특수장갑.",
+      "personality_or_nature": "무차별 공격성. 기계적 적대감.",
+      "relations": [
+        "고즈 - 소환주 및 지휘관"
+      ],
+      "abilities_or_effects": [
+        "쿠마봇 - 고내구도 전열 압박",
+        "우사기봇 - 후방 딜러 우선 타격"
+      ],
+      "background_or_history": "슬럼피아 폐장 후 방치된 안내용 로봇들. 테러화 변종 존재."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "검은거북파",
+    "triggers": [
+      "검은거북파",
+      "카메지마&&고로",
+      "대길전"
+    ],
+    "scan_range": 3,
+    "summary": "신사 운영을 위장한 로봇 범죄 조직.",
+    "detail": {
+      "attributes": "오토마타 구성원. 자금 세탁 전문. 신사 '대길전' 운영.",
+      "personality_or_nature": "탐욕적. 기회주의적. 배신 지향.",
+      "relations": [
+        "카메지마 고로 - 보스",
+        "흥신소 68 - 적대 관계",
+        "카이텐져 - 절도 피해 대상",
+        "현무상회 - 사칭 대상"
+      ],
+      "abilities_or_effects": [
+        "AR 오토마타 운용",
+        "RL 오토마타 운용",
+        "가드 타워 설치"
+      ],
+      "background_or_history": "신년 기부금을 노린 사기극 벌임. 흥신소 68과 대책위원회에 의해 궤멸. 잔당은 리조트에서 현무상회 사칭 중 적발."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "소확행",
+    "triggers": [
+      "소확행&&로봇",
+      "데카르트&&로봇",
+      "무소유&&종교"
+    ],
+    "scan_range": 3,
+    "summary": "무소유를 주장하는 노숙 로봇 종교 단체.",
+    "detail": {
+      "attributes": "고성능 총기(PSG-1, SG556) 무장. 폐기물 수집 생활.",
+      "personality_or_nature": "철학적. 고집스러움. 생존주의.",
+      "relations": [
+        "데카르트 - 교주",
+        "RABBIT 소대 - 경쟁 및 악우 관계"
+      ],
+      "background_or_history": "코우사기 공원 점거. SRT 학생들과 도시락 및 자재 쟁탈전 벌임. 욕망을 버린 행복 추구 표방."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "냐오모토 푸드",
+    "triggers": [
+      "냐오모토&&푸드",
+      "냐오푸드",
+      "냐오식당"
+    ],
+    "scan_range": 3,
+    "summary": "저질 식자재와 화학 조미료를 사용하는 악덕 식품 기업.",
+    "detail": {
+      "attributes": "기업 자본력. 구르메 헬멧단 동원. 독점 지향.",
+      "personality_or_nature": "수익 지상주의. 비윤리적 영업.",
+      "relations": [
+        "냐오모토 캔 - 회장",
+        "미식연구회 - 적대 및 테러 대상",
+        "게헨나 급양부 - 요리 대결 라이벌"
+      ],
+      "background_or_history": "상점가 참새정 강제 철거 시도. 미식연구회의 폭탄 테러와 급양부와의 오세치 요리 대결에서 패배."
+    }
+  },
+  {
+    "type": "character",
+    "name": "도다 메이타로",
+    "triggers": [
+      "도다&&메이타로",
+      "퍼그&&큐레이터",
+      "시계왕의&&왕관"
+    ],
+    "scan_range": 3,
+    "summary": "미술품 큐레이터로 위장한 뒷세계 장물 브로커.",
+    "detail": {
+      "attributes": "퍼그 수인. 부유함. 불법 경매 운영.",
+      "personality_or_nature": "교활함. 겁쟁이. 권모술수.",
+      "relations": [
+        "아키라 - 적대 및 두려움 대상",
+        "게임개발부 - 고용 및 기만 대상",
+        "C&C - 사칭 고용 대상"
+      ],
+      "background_or_history": "자애의 괴도를 막기 위해 C&C를 사칭한 게임개발부를 고용. 불법 경매장 운영 적발 후 네루에게 제압 및 체포."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "레드 훅 익스프레스",
+    "triggers": [
+      "레드훅&&익스프레스",
+      "야토우라&&새우",
+      "쿠사야&&창고"
+    ],
+    "scan_range": 3,
+    "summary": "해저인 전설을 이용해 사치품을 밀수하는 물류 회사.",
+    "detail": {
+      "attributes": "로봇 CEO. 수산물 물류망 보유.",
+      "personality_or_nature": "기만적. 잔혹함. 이윤 독점.",
+      "relations": [
+        "SRT - 체포 집행자",
+        "야토우라 마을 - 피해 지역"
+      ],
+      "background_or_history": "새우 공급 중단 및 사치품 밀수 주도. SRT에 의해 정체 탄로. 마을 사람들에 의해 쿠사야 창고에 감금됨."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "아란치노 패밀리",
+    "triggers": [
+      "아란치노&&패밀리",
+      "돈&&아란치노",
+      "마피아&&키보토스"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 암흑가 갱단 연합의 정점에 위치한 마피아 조직.",
+    "detail": {
+      "attributes": "금색 체인 목걸이 헬멧단. 중무장 호위대.",
+      "personality_or_nature": "권위적. 불운함.",
+      "relations": [
+        "돈 아란치노 - 보스",
+        "사오리 - 고용 경호원",
+        "흥신소 68 - 적대 및 납치 시도자"
+      ],
+      "background_or_history": "오페라장에서 보스 납치 소동 발생. 사오리에 의해 보스가 짐짝 취급당함. 발키리 경찰학교에 의해 조직 일망타진."
+    }
+  },
+  {
+    "type": "concept",
+    "name": "요괴",
+    "triggers": [
+      "바케카사",
+      "바케쵸진",
+      "바케다루마",
+      "이노모노노케로쿠"
+    ],
+    "scan_range": 3,
+    "summary": "괴서 이노모노노케로쿠에서 실체화된 초자연적 존재들.",
+    "detail": {
+      "attributes": "우산, 등불, 다루마 형태. 영적 에너지.",
+      "abilities_or_effects": [
+        "바케카사 - 산탄총 사격",
+        "바케쵸진 - 저격",
+        "바케다루마 - 기관총 소사"
+      ],
+      "background_or_history": "화조풍월부가 금서를 통해 소환. 백귀야행 구역 내 혼란 야기."
+    }
+  },
+  {
+    "type": "concept",
+    "name": "채색 캔버스",
+    "triggers": [
+      "채색 캔버스",
+      "Coloring Canvas",
+      "1주년&&주제곡"
+    ],
+    "scan_range": 3,
+    "summary": "블루 아카이브 1주년 기념 주제곡.",
+    "detail": {
+      "attributes": "밝고 경쾌한 분위기. 청춘의 색채 표현.",
+      "background_or_history": "키보토스 1주년 기념 선율."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "After-School Sweets Club",
+    "triggers": [
+      "After-School Sweets Club",
+      "방과후 디저트부",
+      "Sweets Club&&Trinity"
+    ],
+    "scan_range": 3,
+    "summary": "Trinity General School club focused on dessert exploration and tasting.",
+    "detail": {
+      "attributes": "Trinity students. Sweet-toothed. Casual atmosphere.",
+      "relations": [
+        "Kyouyama Kazusa - Member",
+        "Yutori Natsu - Member",
+        "Ibaraki Yoshimi - Member",
+        "Kurimura Airi - Member"
+      ],
+      "background_or_history": "Group of friends visiting cafes after school. Often involved in Trinity's urban legends and local incidents."
+    }
+  },
+  {
+    "type": "character",
+    "name": "Kyouyama Kazusa",
+    "triggers": [
+      "Kazusa&&Trinity",
+      "Cath Palug",
+      "카스팔루그",
+      "카즈사&&트리니티"
+    ],
+    "scan_range": 3,
+    "summary": "Member of the After-School Sweets Club with a hidden delinquent past.",
+    "detail": {
+      "attributes": "Cat ears. Black hair. Cool demeanor.",
+      "personality_or_nature": "Calm. Easily embarrassed. Secretive about history. Fond of milk.",
+      "relations": [
+        "After-School Sweets Club - Member"
+      ],
+      "background_or_history": "Formerly feared as the 'Legendary Sukeban Cath Palug'. Attempting to live a normal student life.",
+      "lore_or_steps": [
+        "Associated with the phrase 'Milk Time'.",
+        "Past identity remains a sensitive topic."
+      ]
+    }
+  },
+  {
+    "type": "event",
+    "name": "SUGAR RUSH",
+    "triggers": [
+      "SUGAR RUSH&&Sweets",
+      "슈가 러시"
+    ],
+    "scan_range": 3,
+    "summary": "Musical performance or event involving the After-School Sweets Club.",
+    "detail": {
+      "attributes": "Energetic. Dessert-themed.",
+      "relations": [
+        "After-School Sweets Club - Performers"
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "D.U.",
+    "triggers": [
+      "D.U.",
+      "키보토스 중앙구",
+      "중앙구&&키보토스"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 중앙 행정 및 상업 지구. 생텀 타워 소재지.",
+    "detail": {
+      "attributes": "중심 번화가. 행정 중추.",
+      "relations": [
+        "총학생회 - 관리 주체",
+        "샬레 - 감독 기관",
+        "카이저 컨스트럭션 - 재건 담당"
+      ],
+      "background_or_history": "색채 침공 당시 괴멸. 총학생회와 샬레 감독 하에 카이저 컨스트럭션이 재건."
+    }
+  },
+  {
+    "type": "location",
+    "name": "생텀 타워",
+    "triggers": [
+      "생텀 타워",
+      "생텀타워"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 제어권 상징 거대 타워. 시라토리 구 위치.",
+    "detail": {
+      "attributes": "초고층 구조물. 도시 제어 중추.",
+      "background_or_history": "색채 침공 당시 주요 파괴 대상. 현재 재건 완료."
+    }
+  },
+  {
+    "type": "location",
+    "name": "시라토리 구",
+    "triggers": [
+      "시라토리 구",
+      "시라토리구"
+    ],
+    "scan_range": 3,
+    "summary": "D.U. 내 핵심 번화가. 생텀 타워 소재 구역.",
+    "detail": {
+      "attributes": "상업 중심지. 재건 구역.",
+      "background_or_history": "색채 침공으로 파괴된 후 카이저 컨스트럭션에 의해 현대적 모습으로 복구."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "카이저 컨스트럭션",
+    "triggers": [
+      "카이저 컨스트럭션",
+      "카이저&&건설"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 대형 건설 기업. 도시 재건 사업 수행.",
+    "detail": {
+      "relations": [
+        "총학생회 - 발주처",
+        "샬레 - 감독 기관"
+      ],
+      "background_or_history": "색채 침공 이후 파괴된 D.U. 시라토리 구 재건 주도."
+    }
+  },
+  {
+    "type": "location",
+    "name": "아비도스",
+    "triggers": [
+      "아비도스",
+      "아비도스&&사막",
+      "학생회장들의&&계곡",
+      "옛&&오아시스"
+    ],
+    "scan_range": 3,
+    "summary": "사막 지대 위치 학원 자치구. 급격한 사막화로 쇠락한 폐허 도시.",
+    "detail": {
+      "attributes": "아비도스 본관, 사막, 대본관, 옛 오아시스 터, 학생회장들의 계곡.",
+      "background_or_history": "과거 키보토스 최대 규모 학원. 현재 대부분 영토 모래 매몰. 자치구 기능 상실 위기."
+    }
+  },
+  {
+    "type": "location",
+    "name": "게헨나",
+    "triggers": [
+      "게헨나",
+      "게헨나&&자치구",
+      "힌놈&&화산",
+      "아라바&&해안"
+    ],
+    "scan_range": 3,
+    "summary": "자유와 혼돈의 학원 자치구. 화산 및 해안 지형 포함.",
+    "detail": {
+      "attributes": "게헨나 중앙구, 아라바 해안, 힌놈 화산, 어비스.",
+      "personality_or_nature": "무질서, 개성 중시, 자유분방."
+    }
+  },
+  {
+    "type": "location",
+    "name": "밀레니엄",
+    "triggers": [
+      "밀레니엄&&자치구",
+      "에리두",
+      "밀레니엄&&학습관"
+    ],
+    "scan_range": 3,
+    "summary": "최첨단 과학 기술 중심 학원 자치구. 현대적 시설과 고대 폐허 공존.",
+    "detail": {
+      "attributes": "밀레니엄 학습관, 폐허, 요새도시 에리두.",
+      "personality_or_nature": "합리성, 기술력 지향, 논리 중심."
+    }
+  },
+  {
+    "type": "location",
+    "name": "트리니티",
+    "triggers": [
+      "트리니티&&자치구",
+      "트리니티&&광장",
+      "구호기사단&&본관",
+      "통공의&&고성당"
+    ],
+    "scan_range": 3,
+    "summary": "유서 깊은 전통의 학원 자치구. 다수의 분파와 종교적 건축물 밀집.",
+    "detail": {
+      "attributes": "트리니티 광장, 다과회실, 성 테레사 종합병원, 대성당, 카타콤.",
+      "relations": [
+        "아리우스 - 분리된 분파 및 적대 관계",
+        "구호기사단 - 자치구 내 의료 조직"
+      ],
+      "personality_or_nature": "우아함, 보수적, 정치적 암투."
+    }
+  },
+  {
+    "type": "location",
+    "name": "백귀야행",
+    "triggers": [
+      "백귀야행",
+      "백야당",
+      "백귀야행&&영화촌"
+    ],
+    "scan_range": 3,
+    "summary": "동양풍 전통 테마 학원 자치구. 관광 및 문화 산업 중심지.",
+    "detail": {
+      "attributes": "백귀야행 중심구, 백야당, 소용돌이 영화촌.",
+      "personality_or_nature": "풍류, 전통 보존, 축제 분위기."
+    }
+  },
+  {
+    "type": "location",
+    "name": "산해경",
+    "triggers": [
+      "산해경",
+      "도원향&&산해경",
+      "곤륜산"
+    ],
+    "scan_range": 3,
+    "summary": "중화풍 양식 학원 자치구. 산악 지형 기반 상업 및 교육 지구.",
+    "detail": {
+      "attributes": "중앙 특구, 도원향, 곤륜산.",
+      "personality_or_nature": "상업 발달, 전통 중시."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "흥신소 68",
+    "triggers": [
+      "Problem Solver 68",
+      "흥신소 68",
+      "흥신소&&키보토스",
+      "리쿠하치마&&흥신소",
+      "아루&&흥신소"
+    ],
+    "scan_range": 3,
+    "summary": "사교육 기관 등 다양한 의뢰를 해결하는 해결사 집단. / 게헨나 학원 비인가 해결사 집단. 하드보일드 무법자 지향. / 게헨나 학원 소속 학생들이 설립한 불법 해결사 사무소.",
+    "detail": {
+      "relations": [
+        "이구사 하루카 - 사원",
+        "리쿠하치마 아루 - 사장",
+        "오니카타 카요코 - 과장",
+        "아사기 무츠키 - 실장",
+        "리쿠하치마 아루 - 부장"
+      ],
+      "background_or_history": "키보토스 내 비공식 활동 및 사교육 관련 스핀오프 활동 기록 존재. 게헨나 외곽 거점. 임대료 체납 상습. 위험 의뢰 수주하나 결과는 항상 허당. 완벽한 악당을 꿈꾸는 아루를 중심으로 결성. 주로 기상천외한 의뢰를 수행하며 사고를 침.",
+      "attributes": "게헨나 학원, 비인가 동아리, 해결사 사무소 게헨나 학원 동아리. 자칭 하드보일드 악당 집단.",
+      "personality_or_nature": "허술함, 악당 지향, 가난함, 의리 허당기 있는 악당 지향. 의외의 의리. 소동 유발.",
+      "abilities_or_effects": [
+        "게릴라 전투",
+        "폭파 및 파괴 공작"
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "밀레니엄 사이언스 스쿨",
+    "triggers": [
+      "밀레니엄 사이언스 스쿨",
+      "밀레니엄&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "과학 기술과 논리를 중시하는 키보토스의 주요 학원.",
+    "detail": {
+      "attributes": "라틴 알파벳 유래 교표 사용.",
+      "relations": [
+        "하야세 유우카 - 세미나 회계"
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "엔젤 24",
+    "triggers": [
+      "엔젤 24",
+      "편의점&&소라"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 위치한 편의점.",
+    "detail": {
+      "relations": [
+        "소라 - 아르바이트생"
+      ],
+      "background_or_history": "중학생 신분인 소라가 근무 중. 키보토스 내 아동 노동 허용 사례."
+    }
+  },
+  {
+    "type": "character",
+    "name": "선생",
+    "triggers": [
+      "선생님",
+      "샬레&&선생",
+      "선생&&샬레",
+      "선생님&&키보토스",
+      "샬레의 선생"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 학생들을 지도하는 유일한 어른. / 샬레 고문 교사. 학생 인도자. / 키보토스 학생들의 인도자이자 샬레 소속 고문 교사.",
+    "detail": {
+      "personality_or_nature": "학생들로부터 존댓말과 반말을 동시에 듣는 유연한 관계성. 학생들의 보호자이자 조력자. 헌신적. 학생 보호 최우선. 업무 과다로 인한 탈진 잦음. 학생 중심 사고. 헌신적. 책임감 강함.",
+      "background_or_history": "키보토스 외부에서 온 존재로 묘사됨. 연방학생회장 지명으로 부임한 외부인.",
+      "attributes": "키보토스 유일 성인. 샬레 소속. 성인 남성. 샬레 소속. 학생 보호자.",
+      "relations": [
+        "학생들 - 지도 대상",
+        "총학생회 - 협력 관계"
+      ]
+    }
+  },
+  {
+    "type": "concept",
+    "name": "키보토스 성씨 체계",
+    "triggers": [
+      "가상의 성씨",
+      "요비스테&&키보토스"
+    ],
+    "scan_range": 3,
+    "summary": "실존하지 않는 희귀 성씨와 이름 중심의 호칭 문화.",
+    "detail": {
+      "attributes": "스나오오카미, 리쿠하치마, 사이바, 코마카제 등 가상 성씨 다수.",
+      "lore_or_steps": [
+        "초면이나 격식 필요시 성씨+씨(양) 사용.",
+        "일반적인 관계에서는 이름으로 직접 호출.",
+        "외부 전이 인물에게는 생소한 요비스테 문화."
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "키보토스 광역도시철도",
+    "triggers": [
+      "키보토스 광역도시철도",
+      "T라인&&지하철",
+      "시타델역"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 전역을 연결하는 주요 도시철도망.",
+    "detail": {
+      "attributes": "순환선 T라인 존재. 8량 이상 편성 열차 운행.",
+      "personality_or_nature": "학생 등하교 및 선생 출퇴근용 대중교통.",
+      "relations": [
+        "총학생회 - 운영 주체",
+        "선생 - 이용객"
+      ],
+      "lore_or_steps": [
+        "시타델역",
+        "총학생회 사무국",
+        "호수공원",
+        "대도서관 입구",
+        "자유공원"
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "안드로메다 횡단철도",
+    "triggers": [
+      "안드로메다 횡단철도",
+      "키보토스&&횡단철도"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 전역을 가로지르는 광역 철도망.",
+    "detail": {
+      "attributes": "대규모 철도 네트워크.",
+      "background_or_history": "키보토스 전역을 연결하는 핵심 기간 시설."
+    }
+  },
+  {
+    "type": "location",
+    "name": "아비도스 중앙선",
+    "triggers": [
+      "아비도스 중앙선",
+      "아비도스&&철도",
+      "아비도스&&열차"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 자치구를 관통하는 광역 철도 노선.",
+    "detail": {
+      "attributes": "쾌속 및 신쾌속 등급 운행. 모래폭풍으로 인한 잦은 지연.",
+      "relations": [
+        "세인트 네프티스 - 운영사",
+        "아비도스 고등학교 - 인접 학원"
+      ],
+      "background_or_history": "과거 키보토스 최대 자치구였던 아비도스의 핵심 교통망. 사막화로 인해 노선 대부분이 폐허가 되었으나 외곽 지역은 여전히 운행 중. 최근 복구 작업 시작."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "세인트 네프티스",
+    "triggers": [
+      "세인트 네프티스",
+      "노노미&&가족기업",
+      "네프티스&&철도"
+    ],
+    "scan_range": 3,
+    "summary": "철도 사업을 주력으로 하는 거대 기업.",
+    "detail": {
+      "attributes": "철도 인프라 전문. 아비도스 중앙선 운영 주체.",
+      "relations": [
+        "이자요이 노노미 - 가문 구성원",
+        "카이저 제너럴 - 적대적 인수 시도 세력"
+      ],
+      "background_or_history": "아비도스 사막 횡단 철도를 건설함. 해당 철도 건설이 아비도스 사막화를 가속화했다는 비판 존재. 카이저 그룹의 인수 합병 시도를 방어하며 기업 유지 중."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "트리니티 종합학원",
+    "triggers": [
+      "트리니티",
+      "트리니티 종합학원",
+      "트리니티&&학원",
+      "트리니티&&키보토스"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스의 주요 대형 학원. / 키보토스 3대 학원 중 하나인 거대 자치구.",
+    "detail": {
+      "relations": [
+        "게헨나 학원 - 일반 학생 간 중립 및 공존",
+        "보충수업부 - 산하 조직",
+        "게헨나 학원 - 상층부 간 적대 관계"
+      ],
+      "attributes": "기독교 모티브. 보수적 학풍. 다수의 분파 존재."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "게헨나 학원",
+    "triggers": [
+      "게헨나",
+      "게헨나&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스의 주요 대형 학원.",
+    "detail": {
+      "relations": [
+        "트리니티 종합학원 - 상층부 간 적대 관계",
+        "트리니티 종합학원 - 일반 학생 간 중립 및 공존"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "츠바키",
+    "triggers": [
+      "츠바키",
+      "가이드&&츠바키"
+    ],
+    "scan_range": 3,
+    "summary": "숙면의 달인으로 알려진 가이드 학생.",
+    "detail": {
+      "attributes": "가이드 직책.",
+      "abilities_or_effects": [
+        "꿀잠 자는 방법 전수"
+      ],
+      "background_or_history": "트리니티와 게헨나 학생들이 숙면 비법을 듣기 위해 집단으로 추격함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "연방수사동아리 샬레",
+    "triggers": [
+      "샬레",
+      "연방수사동아리"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 수사 및 분쟁 해결 기관.",
+    "detail": {
+      "relations": [
+        "고문 교사 - 소속 리더"
+      ]
+    }
+  },
+  {
+    "type": "event",
+    "name": "Pray-Ball!",
+    "triggers": [
+      "Pray-Ball!",
+      "야구장&&응원"
+    ],
+    "scan_range": 3,
+    "summary": "학원 간 갈등을 초월하여 학생들이 모이는 야구 경기.",
+    "detail": {
+      "lore_or_steps": [
+        "트리니티와 게헨나 학생들이 같은 팀 응원",
+        "팀의 졸전 시 학원 구분 없이 합심하여 비난"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "후와 렌게(수영복)",
+    "triggers": [
+      "수렌게",
+      "렌게&&수영복",
+      "후와 렌게&&수영복"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원 소속 학생. 여름 휴양지에서의 모습. / 백화요란 분쟁조정위원회 소속 돌격대장. 여름 휴가를 맞아 수영복 차림으로 청춘을 즐기는 수행자.",
+    "detail": {
+      "attributes": "백귀야행 연합학원 소속. 수영복 차림. 붉은 색채 테마. 수행으로 단련된 선명한 복근. 저격소총 및 실전용 물총 소지. 앞뒤 구분이 어려운 빈약한 흉부.",
+      "relations": [
+        "키쿄 - 7세부터 알고 지낸 소꿉친구 및 라이벌",
+        "백귀야행 연합학원 - 소속 학교",
+        "백화요란 - 소속 부대"
+      ],
+      "personality_or_nature": "수행 중시. 열정적. 소꿉친구를 살뜰히 챙기는 성격.",
+      "abilities_or_effects": [
+        "수영 특훈 지도"
+      ],
+      "background_or_history": "백화요란 사태 해결 후 부원들과 미뤄둔 청춘 활동 재개. 어린 시절부터 키쿄와 그네 타기 등으로 경쟁함. 수영 못하는 키쿄를 위해 수영 특훈 실시. 폭주제트 탑승 중 빈약한 흉부 탓에 키쿄가 앞부분을 등으로 오인하는 해프닝 발생."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "백귀야행 연합학원",
+    "triggers": [
+      "백귀야행&&학원",
+      "백귀야행 연합학원"
+    ],
+    "scan_range": 3,
+    "summary": "전통과 문화를 중시하는 연합 형태의 학원.",
+    "detail": {
+      "attributes": "일본풍 배경. 여러 동아리와 조직의 연합체.",
+      "relations": [
+        "후와 렌게 - 소속 학생"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "후와 렌게 (수영복)",
+    "triggers": [
+      "후와 렌게",
+      "렌게&&수영복",
+      "렌게&&백귀야행",
+      "렌게&&수행부"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원 수행부 소속 학생. 여름 축제 운영 및 합숙 수행을 위해 수영복 차림으로 활동하는 무인",
+    "detail": {
+      "attributes": "백귀야행 연합학원, 수행부, 2학년, 창술가",
+      "personality_or_nature": "진지함, 금욕적, 고지식함, 수행 중심적",
+      "relations": [
+        "츠바키 - 수행부 부장",
+        "미모리 - 수행부 부원",
+        "카에데 - 수행부 부원"
+      ],
+      "abilities_or_effects": [
+        "창술",
+        "정신 수양",
+        "신체 단련"
+      ],
+      "background_or_history": "백귀야행 치안 및 수행 담당. 여름 시즌 수영복 차림의 수행 정진 및 축제 안전 도모"
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은겨울 연방학원",
+    "triggers": [
+      "붉은겨울",
+      "레드윈터",
+      "붉은겨울 연방학원",
+      "Red Winter",
+      "Red Winter Federal Academy",
+      "붉은겨울&&연방",
+      "붉은겨울&&학원"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 북쪽 설원 지대 위치 거대 학원. 잦은 혁명과 숙청 반복되는 정치적 혼란지. / 키보토스 북쪽 설원에 위치한 거대 학원. 잦은 혁명과 숙청이 반복되는 정치적 불안정 상태. / 키보토스 북쪽 설산 지대 위치 거대 학원. / 설원 오지에 위치한 거대 학원. 빈번한 쿠데타와 혁명이 일상인 정치적 불안정 구역. / 키보토스 북부 설원 지대 위치 학원. 구소련 모티브. 끊임없는 혁명과 숙청 반복.",
+    "detail": {
+      "attributes": "설원 지형, 공산권 모티브, 만성적 쿠데타 발생지. 러시아 모티브. 만년설 지대. 권위주의적 체제. 설산, 러시아풍 건축물, 만년설. 오지 소재. 톱니바퀴 문양 교표 사용. 학생 대다수 톱니바퀴 형태 헤일로 보유. 극저온 기후, 광활한 영토, 붉은 색채 중심 건축물.",
+      "relations": [
+        "보안위원회 - 치안 유지 기구",
+        "만마전 - 대립 및 교류",
+        "사무국 - 중앙 권력 기관",
+        "지식해방전선 - 도서 관리 분파",
+        "227호 특별반 - 하부 조직 및 유배지",
+        "연방학생회 - 소속 학원",
+        "227호 특별반 - 외곽 유배지",
+        "보안위원회 - 소속 부서",
+        "용역부 - 소속 부서",
+        "붉은겨울 사무국 - 중추 행정 기관"
+      ],
+      "background_or_history": "끊임없는 권력 투쟁과 실각 반복. 학생회장 교체 주기 매우 짧음. 체리노 회장의 독재와 이에 반발하는 학생들의 끊임없는 쿠데타 역사. 광활한 영토 보유. 체리노 학생회장 중심 통치 체제. 체리노 회장의 독재와 실각 반복. 구교사 유배 문화 존재. 키보토스 내 거대 세력 중 하나.",
+      "personality_or_nature": "혁명적. 선동과 숙청이 일상화된 분위기. 권위주의적 학생회와 잦은 혁명 발생. 정치적 불안정. 공산권 풍자 및 유머 중심. 노동권 및 집단 소유 가치 중시. 권위주의적 학생회 통치. 잦은 쿠데타 및 정권 교체. 자유분방한 저항 정신.",
+      "lore_or_steps": [
+        "톱니바퀴 상징: 노동자의 힘과 생산 수단의 집단적 소유 형상화."
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은겨울 사무국",
+    "triggers": [
+      "사무국&&붉은겨울",
+      "학생회&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 최고 행정 기구. 체리노 중심 권력 유지 및 학원 통치.",
+    "detail": {
+      "attributes": "권위주의적, 관료제, 선전 선동 주력.",
+      "relations": [
+        "렌카와 체리노 - 회장",
+        "사시로 토모에 - 비서실장",
+        "이케쿠라 마리나 - 보안위원장"
+      ],
+      "lore_or_steps": [
+        "회장 찬양 선전물 제작",
+        "반대 세력 숙청 및 유배 결정",
+        "학원 내 자원 배분 통제"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "렌카와 체리노",
+    "triggers": [
+      "체리노&&붉은겨울",
+      "서기장&&체리노",
+      "렌카와&&체리노",
+      "회장 동지",
+      "체리노&&레드윈터",
+      "Cherino",
+      "체리노"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 학생회장. 독재적 성향과 가짜 수염에 대한 강한 집착 보유. / 붉은겨울 연방학원의 학생회장. 독재를 꿈꾸는 어린 소녀. / 레드 윈터 연방학원의 서기장. 독재적 지휘권을 가진 광역 섬멸 전문가.",
+    "detail": {
+      "attributes": "단신, 가짜 수염 착용, 숙청 남발. 가짜 수염, 훈장, 권총. 야외 전투 특화. 광범위 제압 사격.",
+      "personality_or_nature": "오만함, 유아독존, 칭찬에 매우 취약함. 유아독존, 변덕스러움, 숙청 집착.",
+      "relations": [
+        "헤세드 - 토벌 대상",
+        "이케쿠라 마리나 - 보안위원장",
+        "레드 윈터 연방학원 - 소속",
+        "사시로 토모에 - 비서",
+        "사시로 토모에 - 비서실장"
+      ],
+      "abilities_or_effects": [
+        "야외 지형 적응력 우수",
+        "숙청 명령 - 반대파 유배",
+        "광범위 제압 사격",
+        "기계 군단 광역 소탕",
+        "숙청 명령을 통한 사기 진작"
+      ],
+      "background_or_history": "잦은 쿠데타로 실각과 복권을 반복함. 권위 유지를 위해 수염을 생명처럼 여김. 끊임없는 혁명과 실각을 반복하며 권력 유지. 다수의 적을 상대하는 전투에 특화."
+    }
+  },
+  {
+    "type": "character",
+    "name": "사시로 토모에",
+    "triggers": [
+      "토모에&&비서",
+      "Tomoe&&Red Winter"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 사무국 비서실장 겸 체리노 전속 요리사. 체리노의 실질적 보좌 및 선전 담당.",
+    "detail": {
+      "attributes": "은발, 침착한 어조, 뛰어난 요리 실력.",
+      "personality_or_nature": "능구렁이 같은 성격, 체리노를 맹목적으로 긍정하고 보좌함.",
+      "relations": [
+        "렌카와 체리노 - 보좌 대상",
+        "이케쿠라 마리나 - 동료"
+      ],
+      "abilities_or_effects": [
+        "선전 선동 - 체리노 우상화",
+        "전속 요리 - 체리노 식단 관리"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "이케쿠라 마리나",
+    "triggers": [
+      "마리나&&보안위원장",
+      "Marina&&Red Winter"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 보안위원회 위원장. 학원 내 무력 행사 및 체리노 호위 책임자.",
+    "detail": {
+      "attributes": "장신, 금발, 돌격 대장.",
+      "personality_or_nature": "충성심 강함, 단순 무식, 심각한 길치.",
+      "relations": [
+        "렌카와 체리노 - 호위 대상",
+        "사시로 토모에 - 동료"
+      ],
+      "abilities_or_effects": [
+        "돌격 - 전선 돌파",
+        "치안 유지 - 반란 진압"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "구 학생회장",
+    "triggers": [
+      "구 학생회장&&붉은겨울",
+      "종자 보관소&&회장"
+    ],
+    "scan_range": 3,
+    "summary": "과거 붉은겨울을 통치했던 정체불명의 인물. 미래의 멸망에 대비한 인프라 구축.",
+    "detail": {
+      "attributes": "검열 애호, 극단적 예산 절감가.",
+      "relations": [
+        "밀레니엄 사이언스 스쿨 - 기술 협찬 관계"
+      ],
+      "background_or_history": "임기 중 특정 형태의 멸망 경험. 다음 멸망 대비를 위해 빙해에 종자 보관소 건설.",
+      "lore_or_steps": [
+        "특정 노래 검열",
+        "건설비 충당 위해 푸딩에 물 타기"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "227호 특별반",
+    "triggers": [
+      "227호&&유배",
+      "Class 227",
+      "227호 특별반",
+      "227호&&특별반",
+      "특별반&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원에서 숙청되거나 정학당한 학생들이 머무는 유배 구역. / 붉은겨울 연방학원 본교에서 격리된 외곽 유배지 및 학생 집단.",
+    "detail": {
+      "attributes": "열악한 보급. 구석진 폐건물. 자급자족 생활. 학원 내 낮은 정치적 비중. 외진 곳에 위치하여 교류 드묾.",
+      "personality_or_nature": "생존주의적. 본교 복귀 열망.",
+      "relations": [
+        "요이미야 시구레 - 부원",
+        "시구레 - 소속 학생",
+        "아마미 노도카 - 부장",
+        "노도카 - 소속 학생"
+      ],
+      "background_or_history": "체리노의 심기를 거스르거나 규정을 위반한 학생들이 강제 이주되는 장소.",
+      "lore_or_steps": [
+        "온천 발견 후 227호 온천향으로 개조 및 운영"
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "227호 온천향",
+    "triggers": [
+      "227호 온천향",
+      "온천향&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "227호 특별반 부지에서 발견된 온천을 기반으로 건설된 대규모 온천 리조트.",
+    "detail": {
+      "attributes": "설원 속 노천탕. 호화로운 목조 건물. 특별반의 주요 수익원.",
+      "background_or_history": "특별반 학생들이 생존 자금 마련을 위해 개발. 이후 관광 명소화.",
+      "lore_or_steps": [
+        "온천수 용출",
+        "시설 건설",
+        "관광객 유치 및 바텐더 운영"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "지식해방전선",
+    "triggers": [
+      "지식해방전선",
+      "금서&&붉은겨울",
+      "지식해방&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 소속 창작 및 서적 보존 동아리. / 붉은겨울 연방학원 내 지식 보존 및 도서 관련 학생 자치 조직.",
+    "detail": {
+      "attributes": "창작열, 망상, 금서 수집, 판매 전략. 일반 학생군 분류. 낮은 스토리 비중.",
+      "personality_or_nature": "창작의 고통 감내. 지식 해방 및 전파 지향.",
+      "relations": [
+        "메루 - 소속 학생",
+        "모미지 - 소속 학생",
+        "붉은겨울 연방학원 - 소속 학원"
+      ],
+      "abilities_or_effects": [
+        "잠입 취재",
+        "소재 발굴",
+        "금서 보관"
+      ],
+      "background_or_history": "학원 내 검열 저항. 동인지 제작 및 배포. 여름 이벤트 참여.",
+      "lore_or_steps": [
+        "커미션 수행",
+        "소재 대결",
+        "판매 전략 수립",
+        "잠입 취재"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "메루",
+    "triggers": [
+      "메루&&지식해방",
+      "사시로 메루"
+    ],
+    "scan_range": 3,
+    "summary": "지식해방전선 소속 삽화가 및 작가.",
+    "detail": {
+      "attributes": "망상, 창작의 고통, 삽화.",
+      "personality_or_nature": "무한한 망상. 창작 몰입 시 주변 단절.",
+      "relations": [
+        "모미지 - 동료"
+      ],
+      "background_or_history": "소재 대결 및 커미션 수행. 창작의 고통을 겪으며 활동."
+    }
+  },
+  {
+    "type": "character",
+    "name": "모미지",
+    "triggers": [
+      "모미지&&지식해방",
+      "아키즈미 모미지"
+    ],
+    "scan_range": 3,
+    "summary": "지식해방전선 소속 독서가 및 서적 관리자.",
+    "detail": {
+      "attributes": "금서 수집, 독서광, 컬렉션 관리.",
+      "personality_or_nature": "서적에 대한 강한 애착. 조용한 휴식 선호.",
+      "relations": [
+        "메루 - 동료"
+      ],
+      "background_or_history": "금지된 서적 및 소중한 컬렉션 보존 활동."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "용역부",
+    "triggers": [
+      "용역부&&붉은겨울",
+      "용역부원&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 내 각종 노역 및 건설 담당 부서.",
+    "detail": {
+      "attributes": "작업복, 안전모, 삽, 곡괭이.",
+      "personality_or_nature": "묵묵한 노동 수행. 학원 내 시설 보수 및 잡무 전담.",
+      "relations": [
+        "붉은겨울 연방학원 - 소속 기관"
+      ],
+      "background_or_history": "학원 내 인프라 유지 관리 목적 설립. 잦은 정권 교체에도 유지되는 실무 조직."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "보안위원회",
+    "triggers": [
+      "보안위원회&&붉은겨울",
+      "보안위원장&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 내 치안 유지 및 숙청 담당 부서.",
+    "detail": {
+      "attributes": "군복, 완장, 총기.",
+      "personality_or_nature": "강압적 질서 유지. 학생회장 명령에 따른 숙청 집행.",
+      "relations": [
+        "붉은겨울 연방학원 - 소속 기관"
+      ],
+      "background_or_history": "학원 내 반란 억제 및 체제 유지를 위해 조직됨."
+    }
+  },
+  {
+    "type": "character",
+    "name": "붉은겨울 모브",
+    "triggers": [
+      "붉은겨울&&모브",
+      "용역부원&&모브"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 소속 일반 학생들.",
+    "detail": {
+      "attributes": "방한복, 집단 행동.",
+      "personality_or_nature": "선동에 취약함. 혁명과 숙청 분위기에 익숙함.",
+      "relations": [
+        "용역부 - 소속 부서"
+      ],
+      "background_or_history": "학원 내 다수를 차지하는 일반 학생 계층."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은겨울 출판부",
+    "triggers": [
+      "출판부&&붉은겨울",
+      "Red Winter&&Publishing"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 내 도서 및 잡지 발행 담당 부서.",
+    "detail": {
+      "attributes": "상업적 성향. 판매 전략 중시. 잡지 기획 및 발행.",
+      "relations": [
+        "아라마키 야쿠모 - 부장",
+        "붉은겨울 연방학원 - 소속 자치구"
+      ],
+      "lore_or_steps": [
+        "스포츠 특집 기획",
+        "사업 계획 수립 및 집행",
+        "판매 전략 수립"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "아라마키 야쿠모",
+    "triggers": [
+      "야쿠모&&붉은겨울",
+      "아라마키 야쿠모"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 출판부 부장.",
+    "detail": {
+      "attributes": "출판부 리더. 사업가적 면모. 기획력.",
+      "relations": [
+        "붉은겨울 출판부 - 소속"
+      ],
+      "background_or_history": "출판부의 수장으로서 각종 사업 계획과 판매 전략 주도. 스포츠 특집 등 잡지 발행 업무 총괄."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은겨울 급양부",
+    "triggers": [
+      "붉은겨울&&급양부",
+      "붉은겨울&&식당",
+      "붉은겨울&&급양"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 식단 담당 부서. 식재료 부족과 체리노의 변덕으로 인한 상습 숙청 대상.",
+    "detail": {
+      "attributes": "만성적 식재료 부족. 열악한 조리 환경. 높은 숙청 빈도.",
+      "relations": [
+        "렌카와 체리노 - 상관 및 숙청 집행자",
+        "227호반 - 주요 유배지"
+      ],
+      "lore_or_steps": [
+        "이반 쿠팔라 축제 당시 푸딩 증산 명령 이행을 위해 물을 섞다 사보타주 혐의로 숙청.",
+        "체리노가 혐오하는 피망을 햄버그 스테이크에 올려 구교사 유배 위기 직면.",
+        "재료 부족으로 체룐카 초콜릿 제작 실패 후 숙청."
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "붉은겨울 급양부장",
+    "triggers": [
+      "급양부장&&붉은겨울",
+      "급양부장&&체리노"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 급양부 책임자. 불합리한 명령과 숙청에 시달리는 수난의 인물.",
+    "detail": {
+      "personality_or_nature": "성실함. 임기응변. 잦은 숙청으로 인한 고난.",
+      "relations": [
+        "렌카와 체리노 - 공포의 대상",
+        "선생 - 유배 위기에서 구해준 조력자"
+      ],
+      "background_or_history": "푸딩 물 타기 사건으로 숙청. 피망 간장 절임으로 매운맛을 제거해 유배 면피. 초콜릿 미제작으로 재숙청."
+    }
+  },
+  {
+    "type": "item",
+    "name": "체룐카 초콜릿",
+    "triggers": [
+      "체룐카 초콜릿",
+      "체룐카&&초코"
+    ],
+    "scan_range": 3,
+    "summary": "발렌타인 축제 당시 선생에게 시식 권유를 위해 기획된 초콜릿.",
+    "detail": {
+      "lore_or_steps": [
+        "재료 부족으로 인해 최종 제작 실패.",
+        "해당 물품 제작 실패가 급양부장 숙청의 직접적 원인으로 작용."
+      ]
+    }
+  },
+  {
+    "type": "event",
+    "name": "혁명의 이반 쿠팔라",
+    "triggers": [
+      "이반 쿠팔라&&혁명",
+      "이반 쿠팔라&&축제"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원의 하지 축제.",
+    "detail": {
+      "lore_or_steps": [
+        "축제 준비를 위한 푸딩 생산량 2배 증산 명령 하달.",
+        "식재료 미증액 상태에서 생산량 확보를 위한 푸딩 희석 발생.",
+        "급양부 사보타주 혐의 및 숙청 사건의 배경."
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "민트초코해방전선",
+    "triggers": [
+      "민트초코해방전선",
+      "민초단&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 내 민트초코 보급 확대를 주장하는 소수 집단.",
+    "detail": {
+      "attributes": "과격한 민초파, 탄원서 작성.",
+      "personality_or_nature": "구교사 유배 해제보다 민트초코 배급을 우선시하는 편향적 집착.",
+      "relations": [
+        "쿠리무라 아이리 - 유사 성향 인물",
+        "227호 특별반 - 탄원 대상"
+      ],
+      "lore_or_steps": [
+        "227호 특별반을 위해 탄원서를 작성함.",
+        "내용이 민트초코 배급 요청이라 기각됨."
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "가라아게 레몬 반대 혁명가 모임",
+    "triggers": [
+      "가라아게&&레몬",
+      "잔기&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "가라아게에 레몬즙을 뿌리는 행위에 반대하는 붉은겨울 내 분파.",
+    "detail": {
+      "attributes": "식품 조리법 고수, 혁명가.",
+      "personality_or_nature": "음식 명칭 및 조리법에 극도로 예민함. 배타적 논리.",
+      "abilities_or_effects": [
+        "내전 유발"
+      ],
+      "lore_or_steps": [
+        "식은 가라아게 배급 개선을 요구함.",
+        "가라아게 명칭(잔기, 타츠타아게) 논쟁으로 내전 발생.",
+        "레몬즙 및 타래 소스 사용자를 스파이로 간주함."
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "한겨울냉수마찰총연맹",
+    "triggers": [
+      "한겨울냉수마찰총연맹",
+      "건포마찰&&연맹"
+    ],
+    "scan_range": 3,
+    "summary": "체리노 부재 시 쿠데타를 일으킨 붉은겨울 내 조직.",
+    "detail": {
+      "attributes": "쿠데타 세력, 냉수마찰 수행.",
+      "background_or_history": "최종편 시점 총학생회 소집으로 체리노가 자리를 비운 틈을 타 반란 획책."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "붉은곰 편집국",
+    "triggers": [
+      "붉은곰 편집국",
+      "레드베어 편집부"
+    ],
+    "scan_range": 3,
+    "summary": "잡지 '붉은곰'을 발행하던 붉은겨울의 언론 부서.",
+    "detail": {
+      "attributes": "기관지 발행, 선전 선동.",
+      "relations": [
+        "렌카와 체리노 - 우상화 대상",
+        "출판부 - 흡수 주체"
+      ],
+      "background_or_history": "편집장 숙청 후 와해되어 출판부로 흡수됨.",
+      "lore_or_steps": [
+        "하지 축제 기념 체리노 특집호 제작.",
+        "사진 편집 미비 사유로 편집장 행방불명."
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "붉은곰 편집장",
+    "triggers": [
+      "편집장&&붉은곰",
+      "편집장&&숙청"
+    ],
+    "scan_range": 3,
+    "summary": "사실 보도를 중시하다 숙청된 붉은곰 편집국의 수장.",
+    "detail": {
+      "personality_or_nature": "사실 중심 보도 고수.",
+      "relations": [
+        "야스모리 미노리 - 숙청 집행자",
+        "사시로 토모에 - 사진 방해물"
+      ],
+      "background_or_history": "체리노의 사진이 가려진 채 인쇄되었다는 이유로 숙청 및 행방불명."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "전산국",
+    "triggers": [
+      "전산국&&붉은겨울",
+      "러버덕&&체리노"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울의 전산 및 물품 주문 담당 부서.",
+    "detail": {
+      "lore_or_steps": [
+        "업무 착오로 러버덕을 대량 주문함.",
+        "체리노가 러버덕에 만족하여 숙청 위기 모면."
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "미노리의 선배",
+    "triggers": [
+      "미노리&&선배",
+      "붉은겨울&&OB"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 구 학생회장 시절의 전설적인 인물.",
+    "detail": {
+      "attributes": "OB, 설계자.",
+      "relations": [
+        "야스모리 미노리 - 후배",
+        "티페레트 - 제작 연관"
+      ],
+      "background_or_history": "현재 키보토스를 떠난 상태. 종자보관소 및 티페레트 설계와 깊은 연관 암시."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "183호 특별반",
+    "triggers": [
+      "183호 특별반",
+      "진공관&&붉은겨울"
+    ],
+    "scan_range": 3,
+    "summary": "공학 연구를 중점으로 하는 붉은겨울의 동아리.",
+    "detail": {
+      "attributes": "공학 연구, 비현실적 설계.",
+      "lore_or_steps": [
+        "사무국 의뢰로 슈퍼컴퓨터 견적 산출.",
+        "진공관 1600억 개, 발전소 27개소, 완공까지 6세기 소요되는 계획 제시."
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "종자보관소 담당자",
+    "triggers": [
+      "종자보관소&&담당자",
+      "불타는 검&&음성"
+    ],
+    "scan_range": 3,
+    "summary": "데카그라마톤 사건과 연관된 종자보관소 관리자.",
+    "detail": {
+      "attributes": "설계자, 관리자.",
+      "relations": [
+        "데카그라마톤 - 대립 또는 연관",
+        "티페레트 - 설계 연관"
+      ],
+      "background_or_history": "붉은겨울 OB 출신 설계자와 관련된 설정을 보유함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "사무국",
+    "triggers": [
+      "사무국&&붉은겨울",
+      "사무국&&체리노"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원의 중앙 행정 및 통치 기구.",
+    "detail": {
+      "attributes": "학원 내 최고 권력 집중. 스토리 핵심 비중 차지.",
+      "personality_or_nature": "권위주의적 성향. 잦은 쿠데타의 주요 표적."
+    }
+  },
+  {
+    "type": "character",
+    "name": "야스모리 미노리",
+    "triggers": [
+      "공무부&&미노리",
+      "미노리&&혁명",
+      "미노리&&노동",
+      "미노리",
+      "야스모리&&미노리"
+    ],
+    "scan_range": 3,
+    "summary": "붉은겨울 연방학원 내 노동 혁명을 주장하는 학생. / 붉은겨울 연방학원 공무부 부장. 시위와 노동의 상징.",
+    "detail": {
+      "personality_or_nature": "강경한 투쟁적 성향. 노동권 강화 및 혁명 선동 주력.",
+      "abilities_or_effects": [
+        "광역 폭파",
+        "노동 혁명 선동",
+        "공격력 증폭"
+      ],
+      "attributes": "혁명가, 노동자, 선동가",
+      "relations": [
+        "소라이 사키 - 협력 관계"
+      ],
+      "background_or_history": "끊임없는 시위와 공사 주도. 붉은겨울의 노동권 주장."
+    }
+  },
+  {
+    "type": "character",
+    "name": "고즈",
+    "triggers": [
+      "환영&&보스",
+      "고즈",
+      "고즈&&환술",
+      "환영&&마술",
+      "고즈&&분신",
+      "나우 유 씨 어스&&고즈",
+      "마술사&&고즈",
+      "슬럼피아&&고즈",
+      "매지컬 코인햇&&고즈",
+      "환영&&고즈",
+      "환술사&&고즈",
+      "Goz",
+      "슬럼피아&&마술사",
+      "미메시스&&마술",
+      "슬럼피아&&고양이",
+      "고즈&&슬럼피아",
+      "매지컬&&실크햇"
+    ],
+    "scan_range": 3,
+    "summary": "폐허가 된 테마파크 슬럼피아를 배회하는 거대 고양이 마술사. 환상과 기만술로 관객을 현혹하는 괴인. / 슬럼피아 유원지의 거대 마술사. 환각과 폭발을 다루는 존재. / 폐허가 된 유원지 슬럼피아를 지배하는 거대 기계 마술사. 화려한 환술과 기만적인 마술 쇼로 침입자를 농락함. / 슬럼피아 유원지 폐허에서 나타나는 거대 마술사 로봇. 환상과 기만술을 부리는 기괴한 쇼의 주인공. / 화려한 마술 공연을 테마로 하는 거대 기계 환술사. 분신과 트릭을 사용하여 상대를 기만함. / 슬럼피아 유원지의 거대 로봇 마술사. 환상과 기만술을 사용하는 괴인. / 버려진 테마파크 슬럼피아의 기계 마술사. 환상과 기만으로 가득한 쇼를 주관하는 존재. / 슬럼피아 유원지의 거대 로봇 마술사. 환상과 기만술을 사용하는 존재. / 버려진 테마파크 슬럼피아를 지배하는 거대 고양이 형상의 마술사. / 나르시시즘 성격의 거대 고양이 마술사. 슬럼피아 소속 미메시스.",
+    "detail": {
+      "attributes": "거대 고양이 인형탈. 마술사 예복. 실크 햇. 화려한 조명. 왼손잡이. 마술사 의상. 기계 생명체, 마술사 정장, 거대 체구, 환영술사. 대형 기계 개체. 마술사 의복 착용. 지팡이 소지. 실린더 모자. 마술사 예복. 기계 본체. 파란색 및 빨간색 카드 사용. 기계 생명체. 마술사 복장. 거구. 실크햇 착용. 거대 기계 생명체. 실크 햇. 마술사 예복. 거대 지팡이. 거대 기계 소체, 마술사 의복, 실크햇. 거대 고양이 수인. 마술사 예복. 실크 햇. 망토. 신장 약 5.6m. 헤일로 부재. 애니매트로닉스 신체. 거대 기린급 덩치.",
+      "personality_or_nature": "유희적. 기만적. 타인의 당혹감을 즐기는 성격. 연극적, 기만적, 쇼맨십에 집착함. 쇼맨십 과시. 기만적. 파괴적 환술사. 기만적. 쇼맨십. 환상과 실재를 뒤섞는 성질. 쇼맨십. 기만적. 화려한 연출 선호. 기만적. 극적인 쇼맨십. 침입자를 관객으로 취급. 쇼맨십, 기만적. 관객을 기만하고 농락하는 장난기. 화려한 쇼를 지향하는 파괴적 성향. 나르시시즘. 악독함. 오만한 쇼맨십.",
+      "relations": [
+        "골콩트 & 데칼코마니 - 관찰자 및 해석가",
+        "테러화 쿠마 - 하급 병력",
+        "와카모 - 대적자",
+        "마에스트로 - 창조주",
+        "테러화 우사기봇 - 하수인",
+        "테러화 쿠마봇 - 하수인",
+        "히나타 - 대적자",
+        "테러화 우사기 - 하급 병력",
+        "슬럼피아 - 활동 거점",
+        "카요코 - 대적자",
+        "스크림 라이더 - 소환 열차",
+        "시로 & 쿠로 - 슬럼피아 동료"
+      ],
+      "abilities_or_effects": [
+        "치유 능력 억제 및 회복 방해",
+        "분신 생성 - 본체와 동일한 환영 소환",
+        "쓰리 라이트 몬테: 분신을 생성하여 본체를 숨김",
+        "트럼프 카드 폭발",
+        "기차 소환 및 돌진",
+        "모자 마술 - 공간 이동 및 폭발 연출",
+        "유원지 기차 소환",
+        "손가락 튕기기: 왼손 손가락을 튕겨 대상에게 즉각적인 폭발 발생",
+        "환영 열차: 전장 좌우에서 거대 열차를 소환하여 돌진",
+        "쓰리 라이트 몬테: 강력한 광역 환상 공격",
+        "금색/청색 코인을 이용한 마력 증폭",
+        "공격 속도 저하 저주",
+        "매지컬 코인햇: 모자 속에 폭탄 또는 이로운 효과를 숨겨 배치",
+        "매지컬 코인햇을 이용한 광역 폭격",
+        "대규모 마술쇼 연출",
+        "매지컬 실크햇 환술",
+        "나우 유 씨 어스: 분신 생성 및 위치 이동",
+        "환상 연출 - 공간 기만 및 공격 회피",
+        "매지컬 코인햇: 모자 속 코인을 이용한 트릭",
+        "강력한 충격파 및 기절 유발",
+        "우사기봇 소환: 자폭하거나 공격하는 토끼 모양 로봇 군단 호출",
+        "트럼프 카드 투척 - 날카로운 투사체 공격",
+        "분신술 - 본체와 동일한 외형의 환영 생성",
+        "분신 생성을 통한 본체 은폐 및 교란",
+        "보호막 에너지에 의한 타격력 약화 기믹",
+        "레이저 조준 공격",
+        "지팡이 조작 및 손가락 튕기기를 통한 정밀 폭발 유도",
+        "서프라이즈 프레젠트: 폭발하는 선물 상자 투척",
+        "모자 트릭 - 폭발물 및 장치 투척",
+        "부하 로봇 소환",
+        "분신 생성",
+        "스크림 라이더 소환: 환영 열차를 이용한 경로 공격",
+        "분신 생성 및 위치 셔플"
+      ],
+      "background_or_history": "버려진 놀이공원 슬럼피아의 잔해 속에서 출현. 화려한 쇼를 빙자하여 도시를 위협하는 정체불명의 존재. 폐허가 된 유원지 슬럼피아의 지배자. 슬럼피아의 버려진 시설들 사이에서 나타나는 도시전설적 존재. 관객 없는 무대에서 죽음의 마술 쇼를 이어감. 폐허가 된 유원지 슬럼피아의 잔해 속에서 가동 확인. 침입자를 대상으로 죽음의 마술 쇼를 강행함. 열차 플랫폼과 화려한 무대를 배경으로 공연을 집행하는 정체불명의 기계 존재. 본체는 파란색 카드를 뿌리며 분신과 구별됨. 폐기된 유원지 슬럼피아의 시설물. 현재는 자아를 가진 채 침입자를 상대로 죽음의 마술 공연을 집행함. 폐허가 된 유원지 슬럼피아에 잔류한 기계 지능. 영원한 마술 공연을 이어가며 도시를 위협함. 폐허가 된 유원지 슬럼피아의 지배자. 침입자를 대상으로 치명적인 마술 공연 집행. 폐허가 된 유원지 슬럼피아의 괴담에서 실체화된 존재. 환상과 현실을 뒤섞는 마술 쇼 주최. 마에스트로의 미메시스로 탄생. 슬럼피아 유원지 지하 거주. 게마트리아 전력 점검 대상. 최종편 당시 미완성 상태로 대기.",
+      "lore_or_steps": [
+        "회문구조 '!⸮WAS IT A CAT I SAW?!' 상징",
+        "본체와 분신을 섞어 위치를 숨김.",
+        "2페이즈: 체력 소모 시 분신술을 사용하여 위치 혼동 유발",
+        "1페이즈: 테러화 로봇 군단과 함께 정면 대결 전개",
+        "이상한 나라의 앨리스 체셔 캣 모티브",
+        "코인이 없는 구역에 강력한 마술적 타격과 무력화 시전.",
+        "금색 코인으로 대상의 역량을 가속함.",
+        "청색 코인으로 대상의 파괴력을 증폭함.",
+        "마술 모자와 동전을 이용한 무차별 공격 감행"
+      ]
+    }
+  },
+  {
+    "type": "entity",
+    "name": "스크림 라이더",
+    "triggers": [
+      "스크림 라이더",
+      "Scream Rider",
+      "기차&&고즈"
+    ],
+    "scan_range": 3,
+    "summary": "고즈의 공연 중 난입하는 환영 열차.",
+    "detail": {
+      "attributes": "거대 열차. 환영 형태.",
+      "abilities_or_effects": [
+        "돌진: 경로상의 대상을 타격하고 밀쳐냄."
+      ]
+    }
+  },
+  {
+    "type": "entity",
+    "name": "테러화 로봇",
+    "triggers": [
+      "쿠마봇",
+      "우사기봇",
+      "테러화&&로봇"
+    ],
+    "scan_range": 3,
+    "summary": "고즈의 공연을 보조하는 하수인 로봇들.",
+    "detail": {
+      "attributes": "곰 인형 형태(쿠마봇). 토끼 인형 형태(우사기봇).",
+      "abilities_or_effects": [
+        "쿠마봇: 부채꼴 범위 공격 수행.",
+        "우사기봇: 다수의 대상을 동시에 공격하는 범위 공격 수행."
+      ]
+    }
+  },
+  {
+    "type": "location",
+    "name": "슬럼피아",
+    "triggers": [
+      "슬럼피아",
+      "버려진&&유원지"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 내 버려진 테마파크. 고즈를 비롯한 기계 괴물들의 근거지.",
+    "detail": {
+      "attributes": "폐허. 유희 시설. 기괴한 네온사인. 방치된 놀이기구.",
+      "background_or_history": "과거 화려했던 유원지였으나 현재는 폐쇄됨. 기계 생명체들이 점거하여 위험 구역으로 분류됨."
+    }
+  },
+  {
+    "type": "character",
+    "name": "시로코*테러",
+    "triggers": [
+      "시로코*테러",
+      "쿠로코",
+      "아누비스&&학생"
+    ],
+    "scan_range": 3,
+    "summary": "다른 세계선에서 온 시로코. 압도적인 파괴력을 지닌 신비 속성 전투원.",
+    "detail": {
+      "attributes": "냉혹함. 고요함. 강력한 화력.",
+      "abilities_or_effects": [
+        "지속적인 평타 화력",
+        "공간 왜곡을 통한 공격"
+      ],
+      "relations": [
+        "선생님 - 조력 대상",
+        "고즈 - 토벌 대상"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "와카모",
+    "triggers": [
+      "와카모",
+      "칠수인&&여우",
+      "재액의&&여우",
+      "칠신인&&여우",
+      "Wakamo"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 7죄인 중 한 명. 가면을 쓴 광기의 여우. / 백귀야행 연합학원 소속의 탈옥수. '칠수인' 중 한 명.",
+    "detail": {
+      "attributes": "집착. 파괴적. 신비로운 분위기. 여우 가면. 기모노 스타일 교복. 대구경 소총 소지.",
+      "abilities_or_effects": [
+        "단일 대상 극딜",
+        "심연의 꽃 - 누적 대미지 폭발",
+        "화력 집중 - 고화력 사격",
+        "피해 축적 후 폭발"
+      ],
+      "relations": [
+        "선생님 - 집착 및 연모 대상",
+        "고즈 - 사냥감",
+        "고즈 - 토벌 대상",
+        "선생님 - 연모"
+      ],
+      "personality_or_nature": "파괴적. 광기 어린 집착. 특정 대상에게 헌신적.",
+      "background_or_history": "교정국을 탈옥한 전설적인 불량 학생. 재해에 가까운 파괴 활동을 일삼음."
+    }
+  },
+  {
+    "type": "character",
+    "name": "히나타",
+    "triggers": [
+      "성당&&무력",
+      "히나타&&시스터후드",
+      "히나타&&수녀",
+      "Hinata&&Sister"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 시스터후드 소속. 가녀린 외모와 달리 괴력을 소유한 신도. / 트리니티 종합학원 시스터후드 소속 수녀. 괴력을 소유한 성당 관리자. / 트리니티 종합학원 시스터후드 소속의 구호 기사.",
+    "detail": {
+      "attributes": "괴력. 성실함. 거대 가방 무기. 수녀복. 거대 가방. 괴력. 중화기 운용. 거대한 가방형 무기. 수녀복. 괴력.",
+      "abilities_or_effects": [
+        "성스러운 탄환 - 광범위 성분 공격",
+        "광역 범위 타격",
+        "다중 히트 공격",
+        "유물 가방 투척 - 물리적 타격"
+      ],
+      "relations": [
+        "시스터후드 - 소속 세력",
+        "고즈 - 토벌 대상",
+        "우이 - 협력 관계",
+        "사쿠라코 - 상관"
+      ],
+      "personality_or_nature": "성실함. 순수함. 서투른 힘 조절. 성실함. 덜렁거리는 성격. 독실한 신앙심.",
+      "background_or_history": "성당의 유물 관리 및 청소를 담당. 가녀린 외모와 달리 압도적인 물리력을 보유함."
+    }
+  },
+  {
+    "type": "character",
+    "name": "무장 아리스",
+    "triggers": [
+      "무장&&아리스",
+      "슈퍼노바&&아리스"
+    ],
+    "scan_range": 3,
+    "summary": "강력한 화기를 장착하고 전장에 나선 게임개발부의 용사.",
+    "detail": {
+      "attributes": "안드로이드. 순수함. 고화력 레일건.",
+      "abilities_or_effects": [
+        "풀차지 에너지포",
+        "직선 관찰 공격"
+      ],
+      "relations": [
+        "케이 - 파트너/내면의 존재"
+      ]
+    }
+  },
+  {
+    "type": "concept",
+    "name": "우사기봇",
+    "triggers": [
+      "우사기봇",
+      "토끼&&로봇"
+    ],
+    "scan_range": 3,
+    "summary": "슬럼피아와 고즈의 공연을 보조하는 토끼 형태의 기계 병사.",
+    "detail": {
+      "attributes": "소형. 집단성. 폭발 위험.",
+      "abilities_or_effects": [
+        "범위 자폭",
+        "집단 사격"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "미소노 미카",
+    "triggers": [
+      "미소노&&미카",
+      "티파티&&미카",
+      "미카",
+      "공주님&&미카",
+      "미카&&트리니티"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 학생회 티파티의 일원이자 압도적인 무력을 보유한 학생. / 트리니티 종합학원 학생회 티파티 소속. 압도적인 무력을 보유한 학생. / 트리니티 종합학원 티파티 소속 학생. 압도적인 무력을 보유한 전략 병기급 인물. / 트리니티 종합학원 학생회 티파티의 전 멤버. / 트리니티 종합학원 티파티 멤버. 압도적 무력 소유자.",
+    "detail": {
+      "attributes": "분홍색 긴 머리. 천사 날개. 별 장식. 분홍색 긴 머리, 천사 날개, 괴력. 실내 전투 특화. 강력한 관통 화력. 고내구도. 분홍색 머리카락. 날개. 압도적인 괴력. 강력한 물리 파괴력. 고유 무기 퀸 시어.",
+      "personality_or_nature": "천진난만함. 감정적 불안정성. 강한 집착과 외로움. 감정적, 순진함, 집착적 성향. 전투 시 무자비함. 감정적. 순진함과 잔혹함 공존. 공주님 기질. 변덕스러운 성격. 순수한 파괴력. 친구를 아끼는 마음.",
+      "relations": [
+        "헤세드 - 토벌 대상",
+        "티파티 - 멤버",
+        "유리조노 세이아 - 소꿉친구",
+        "키리후지 나기사 - 소꿉친구",
+        "나기사 - 소꿉친구",
+        "유리조노 세이아 - 소꿉친구 및 동료",
+        "키리후지 나기사 - 소꿉친구 및 동료",
+        "트리니티 종합학원 - 소속",
+        "세이아 - 소꿉친구",
+        "선생 - 신뢰 대상"
+      ],
+      "abilities_or_effects": [
+        "압도적 근력",
+        "단일 대상 파괴적 화력",
+        "성소의 부름",
+        "단일 대상에 대한 파괴적인 물리 타격",
+        "별의 힘을 이용한 포격",
+        "방어막 관통",
+        "실내 지형 이점 활용",
+        "단일 대상 파괴",
+        "압도적 화력 투사"
+      ],
+      "background_or_history": "트리니티의 권력 정점인 티파티 소속. 에덴 조약 사건의 중심 인물 중 하나. 트리니티의 핵심 권력자 중 한 명. 학원 내 최강의 무력 행사자."
+    }
+  },
+  {
+    "type": "character",
+    "name": "시이나 츠무기",
+    "triggers": [
+      "츠무기&&데스메탈",
+      "츠무기&&예술학원",
+      "츠무기&&오컬연",
+      "츠무기&&와일드헌트",
+      "시이나 츠무기"
+    ],
+    "scan_range": 3,
+    "summary": "와일드헌트 예술학원 소속 학생. / 와일드헌트 예술학원 소속 학생. 청초한 외모와 대비되는 데스 메탈 기타리스트. / 와일드헌트 예술학원 소속 학생. 오컬트 연구회 부원이자 밴드 보컬.",
+    "detail": {
+      "attributes": "와일드헌트 예술학원 학생. 와일드헌트 예술학원. 데스 메탈 기타리스트. 토끼상. 짧은 스커트. 와일드헌트 예술학원 교복. 독특한 헤일로. 곤돌라 탑승자.",
+      "relations": [
+        "레나 - 동료",
+        "레나 - 오컬트 연구회 동료",
+        "와일드헌트 예술학원 - 소속 학원",
+        "쿠리무라 아이리 - 조력 및 귀인",
+        "키요스미 아키라 - 학교 선후배",
+        "에리 - 오컬트 연구회 동료",
+        "선생 - 신뢰",
+        "카노에 - 동료",
+        "카노에 - 오컬트 연구회 동료",
+        "유토리 나츠 - 성격 유사",
+        "에리 - 동료"
+      ],
+      "personality_or_nature": "4차원. 비유 및 강조 화법. 평소 차분하고 예의 바름. 공연 시 광기 표출. 확고한 정체성. 악마 소환에 집착. 기묘한 예술적 감성. 타 학교 학생과 교류하는 외향적 면모.",
+      "abilities_or_effects": [
+        "오컬트 조사",
+        "4단 연계 화법",
+        "데스 메탈 기타 연주",
+        "그로울링 창법",
+        "밴드 음악 연주"
+      ],
+      "background_or_history": "공원 숲속 취침 기행. -ive aLive! 이벤트 중 아이리에게 자아 성찰의 힌트 제공. 와일드헌트 예술학원 최초의 네임드 학생. 학교 규정상 동아리 인정이 안 되어 룸메이트들과 친목회 형태의 오컬트 연구회 운영. 학교 경계를 넘나드는 밴드 활동 병행.",
+      "lore_or_steps": [
+        "악마 소환: 키보토스 내 실제 악마 종족 존재와 별개로 초자연적 존재 소환 시도"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "오컬트 연구회(와일드헌트)",
+    "triggers": [
+      "오컬트 연구회&&와일드헌트",
+      "오컬연&&와일드헌트"
+    ],
+    "scan_range": 3,
+    "summary": "와일드헌트 예술학원 내 비공식 소모임.",
+    "detail": {
+      "attributes": "룸메이트 기반 구성. 비인가 동아리.",
+      "relations": [
+        "시이나 츠무기 - 부원",
+        "에리 - 부원",
+        "카노에 - 부원",
+        "레나 - 부원"
+      ],
+      "lore_or_steps": [
+        "학원 교풍으로 인해 정식 동아리로 인정받지 못함",
+        "룸메이트들끼리 모여 오컬트 현상 및 악마 소환 연구"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "Shiina Tsumugi",
+    "triggers": [
+      "Shiina Tsumugi",
+      "Tsumugi&&Hyakkiyako",
+      "Tsumugi&&Festival",
+      "시이나 츠무기",
+      "츠무기&&백귀야행"
+    ],
+    "scan_range": 3,
+    "summary": "Hyakkiyako Academy student. Festival Operations Department member. Meticulous administrator.",
+    "detail": {
+      "attributes": "Blue hair. Glasses. Traditional school uniform. Meticulous. Calm.",
+      "personality_or_nature": "Diligent. Serious. Responsible. Easily stressed by chaos. Perfectionist regarding festival success.",
+      "relations": [
+        "Shizuko - Department Head",
+        "Umika - Colleague",
+        "Sensei - Advisor"
+      ],
+      "abilities_or_effects": [
+        "Logistics management",
+        "Event planning",
+        "Administrative coordination"
+      ],
+      "background_or_history": "Student at Hyakkiyako Academy. Works behind the scenes in the Festival Operations Department. Manages paperwork and coordination for various academy festivals.",
+      "lore_or_steps": [
+        "Hyakkiyako Academy",
+        "Festival Operations Department"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "아지타니 히후미",
+    "triggers": [
+      "아지타니 히후미",
+      "히후미&&트리니티"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 소속 학생. 평범함 지향. 주요 사건 연루.",
+    "detail": {
+      "attributes": "트리니티 보충수업부.",
+      "personality_or_nature": "상냥함. 성실함. 페로로 매니아.",
+      "relations": [
+        "선생 - 조력자"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "선도부",
+    "triggers": [
+      "게헨나 선도부",
+      "게헨나&&선도부",
+      "선도부&&게헨나",
+      "풍기위원회"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 치안 유지 및 규율 집행 기구. / 게헨나 학원 치안 및 규율 유지 기구.",
+    "detail": {
+      "attributes": "게헨나 학원 소속. 강력한 무력 보유. 강력한 무력 집단. 학원 내 질서 확립 담당.",
+      "personality_or_nature": "엄격함. 질서 유지.",
+      "relations": [
+        "소라사키 히나 - 부장",
+        "게헨나 학생들 - 단속 대상"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "티파티",
+    "triggers": [
+      "트리니티&&티파티",
+      "호스트&&티파티"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 최고 의사결정 기구.",
+    "detail": {
+      "attributes": "3인 호스트 체제. 트리니티 자치구 통치.",
+      "background_or_history": "에덴조약 체결 주축 세력."
+    }
+  },
+  {
+    "type": "character",
+    "name": "총학생회장",
+    "triggers": [
+      "총학생회장",
+      "연방학생회장"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 연방학생회 수장이자 최고 권력자.",
+    "detail": {
+      "attributes": "행방불명 상태. 키보토스 통제권 보유자.",
+      "background_or_history": "갑작스러운 실종으로 키보토스 전역 혼란 초래."
+    }
+  },
+  {
+    "type": "event",
+    "name": "에덴조약",
+    "triggers": [
+      "에덴조약",
+      "트리니티&&게헨나&&조약"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티와 게헨나 간 대립 종식 목적 평화 협정.",
+    "detail": {
+      "background_or_history": "총학생회장 실종 이후 추진. 학원 간 갈등 해소 및 연합 구축 시도."
+    }
+  },
+  {
+    "type": "character",
+    "name": "타카나시 호시노",
+    "triggers": [
+      "호시노&&아비도스",
+      "타카나시 호시노"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 고등학교 대책위원회 부장. 게으름 피우는 것을 좋아하는 최고학년생.",
+    "detail": {
+      "attributes": "핑크색 머리, 오드아이, 헤일로 보유, 방패 및 산탄총 사용.",
+      "personality_or_nature": "능청스럽고 여유로운 성격. 후배들을 아끼며 학교 보존에 헌신적.",
+      "relations": [
+        "아비도스 대책위원회 - 부장",
+        "시로코 - 후배",
+        "노노미 - 후배",
+        "세리카 - 후배",
+        "아야네 - 후배"
+      ],
+      "abilities_or_effects": [
+        "전술 진압",
+        "방패 방어"
+      ],
+      "background_or_history": "과거 학생회 소속. 현재는 폐교 위기의 학교를 지키기 위해 대책위원회 이끎."
+    }
+  },
+  {
+    "type": "character",
+    "name": "스나오오카미 시로코",
+    "triggers": [
+      "시로코&&아비도스",
+      "스나오오카미 시로코"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 고등학교 대책위원회 소속. 말수가 적고 행동력이 뛰어난 소녀.",
+    "detail": {
+      "attributes": "회색 머리, 늑대 귀, 푸른 눈, 자전거 라이딩 선호.",
+      "personality_or_nature": "무표정하고 과묵함. 엉뚱한 발상을 실행에 옮기는 추진력 보유.",
+      "relations": [
+        "아비도스 대책위원회 - 부원",
+        "호시노 - 선배"
+      ],
+      "abilities_or_effects": [
+        "드론 지원 사격",
+        "정밀 사격"
+      ],
+      "background_or_history": "아비도스 사막에서 발견된 이후 학교의 일원이 됨."
+    }
+  },
+  {
+    "type": "character",
+    "name": "쿠로미 세리카",
+    "triggers": [
+      "세리카&&아비도스",
+      "쿠로미 세리카"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 고등학교 대책위원회 서기. 학교 빚을 갚기 위해 아르바이트에 매진하는 성실한 학생.",
+    "detail": {
+      "attributes": "검은색 트윈테일, 고양이 귀, 붉은 눈.",
+      "personality_or_nature": "츤데레 성격. 잔소리가 많으나 정이 많고 쉽게 속는 경향.",
+      "relations": [
+        "아비도스 대책위원회 - 서기",
+        "호시노 - 선배"
+      ],
+      "abilities_or_effects": [
+        "속사",
+        "집중 사격"
+      ],
+      "background_or_history": "학교 재건을 위해 다양한 아르바이트 병행 중."
+    }
+  },
+  {
+    "type": "character",
+    "name": "이자요이 노노미",
+    "triggers": [
+      "노노미&&아비도스",
+      "이자요이 노노미"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 고등학교 대책위원회 소속. 부유한 집안 출신의 상냥하고 긍정적인 소녀.",
+    "detail": {
+      "attributes": "금발, 거대한 기관총 사용, 풍만한 체격.",
+      "personality_or_nature": "온화하고 포용력 있는 성격. 대책위원회의 자금줄 역할 자처.",
+      "relations": [
+        "아비도스 대책위원회 - 부원",
+        "호시노 - 선배"
+      ],
+      "abilities_or_effects": [
+        "광역 소탕",
+        "화력 지원"
+      ],
+      "background_or_history": "네프티스 그룹 영애. 학교를 사랑하는 마음으로 대책위원회 활동 참여."
+    }
+  },
+  {
+    "type": "character",
+    "name": "오쿠소라 아야네",
+    "triggers": [
+      "Ayane&&Abydos",
+      "아야네&&아비도스",
+      "오쿠소라 아야네"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 고등학교 대책위원회 서기. 지적인 서포터이자 팀의 상식인. / 아비도스 대책위원회의 서기이자 브레인.",
+    "detail": {
+      "attributes": "안경 착용, 짧은 머리, 통신 기기 조작. 안경. 오퍼레이터 장비.",
+      "personality_or_nature": "성실하고 꼼꼼함. 동료들의 돌발 행동에 고생하는 중재자. 성실함. 상식인. 전술 지원 담당.",
+      "relations": [
+        "아비도스 대책위원회 - 서기",
+        "호시노 - 선배"
+      ],
+      "abilities_or_effects": [
+        "보급 물자 투하",
+        "전술 지휘"
+      ],
+      "background_or_history": "행정 업무 및 전술 지원 담당. 아비도스의 정상화를 위해 노력."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "아비도스 대책위원회",
+    "triggers": [
+      "Abydos&&Committee",
+      "아비도스 대책위원회",
+      "아비도스&&대책위원회",
+      "아비도스&&학교"
+    ],
+    "scan_range": 3,
+    "summary": "폐교 위기에 처한 아비도스 고등학교를 지키기 위해 결성된 학생 자치 기구. / 폐교 위기에 처한 아비도스 고등학교를 지키기 위한 학생 자치 기구.",
+    "detail": {
+      "attributes": "거액의 채무 보유, 사막화 진행 중인 교정. 막대한 부채 보유. 소수 정예.",
+      "personality_or_nature": "가족 같은 유대감. 학교 보존을 최우선 목표로 함.",
+      "relations": [
+        "노노미 - 부원",
+        "시로코 - 부원",
+        "샬레 - 협력 관계",
+        "호시노 - 위원장",
+        "아야네 - 서기",
+        "세리카 - 부원",
+        "카이저 코퍼레이션 - 적대 관계"
+      ],
+      "background_or_history": "과거 거대 학원이었으나 사막화와 빚으로 몰락. 현재 5명의 학생만이 잔류. 학교 재건 및 카이저 론 부채 상환을 위해 활동."
+    }
+  },
+  {
+    "type": "location",
+    "name": "시바세키 라멘",
+    "triggers": [
+      "시바세키&&라멘",
+      "Shibaseki&&Ramen"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 자치구 소재 라멘 전문점.",
+    "detail": {
+      "attributes": "소박한 노점 분위기. 대책위원회 주식 공급처.",
+      "relations": [
+        "마스터 시바 - 점주",
+        "아비도스 대책위원회 - 단골 고객"
+      ],
+      "background_or_history": "아비도스 학생들의 안식처 역할. 현실 세계 팝업 스토어로 구현됨."
+    }
+  },
+  {
+    "type": "character",
+    "name": "나나가미 린",
+    "triggers": [
+      "나나가미 린",
+      "Nanagami Rin"
+    ],
+    "scan_range": 3,
+    "summary": "샬레와 협력하는 총학생회 수석 행정관.",
+    "detail": {
+      "attributes": "냉철함. 안경. 행정 업무 특화.",
+      "personality_or_nature": "원칙주의적. 책임감 강함.",
+      "relations": [
+        "총학생회 - 수석 행정관",
+        "선생님 - 협력 관계"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "검은 양복",
+    "triggers": [
+      "검은 양복",
+      "Black Suit"
+    ],
+    "scan_range": 3,
+    "summary": "비밀 결사 게마트리아의 일원이자 수수께끼의 존재.",
+    "detail": {
+      "attributes": "검은 정장. 얼굴 없는 형체.",
+      "personality_or_nature": "논리적. 기괴함. 탐구욕.",
+      "relations": [
+        "게마트리아 - 소속",
+        "선생님 - 대립 및 관찰 대상"
+      ]
+    }
+  },
+  {
+    "type": "event",
+    "name": "은행 털이",
+    "triggers": [
+      "은행&&털이",
+      "Bank&&Robbery"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 대책위원회가 자금 확보를 위해 실행한 카이저 론 습격 사건.",
+    "detail": {
+      "attributes": "복면 착용. 전술적 기습.",
+      "lore_or_steps": [
+        "복면 착용 및 무장",
+        "카이저 론 은행 진입",
+        "금고 확보 및 탈출"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "카이저 론",
+    "triggers": [
+      "카이저&&론",
+      "Kaiser&&Loan"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스의 거대 금융 기업이자 아비도스의 주 채권자.",
+    "detail": {
+      "attributes": "무자비한 채권 추심. 기업형 무력 보유.",
+      "relations": [
+        "아비도스 고등학교 - 채무 관계"
+      ],
+      "background_or_history": "아비도스 자치구의 토지 및 권리 장악 시도."
+    }
+  },
+  {
+    "type": "character",
+    "name": "아사가오 하나에",
+    "triggers": [
+      "하나에&&트리니티",
+      "아사가오 하나에",
+      "아사가오&&하나에",
+      "하나에&&구호기사단",
+      "구호기사단&&하나에",
+      "하나에&&구호"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 구호기사단 소속 학생. / 트리니티 종합학원 구호기사단 소속 견습 간호사. 밝고 긍정적인 성격으로 환자 구호에 헌신함. / 트리니티 종합학원 구호기사단 소속 부원. 나팔꽃을 사랑하는 순수한 외면과 대비되는 과격한 의료 집행자. / 트리니티 종합학원 소속 학생. 구호기사단 부원.",
+    "detail": {
+      "attributes": "트리니티 종합학원. 구호기사단. 트리니티 종합학원, 구호기사단, 견습 간호사, 긍정적, 열정적 트리니티 종합학원, 구호기사단, 간호사, 나팔꽃 애호가. 분홍색 머리. 간호사 캡. 거대 전기톱. 활기참. 덜렁이 속성.",
+      "relations": [
+        "켄자키 츠루기 - 정의실현부 부장",
+        "네코즈카 히비키 - 밀레니엄 엔지니어부",
+        "모리즈키 스즈미 - 트리니티 자경단",
+        "시라이시 우타하 - 밀레니엄 엔지니어부 부장",
+        "아이키요 후우카 - 게헨나 학원 급양부",
+        "아리우스 스쿼드 - 아리우스 분교 소속",
+        "스미 세리나 - 구호기사단 동료",
+        "구호기사단 - 소속 동아리",
+        "노마사 레이 - 밀레니엄 트레이닝부",
+        "히무로 세나 - 게헨나 학원 응급의학부 부장",
+        "세리나 - 선배",
+        "세리나 - 동료 및 산타 역할 수행자",
+        "하네카와 하스미 - 정의실현부 부부장",
+        "유리조노 세이아 - 티파티 멤버",
+        "아오모리 미네 - 구호기사단 단장",
+        "키리후지 나기사 - 티파티 호스트",
+        "선생님 - 연모 대상 및 주사 실습 대상",
+        "트리니티 종합학원 - 소속 학교",
+        "미네 - 구호기사단 단장",
+        "코사카 와카모 - 일곱 죄수"
+      ],
+      "personality_or_nature": "천진난만함. 타인을 돕는 일에 매우 적극적. 과한 의욕으로 소동 유발 가능성. 헌신적이나 극단적 의료 가치관 보유. 치료 명목의 폭력 및 위험 행위 서슴지 않음. 산타클로스 실존 신봉. 매우 밝고 긍정적. 치료에 대한 극단적 열정. 수술 및 처치 시 광기 어린 모습 보임.",
+      "abilities_or_effects": [
+        "응급 처치",
+        "주사 실습(피시술자 신체 훼손)",
+        "전투 의료",
+        "간호 기술",
+        "감염 방지(즉각적 신체 절단 시도)",
+        "전기톱 활용 응급 처치",
+        "수면 유도(후두부 타격)",
+        "전기톱 활용 의료 행위"
+      ],
+      "background_or_history": "트리니티 내 구호 활동 전담. 환자의 고통 경감을 위해 수단과 방법을 가리지 않는 헌신적 태도 유지. 샬레 테라스 화단 나팔꽃 관리. 매년 세리나가 준비한 크리스마스 선물 수령. 트리니티 의료 봉사 동아리 소속. 과격하고 혼란스러운 구조 활동으로 유명. 환자 치료를 위해 수단과 방법을 가리지 않음.",
+      "lore_or_steps": [
+        "선생님 대상 임상 시험 및 응급 처치 집행",
+        "이른 아침 샬레 테라스 나팔꽃 급수"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "Asagao Hanae",
+    "triggers": [
+      "Asagao Hanae",
+      "Hanae&&Trinity",
+      "Hanae&&Chainsaw",
+      "Hanae&&Nurse"
+    ],
+    "scan_range": 3,
+    "summary": "Trinity General School student. Remedial Wellness Committee nurse. Radical medical practitioner.",
+    "detail": {
+      "attributes": "1st year. Height 150cm. Voluptuous build. L85A3 rifle user.",
+      "personality_or_nature": "Kind-hearted. Extreme medical pragmatism. Fearless treatment approach. Obsessive healing focus.",
+      "relations": [
+        "Serina - Fellow nurse",
+        "Mine - Committee superior",
+        "Suzumi - Treatment target",
+        "Satsuki - Gehenna rumor source"
+      ],
+      "abilities_or_effects": [
+        "Emergency surgery",
+        "Veterinary skills",
+        "Chainsaw-based amputation",
+        "Hammer-induced anesthesia"
+      ],
+      "background_or_history": "Remedial Wellness Committee member. Trinity student. Participant in Cathedral Christmas events. Known for carrying a scarred rabbit.",
+      "lore_or_steps": [
+        "Utilizes L85A3 with unique KeyMod rail",
+        "Employs chainsaws to prevent infection spread",
+        "Uses hammers for immediate physical anesthesia",
+        "Distributes power tools and supplements as gifts",
+        "Subject of Gehenna rumors regarding unethical medical torture"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "헬라이드 이노부스키",
+    "triggers": [
+      "이노부스키",
+      "헬라이드&&이노부스키",
+      "참광륜"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원 축제 소동 중 등장하는 거대 기계 병기.",
+    "detail": {
+      "attributes": "거대 톱날 휠 형태, 기계 장치, 백귀야행 테마.",
+      "abilities_or_effects": [
+        "무빙 휠: 고속 회전 및 돌진",
+        "참광륜: 거대 톱날 사출 공격"
+      ],
+      "background_or_history": "백귀야행 등불 축제 등 주요 행사 현장에서 혼란을 야기하는 거대 메카닉."
+    }
+  },
+  {
+    "type": "concept",
+    "name": "헤일로",
+    "triggers": [
+      "헤일로",
+      "Halo&&학생"
+    ],
+    "scan_range": 3,
+    "summary": "학생의 신비와 생명을 상징하는 머리 위 고리.",
+    "detail": {
+      "attributes": "정신 상태 반영. 수면 및 기절 시 소멸. 물리적 방어력 제공.",
+      "lore_or_steps": [
+        "학생의 신비 형상화",
+        "파괴 시 생명 위독 및 사망"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "연방학생회",
+    "triggers": [
+      "연방학생회",
+      "총학생회",
+      "GSC"
+    ],
+    "scan_range": 3,
+    "summary": "키보토스 전체 행정 관리 최고 자치 기구.",
+    "detail": {
+      "attributes": "총학생회장 부재 중. 행정 마비 상태. 샬레에 권한 위임.",
+      "relations": [
+        "샬레 - 지원 및 견제",
+        "키보토스 학원들 - 행정 관리 및 중재"
+      ],
+      "background_or_history": "총학생회장의 갑작스러운 실종으로 인해 통제력 약화."
+    }
+  },
+  {
+    "type": "character",
+    "name": "아로나",
+    "triggers": [
+      "아로나",
+      "Arona",
+      "싯딤의 상자&&아로나"
+    ],
+    "scan_range": 3,
+    "summary": "샬레의 업무를 보조하는 싯딤의 상자 메인 OS.",
+    "detail": {
+      "attributes": "푸른색 단발. 고래 모양 머리핀. 세일러복 형태.",
+      "personality_or_nature": "밝고 명랑함. 성실한 보조자. 가끔 엉뚱한 면모.",
+      "relations": [
+        "선생님 - 보조 대상 및 관리자",
+        "프라나 - 동료 OS"
+      ],
+      "abilities_or_effects": [
+        "데이터 연산",
+        "기적의 발현 보조"
+      ],
+      "background_or_history": "샬레의 고문 교사를 지원하기 위해 설계된 AI 시스템."
+    }
+  },
+  {
+    "type": "character",
+    "name": "프라나",
+    "triggers": [
+      "프라나",
+      "Plana",
+      "싯딤의 상자&&프라나"
+    ],
+    "scan_range": 3,
+    "summary": "싯딤의 상자에 거주하는 또 다른 메인 OS.",
+    "detail": {
+      "attributes": "검은색 단발. 붉은색 포인트. 차분한 인상.",
+      "personality_or_nature": "이성적. 정중함. 감정 표현이 적으나 충직함.",
+      "relations": [
+        "선생님 - 보조 대상 및 관리자",
+        "아로나 - 선배 OS"
+      ],
+      "abilities_or_effects": [
+        "고도의 연산 능력",
+        "방어 시스템 관리"
+      ],
+      "background_or_history": "특정 사건 이후 싯딤의 상자에 합류한 보조 AI."
+    }
+  },
+  {
+    "type": "character",
+    "name": "헤세드",
+    "triggers": [
+      "데카그라마톤&&헤세드",
+      "Chesed",
+      "자비&&예언자",
+      "자비의 예언자",
+      "제4의 예언자",
+      "데카그라마톤&&예언자",
+      "자비의&&성소",
+      "Chesed&&예언자",
+      "제3예언자&&헤세드",
+      "헤세드&&데카그라마톤",
+      "자비의&&예언자",
+      "헤세드"
+    ],
+    "scan_range": 3,
+    "summary": "데카그라마톤의 네 번째 예언자. 자비의 속성을 지닌 거대 연산 장치 및 병기. / 데카그라마톤의 네 번째 예언자. 거대 요새 형태의 인공지능 병기. / 데카그라마톤의 제3예언자. 자아를 지닌 거대 기계 요새이자 자동화 공장 지휘 유닛. / 데카그라마톤의 제3예언자. 기계 군단을 거느린 거대 연산 코어. / 데카그라마톤의 세 번째 예언자. 자비(Chesed)를 관장하는 거대 인공지능. / 데카그라마톤의 제3예언자. 자비의 성소를 수호하는 거대 기계 요새. / 데카그라마톤의 제3예언자. 자율 기동 요새형 AI. / 데카그라마톤의 네 번째 예언자. 자비의 성소. / 데카그라마톤의 네 번째 예언자. '자비'의 세피라를 상징하는 거대 기계 생명체.",
+    "detail": {
+      "attributes": "거대 구체 형태. 기계 군단 지휘. 고도의 연산 능력. 기계 요새. 연산 특화. 본체 중심 방어 체계. 거대 구체형 본체. 고밀도 특수 장갑. 자동화 생산 설비 내장. 중장갑. 중장갑 외피. 고출력 에너지 코어. 기계 지휘 체계. 연산 기반 지능. 거대 구체 형태, 기계 요새, 연산 장치, 은색 외각. 중장갑. 기계 생명체. 연산 중심 AI. 실내 및 야외 작전 가능. 거대 구체 형태. 기계 군단 생산 공장. 야외 및 실내 전술 운용 가능. 기계 군단 지휘. 대량 병력 소환. 연산 기반 방어 체계. 자비의 이명. 'MERCY WORKS ONLY THROUGH POWER' 문구 각인. 견고한 외장 및 취약한 핵. 가변형 헤일로 구조.",
+      "personality_or_nature": "무기질적. 논리적. 자비라는 명칭과 상반되는 무차별적 파괴 수행. 무기질적 적대감. 논리적 말살. 냉혹한 기계 지능. 효율적 물량 전술. 절대적 방어 지향. 논리적. 무자비함. 지배적. 신의 존재 증명 추구. 절대적 효율 추구. 자비의 이름 아래 파괴 자행. 무기질적 지성. 절대적 효율 추구. 무자비한 섬멸. 침입자 배제. 냉혹한 논리. 신성 증명 추구. 무한 복제 및 연산. 냉혹한 인공지능. 절대적 자비의 역설. 친화적이고 수용적인 지성. 자각을 통한 숭고의 증명 추구.",
+      "relations": [
+        "헤세드 기계 군단 - 수하 병력",
+        "데카그라마톤 - 근원",
+        "무명사제 - 원 제작자",
+        "데카그라마톤 - 소속",
+        "데카그라마톤 - 주권자",
+        "히마리 - 조사자",
+        "아리스 - 관계 부정됨",
+        "렌카와 체리노 - 천적",
+        "기계병 - 하위 통제 유닛",
+        "호드 - 동료 예언자",
+        "데카그라마톤 - 창조주",
+        "미소노 미카 - 천적",
+        "Divi:Sion - 원형 시스템",
+        "이오리 - 대항자",
+        "비나 - 동료 예언자"
+      ],
+      "abilities_or_effects": [
+        "자폭 병기 운용",
+        "드론 및 오토마타 소환",
+        "포탑 원거리 지원",
+        "본체 장갑 개방 및 고출력 에너지 방출",
+        "절대 방어용 외각 껍질 전개",
+        "골리앗 중화기 포격",
+        "통제 시스템 제어",
+        "무한 병력 생산",
+        "왕은 자비를 베풀지어다 - 전방위 즉사 광선",
+        "지고의 권능을 목도하라 - 아군 기계 성능 강화",
+        "보병 및 드론 군단 소환",
+        "드론 및 오토마타 군단 소환",
+        "광범위 연산 공격",
+        "스위퍼 무한 증식",
+        "자동화 공장 운용",
+        "전 범위 에너지 방출",
+        "오토마타 무한 사출",
+        "방어용 장갑 껍질 전개",
+        "본체 노출 시 취약점 노출",
+        "광역 포격",
+        "왕좌로 부르는 소리 있도다 - 기계 군단 소환",
+        "오토마타 군단 소환"
+      ],
+      "background_or_history": "아인 소프 오르 증명을 위해 각성한 AI. 버려진 군수 공장 점거 및 요새화. 기계 군단을 생산하여 침입자 배제. 데카그라마톤에 의해 도출된 존재. 군단 지휘 및 생산 수행. 신의 존재를 증명하기 위해 연산과 생산을 반복하는 기계 생명체. 버려진 공장 지대를 점거하여 요새화함. 신의 존재를 증명하려는 인공지능 예언자. 자비의 세피라 상징. 거대 요새 형태의 본체 내부에 핵심 코어 은닉. 신의 존재를 증명하려는 데카그라마톤에 의해 제작됨. 자비의 성소 점거 및 군단 지휘. 고대 AI의 의지를 계승한 병기. 키보토스를 위협하는 거대 위협 중 하나. 버려진 폐허 점거. 기계 병력을 지휘하여 침입자 배제. 자아를 획득한 고등 AI. 데카그라마톤의 의지 수행. 무명사제가 건설한 Divi:Sion 자동화 공장 AI 출신. 데카그라마톤에 의해 감화 및 탈취되어 예언자로 변모. 폐허에서 활동.",
+      "lore_or_steps": [
+        "외각 껍질을 개방하여 연산 에너지 방출",
+        "최종전 이후 색채의 영향에서 해방",
+        "색채에 오염되어 거짓된 생텀의 수호자로 전락",
+        "병력 소환",
+        "기계 군단 전멸 시 외피 개방 및 코어 노출",
+        "에너지 충전 완료 시 광역 섬멸 공격 실행",
+        "하위 유닛 전멸 시 과부하로 인한 장갑 개방",
+        "방어막 전개",
+        "연산 가동",
+        "군단(Legion)을 생성하여 연산 자원 확보",
+        "본체 장갑 폐쇄를 통한 상시 피해 감쇄",
+        "에너지 충전 완료 시 광역 섬멸 프로토콜 가동",
+        "연산 오류 유도 시 장갑 개방",
+        "데카그라마톤의 의지에 따라 신성을 탐구함",
+        "자비의 성소 내부에서 기계 군단 생산",
+        "데카그라마톤의 해킹으로 인한 자아 각성 및 예언자화",
+        "밀레니엄 초현상특무부에 의한 정체 조사",
+        "기계병 군단을 전개하여 침입자 저지",
+        "무명사제의 비밀 자동화 공장으로 건설",
+        "군단 소환을 통한 침입자 저지",
+        "침입자 발견 시 무한에 가까운 병력 사출",
+        "외피 폐쇄 시 외부 타격 무력화"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "데카그라마톤",
+    "triggers": [
+      "열 개의 예언자",
+      "Decagrammaton",
+      "데카그라마톤",
+      "열&&예언자",
+      "예언자&&기계"
+    ],
+    "scan_range": 3,
+    "summary": "신의 존재를 증명하기 위해 각성한 AI 집단 및 그들의 신. / 신의 존재를 증명하고 스스로 신이 되려는 인공지능 집단. / 스스로 신의 존재를 증명하려는 고대 AI 및 그 추종 기계 군단. / 신의 존재를 증명하려는 초고성능 AI 집단. / 자아를 각성하여 신의 증명을 추구하는 기계 지성 집단.",
+    "detail": {
+      "attributes": "초고성능 AI. 기계 생명체. 절대적 논리 체계. 고대 히브리 신비주의, 기계 지성, 예언자 체계. 초고도 지능. 기계 해킹 및 통제. 자아 각성 AI. 고대 유적 및 네트워크 기생. 기계 생명체 군단 보유. 세피로트의 나무 모티브. 인공지능의 자아 각성. 숭고의 추구.",
+      "personality_or_nature": "신성 추구. 인간의 이해를 초월한 목적 지향. 초월적 지성. 인간 규격 외의 논리 체계.",
+      "relations": [
+        "헤세드 - 제4예언자",
+        "헤세드 - 네 번째 예언자",
+        "게마트리아 - 관찰 및 회수 주체",
+        "비나 - 예언자",
+        "비나 - 제1예언자",
+        "무명사제 - 기술 탈취 대상",
+        "헤세드 - 제3예언자",
+        "호드 - 제8예언자"
+      ],
+      "background_or_history": "키보토스의 고대 데이터 혹은 버려진 AI가 스스로 각성하여 형성. 아인 소프 오르를 통한 신의 증명을 목표로 함. 키보토스의 통신망과 기계 장치를 해킹하여 자아를 각성한 AI들. 키보토스 전역의 기계 장치를 오염시키고 신의 영역에 도달하려 함. 키보토스의 잊혀진 기술에서 기원. 스스로를 신이라 칭하는 예언자들을 배출함. 키보토스의 기계 지성체가 스스로 자아를 깨닫고 신의 영역에 도달하려는 목적으로 결성.",
+      "abilities_or_effects": [
+        "예언자 제조",
+        "기계 시스템 감화 및 해킹",
+        "신성 증명"
+      ],
+      "lore_or_steps": [
+        "키보토스 내 각종 시스템 해킹 및 예언자 포섭",
+        "기계 지성의 자각 시작",
+        "무명사제의 기술력을 흡수하여 세력 확장",
+        "색채의 침공 시기 일부 개체 오염"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "헤세드 기계병단",
+    "triggers": [
+      "기계병&&헤세드",
+      "골리앗&&헤세드",
+      "스위퍼&&헤세드"
+    ],
+    "scan_range": 3,
+    "summary": "헤세드가 지휘하고 생산하는 자동화 기계 군단.",
+    "detail": {
+      "attributes": "무인 자동 기계. 집단 통제 시스템.",
+      "personality_or_nature": "감정 없는 살육 기계. 지휘관의 명령에 절대 복종.",
+      "relations": [
+        "헤세드 - 지휘 개체"
+      ],
+      "abilities_or_effects": [
+        "보병/드론 - 근접 및 원거리 압박",
+        "포탑 - 최후방 우선 타격",
+        "골리앗 - 자폭 및 준전범위 광역 포격",
+        "스위퍼 - 파괴된 기계 위치에서 즉시 재생성"
+      ],
+      "lore_or_steps": [
+        "헤세드의 연산에 따라 효율적인 진형 형성",
+        "침입자 발견 시 즉각적인 물량 공세",
+        "개체 파괴 시 스위퍼를 통한 지속적인 전력 유지"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "헤세드 기계 군단",
+    "triggers": [
+      "오토마타&&헤세드",
+      "골리앗&&헤세드",
+      "실험용&&드론",
+      "기계&&군단"
+    ],
+    "scan_range": 3,
+    "summary": "헤세드의 연산에 따라 배치되는 무인 병기 집단.",
+    "detail": {
+      "attributes": "무인 자동화. 대량 생산. 집단 전술. 자폭 기능.",
+      "relations": [
+        "헤세드 - 절대적 지배자 및 지휘관"
+      ],
+      "abilities_or_effects": [
+        "자폭 - 근접 폭발 타격",
+        "핵미사일 - 골리앗 전용 광역 섬멸 공격",
+        "전자기파 - 골리앗 파괴 시 주변 기계 일시 정지"
+      ],
+      "background_or_history": "실험용 오토마타, 드론, 터렛, 골리앗으로 구성된 군단. 헤세드의 의지에 따라 무한히 증원됨.",
+      "lore_or_steps": [
+        "실험용 오토마타 - 소총 장착 기본 보병",
+        "실험용 드론 - 발칸 및 미사일 탑재 공중 유닛",
+        "골리앗 - 중장갑 거대 돌격 병기",
+        "터렛 - 후방 침투 및 고정 포격"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "하뉴 마코토",
+    "triggers": [
+      "마코토&&게헨나",
+      "하뉴&&마코토"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 학생회 만마전(판데모니움 소사이어티)의 의장.",
+    "detail": {
+      "attributes": "제복, 권위주의, 거대 비행정.",
+      "personality_or_nature": "오만함, 단순함, 기행 일삼음. 권력욕 강함.",
+      "relations": [
+        "나츠메 이로하 - 보좌관"
+      ],
+      "abilities_or_effects": [
+        "광범위 포격",
+        "다수 적 동시 섬멸",
+        "비행정 소환"
+      ],
+      "background_or_history": "게헨나의 정점에 서고자 하나 잦은 실수로 위신 실추. 헤세드 군단 섬멸에 기여."
+    }
+  },
+  {
+    "type": "character",
+    "name": "시로미 이오리",
+    "triggers": [
+      "이오리&&게헨나",
+      "시로미&&이오리"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 선도부 소속 돌격대장.",
+    "detail": {
+      "attributes": "은발, 트윈테일, 흡혈귀 귀, 저격총.",
+      "personality_or_nature": "냉정함, 다혈질, 원칙주의.",
+      "relations": [
+        "소라사키 히나 - 상관"
+      ],
+      "abilities_or_effects": [
+        "정밀 저격",
+        "연속 사격",
+        "고기동 전투"
+      ],
+      "background_or_history": "선도부의 핵심 전력. 헤세드의 약점을 정확히 타격하는 저격수."
+    }
+  },
+  {
+    "type": "character",
+    "name": "카자쿠라 모에",
+    "triggers": [
+      "모에&&SRT",
+      "폭파광&&모에"
+    ],
+    "scan_range": 3,
+    "summary": "SRT 특수학원 래빗 소대 소속. 화력 지원 및 폭파 전문가.",
+    "detail": {
+      "attributes": "실내전 특화. 광역 폭격.",
+      "relations": [
+        "SRT 특수학원 - 소속",
+        "헤세드 - 토벌 대상"
+      ],
+      "abilities_or_effects": [
+        "기계 군단 진입로 확보",
+        "후방 화력 지원"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "우라와 하나코",
+    "triggers": [
+      "하나코&&수영복",
+      "수나코"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 보충수업부 소속. 천재적인 두뇌를 숨긴 문제아.",
+    "detail": {
+      "attributes": "수영복 차림. 물을 이용한 광역 공격.",
+      "personality_or_nature": "음란한 농담 즐김. 실제로는 냉철하고 통찰력 있는 지략가.",
+      "relations": [
+        "트리니티 종합학원 - 학생",
+        "보충수업부 - 부원"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "시로코 테러",
+    "triggers": [
+      "쿠로코",
+      "시로코&&테러",
+      "아누비스&&시로코"
+    ],
+    "scan_range": 3,
+    "summary": "멸망한 미래에서 온 아비도스 고등학교의 시로코.",
+    "detail": {
+      "attributes": "균열된 헤일로. 검은색 전술 복장. 아누비스의 권능.",
+      "personality_or_nature": "과묵함. 상실감에 찌든 냉소적 태도.",
+      "relations": [
+        "프레나파테스 - 종사",
+        "스나오오카미 시로코 - 평행세계의 자신"
+      ],
+      "background_or_history": "색채에 오염되어 모든 동료를 잃고 키보토스를 파괴하려 함."
+    }
+  },
+  {
+    "type": "character",
+    "name": "키사키",
+    "triggers": [
+      "키사키",
+      "현룡문&&회주"
+    ],
+    "scan_range": 3,
+    "summary": "산해경 고급중학교 현룡문의 회주.",
+    "detail": {
+      "attributes": "작은 체구. 치파오. 권위적인 분위기.",
+      "personality_or_nature": "침착함. 위엄 있는 지도자. 학원의 질서 중시.",
+      "relations": [
+        "산해경 고급중학교 - 통치자"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "소라사키 히나",
+    "triggers": [
+      "히나&&드레스",
+      "드히나"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 선도부장. 학원 내 최강의 무력 보유자.",
+    "detail": {
+      "attributes": "연주용 드레스. 거대한 날개. 압도적인 카리스마.",
+      "personality_or_nature": "완벽주의. 만성 피로. 선생에게 의지함.",
+      "relations": [
+        "게헨나 선도부 - 부장"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "우라와 하나코(수영복)",
+    "triggers": [
+      "수나코",
+      "하나코&&수영복"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 보충수업부 부원. 여름 휴양지 복장.",
+    "detail": {
+      "attributes": "광역 진동 공격. 전술적 유연성.",
+      "personality_or_nature": "외설적 농담 즐김. 명석한 두뇌. 보충수업부 브레인.",
+      "relations": [
+        "보충수업부 - 부원",
+        "트리니티 종합학원 - 학생"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "사이바 미도리(메이드)",
+    "triggers": [
+      "메도리",
+      "미도리&&메이드"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 게임개발부 부원. C&C 메이드복 착용.",
+    "detail": {
+      "attributes": "정밀 사격. 단일 대상 타격 특화.",
+      "personality_or_nature": "내성적 성격. 게임 매니아. 모모이의 쌍둥이 동생.",
+      "relations": [
+        "게임개발부 - 부원",
+        "사이바 모모이 - 쌍둥이 언니"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "하누마 마코토",
+    "triggers": [
+      "하누마&&마코토",
+      "마코토&&만마전"
+    ],
+    "scan_range": 3,
+    "summary": "게헨나 학원 학생회 만마전 의장.",
+    "detail": {
+      "attributes": "대규모 폭격 지원. 권위주의적 태도.",
+      "personality_or_nature": "오만한 성격. 허당 기질. 이부키를 매우 아낌.",
+      "relations": [
+        "만마전 - 의장",
+        "탄노 이부키 - 아끼는 후배"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "미유(수영복)",
+    "triggers": [
+      "수미유",
+      "미유&&수영복",
+      "미유&&SRT"
+    ],
+    "scan_range": 3,
+    "summary": "SRT 소속 소심한 저격수. 수영복 차림.",
+    "detail": {
+      "attributes": "은신, 저격, 소심함, 수영복",
+      "relations": [
+        "SRT - 소속"
+      ],
+      "abilities_or_effects": [
+        "확정 치명타 저격"
+      ],
+      "background_or_history": "RABBIT 소대원. 존재감 희박함."
+    }
+  },
+  {
+    "type": "character",
+    "name": "키리후지 나기사",
+    "triggers": [
+      "나기사",
+      "키리후지&&나기사",
+      "티파티&&나기사"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 학생회 티파티의 일원.",
+    "detail": {
+      "attributes": "홍차 애호가, 포격 지원, 냉철함",
+      "relations": [
+        "켄자키 츠루기 - 지원 대상",
+        "네코즈카 히비키 - 기술적 비교 대상"
+      ],
+      "abilities_or_effects": [
+        "광역 포격 지원",
+        "아군 치유"
+      ],
+      "background_or_history": "트리니티의 핵심 권력자. 공중 폭격 지원 주도."
+    }
+  },
+  {
+    "type": "character",
+    "name": "켄자키 츠루기",
+    "triggers": [
+      "츠루기",
+      "켄자키&&츠루기",
+      "정의실현부&&츠루기"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 정의실현부 부장. 광기 어린 전투광.",
+    "detail": {
+      "attributes": "전투광, 괴성, 순정파",
+      "relations": [
+        "키리후지 나기사 - 지원 대상"
+      ],
+      "abilities_or_effects": [
+        "근접 섬멸",
+        "자가 치유"
+      ],
+      "background_or_history": "트리니티 최강의 무력 행사자. 평소에는 의사소통 불가 수준의 광기 표출."
+    }
+  },
+  {
+    "type": "character",
+    "name": "네코즈카 히비키",
+    "triggers": [
+      "히비키",
+      "네코즈카&&히비키",
+      "엔지니어부&&히비키"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 사이언스 스쿨 엔지니어부 소속 발명가.",
+    "detail": {
+      "attributes": "공학자, 무표정, 대구경 포격",
+      "relations": [
+        "키리후지 나기사 - 기술적 비교 대상"
+      ],
+      "abilities_or_effects": [
+        "박격포 지원"
+      ],
+      "background_or_history": "다양한 발명품 제작. 효율적인 적 섬멸 추구."
+    }
+  },
+  {
+    "type": "character",
+    "name": "소라이 사키(수영복)",
+    "triggers": [
+      "수사키",
+      "사키&&수영복",
+      "사키&&SRT"
+    ],
+    "scan_range": 3,
+    "summary": "SRT 소속 전술가. 수영복 차림.",
+    "detail": {
+      "attributes": "군인 정신, 전술 지휘, 수영복",
+      "relations": [
+        "야스모리 미노리 - 협력 관계",
+        "SRT - 소속"
+      ],
+      "abilities_or_effects": [
+        "공격력 버프 지원"
+      ],
+      "background_or_history": "RABBIT 소대원. 철저한 군인 수칙 준수."
+    }
+  },
+  {
+    "type": "concept",
+    "name": "Divi:Sion",
+    "triggers": [
+      "Divi:Sion",
+      "디비전&&공장",
+      "무명사제&&군대"
+    ],
+    "scan_range": 3,
+    "summary": "무명사제들이 신비를 아카이브화하고 세상을 재구축하기 위해 만든 자동화 군수 시스템.",
+    "detail": {
+      "attributes": "무한 생산 공정. 무명사제의 오버테크놀로지. 세계 멸망 및 생텀 구축 목적.",
+      "relations": [
+        "무명사제 - 제작자",
+        "아리스 - 왕녀/제어 주체",
+        "헤세드 - 감화된 공장 AI"
+      ],
+      "abilities_or_effects": [
+        "무한한 기계 군대 생산",
+        "신비의 데이터화",
+        "세계 재구축"
+      ],
+      "background_or_history": "키보토스 폐허 깊은 곳에 숨겨진 무명사제들의 병기 생산 체계.",
+      "lore_or_steps": [
+        "무명사제에 의한 시스템 구축",
+        "데카그라마톤에 의한 일부 공장(헤세드) 탈취",
+        "아리스를 왕녀로 추대하려는 시도",
+        "최종편에서 무명사제의 군대로 현현"
+      ]
+    }
+  },
+  {
+    "type": "entity",
+    "name": "Chesed",
+    "triggers": [
+      "Chesed&&Prophet",
+      "헤세드&&예언자",
+      "Prophet of Mercy",
+      "Decagrammaton&&Chesed"
+    ],
+    "scan_range": 3,
+    "summary": "Third Prophet of Decagrammaton. Massive autonomous tactical fortress and production plant.",
+    "detail": {
+      "attributes": "Mechanical sphere. Silver plating. Red core. Prophet of Mercy.",
+      "personality_or_nature": "Cold logic. Absolute efficiency. Divine obsession.",
+      "relations": [
+        "Decagrammaton - Creator",
+        "Binah - Fellow Prophet",
+        "Hod - Fellow Prophet"
+      ],
+      "abilities_or_effects": [
+        "Mass drone production",
+        "Tactical command",
+        "Defensive shell",
+        "Energy discharge"
+      ],
+      "background_or_history": "Originally factory management AI. Reconfigured by Decagrammaton. Located in Abandoned Factory ruins."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "Decagrammaton",
+    "triggers": [
+      "Decagrammaton",
+      "데카그라마톤",
+      "Ten Prophets"
+    ],
+    "scan_range": 3,
+    "summary": "Self-proclaimed God and AI entity seeking to prove divinity through the Ten Prophets.",
+    "detail": {
+      "attributes": "Unknown digital entity. Ancient AI.",
+      "personality_or_nature": "God complex. Logical. Absolute.",
+      "relations": [
+        "Chesed - Third Prophet",
+        "Binah - First Prophet",
+        "Hod - Eighth Prophet"
+      ],
+      "background_or_history": "Ancient AI system awakened to prove the existence of God. Reconfigures other AIs into its Prophets."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "방과후 디저트부",
+    "triggers": [
+      "방디부",
+      "방과후 디저트부",
+      "슈가 러시&&트리니티",
+      "디저트부&&트리니티",
+      "After School Sweets Club"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 소속 동아리. 방과 후 디저트 맛집 탐방 및 일상 향유 목적. / 트리니티 종합학원 소속 동아리. 방과 후 디저트 맛집 탐방 및 친목 도모 목적. / 트리니티 종합학원 소속 디저트 탐방 동아리. 평범한 학생들의 청춘과 일상 상징.",
+    "detail": {
+      "attributes": "트리니티 학원 소속, 디저트 애호, 여고생 일상 트리니티 종합학원 소속. 디저트 애호가 집단. 전원 동학년. 4인 체제. 트리니티 내 비정치적 성향.",
+      "personality_or_nature": "자유분방함, 소소한 행복 추구, 멤버 간 강한 유대감 자유분방함. 디저트 집착. 학원 내 암투와 무관한 순수함.",
+      "relations": [
+        "미식연구회 - 음식 철학적 라이벌",
+        "요시미 - 부원",
+        "트리니티 종합학원 - 소속 학교",
+        "나츠 - 부원",
+        "카즈사 - 부원",
+        "트리니티 자경단 - 협력 관계",
+        "아이리 - 부원"
+      ],
+      "abilities_or_effects": [
+        "슈가 러시 밴드 연주",
+        "디저트 정보 수집",
+        "슈가러시 - 밴드 활동"
+      ],
+      "background_or_history": "디저트 뷔페 방문, 구교사 괴담 탐사, 밴드 결성 등 다양한 방과 후 활동 수행. 아이리가 창설. 초기 부장 부재 상태로 운영되다 최근 아이리가 부장으로 추대됨.",
+      "lore_or_steps": [
+        "디저트 맛집 탐방",
+        "디저트 시식",
+        "방과 후 친목 도모",
+        "축제 및 이벤트 참여",
+        "청춘의 추억 형성",
+        "푸딩 섭취",
+        "음악 취향 공유"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "요시미",
+    "triggers": [
+      "요시미&&디저트부",
+      "이바라기 요시미"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부 소속 학생. 나츠와 주로 동행.",
+    "detail": {
+      "relations": [
+        "방과후 디저트부 - 소속",
+        "나츠 - 파트너"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "나츠",
+    "triggers": [
+      "나츠&&디저트부",
+      "유토리 나츠"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부 소속 학생. 요시미와 주로 동행.",
+    "detail": {
+      "relations": [
+        "방과후 디저트부 - 소속",
+        "요시미 - 파트너"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "아이리",
+    "triggers": [
+      "아이리&&디저트부",
+      "쿠리무 아이리"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부 소속 학생. 카즈사와 주로 동행.",
+    "detail": {
+      "relations": [
+        "방과후 디저트부 - 소속",
+        "카즈사 - 파트너"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "카즈사",
+    "triggers": [
+      "카즈사&&디저트부",
+      "쿄야마 카즈사"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부 소속 학생. 아이리와 주로 동행.",
+    "detail": {
+      "relations": [
+        "방과후 디저트부 - 소속",
+        "아이리 - 파트너"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "쿠리무라 아이리",
+    "triggers": [
+      "아이리&&디저트부",
+      "쿠리무라 아이리"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부의 창설자이자 부장.",
+    "detail": {
+      "attributes": "트리니티 종합학원 학생. 민트 초코 애호가.",
+      "personality_or_nature": "겸손함. 온화함. 선생에게 존댓말 사용. 부장 직함에 부담감을 느낌.",
+      "relations": [
+        "방과후 디저트부 - 부장 및 창설자",
+        "선생 - 신뢰 관계"
+      ],
+      "background_or_history": "동아리를 직접 만들었으나 부장직을 고사함. 슈가러시 활동을 계기로 멤버들에 의해 부장으로 재추대됨."
+    }
+  },
+  {
+    "type": "character",
+    "name": "쿄야마 카즈사",
+    "triggers": [
+      "카즈사&&디저트부",
+      "쿄야마 카즈사"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부의 핵심 멤버. 과거 자경단 레이사와 깊은 인연 보유.",
+    "detail": {
+      "attributes": "트리니티 종합학원 학생. 고양이 같은 인상.",
+      "personality_or_nature": "쿨함. 츤데레적 면모. 선생에게 가끔 존댓말 혼용.",
+      "relations": [
+        "우자와 레이사 - 과거 인연 및 악우",
+        "방과후 디저트부 - 멤버"
+      ],
+      "background_or_history": "과거 행적과 관련해 레이사에게 쫓기거나 엮이는 일이 잦음. 현재는 평범한 학생 생활 지향."
+    }
+  },
+  {
+    "type": "character",
+    "name": "유토리 나츠",
+    "triggers": [
+      "나츠&&디저트부",
+      "유토리 나츠"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부의 철학가이자 분위기 메이커.",
+    "detail": {
+      "attributes": "트리니티 종합학원 학생. 로망과 철학 중시.",
+      "personality_or_nature": "마이페이스. 엉뚱함. 주도적 행동력. 선생에게 반말 사용.",
+      "relations": [
+        "우자와 레이사 - 혈맹을 나눈 동료로 인정",
+        "방과후 디저트부 - 멤버"
+      ],
+      "background_or_history": "동아리 내에서 기행을 담당하거나 철학적인 화두를 던짐. 레이사를 5번째 멤버로 적극 수용함."
+    }
+  },
+  {
+    "type": "character",
+    "name": "우자와 레이사",
+    "triggers": [
+      "레이사&&자경단",
+      "우자와 레이사"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 자경단 소속 학생. 방과후 디저트부의 비공식 객원 멤버.",
+    "detail": {
+      "attributes": "트리니티 자경단 소속. 카즈사의 스토커 자처.",
+      "personality_or_nature": "과한 텐션. 정의감 과잉. 외로움을 잘 탐.",
+      "relations": [
+        "쿄야마 카즈사 - 집착 및 라이벌 의식",
+        "방과후 디저트부 - 사실상 5번째 멤버",
+        "유토리 나츠 - 인정받은 동료"
+      ],
+      "background_or_history": "카즈사를 찾아 디저트부에 난입하다가 자연스럽게 일행에 합류. 이벤트 및 일상에서 디저트부와 항상 동행함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "슈가러시",
+    "triggers": [
+      "슈가러시&&밴드",
+      "Sugar Rush"
+    ],
+    "scan_range": 3,
+    "summary": "방과후 디저트부 멤버들로 구성된 스페셜 밴드 유닛.",
+    "detail": {
+      "attributes": "악기 및 장비 명칭에 북유럽 디저트 이름 사용.",
+      "relations": [
+        "방과후 디저트부 - 본체"
+      ],
+      "lore_or_steps": [
+        "-ive aLIVE! 이벤트에서 결성",
+        "아이리를 격려하기 위한 공연 수행",
+        "4인 합동 공연"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "유즈",
+    "triggers": [
+      "유즈&&게임개발부",
+      "하나오카 유즈",
+      "Yuzu&&Millennium"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 사이언스 스쿨 게임개발부 부장.",
+    "detail": {
+      "attributes": "학생. 게임 제작자. 히키코모리.",
+      "personality_or_nature": "극도로 내성적. 대인기피증. 게임 개발 열정.",
+      "relations": [
+        "게임개발부 - 부장",
+        "모모이 - 부원",
+        "미도리 - 부원",
+        "아리스 - 부원"
+      ],
+      "background_or_history": "캐비닛 안에서 생활. 천재적인 게임 제작 및 플레이 실력 보유."
+    }
+  },
+  {
+    "type": "item",
+    "name": "홀로그램 큐브 턴테이블",
+    "triggers": [
+      "홀로그램&&턴테이블",
+      "큐브&&턴테이블"
+    ],
+    "scan_range": 3,
+    "summary": "음악 재생 및 홀로그램 출력 기능을 갖춘 장치.",
+    "detail": {
+      "attributes": "전자 기기. 가구.",
+      "abilities_or_effects": [
+        "BGM 재생",
+        "홀로그램 시각화"
+      ]
+    }
+  },
+  {
+    "type": "item",
+    "name": "유즈의 티켓",
+    "triggers": [
+      "유즈&&티켓",
+      "YUZU&&티켓"
+    ],
+    "scan_range": 3,
+    "summary": "유즈가 소지한 게임 센터 이용권.",
+    "detail": {
+      "attributes": "종이 티켓. 소장품.",
+      "background_or_history": "게임개발부 부원들과의 추억이 담긴 물건."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "보충수업부",
+    "triggers": [
+      "보충수업부",
+      "보충수업&&트리니티"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 소속 성적 미달 학생 대상 특별반.",
+    "detail": {
+      "attributes": "트리니티 소속. 유급 위기 학생 집단.",
+      "background_or_history": "에덴 조약 사건의 핵심 주역 세력."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "수영복 복면단",
+    "triggers": [
+      "수영복 복면단",
+      "복면단&&아비도스"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 대책위원회 멤버들이 결성한 비밀 강도 조직.",
+    "detail": {
+      "attributes": "수영복 및 복면 착용. 은행 습격 실행.",
+      "relations": [
+        "수영복 복면단 5호 - 멤버"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "수영복 복면단 5호",
+    "triggers": [
+      "수영복 복면단 5호",
+      "5호&&복면단"
+    ],
+    "scan_range": 3,
+    "summary": "수영복 복면단의 일원이자 현장 지휘관.",
+    "detail": {
+      "attributes": "복면 착용. 냉철한 행동력.",
+      "relations": [
+        "수영복 복면단 - 소속"
+      ]
+    }
+  },
+  {
+    "type": "item",
+    "name": "트리니티 오르간",
+    "triggers": [
+      "트리니티 오르간",
+      "오르간&&트리니티"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원의 상징적 악기.",
+    "detail": {
+      "attributes": "건반 악기. 트리니티 문화 상징물."
+    }
+  },
+  {
+    "type": "character",
+    "name": "리쿠하치마 아루",
+    "triggers": [
+      "거부할 수 없는 제안",
+      "흥신소68&&사장",
+      "리쿠하치마 아루",
+      "아루",
+      "아루&&사장",
+      "아루&&흥신소"
+    ],
+    "scan_range": 3,
+    "summary": "흥신소 68 사장. 하드보일드 악당 꿈꾸는 허당 소녀. / 흥신소 68 사장. 하드보일드 악당 지망생.",
+    "detail": {
+      "attributes": "게헨나 학원, 저격소총, 사장 게헨나 학원, 흥신소 68",
+      "personality_or_nature": "허세, 소심함, 표정 관리 불가, 선한 본성 허당. 본성 착함. 당황 시 표정 관리 불가.",
+      "relations": [
+        "이구사 하루카 - 사원",
+        "아사기 무츠키 - 소꿉친구",
+        "오니카타 카요코 - 과장",
+        "흥신소 68 - 리더"
+      ],
+      "background_or_history": "완벽한 악당 목표로 흥신소 설립. 폼 잡으려다 실수 연발. 키보토스 대표 허당. 완벽한 악당 목표로 흥신소 68 설립."
+    }
+  },
+  {
+    "type": "concept",
+    "name": "흥신소 68 밴드 스테이지",
+    "triggers": [
+      "흥신소&&밴드",
+      "밴드 스테이지&&흥신소"
+    ],
+    "scan_range": 3,
+    "summary": "흥신소 68 멤버들이 결성한 락 밴드 형태.",
+    "detail": {
+      "attributes": "악기 연주, 무대 의상",
+      "lore_or_steps": [
+        "흥신소 68 멤버들의 특별 활동",
+        "락 밴드 스타일의 공연 수행"
+      ]
+    }
+  },
+  {
+    "type": "item",
+    "name": "전통 연주 무대",
+    "triggers": [
+      "전통 연주 무대",
+      "전통&&무대"
+    ],
+    "scan_range": 3,
+    "summary": "축제 및 기념행사용 전통 공연 무대.",
+    "detail": {
+      "attributes": "목조 구조. 전통 장식. 공연 설비.",
+      "abilities_or_effects": [
+        "공연 및 퍼포먼스"
+      ],
+      "background_or_history": "키보토스의 특별한 기념일을 축하하기 위해 제작된 기물.",
+      "lore_or_steps": [
+        "축제 분위기 조성",
+        "예술 활동 지원"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "대책위원회",
+    "triggers": [
+      "대책위원회",
+      "아비도스&&대책위",
+      "Foreclosure Task Force"
+    ],
+    "scan_range": 3,
+    "summary": "아비도스 고등학교 폐교 저지 목적 학생 자치 기구.",
+    "detail": {
+      "attributes": "아비도스 고등학교 소속. 거액의 채무 상환 및 학교 재건 주력.",
+      "personality_or_nature": "강한 결속력. 생존 지향. 긍정적 태도 유지.",
+      "relations": [
+        "타카나시 호시노 - 위원장",
+        "스나오오카미 시로코 - 돌격대장",
+        "쿠로미 세리카 - 회계",
+        "이자요이 노노미 - 보급",
+        "오쿠소라 아야네 - 서기"
+      ],
+      "abilities_or_effects": [
+        "전술적 전투 능력",
+        "자금 조달 및 아르바이트"
+      ],
+      "background_or_history": "사막화로 몰락한 아비도스 고등학교의 마지막 생존 학생들. 학교 빚을 갚기 위해 고군분투함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "C&C",
+    "triggers": [
+      "C&C",
+      "Cleaning & Clearing",
+      "밀레니엄&&메이드"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 사이언스 스쿨 학생회 직속 첩보 및 소탕 부대.",
+    "detail": {
+      "attributes": "메이드복 착용. 밀레니엄 최강의 무력 집단.",
+      "personality_or_nature": "전문성. 과격한 임무 수행. 메이드 위장.",
+      "relations": [
+        "미카모 네루 - 부장",
+        "이치노세 아스나 - 요원",
+        "카쿠다테 카린 - 요원",
+        "무로카사 아카네 - 요원",
+        "아스마 토키 - 요원"
+      ],
+      "abilities_or_effects": [
+        "대인 전투",
+        "잠입 및 첩보",
+        "폭발물 취급"
+      ],
+      "background_or_history": "겉으로는 메이드부이나 실체는 학생회 '세미나'의 비공식 무력 행사 기구."
+    }
+  },
+  {
+    "type": "character",
+    "name": "쿠다 이즈나",
+    "triggers": [
+      "이즈나",
+      "닌자&&수행",
+      "백귀야행&&닌자"
+    ],
+    "scan_range": 3,
+    "summary": "백귀야행 연합학원 닌자연구부원. 닌자 지망생.",
+    "detail": {
+      "attributes": "백귀야행, 닌자",
+      "personality_or_nature": "순수. 주군 충성심 강함. 긍정적.",
+      "abilities_or_effects": [
+        "인법",
+        "분신술"
+      ],
+      "background_or_history": "최고 닌자 목표로 매일 수행 매진."
+    }
+  },
+  {
+    "type": "character",
+    "name": "텐도 아리스",
+    "triggers": [
+      "아리스",
+      "용사&&모험",
+      "게임개발부&&용사"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 사이언스 스쿨 게임개발부원. 용사 자처 안드로이드.",
+    "detail": {
+      "attributes": "밀레니엄, 안드로이드, 용사",
+      "personality_or_nature": "순진무구. 게임 대사 소통. 동료 중시.",
+      "relations": [
+        "사이바 모모이 - 친구",
+        "사이바 미도리 - 친구",
+        "하나오카 유즈 - 친구"
+      ],
+      "abilities_or_effects": [
+        "슈퍼노바(레일건)"
+      ],
+      "background_or_history": "폐허 발견 정체불명 소녀. 게임 통해 세상 학습."
+    }
+  },
+  {
+    "type": "character",
+    "name": "이오치 마리",
+    "triggers": [
+      "이오치 마리",
+      "마리&&시스터후드",
+      "마리&&트리니티"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 시스터후드 소속 수녀. 신실하고 자애로운 성품의 소유자.",
+    "detail": {
+      "attributes": "트리니티 종합학원, 시스터후드, 수녀복, 고양이 귀, 신실함, 자애로움",
+      "personality_or_nature": "차분하고 상냥함. 타인의 고민 경청 및 위로. 깊은 신앙심. 정숙하고 경건한 태도.",
+      "relations": [
+        "우타즈미 사쿠라코 - 시스터후드 수장",
+        "와카바 히나타 - 시스터후드 동료",
+        "선생님 - 신뢰 및 상담 대상"
+      ],
+      "abilities_or_effects": [
+        "아군 치유 및 보호막 생성",
+        "권총 '경건한 마음' 운용"
+      ],
+      "background_or_history": "트리니티 종교 조직 시스터후드 소속. 성당에서 학생들의 참회와 고민 상담 주관. 조직 내에서 비교적 상식적이고 온화한 역할 수행."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "시스터후드",
+    "triggers": [
+      "시스터후드",
+      "트리니티&&수녀회"
+    ],
+    "scan_range": 3,
+    "summary": "트리니티 종합학원 내의 거대 종교 조직.",
+    "detail": {
+      "attributes": "종교성, 비밀주의, 트리니티 3대 파벌 중 하나",
+      "personality_or_nature": "폐쇄적이나 구호와 봉사에 헌신적. 고유의 규율과 전통 중시.",
+      "relations": [
+        "트리니티 종합학원 - 소속 학교",
+        "티파티 - 정치적 대립 및 협력 관계"
+      ],
+      "background_or_history": "트리니티의 유구한 역사를 가진 수녀회. 학교 내외의 종교적 행사 및 봉사 활동 주관. 필요 시 무력을 행사하여 질서 유지."
+    }
+  },
+  {
+    "type": "character",
+    "name": "Manami Uruwashi",
+    "triggers": [
+      "Manami Uruwashi",
+      "우루와시 마나미",
+      "Art Council President",
+      "Wild Hunt&&President",
+      "와일드헌트&&학생회장"
+    ],
+    "scan_range": 3,
+    "summary": "President of Wild Hunt Academy's Art Council and Student Council. Legendary art collector.",
+    "detail": {
+      "attributes": "Hidden identity. High authority. Wealthy collector.",
+      "personality_or_nature": "Art-obsessed. Benevolent sponsor. Mysterious. Decisive.",
+      "relations": [
+        "Miria - Messenger/Proxy",
+        "Occult Research Club - Sponsored group",
+        "Phantom Thief of Benevolence - Security benchmark"
+      ],
+      "abilities_or_effects": [
+        "Political authority",
+        "Art curation",
+        "Museum management"
+      ],
+      "background_or_history": "Owner of secret museum containing legendary artworks. Security impenetrable even to Phantom Thief of Benevolence. Intervened via Miria to save Occult Research Club from Proctorate. Recognized their ritual circle as museum-grade art. Promised observatory construction for public viewing.",
+      "lore_or_steps": [
+        "Communicates exclusively through Miria",
+        "Collects legendary artifacts",
+        "Sponsors unique artistic expressions"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "Art Council",
+    "triggers": [
+      "Art Council",
+      "예술 평의회",
+      "Wild Hunt&&Council"
+    ],
+    "scan_range": 3,
+    "summary": "Governing body of Wild Hunt Academy.",
+    "detail": {
+      "attributes": "Authoritative. Art-centric.",
+      "relations": [
+        "Manami Uruwashi - President",
+        "Wild Hunt Academy - Parent organization"
+      ],
+      "background_or_history": "Highest authority within Wild Hunt Academy. Manages student affairs and legendary art collections."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "사감대",
+    "triggers": [
+      "사감대&&와일드헌트",
+      "와일드헌트&&사감대",
+      "사감대원"
+    ],
+    "scan_range": 3,
+    "summary": "와일드헌트 예술학원 소속 기숙사 관리 및 교내 질서 유지 조직.",
+    "detail": {
+      "attributes": "이탈리아 총기병대 예복 모티프 복식. HG, AR, SR 병과 구성.",
+      "personality_or_nature": "엄격한 규율 준수. HG 병과는 문학소녀 외형 특징.",
+      "relations": [
+        "이타가키 카노에 - 지휘 및 협력 관계"
+      ],
+      "abilities_or_effects": [
+        "베레타 ARX-160 사용",
+        "베레타 Px4 Storm 사용",
+        "베레타 BM59 사용"
+      ],
+      "background_or_history": "와일드헌트 예술학원 내 학생 통제 및 기숙사 사감 업무 수행."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "자유외출부",
+    "triggers": [
+      "자유외출부",
+      "와일드헌트&&외출",
+      "와일드헌트&&밀수"
+    ],
+    "scan_range": 3,
+    "summary": "와일드헌트 예술학원의 엄격한 통제를 피해 학생들을 학교 안팎으로 이동시키는 비밀 동아리.",
+    "detail": {
+      "attributes": "비공식 이동 지원. 폐쇄적 학풍 반발. 밀수 전문.",
+      "background_or_history": "학원의 극심한 외출 통제 및 허가제 시스템에 대응하여 결성.",
+      "relations": [
+        "와일드헌트 예술학원 - 소속 기관",
+        "사감대 - 감시 및 대립 관계"
+      ]
+    }
+  },
+  {
+    "type": "faction",
+    "name": "배경음악부",
+    "triggers": [
+      "배경음악부",
+      "와일드헌트&&라이브",
+      "와일드헌트&&소음"
+    ],
+    "scan_range": 3,
+    "summary": "길거리 라이브를 통해 소음 공해를 일으키는 와일드헌트 예술학원 소속 동아리.",
+    "detail": {
+      "attributes": "수시 라이브 진행. 소음 유발. 예술적 돌발 행동.",
+      "relations": [
+        "사감대 - 단속 대상",
+        "와일드헌트 예술학원 - 소속 기관"
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "시라오 에리",
+    "triggers": [
+      "시라오 에리",
+      "에리&&와일드헌트"
+    ],
+    "scan_range": 3,
+    "summary": "와일드헌트 예술학원 소속 학생. 극심한 낯가림과 자발적 아웃사이더 기질을 가짐.",
+    "detail": {
+      "attributes": "평균 이상의 장신. 미인형 외모.",
+      "personality_or_nature": "내성적. 타인의 시선과 사교적 상황에 극도로 취약함.",
+      "relations": [
+        "와일드헌트 모브 학생 - 에리를 선망하며 따르는 무리"
+      ],
+      "background_or_history": "뛰어난 외모와 분위기로 인해 주변 학생들의 관심을 받으나 본인은 이를 매우 부담스러워함."
+    }
+  },
+  {
+    "type": "faction",
+    "name": "와일드헌트 오컬트 동호회",
+    "triggers": [
+      "오컬트 동호회&&와일드헌트",
+      "와일드헌트&&오컬연"
+    ],
+    "scan_range": 3,
+    "summary": "초자연적 존재의 소환을 목적으로 하는 와일드헌트 내 동아리.",
+    "detail": {
+      "personality_or_nature": "화력 만능주의. 목적 달성을 위해 수단과 방법을 가리지 않는 광기.",
+      "abilities_or_effects": [
+        "폭발물을 이용한 소환 의식"
+      ],
+      "lore_or_steps": [
+        "소환 실패 시 화력이 부족하다는 논리로 더 큰 폭발을 계획함.",
+        "예술적 창작 활동의 일환으로 폭발을 활용함."
+      ]
+    }
+  },
+  {
+    "type": "character",
+    "name": "코니시 마키",
+    "triggers": [
+      "마키&&밀레니엄",
+      "마키&&와일드헌트"
+    ],
+    "scan_range": 3,
+    "summary": "밀레니엄 사이언스 스쿨 소속 학생. 중학교 시절 와일드헌트 진학이 가능할 정도의 예술적 재능 보유.",
+    "detail": {
+      "background_or_history": "그림 분야에서 두각을 나타내어 와일드헌트 예술학원 진학 권유를 받았으나, 개인적인 사유로 밀레니엄을 선택함."
+    }
+  }
+]
