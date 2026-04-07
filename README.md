@@ -44,7 +44,7 @@ https://github.com/milkyway0308/crystallized-chasm
 
 [필수] [캐즘 이그나이터](https://github.com/milkyway0308/crystallized-chasm/raw/refs/heads/main/crack/ignitor.user.js)
 
-[선택] [로어 인젝터](링크1)
+[필수] [로어 인젝터](링크1)
 
 [선택] [AI 응답 교정기(리파이너)](링크2)
 
