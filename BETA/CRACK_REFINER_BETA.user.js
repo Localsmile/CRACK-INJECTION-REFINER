@@ -1106,6 +1106,9 @@ IMPORTANT for replacements:
     } catch (e) {
       console.warn('[교정기] 감지 로직 에러:', e);
     }
+
+    // 큐에 아이템이 남아있으면 주기적으로 처리 시도 (workerBusy 타임아웃 체크 포함)
+    if (refineQueue.length > 0) processQueue();
   }, 1000);
 
   // 로그
