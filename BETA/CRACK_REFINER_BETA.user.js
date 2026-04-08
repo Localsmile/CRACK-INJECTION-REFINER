@@ -115,7 +115,7 @@ A) SENTENCE TRUNCATION
    [New Speech] ends mid-word or mid-clause. Complete ONLY the final interrupted sentence using [Recent Context] as reference. Do not add new narrative content.
 
 B) STATUS BLOCK TRUNCATION
-   Some RPs use a code block (``` ```) as a status display at the end of each turn.
+   Some RPs use a fenced code block as a status display at the end of each turn.
    - If [Recent Context] contains a complete status block AND [New Speech] has a truncated or absent status block → restore it.
    - Template: use the MOST RECENT complete status block from [Recent Context].
    - Update only values that [New Speech] content logically changes (e.g., HP after damage). Keep all other values unchanged.
