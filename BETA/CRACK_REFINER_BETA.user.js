@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name        AI 응답 교정기
 // @namespace   로어-교정기
-// @version     1.0.0
+// @version     1.0.1
 // @description 로어·메모리 기반 AI 응답 자동 교정
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
+// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA.user.js
+// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-toastify-injection@v1.0.0/crack/libraries/toastify-injection.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
