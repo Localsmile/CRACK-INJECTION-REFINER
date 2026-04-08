@@ -2,7 +2,7 @@
 // @name        로어 인젝터
 // @namespace   로어-인젝터
 // @version     1.0.0
-// @description RP 로어 자동 주입 및 추출 (Ignitor 연동 스크립트)
+// @description RP 로어 자동 주입 및 추출
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
