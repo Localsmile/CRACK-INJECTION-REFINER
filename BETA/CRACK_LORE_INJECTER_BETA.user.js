@@ -383,6 +383,43 @@ Conversation Log:
     settings.load();
   });
 
+  // UI 상태 배지
+  let _statusBadge = null;
+
+  function showStatusBadge(text) {
+    if (!_statusBadge) {
+      _statusBadge = document.createElement('div');
+      _statusBadge.id = 'lore-status-badge';
+      _statusBadge.style.cssText = [
+        'position:fixed', 'bottom:70px', 'right:20px', 'z-index:999998',
+        'background:#1a1a1a', 'border:1px solid #333', 'border-radius:20px',
+        'padding:8px 16px', 'font-size:12px', 'color:#ccc',
+        'box-shadow:0 4px 12px rgba(0,0,0,0.4)', 'display:flex',
+        'align-items:center', 'gap:8px', 'font-family:inherit',
+        'transition:opacity .3s', 'opacity:0', 'pointer-events:none'
+      ].join(';');
+      document.body.appendChild(_statusBadge);
+    }
+    _statusBadge.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite"></span> ${text}`;
+    _statusBadge.style.opacity = '1';
+    _statusBadge.style.pointerEvents = 'auto';
+  }
+
+  function hideStatusBadge() {
+    if (_statusBadge) {
+      _statusBadge.style.opacity = '0';
+      _statusBadge.style.pointerEvents = 'none';
+    }
+  }
+
+  // 펄스 애니메이션
+  GM_addStyle(`
+    @keyframes lore-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  `);
+
   // 유틸리티
   function getCurUrl(){return window.location.pathname;}
 
@@ -1084,93 +1121,105 @@ Conversation Log:
   }
 
   // 자동 추출
+  let _isExtracting = false;
   async function runAutoExtract(isManual=false){
-    const _url = getCurUrl();
-    const apiType = settings.config.autoExtApiType || settings.config.geminiApiType || 'key';
-    const isVertex = apiType === 'vertex';
-    const hasKey = settings.config.autoExtKey || settings.config.geminiKey;
-    const hasJson = settings.config.autoExtVertexJson || settings.config.geminiVertexJson;
-
-    if(isVertex ? !hasJson : !hasKey){
-      if(isManual)alert('API 설정이 완료되지 않음 (Key 또는 Vertex JSON 누락).');
+    if (!isManual && _isExtracting) {
+      console.log('[Lore] 추출 이미 진행 중, 스킵');
       return;
     }
+    _isExtracting = true;
+    showStatusBadge('대화 분석 중...');
+    try {
+      const _url = getCurUrl();
+      const apiType = settings.config.autoExtApiType || settings.config.geminiApiType || 'key';
+      const isVertex = apiType === 'vertex';
+      const hasKey = settings.config.autoExtKey || settings.config.geminiKey;
+      const hasJson = settings.config.autoExtVertexJson || settings.config.geminiVertexJson;
 
-    const scanR=settings.config.autoExtScanRange||6;
-    const fetchCount=(scanR+settings.config.autoExtOffset)*2;
-    let recentMsgs=await fetchLogsFallback(fetchCount>0?fetchCount:20);
-    console.log(`[Lore] 자동 추출 시도: 획득한 메시지 ${recentMsgs.length}개`);
-    if(!recentMsgs.length){
-      if(isManual)alert('분석할 대화 기록이 없음 (또는 채팅방 인식 실패).');
-      return;
-    }
-    const offsetCount=settings.config.autoExtOffset*2;
-    if(offsetCount>0){
-      if(recentMsgs.length>offsetCount){
-        recentMsgs=recentMsgs.slice(0,recentMsgs.length-offsetCount);
-        console.log(`[Lore] 오프셋 적용 후 남은 메시지: ${recentMsgs.length}개`);
-      }else{
-        console.log(`[Lore] 메시지 부족(${recentMsgs.length} <= ${offsetCount})으로 오프셋을 최소화합니다.`);
-        // 오프셋을 적용하지 않고 최소한의 스캔 범위를 확보함 (혹은 무시)
+      if(isVertex ? !hasJson : !hasKey){
+        if(isManual)alert('API 설정이 완료되지 않음 (Key 또는 Vertex JSON 누락).');
+        return;
       }
-    }
-    const context=recentMsgs.map(m=>m.role+': '+m.message).join('\n');
-    let entriesText = '[]';
 
-    const isInclude = settings.config.autoExtIncludeDb;
-    if(isInclude){
-      const packName=await getAutoExtPackForUrl(_url);
-      const existingEntries=await db.entries.where('packName').equals(packName).toArray();
-      if(existingEntries&&existingEntries.length>0){
-        const clean=existingEntries.map(({id,packName,project,enabled,...rest})=>rest);
-        entriesText=JSON.stringify(clean,null,2);
+      const scanR=settings.config.autoExtScanRange||6;
+      const fetchCount=(scanR+settings.config.autoExtOffset)*2;
+      let recentMsgs=await fetchLogsFallback(fetchCount>0?fetchCount:20);
+      console.log(`[Lore] 자동 추출 시도: 획득한 메시지 ${recentMsgs.length}개`);
+      if(!recentMsgs.length){
+        if(isManual)alert('분석할 대화 기록이 없음 (또는 채팅방 인식 실패).');
+        return;
       }
-    }
-
-    // 유저 페르소나 정보 추가
-    let personaPrefix='';
-    if(settings.config.autoExtIncludePersona){
-      try{
-        let _chatId=null;
-        try{_chatId=CrackUtil.path().chatRoom();}catch(e){}
-        if(!_chatId){
-          const match=window.location.pathname.match(/\/episodes\/([a-f0-9]+)/);
-          if(match)_chatId=match[1];
+      const offsetCount=settings.config.autoExtOffset*2;
+      if(offsetCount>0){
+        if(recentMsgs.length>offsetCount){
+          recentMsgs=recentMsgs.slice(0,recentMsgs.length-offsetCount);
+          console.log(`[Lore] 오프셋 적용 후 남은 메시지: ${recentMsgs.length}개`);
+        }else{
+          console.log(`[Lore] 메시지 부족(${recentMsgs.length} <= ${offsetCount})으로 오프셋을 최소화합니다.`);
+          // 오프셋을 적용하지 않고 최소한의 스캔 범위를 확보함 (혹은 무시)
         }
-        if(_chatId){
-          const persona=await CrackUtil.chatRoom().currentPersona(_chatId);
-          if(persona&&!(persona instanceof Error)&&persona.name){
-            personaPrefix='[User Persona: "'+persona.name+'"] All "user" role messages in this conversation are from this character. Use "'+persona.name+'" as the character name in extractions, NOT "user" or "유저".\n\n';
+      }
+      const context=recentMsgs.map(m=>m.role+': '+m.message).join('\n');
+      let entriesText = '[]';
+
+      const isInclude = settings.config.autoExtIncludeDb;
+      if(isInclude){
+        const packName=await getAutoExtPackForUrl(_url);
+        const existingEntries=await db.entries.where('packName').equals(packName).toArray();
+        if(existingEntries&&existingEntries.length>0){
+          const clean=existingEntries.map(({id,packName,project,enabled,...rest})=>rest);
+          entriesText=JSON.stringify(clean,null,2);
+        }
+      }
+
+      // 유저 페르소나 정보 추가
+      let personaPrefix='';
+      if(settings.config.autoExtIncludePersona){
+        try{
+          let _chatId=null;
+          try{_chatId=CrackUtil.path().chatRoom();}catch(e){}
+          if(!_chatId){
+            const match=window.location.pathname.match(/\/episodes\/([a-f0-9]+)/);
+            if(match)_chatId=match[1];
           }
-        }
-      }catch(e){console.warn('[Lore] 페르소나 조회 실패:',e);}
-    }
-    const promptTpl = isInclude ? (settings.config.autoExtPromptWithDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB) : (settings.config.autoExtPromptWithoutDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
-    const prompt=personaPrefix+promptTpl.replace('{context}',context).replace('{entries}',entriesText);
-
-    let apiLog = null;
-    try{
-      const res=await autoExtGemini(prompt, settings.config.autoExtMaxRetries || 1);
-      apiLog = { status: res.status, error: res.error, retries: res.retries };
-
-      if(!res.text) throw new Error(`AI 응답없음 (상태코드: ${res.status}, 오류: ${res.error || '알 수 없음'})`);
-
-      let raw=res.text.replace(/^```json\s*/i,'').replace(/\s*```$/i,'').trim();
-      const s=raw.indexOf('['),e=raw.lastIndexOf(']');
-      if(s===-1||e===-1)throw new Error('유효한 JSON 형태가 아님');
-      const parsed=JSON.parse(raw.slice(s,e+1));
-
-      if(Array.isArray(parsed)&&parsed.length>0){
-        const cnt=await mergeExtractedData(parsed, _url);
-        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:cnt,msgs:recentMsgs.length,isManual:isManual,status:'성공', api:apiLog});
-        if(isManual)alert(`${cnt}개 로어 추출 및 병합됨.`);
-      }else{
-        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,msgs:recentMsgs.length,isManual:isManual,status:'추출 내용 없음', api:apiLog});
-        if(isManual)alert('새로운 설정 정보 발견되지 않음.');
+          if(_chatId){
+            const persona=await CrackUtil.chatRoom().currentPersona(_chatId);
+            if(persona&&!(persona instanceof Error)&&persona.name){
+              personaPrefix='[User Persona: "'+persona.name+'"] All "user" role messages in this conversation are from this character. Use "'+persona.name+'" as the character name in extractions, NOT "user" or "유저".\n\n';
+            }
+          }
+        }catch(e){console.warn('[Lore] 페르소나 조회 실패:',e);}
       }
-    }catch(err){
-      addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,msgs:recentMsgs.length,isManual:isManual,status:'실패',error:err.message, api:apiLog});
-      if(isManual)alert(`추출 실패: ${err.message}`);
+      const promptTpl = isInclude ? (settings.config.autoExtPromptWithDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB) : (settings.config.autoExtPromptWithoutDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
+      const prompt=personaPrefix+promptTpl.replace('{context}',context).replace('{entries}',entriesText);
+
+      let apiLog = null;
+      try{
+        const res=await autoExtGemini(prompt, settings.config.autoExtMaxRetries || 1);
+        apiLog = { status: res.status, error: res.error, retries: res.retries };
+
+        if(!res.text) throw new Error(`AI 응답없음 (상태코드: ${res.status}, 오류: ${res.error || '알 수 없음'})`);
+
+        let raw=res.text.replace(/^```json\s*/i,'').replace(/\s*```$/i,'').trim();
+        const s=raw.indexOf('['),e=raw.lastIndexOf(']');
+        if(s===-1||e===-1)throw new Error('유효한 JSON 형태가 아님');
+        const parsed=JSON.parse(raw.slice(s,e+1));
+
+        if(Array.isArray(parsed)&&parsed.length>0){
+          const cnt=await mergeExtractedData(parsed, _url);
+          addExtLog(_url, {time:new Date().toLocaleTimeString(),count:cnt,msgs:recentMsgs.length,isManual:isManual,status:'성공', api:apiLog});
+          if(isManual)alert(`${cnt}개 로어 추출 및 병합됨.`);
+        }else{
+          addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,msgs:recentMsgs.length,isManual:isManual,status:'추출 내용 없음', api:apiLog});
+          if(isManual)alert('새로운 설정 정보 발견되지 않음.');
+        }
+      }catch(err){
+        addExtLog(_url, {time:new Date().toLocaleTimeString(),count:0,msgs:recentMsgs.length,isManual:isManual,status:'실패',error:err.message, api:apiLog});
+        if(isManual)alert(`추출 실패: ${err.message}`);
+      }
+    } finally {
+      _isExtracting = false;
+      hideStatusBadge();
     }
   }
 
