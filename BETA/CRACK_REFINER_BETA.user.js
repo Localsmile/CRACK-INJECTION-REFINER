@@ -2,7 +2,7 @@
 // @name        AI 응답 교정기
 // @namespace   로어-교정기
 // @version     1.0.0
-// @description 로어·메모리 기반 AI 응답 자동 교정 (Ignitor 연동 스크립트)
+// @description 로어·메모리 기반 AI 응답 자동 교정
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
@@ -80,7 +80,6 @@ NEVER ALTER:
 - Markdown formatting, line breaks, structural elements (except to repair truncation)
 - Content not directly related to the factual error or truncation
 - Tone, mood, or emotional register
-- Adding arbitrary metatext that undermines RP immersion
 
 PRINCIPLE: Make the MINIMUM surgical fix. Preserve everything else byte-for-byte.
 
@@ -122,11 +121,13 @@ IMPORTANT for replacements:
     geminiVertexJson: '',
     geminiVertexLocation: 'global',
     geminiVertexProjectId: '',
-    geminiModel: 'gemini-3-flash-preview',
+    geminiModel: 'gemini-3.1-flash-lite-preview',
     geminiCustomModel: '',
     geminiReasoning: 'medium',
     geminiBudget: 2048,
     customPrompt: DEFAULT_PROMPT,
+    refinerLoreMode: 'matchedOnly',
+    refinerMatchTurns: 5,
     urlRefinerLogs: {}
   };
 
@@ -221,72 +222,34 @@ IMPORTANT for replacements:
 
   // 플러그인 연동
 
-  function getIgnitorProvider() {
-    try {
-      if (typeof GenericUtil !== 'undefined' && GenericUtil.refine) {
-        return GenericUtil.refine(document).__$igntPlatformProvider || null;
-      }
-    } catch (e) {
-      console.warn('[교정기] GenericUtil 접근 실패:', e);
-    }
-    return null;
-  }
-
   function getCurrentChatId() {
-    let id = null;
-    const provider = getIgnitorProvider();
-    if (provider) {
-      try { id = provider.getCurrentId(); } catch (e) {}
+    try {
+      return CrackUtil.path().chatRoom() || null;
+    } catch (e) {
+      console.warn('[교정기] getCurrentChatId 실패:', e);
+      return null;
     }
-    if (!id) {
-      try { id = typeof CrackUtil !== 'undefined' ? CrackUtil.path().chatRoom() : null; } catch (e) {}
-    }
-    if (!id) {
-      const match = window.location.pathname.match(/\/episodes\/([a-f0-9]+)/);
-      if (match) id = match[1];
-    }
-    return id || null;
   }
 
   async function fetchLogsFallback(fetchCount) {
-    let recentMsgs = [];
     const chatId = getCurrentChatId();
-    if (chatId) {
-      try {
-        const items = await CrackUtil.chatRoom().extractLogs(chatId, { maxCount: fetchCount });
-        if (!(items instanceof Error) && Array.isArray(items)) {
-          recentMsgs = items.map(m => ({
-            id: m.content ? m.content.slice(0, 30) : '',
-            role: m.role,
-            userName: m.userName || '',
-            message: m.content
-          }));
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    if (recentMsgs.length === 0) {
-      const provider = getIgnitorProvider();
-      if (provider) {
-        try {
-          const fetcher = provider.getFetcher();
-          if (fetcher && fetcher.isValid()) {
-            const msgs = await fetcher.fetch(fetchCount);
-            if (!(msgs instanceof Error)) {
-              recentMsgs = msgs.map(m => ({
-                id: m.message ? m.message.slice(0, 30) : '',
-                role: m.role,
-                userName: m.userName || '',
-                message: m.message
-              }));
-            }
-          }
-        } catch (e) {
-          console.warn('[교정기] fetchLogsFallback 예외:', e);
-        }
+    if (!chatId) return [];
+    try {
+      const msgs = await CrackUtil.chatRoom().extractLogs(chatId, { maxCount: fetchCount });
+      if (msgs instanceof Error) {
+        console.warn('[교정기] 메시지 fetch 에러:', msgs.message);
+        return [];
       }
+      return msgs.map(m => ({
+        id: m.id || (m.content ? m.content.slice(0, 40) : ''),
+        role: m.role,
+        userName: m.role || '',
+        message: m.content
+      }));
+    } catch (e) {
+      console.warn('[교정기] fetchLogsFallback 예외:', e);
+      return [];
     }
-    return recentMsgs;
   }
 
   // 데이터 수집
@@ -303,6 +266,55 @@ IMPORTANT for replacements:
       }
     } catch (e) { /* noop */ }
     return [];
+  }
+
+  // 인젝터 자동추출 팩 목록 조회
+  function getInjectorAutoPacks() {
+    try {
+      const raw = _ls.getItem('lore-injector-v5');
+      if (raw) {
+        const p = JSON.parse(raw);
+        const ap = [...(p.autoPacks || [])];
+        const urlPack = p.urlAutoExtPacks?.[getCurUrl()];
+        if (urlPack && !ap.includes(urlPack)) ap.push(urlPack);
+        return ap;
+      }
+    } catch (e) { /* noop */ }
+    return ['자동추출'];
+  }
+
+  // 경량 트리거 매칭 (교정기용)
+  function matchEntriesByTrigger(entries, recentMsgs, text) {
+    const pool = [text.toLowerCase(), ...recentMsgs.map(m => (m.message || '').toLowerCase())].join(' ');
+    return entries.filter(e => {
+      if (!e.triggers || !e.triggers.length) return false;
+      for (const t of e.triggers) {
+        if (!t || t.length < 2) continue;
+        if (t.split('&&').map(p => p.trim().toLowerCase()).every(p => pool.includes(p))) return true;
+      }
+      return false;
+    });
+  }
+
+  // 범용 로어 렌더러 (교정기용)
+  function renderLoreForRefiner(entries) {
+    const L = {personality:'성격',attributes:'특성',abilities:'능력',current_state:'현재',last_interaction:'최근',current_status:'현재 상태',nicknames:'호칭',relations:'관계',background_or_history:'배경',maker:'약속자',target:'대상',condition:'발동 조건',status:'상태',resolution:'결과',parties:'관계자',ingredients:'재료',steps:'순서',tips:'참고',rules:'규칙',effects:'효과'};
+    return entries.map(e => {
+      const d = e.detail || {};
+      let line = '[' + (e.type||'entity') + '] ' + e.name + ': ' + (e.summary||'');
+      for (const [k, v] of Object.entries(d)) {
+        if (v == null || v === '') continue;
+        const lb = L[k] || k;
+        if (Array.isArray(v)) {
+          if (!v.length) continue;
+          line += ' | ' + lb + ': ' + (typeof v[0]==='object' ? v.map(x=>Object.values(x).filter(Boolean).join(' / ')).join(' → ') : v.join(', '));
+        } else if (typeof v === 'object') {
+          const f = Object.entries(v).map(([a,b])=>a+': '+b).join(', ');
+          if (f) line += ' | ' + lb + ': ' + f;
+        } else line += ' | ' + lb + ': ' + String(v);
+      }
+      return line;
+    }).join('\n');
   }
 
   async function fetchAllMemories(chatRoomId) {
@@ -487,7 +499,7 @@ IMPORTANT for replacements:
     box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:8px;width:100%;max-width:400px;padding:20px;box-shadow:0 10px 25px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:12px;';
 
     const title = document.createElement('div');
-    title.textContent = 'AI 응답 교정 제안';
+    title.textContent = '✏️ AI 응답 교정 제안';
     title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;margin-bottom:4px;';
 
     const reasonTitle = document.createElement('div');
@@ -769,8 +781,8 @@ IMPORTANT for replacements:
     }
     const url = getCurUrl();
 
-    // 상태 블록 복구 제거하고 프롬프트화
-    if (false) { 
+    // (status block repair removed — handled by prompt)
+    if (false) { // status block repair disabled — handled by AI prompt
       try {
         const repaired = null;
         if (repaired && repaired !== assistantText) {
@@ -802,7 +814,17 @@ IMPORTANT for replacements:
         const entries = await db.entries.toArray();
         const activeEntries = entries.filter(e => activePacks.includes(e.packName));
         if (activeEntries.length > 0) {
-          loreText = activeEntries.map(e => {
+          // 트리거 매칭 기반 선별
+          const _tMsgs = await fetchLogsFallback(Math.max(4, (settings.config.refinerMatchTurns || 5) * 2));
+          const _aP = getInjectorAutoPacks();
+          const _fE = activeEntries.filter(x => !_aP.includes(x.packName));
+          const _aE = activeEntries.filter(x => _aP.includes(x.packName));
+          const _mF = matchEntriesByTrigger(_fE, _tMsgs, assistantText);
+          const _mA = matchEntriesByTrigger(_aE, _tMsgs, assistantText);
+          const _lE = settings.config.refinerLoreMode === 'matchedOnly' ? [..._mF, ..._mA] : [..._mF, ..._aE];
+          if (_lE.length > 0) { loreText = renderLoreForRefiner(_lE); }
+          else { loreText = '(키워드 매칭된 로어 없음 — 오타/끊김 검수만 수행)'; }
+          if(false) loreText = activeEntries.map(e => {
             const d = e.detail || {};
             let line = `[${e.type||'entity'}] ${e.name}: ${e.summary || ''}`;
             if(e.type==='relationship'){
@@ -909,12 +931,7 @@ IMPORTANT for replacements:
 
         const applyRefinement = async (newText) => {
           try {
-            const _cid = getCurrentChatId();
-            if (!_cid) {
-              console.warn('[교정기] 교정 적용 실패: 채팅방 ID를 찾을 수 없음');
-              if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show('서버 수정 실패: 채팅방 인식 불가', { duration: 3000, background: '#a55' });
-              return;
-            }
+            const _cid = CrackUtil.path().chatRoom();
             const lastBot = await CrackUtil.chatRoom().findLastBotMessage(_cid);
             if (lastBot && !(lastBot instanceof Error)) {
               // GM_xmlhttpRequest 경유로 CORS 우회
@@ -925,13 +942,14 @@ IMPORTANT for replacements:
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: newText })
               });
-              // DOM 직접 수정 제거 — popstate로 React 리렌더링에 위임
-              // 재교정 방지: 수정된 텍스트의 fingerprint 등록
-              const newFp = newText.slice(0, 40);
+
+              // 재교정 방지: 수정된 텍스트의 ID(혹은 fingerprint) 등록
+              const newFp = lastBot.id || newText.slice(0, 40);
               processedFingerprints.add(newFp);
               saveProcessedFingerprints();
               lastAssistantMsgId = newFp;
               lastMsgLength = newText.length;
+
               if (editResult.ok) {
                 console.log('[교정기] 메시지 서버 수정 완료');
                 // DOM 즉시 갱신 (마크다운 렌더링 유지)
@@ -941,7 +959,7 @@ IMPORTANT for replacements:
                 }
                 if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show(`교정 반영 완료 — ${parsed.reason}`, { duration: 4000, background: '#285' });
               } else {
-                console.warn('[교정기] 메시지 수정 API 실패:', editResult instanceof Error ? editResult.message : editResult);
+                console.warn('[교정기] 메시지 수정 API 실패:', editResult.status);
                 if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show('서버 수정 실패.', { duration: 3000, background: '#a55' });
               }
             } else {
@@ -991,8 +1009,8 @@ IMPORTANT for replacements:
   let workerStartTime = 0;
   const WORKER_TIMEOUT = 90000; // 90초 타임아웃
 
-  function enqueueRefine(text) {
-    const fingerprint = text.slice(0, 40);
+  function enqueueRefine(text, msgId) {
+    const fingerprint = msgId || text.slice(0, 40);
     // 이미 처리된 메시지면 스킵 (새로고침 후에도 유지)
     if (processedFingerprints.has(fingerprint)) {
       hideStatusBadge();
@@ -1009,7 +1027,7 @@ IMPORTANT for replacements:
 
   async function processQueue() {
     if (refineQueue.length === 0) return;
-    // workerBusy 타임아웃 방어: 90초 이상 멈추면 강제 해제
+    // workerBusy 타임아웃 방어: 90초 이상 멏힘면 강제 해제
     if (workerBusy) {
       if (Date.now() - workerStartTime > WORKER_TIMEOUT) {
         console.warn('[교정기] workerBusy 타임아웃 — 강제 해제');
@@ -1026,9 +1044,13 @@ IMPORTANT for replacements:
     console.log(`[교정기] 큐 처리 시작 (남은 큐: ${refineQueue.length})`);
 
     try {
-      await refineMessage(item.text);
+      // 60초 타임아웃 래핑 — hang 방지
+      await Promise.race([
+        refineMessage(item.text),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('refineMessage 60초 타임아웃')), 60000))
+      ]);
     } catch (e) {
-      console.error('[교정기] 큐 처리 에러:', e);
+      console.error('[교정기] 큐 처리 에러:', e.message || e);
       hideStatusBadge();
     }
 
@@ -1037,6 +1059,7 @@ IMPORTANT for replacements:
     saveProcessedFingerprints();
 
     workerBusy = false;
+    console.log('[교정기] 큐 처리 완료, workerBusy 해제');
 
     // 다음 아이템이 있으면 바로 처리
     if (refineQueue.length > 0) {
@@ -1045,26 +1068,20 @@ IMPORTANT for replacements:
     }
   }
 
-  // 상태 감지
+  // 상태 감지 (MutationObserver 기반)
 
   let lastAssistantMsgId = null;
   let lastMsgLength = 0;
   let idleCount = 0;
-  let _pollLogOnce = true;
   let _needsWarmup = true; // OFF→ON 전환 시 기존 메시지 무시용
   let _lastKnownUrl = getCurUrl(); // 채팅방 URL 변경 감지용
 
-  setInterval(async () => {
-    if (!settings.config.enabled) {
-      if (_pollLogOnce) {
-        console.log(`[교정기] 폴링 대기 (enabled: ${settings.config.enabled})`);
-        _pollLogOnce = false;
-      }
-      return;
-    }
-    _pollLogOnce = true;
+  let _chatObserver = null;
+  let _pollingInterval = null;
 
-    // URL 변경 감지 → 자동 warmup 재설정
+  async function checkLatestMessage() {
+    if (!settings.config.enabled) return;
+
     const currentUrl = getCurUrl();
     if (currentUrl !== _lastKnownUrl) {
       console.log('[교정기] 채팅방 변경 감지 → warmup 재설정');
@@ -1075,65 +1092,88 @@ IMPORTANT for replacements:
       _needsWarmup = true;
     }
 
-    const provider = getIgnitorProvider();
-    if (!provider) return;
-
-    let fetcher;
-    try { fetcher = provider.getFetcher(); } catch (e) { return; }
-    if (!fetcher || !fetcher.isValid()) return;
+    const chatId = getCurrentChatId();
+    if (!chatId) return;
 
     try {
-      const msgs = await fetchLogsFallback(5);
-      if (!msgs || msgs.length === 0) return;
+      const lastLog = await CrackUtil.chatRoom().findLastMessageId(chatId, "assistant");
+      if (!lastLog || lastLog instanceof Error) return;
 
-      const lastMsg = msgs[msgs.length - 1];
-      const isAssistant = lastMsg && (
-        lastMsg.role === 'assistant' || lastMsg.role === 'model' || lastMsg.role === 'bot'
-      );
-      if (!isAssistant) return;
+      const msgId = lastLog.id || (lastLog.content ? lastLog.content.slice(0, 40) : '');
+      const contentLen = lastLog.content ? lastLog.content.length : 0;
 
-      const msgId = lastMsg.message ? lastMsg.message.slice(0, 40) : '';
-
-      // Warmup: 현재 메시지를 "이미 본 것"으로 등록하고 실제 처리는 안 함
-      // (OFF→ON 전환 시 또는 채팅방 변경 시 자동 트리거)
       if (_needsWarmup) {
         console.log('[교정기] Warmup: 기존 메시지 스냅샷, 새 응답부터 감지 시작');
         lastAssistantMsgId = msgId;
-        lastMsgLength = lastMsg.message.length;
+        lastMsgLength = contentLen;
         idleCount = 0;
         _needsWarmup = false;
-        // fingerprint는 등록하지 않음 — warmup은 상태 스냅샷만 하고, 실제 dedup은 enqueueRefine에서
         return;
       }
 
       if (msgId !== lastAssistantMsgId) {
-        console.log(`[교정기] 새 AI 응답 감지 (길이: ${lastMsg.message.length})`);
+        console.log(`[교정기] 새 AI 응답 감지 (길이: ${contentLen})`);
         showStatusBadge('AI 응답 수신 대기...');
         lastAssistantMsgId = msgId;
-        lastMsgLength = lastMsg.message.length;
+        lastMsgLength = contentLen;
         idleCount = 0;
       } else {
-        if (lastMsg.message.length === lastMsgLength && lastMsgLength > 0) {
+        if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
-          // 약 2초간 길이 변화 없으면 스트리밍 완료로 간주
+          // 약 2초간(관찰 2회) 길이 변화 없으면 스트리밍 완료로 간주
           if (idleCount === 2) {
             console.log('[교정기] 스트리밍 완료 감지 → 큐에 추가');
-            enqueueRefine(lastMsg.message);
-            // idleCount를 리셋하지 않음 — 3, 4, 5...로 계속 올라가지만
-            // === 2 체크는 다시 매치 안 됨. 새 메시지가 오면 0으로 초기화됨.
+            enqueueRefine(lastLog.content, msgId);
           }
         } else {
-          lastMsgLength = lastMsg.message.length;
+          lastMsgLength = contentLen;
           idleCount = 0;
         }
       }
     } catch (e) {
       console.warn('[교정기] 감지 로직 에러:', e);
     }
+  }
 
-    // 큐에 아이템이 남아있으면 주기적으로 처리 시도 (workerBusy 타임아웃 체크 포함)
-    if (refineQueue.length > 0) processQueue();
-  }, 1000);
+  // 백업용 큐 처리 인터벌 (workerBusy 방어)
+  setInterval(() => {
+    if (workerBusy && Date.now() - workerStartTime > WORKER_TIMEOUT) {
+      console.warn('[교정기] 폴링 — workerBusy 타임아웃 강제 해제');
+      workerBusy = false;
+      hideStatusBadge();
+    }
+    if (refineQueue.length > 0 && !workerBusy) processQueue();
+  }, 2000);
+
+  function setupMutationObserver() {
+    if (_chatObserver) _chatObserver.disconnect();
+    if (_pollingInterval) clearInterval(_pollingInterval);
+
+    // 1. MutationObserver로 DOM 변화 감지 (텍스트 길이 변화 등)
+    _chatObserver = new MutationObserver((mutations) => {
+      if (!settings.config.enabled) return;
+      // DOM 변화가 있을 때만 메시지 체크를 위한 디바운싱 타이머 리셋
+      if (window._refinerDebounceTimer) clearTimeout(window._refinerDebounceTimer);
+      window._refinerDebounceTimer = setTimeout(() => {
+        checkLatestMessage();
+      }, 800); // 변화가 멈춘 후 0.8초 뒤 체크
+    });
+
+    _chatObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+    // 2. DOM 변화가 없더라도 가끔씩 체크 (백업) - 기존 1초에서 3초로 늘려 네트워크 부하 최소화
+    _pollingInterval = setInterval(() => {
+      if (settings.config.enabled) checkLatestMessage();
+    }, 3000);
+
+    console.log('[교정기] DOM 옵저버 기반 감지 시스템 시작됨.');
+  }
+
+  setupMutationObserver();
 
   // 로그
 
@@ -1371,6 +1411,28 @@ IMPORTANT for replacements:
             inp.onchange = () => { let v = parseInt(inp.value); if (isNaN(v)) v = 1; settings.config.contextTurns = v; settings.save(); };
             right.appendChild(inp); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
 
+            nd.appendChild(createToggleRow(
+              '로어 필터링: 키워드가 매칭된 로어만 전송',
+              'ON: 지정된 턴에서 활성화된 로어 중 키워드 매칭된 것만 전송. OFF: 고정DB는 매칭만, 자동추출DB는 전부.',
+              settings.config.refinerLoreMode === 'matchedOnly',
+              (val) => { settings.config.refinerLoreMode = val ? 'matchedOnly' : 'hybrid'; settings.save(); }
+            ));
+
+            const mtwrap = document.createElement('div');
+            mtwrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
+            const mtleft = document.createElement('div');
+            mtleft.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+            const mtt = document.createElement('div'); mtt.textContent = '키워드 검색 대화 턴 수';
+            mtt.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
+            const mtd = document.createElement('div'); mtd.textContent = '최근 N개 대화에서 키워드 일치 여부 확인. (필터링 ON: 전체 적용 / OFF: 고정DB에만 적용)';
+            mtd.style.cssText = 'font-size:11px;color:#888;line-height:1.4;word-break:keep-all;';
+            mtleft.appendChild(mtt); mtleft.appendChild(mtd);
+            const mtright = document.createElement('div'); mtright.style.cssText = 'display:flex;align-items:center;';
+            const mtinp = document.createElement('input'); mtinp.type = 'number';
+            mtinp.value = settings.config.refinerMatchTurns || 5; mtinp.min = 0; mtinp.max = 30;
+            mtinp.style.cssText = 'width:60px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;text-align:center;box-sizing:border-box;';
+            mtinp.onchange = () => { let v = parseInt(mtinp.value); if (isNaN(v)) v = 5; settings.config.refinerMatchTurns = v; settings.save(); };
+            mtright.appendChild(mtinp); mtwrap.appendChild(mtleft); mtwrap.appendChild(mtright); nd.appendChild(mtwrap);
 
           }
         });
@@ -1554,15 +1616,132 @@ IMPORTANT for replacements:
     try {
       setupUI();
       console.log(`[교정기] UI 준비 완료 (${VER})`);
-      const provider = getIgnitorProvider();
-      if (provider) {
-        console.log('[교정기] ✅ 이그나이터 연결됨');
-      } else {
-        console.warn('[교정기] ⚠️ Ignitor 미감지. 로드 시 자동 연결됨.');
-      }
     } catch (e) {
       console.error('[교정기] UI 에러:', e);
     }
   }, 500);
+
+  // 모달 메뉴 및 버튼 주입 로직 (ignitor 독립성 확보)
+  function __updateModalMenu() {
+    const modal = document.getElementById("web-modal");
+    if (modal && !document.getElementById("chasm-decentral-menu")) {
+      const itemFound = modal.getElementsByTagName("a");
+      for (let item of itemFound) {
+        if (item.getAttribute("href") === "/setting") {
+          const clonedElement = item.cloneNode(true);
+          clonedElement.id = "chasm-decentral-menu";
+          const textElement = clonedElement.getElementsByTagName("span")[0];
+          if(textElement) textElement.innerText = "결정화 캐즘";
+          clonedElement.setAttribute("href", "javascript: void(0)");
+          clonedElement.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+          };
+          item.parentElement?.append(clonedElement);
+          break;
+        }
+      }
+    } else if (!document.getElementById("chasm-decentral-menu") && !window.matchMedia("(min-width: 768px)").matches) {
+      const selected = document.getElementsByTagName("a");
+      for (const element of selected) {
+        if (element.getAttribute("href") === "/my-page") {
+          const clonedElement = element.cloneNode(true);
+          clonedElement.id = "chasm-decentral-menu";
+          const textElement = clonedElement.getElementsByTagName("span")[0];
+          if(textElement) textElement.innerText = "결정화 캐즘";
+          clonedElement.setAttribute("href", "javascript: void(0)");
+          clonedElement.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+          };
+          element.parentElement?.append(clonedElement);
+        }
+      }
+    }
+  }
+
+  async function injectBannerButton() {
+    const selected = document.getElementsByClassName("burner-button");
+    if (selected && selected.length > 0) return;
+    try {
+      const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+      const topPanel = document.getElementsByClassName(isStory ? "css-1c5w7et" : "css-l8r172");
+      if (topPanel && topPanel.length > 0) {
+        const topContainer = topPanel[0].childNodes[topPanel.length - 1]?.getElementsByTagName("div");
+        if (!topContainer || topContainer.length <= 0) return;
+        const topList = topContainer[0].children[0].children;
+        const top = topList[topList.length - 1];
+        if(!top) return;
+        const buttonCloned = document.createElement("button");
+        buttonCloned.innerHTML = "<p></p>";
+        buttonCloned.style.cssText = "margin-right: 10px";
+        buttonCloned.className = "burner-button";
+        const textNode = buttonCloned.getElementsByTagName("p");
+        top.insertBefore(buttonCloned, top.childNodes[0]);
+        textNode[0].innerText = "🔥  Chasm Tools";
+        buttonCloned.removeAttribute("onClick");
+        buttonCloned.addEventListener("click", () => {
+          ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+        });
+      }
+    } catch(e){}
+  }
+
+  async function injectInputbutton() {
+    const selected = document.getElementsByClassName("burner-input-button");
+    if (selected && selected.length > 0) return;
+    try {
+      const top = document.querySelector('textarea[placeholder="메시지 보내기"]')?.nextElementSibling;
+      if (top) {
+        const expectedTop = top.children[0]?.children[0];
+        if(!expectedTop || !expectedTop.childNodes[0]) return;
+        const buttonCloned = expectedTop.childNodes[0].cloneNode(true);
+        buttonCloned.className = "burner-input-button " + buttonCloned.className;
+        buttonCloned.innerHTML = '<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>fire_fill</title> <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="System" transform="translate(-480.000000, -48.000000)" fill-rule="nonzero"> <g id="fire_fill" transform="translate(480.000000, 48.000000)"> <path d="M24,0 L24,24 L0,24 L0,0 L24,0 Z M12.5934901,23.257841 L12.5819402,23.2595131 L12.5108777,23.2950439 L12.4918791,23.2987469 L12.4918791,23.2987469 L12.4767152,23.2950439 L12.4056548,23.2595131 C12.3958229,23.2563662 12.3870493,23.2590235 12.3821421,23.2649074 L12.3780323,23.275831 L12.360941,23.7031097 L12.3658947,23.7234994 L12.3769048,23.7357139 L12.4804777,23.8096931 L12.4953491,23.8136134 L12.4953491,23.8136134 L12.5071152,23.8096931 L12.6106902,23.7357139 L12.6232938,23.7196733 L12.6232938,23.7196733 L12.6266527,23.7031097 L12.609561,23.275831 C12.6075724,23.2657013 12.6010112,23.2592993 12.5934901,23.257841 L12.5934901,23.257841 Z M12.8583906,23.1452862 L12.8445485,23.1473072 L12.6598443,23.2396597 L12.6498822,23.2499052 L12.6498822,23.2499052 L12.6471943,23.2611114 L12.6650943,23.6906389 L12.6699349,23.7034178 L12.6699349,23.7034178 L12.678386,23.7104931 L12.8793402,23.8032389 C12.8914285,23.8068999 12.9022333,23.8029875 12.9078286,23.7952264 L12.9118235,23.7811639 L12.8776777,23.1665331 C12.8752882,23.1545897 12.8674102,23.1470016 12.8583906,23.1452862 L12.8583906,23.1452862 Z M12.1430473,23.1473072 C12.1332178,23.1423925 12.1221763,23.1452606 12.1156365,23.1525954 L12.1099173,23.1665331 L12.0757714,23.7811639 C12.0751323,23.7926639 12.0828099,23.8018602 12.0926481,23.8045676 L12.108256,23.8032389 L12.3092106,23.7104931 L12.3186497,23.7024347 L12.3186497,23.7024347 L12.3225043,23.6906389 L12.340401,23.2611114 L12.337245,23.2485176 L12.337245,23.2485176 L12.3277531,23.2396597 L12.1430473,23.1473072 Z" id="MingCute" fill-rule="nonzero"> </path> <path d="M11.5144,2.14236 L10.2549,1.38672 L10.0135,2.83553 C9.63231,5.12379 8.06881,7.25037 6.34517,8.74417 C2.96986,11.6694 2.23067,14.8487 3.27601,17.4753 C4.27565,19.987 6.81362,21.7075 9.3895,21.9938 L9.98632,22.0601 C8.51202,21.1585 7.56557,19.0535 7.89655,17.4813 C8.22199,15.9355 9.33405,14.4869 11.4701,13.1519 L12.5472,12.4787 L12.9488,13.6836 C13.1863,14.3963 13.5962,14.968 14.0129,15.5492 C14.2138,15.8294 14.4162,16.1118 14.6018,16.4132 C15.2447,17.4581 15.415,18.6196 14.9999,19.7722 C14.6222,20.8211 13.9985,21.6446 13.1401,22.1016 L14.1105,21.9938 C16.5278,21.7252 18.3031,20.8982 19.4557,19.515 C20.5986,18.1436 20.9999,16.379 20.9999,14.4999 C20.9999,12.7494 20.2812,10.946 19.433,9.44531 C18.4392,7.68697 17.1418,6.22748 15.726,4.8117 C15.481,5.30173 15.5,5.5 14.9953,6.28698 C14.4118,4.73216 13.2963,3.21139 11.5144,2.14236 Z" id="路径" fill="var(--icon_tertiary)"> </path> </g> </g> </g> </g></svg>';
+        buttonCloned.removeAttribute("onClick");
+        buttonCloned.addEventListener("click", () => {
+          ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+        });
+        expectedTop.insertBefore(buttonCloned, expectedTop.childNodes[0]);
+      }
+    } catch(e){}
+  }
+
+  async function doInjection() {
+    if (!/\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname) && !/\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) && !/\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname)) {
+      return;
+    }
+    await injectBannerButton();
+    await injectInputbutton();
+  }
+
+  function __doModalMenuInit() {
+    if (document.c2RefinerModalInit) return;
+    document.c2RefinerModalInit = true;
+
+    if(typeof GenericUtil !== 'undefined' && GenericUtil.attachObserver) {
+      GenericUtil.attachObserver(document, () => {
+        __updateModalMenu();
+      });
+    } else {
+      const observer = new MutationObserver(() => {
+        __updateModalMenu();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", doInjection);
+      window.addEventListener("load", doInjection);
+    } else {
+      doInjection();
+    }
+
+    setInterval(doInjection, 2000);
+  }
+
+  __doModalMenuInit();
 
 })();
