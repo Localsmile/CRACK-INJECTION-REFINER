@@ -19,7 +19,7 @@
 // ==/UserScript==
 
 // WebSocket(Socket.IO) 인터셉터
-// document-start 시점에서 wrtn JS보다 먼저 실행되어야함
+// document-start 시점에서 wrtn JS보다 먼저 실행하는 것이 목적. 안되면 에리 때림
 (function(){
   'use strict';
   const _w=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
@@ -170,6 +170,8 @@ Return:["keyword1", "keyword2"]`;
   const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB=`You are a Lore Archivist for RP.
 Analyze the following conversation log and extract NEW established lore, character developments, relationship changes, and promises/contracts.
 
+RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)
+
 EXTRACTION PRIORITIES (in order of importance):
 1. RELATIONSHIP EVENTS: Track ALL significant interactions between characters — relationship shifts, physical actions, emotional moments, conflicts, intimate encounters, shared experiences, nickname/호칭 changes. Record how characters address each other in "nicknames".
 2. PROMISE LIFECYCLE: Track promises/contracts/oaths between characters. Output with structured status tracking.
@@ -241,6 +243,8 @@ Conversation Log:
   const DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB=`You are a Lore Archivist for RP.
 Analyze the following conversation log ALONGSIDE the EXISTING Lore Database.
 Extract NEW or UPDATED lore, character developments, relationship changes, and promise status updates.
+
+RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)
 
 EXTRACTION PRIORITIES (in order of importance):
 1. RELATIONSHIP EVENTS: Track ALL significant interactions — relationship shifts, actions, emotional moments, conflicts, intimate encounters, nickname/호칭 changes. Update arc, current_status, and nicknames from existing DB.
@@ -323,8 +327,8 @@ Conversation Log:
 
   const defaultSettings = {
     enabled:true, position:'before',
-    prefix:'**[OOC: Lore — incorporate naturally, never repeat verbatim]**',
-    suffix:'', scanRange:6, scanOffset:5, maxEntries:3,
+    prefix:'**[OOC: Reference — factual background data. Incorporate naturally, never repeat verbatim.]**',
+    suffix:'**[End of reference data]**', scanRange:6, scanOffset:5, maxEntries:3,
     cooldownEnabled:true, cooldownTurns:6,
     strictMatch:true, similarityMatch:true,
     activeProject:'',
@@ -332,12 +336,12 @@ Conversation Log:
     geminiKey:'', geminiModel:'gemini-3-flash-preview',
     geminiCustomModel:'', geminiReasoning:'medium', geminiBudget:2048,
     extractPrompt:DEFAULT_EXTRACT_PROMPT,
-    autoExtEnabled:false, autoExtTurns:6, autoExtScanRange:6, autoExtOffset:5, autoExtPack:'자동추출', autoExtMaxRetries:1,
+    autoExtEnabled:false, autoExtTurns:11, autoExtScanRange:6, autoExtOffset:5, autoExtPack:'자동추출', autoExtMaxRetries:1,
     autoExtPromptWithoutDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
     autoExtPromptWithDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB,
     autoExtApiType:'key', autoExtVertexJson:'', autoExtVertexLocation:'global', autoExtVertexProjectId:'',
     autoExtKey:'', autoExtModel:'gemini-3-flash-preview', autoExtCustomModel:'', autoExtReasoning:'medium', autoExtBudget:2048,
-    autoExtPrefix:'', autoExtSuffix:'', autoExtIncludeDb:false, autoExtIncludePersona:true,
+    autoExtPrefix:'', autoExtSuffix:'', autoExtIncludeDb:false, autoExtIncludePersona:false,
     autoPacks:['자동추출'],
     urlPacks:{}, urlDisabledEntries:{},
     urlTurnCounters:{}, urlCooldownMaps:{},
@@ -346,8 +350,9 @@ Conversation Log:
 
   const settings = {
     config: JSON.parse(JSON.stringify(defaultSettings)),
+    _lastSaveTime: 0,
     save: function() {
-      try { _ls.setItem(_SKEY, JSON.stringify(this.config)); } catch(e){}
+      try { this._lastSaveTime = Date.now(); _ls.setItem(_SKEY, JSON.stringify(this.config)); } catch(e){}
     },
     load: function() {
       try {
@@ -373,30 +378,55 @@ Conversation Log:
     if (e.key === _SKEY) settings.load();
   });
   window.addEventListener('focus', () => {
+    // 자신이 최근에 저장한 경우 reload 스킵 (다른 탭 변경만 반영)
+    if (Date.now() - (settings._lastSaveTime || 0) < 3000) return;
     settings.load();
   });
 
   // 유틸리티
   function getCurUrl(){return window.location.pathname;}
 
-  function getAutoExtPackForUrl(url) {
+  async function getAutoExtPackForUrl(url) {
     if(!settings.config.urlAutoExtPacks) settings.config.urlAutoExtPacks = {};
     if(settings.config.urlAutoExtPacks[url]) return settings.config.urlAutoExtPacks[url];
 
-    let suffix = '';
+    let baseName = '자동추출';
     try {
-      const parts = url.split('/').filter(p => p);
-      const last = parts.pop();
-      if (last && last.length > 4) suffix = '_' + last.slice(-6);
-      else suffix = '_' + Math.random().toString(36).slice(2, 8);
+      let chatId = null;
+      try { chatId = CrackUtil.path().chatRoom(); } catch(e){}
+      if(!chatId) {
+        const match = url.match(/\/episodes\/([a-f0-9]+)/);
+        if(match) chatId = match[1];
+      }
+      if(chatId) {
+        const room = await CrackUtil.chatRoom().roomData(chatId);
+        if(room && !(room instanceof Error)) {
+          baseName = room.story?.name || room.title || '자동추출';
+        }
+      }
     } catch(e) {
-      suffix = '_' + Math.random().toString(36).slice(2, 8);
+      console.warn('[Lore] 작품 이름 획득 실패:', e);
     }
 
-    const newName = '자동추출' + suffix;
-    settings.config.urlAutoExtPacks[url] = newName;
+    let finalName = baseName;
+    let counter = 1;
+    const existingPacksInSettings = Object.values(settings.config.urlAutoExtPacks || {});
+
+    while (true) {
+      const checkName = counter === 1 ? baseName : `${baseName} ${counter}`;
+      const inDb = await db.packs.get(checkName);
+      const inSettings = existingPacksInSettings.includes(checkName);
+
+      if (!inDb && !inSettings) {
+        finalName = checkName;
+        break;
+      }
+      counter++;
+    }
+
+    settings.config.urlAutoExtPacks[url] = finalName;
     settings.save();
-    return newName;
+    return finalName;
   }
   function setAutoExtPackForUrl(url, packName) {
     if(!settings.config.urlAutoExtPacks) settings.config.urlAutoExtPacks = {};
@@ -874,7 +904,8 @@ Conversation Log:
 
   // 포매터
   class Fmt{
-    static format(entries,opts={}){
+    // 자동추출용: 하드코딩 렌더러 (토큰 절약)
+    static formatAuto(entries,opts={}){
       if(!entries.length)return'';
       const{prefix='',suffix=''}=opts;
       const blocks=entries.map(e=>{
@@ -913,11 +944,44 @@ Conversation Log:
       const parts=[];if(prefix.trim())parts.push(prefix.trim());parts.push(blocks.join('\n'));if(suffix.trim())parts.push(suffix.trim());
       return'\n'+parts.join('\n')+'\n';
     }
+
+    // 수동/전처리용: 범용 렌더러 (전 도메인 커버)
+    static formatManual(entries,opts={}){
+      if(!entries.length)return'';
+      const{prefix='',suffix=''}=opts;
+      const LABEL={personality:'성격',attributes:'특성',abilities:'능력',current_state:'현재',last_interaction:'최근',current_status:'현재 상태',nicknames:'호칭',relations:'관계',background_or_history:'배경',ingredients:'재료',steps:'순서',tips:'참고',rules:'규칙',conditions:'조건',effects:'효과',geography:'지리',climate:'기후',population:'인구',maker:'약속자',target:'대상',condition:'발동 조건',status:'상태',resolution:'결과',parties:'관계자'};
+      const blocks=entries.map(e=>{
+        const d=e.detail||{};
+        let line='* ['+e.name+']: '+(e.summary||'');
+        const lines=[];
+        for(const[key,val]of Object.entries(d)){
+          if(val==null||val==='')continue;
+          const label=LABEL[key]||key;
+          if(Array.isArray(val)){
+            if(val.length===0)continue;
+            if(typeof val[0]==='object'){
+              lines.push('  '+label+': '+val.map(v=>Object.values(v).filter(Boolean).join(' / ')).join(' → '));
+            }else{
+              lines.push('  '+label+': '+val.join(', '));
+            }
+          }else if(typeof val==='object'){
+            const flat=Object.entries(val).map(([k2,v2])=>k2+': '+v2).join(' / ');
+            if(flat)lines.push('  '+label+': '+flat);
+          }else{
+            lines.push('  '+label+': '+String(val));
+          }
+        }
+        if(lines.length>0)line+='\n'+lines.join('\n');
+        return line;
+      });
+      const parts=[];if(prefix.trim())parts.push(prefix.trim());parts.push(blocks.join('\n'));if(suffix.trim())parts.push(suffix.trim());
+      return'\n'+parts.join('\n')+'\n';
+    }
   }
 
   // 데이터 병합
   async function mergeExtractedData(entries, url){
-    const packName=getAutoExtPackForUrl(url);
+    const packName=await getAutoExtPackForUrl(url);
     let ap = [...(settings.config.autoPacks || [])];
     if(!ap.includes(packName)) {
       ap.push(packName);
@@ -1014,16 +1078,7 @@ Conversation Log:
         }
       }
     }catch(e){
-      try{
-        const prov=CrackUtil.refine(document).__$igntPlatformProvider;
-        if(prov){
-          const f=prov.getFetcher();
-          if(f?.isValid()){
-            const msgs=await f.fetch(fetchCount);
-            if(!(msgs instanceof Error))recentMsgs=msgs.map(m=>({role:m.role,message:m.message}));
-          }
-        }
-      }catch{}
+      console.error('[Lore] fetchLogsFallback error:', e);
     }
     return recentMsgs;
   }
@@ -1064,7 +1119,7 @@ Conversation Log:
 
     const isInclude = settings.config.autoExtIncludeDb;
     if(isInclude){
-      const packName=getAutoExtPackForUrl(_url);
+      const packName=await getAutoExtPackForUrl(_url);
       const existingEntries=await db.entries.where('packName').equals(packName).toArray();
       if(existingEntries&&existingEntries.length>0){
         const clean=existingEntries.map(({id,packName,project,enabled,...rest})=>rest);
@@ -1141,6 +1196,7 @@ Conversation Log:
 
     const fetchCount=Math.max(10,(settings.config.smartTurns||5)*2);
     let recentMsgs=await fetchLogsFallback(fetchCount);
+    console.log('[Lore] 최근대화:',recentMsgs.length,'개 (요청:',fetchCount,') | 입력길이:',userInput?.length);
 
     let matched=TriggerScanner.scan(userInput,recentMsgs,enabled,settings.config.scanRange,settings.config);
     console.log('[Lore] 트리거매치:',matched.length,'개',matched.slice(0,5).map(e=>e.name));
@@ -1155,7 +1211,7 @@ Conversation Log:
 
     for(const e of matched)setCooldownLastTurn(_url,e.id,turnCounter);
 
-    const autoExtPack=getAutoExtPackForUrl(_url);
+    const autoExtPack=await getAutoExtPackForUrl(_url);
     let autoPacks = [...(settings.config.autoPacks || [])];
     if(!autoPacks.includes(autoExtPack)) {
       autoPacks.push(autoExtPack);
@@ -1168,12 +1224,12 @@ Conversation Log:
     if(normalMatched.length>0){
       const nPref=settings.config.prefix||'**[OOC: Lore — incorporate naturally, never repeat verbatim]**';
       const nSuff=settings.config.suffix||'';
-      finalInjectText+=Fmt.format(normalMatched,{prefix:nPref,suffix:nSuff});
+      finalInjectText+=Fmt.formatManual(normalMatched,{prefix:nPref,suffix:nSuff});
     }
     if(autoMatched.length>0){
       const aPref=settings.config.autoExtPrefix||'**[OOC: Established facts — maintain consistency]**';
       const aSuff=settings.config.autoExtSuffix||'';
-      finalInjectText+=Fmt.format(autoMatched,{prefix:aPref,suffix:aSuff});
+      finalInjectText+=Fmt.formatAuto(autoMatched,{prefix:aPref,suffix:aSuff});
     }
 
     addInjLog(_url, {time:new Date().toLocaleTimeString(),turn:turnCounter,matched:matched.map(e=>e.name),count:matched.length});
@@ -1185,8 +1241,9 @@ Conversation Log:
   const _w2=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
   if(_w2.__loreRegister){
     _w2.__loreRegister(inject);
-  }else{
-    console.warn('[Lore] 핸들러 미발견! fetch override 시도');
+  }
+  // fetch 인터셉터 항상 설치 (WS + REST 동시 지원 — wrtn이 REST API로 전환한 경우 대비)
+  {console.log('[Lore] fetch 인터셉터 설치 (REST API 대비)');
     const origFetch=_w2.fetch.bind(_w2);
     _w2.fetch=async function(...args){
       if(!settings.config.enabled)return origFetch.apply(this,args);
@@ -1941,7 +1998,8 @@ Conversation Log:
       const l3=document.createElement('div');l3.textContent='저장될 로어명';l3.style.cssText='font-size:12px;color:#888;margin-bottom:4px;';
 
       const inputWrap=document.createElement('div');inputWrap.style.cssText='display:flex;gap:6px;';
-      const i3=document.createElement('input');i3.type='text';i3.value=getAutoExtPackForUrl(getCurUrl());
+      const i3=document.createElement('input');i3.type='text';
+      getAutoExtPackForUrl(getCurUrl()).then(name => i3.value=name);
       i3.style.cssText='flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
       i3.onchange=()=>{
         const val=i3.value||'자동추출';
@@ -2338,9 +2396,9 @@ Conversation Log:
 
         const isAuto = autoPacks.includes(pack.name);
         const convBtn=document.createElement('button');
-        convBtn.textContent=isAuto?'[추출형]':'[일반형]';
+        convBtn.textContent=isAuto?'[추출DB]':'[고정DB]';
         convBtn.style.cssText=B+(isAuto?'color:#f88;border-color:#844;':'color:#88f;border-color:#448;');
-        convBtn.title=isAuto?'현재 자동 추출 전용 접두사 사용. 클릭 시 일반형 전환.':'현재 일반 접두사 사용. 클릭 시 자동 추출 전용 지정.';
+        convBtn.title=isAuto?'현재 자동 추출 전용 접두사 사용. 클릭 시 고정DB 전환.':'현재 일반 접두사 사용. 클릭 시 자동 추출 전용 지정.';
         convBtn.onclick=()=>{
           let ap = [...(settings.config.autoPacks || [])];
           if(!ap.includes(autoExtPackName)) ap.push(autoExtPackName);
@@ -2422,5 +2480,128 @@ Conversation Log:
   }catch(e){
     console.error('[Lore] UI 초기화 실패:',e);
   }
+
+  // 모달 메뉴 및 버튼 주입 로직 (ignitor 독립성 목적, 아 존나 하기 싫다)
+  function __updateModalMenu() {
+    const modal = document.getElementById("web-modal");
+    if (modal && !document.getElementById("chasm-decentral-menu")) {
+      const itemFound = modal.getElementsByTagName("a");
+      for (let item of itemFound) {
+        if (item.getAttribute("href") === "/setting") {
+          const clonedElement = item.cloneNode(true);
+          clonedElement.id = "chasm-decentral-menu";
+          const textElement = clonedElement.getElementsByTagName("span")[0];
+          if(textElement) textElement.innerText = "결정화 캐즘";
+          clonedElement.setAttribute("href", "javascript: void(0)");
+          clonedElement.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+          };
+          item.parentElement?.append(clonedElement);
+          break;
+        }
+      }
+    } else if (!document.getElementById("chasm-decentral-menu") && !window.matchMedia("(min-width: 768px)").matches) {
+      const selected = document.getElementsByTagName("a");
+      for (const element of selected) {
+        if (element.getAttribute("href") === "/my-page") {
+          const clonedElement = element.cloneNode(true);
+          clonedElement.id = "chasm-decentral-menu";
+          const textElement = clonedElement.getElementsByTagName("span")[0];
+          if(textElement) textElement.innerText = "결정화 캐즘";
+          clonedElement.setAttribute("href", "javascript: void(0)");
+          clonedElement.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+          };
+          element.parentElement?.append(clonedElement);
+        }
+      }
+    }
+  }
+
+  async function injectBannerButton() {
+    const selected = document.getElementsByClassName("burner-button");
+    if (selected && selected.length > 0) return;
+    try {
+      const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+      const topPanel = document.getElementsByClassName(isStory ? "css-1c5w7et" : "css-l8r172");
+      if (topPanel && topPanel.length > 0) {
+        const topContainer = topPanel[0].childNodes[topPanel.length - 1]?.getElementsByTagName("div");
+        if (!topContainer || topContainer.length <= 0) return;
+        const topList = topContainer[0].children[0].children;
+        const top = topList[topList.length - 1];
+        if(!top) return;
+        const buttonCloned = document.createElement("button");
+        buttonCloned.innerHTML = "<p></p>";
+        buttonCloned.style.cssText = "margin-right: 10px";
+        buttonCloned.className = "burner-button";
+        const textNode = buttonCloned.getElementsByTagName("p");
+        top.insertBefore(buttonCloned, top.childNodes[0]);
+        textNode[0].innerText = "🔥  Chasm Tools";
+        buttonCloned.removeAttribute("onClick");
+        buttonCloned.addEventListener("click", () => {
+          ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+        });
+      }
+    } catch(e){}
+  }
+
+  async function injectInputbutton() {
+    const selected = document.getElementsByClassName("burner-input-button");
+    if (selected && selected.length > 0) return;
+    try {
+      const top = document.querySelector('textarea[placeholder="메시지 보내기"]')?.nextElementSibling;
+      if (top) {
+        const expectedTop = top.children[0]?.children[0];
+        if(!expectedTop || !expectedTop.childNodes[0]) return;
+        const buttonCloned = expectedTop.childNodes[0].cloneNode(true);
+        buttonCloned.className = "burner-input-button " + buttonCloned.className;
+        buttonCloned.innerHTML = '<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="#000000"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>fire_fill</title> <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="System" transform="translate(-480.000000, -48.000000)" fill-rule="nonzero"> <g id="fire_fill" transform="translate(480.000000, 48.000000)"> <path d="M24,0 L24,24 L0,24 L0,0 L24,0 Z M12.5934901,23.257841 L12.5819402,23.2595131 L12.5108777,23.2950439 L12.4918791,23.2987469 L12.4918791,23.2987469 L12.4767152,23.2950439 L12.4056548,23.2595131 C12.3958229,23.2563662 12.3870493,23.2590235 12.3821421,23.2649074 L12.3780323,23.275831 L12.360941,23.7031097 L12.3658947,23.7234994 L12.3769048,23.7357139 L12.4804777,23.8096931 L12.4953491,23.8136134 L12.4953491,23.8136134 L12.5071152,23.8096931 L12.6106902,23.7357139 L12.6232938,23.7196733 L12.6232938,23.7196733 L12.6266527,23.7031097 L12.609561,23.275831 C12.6075724,23.2657013 12.6010112,23.2592993 12.5934901,23.257841 L12.5934901,23.257841 Z M12.8583906,23.1452862 L12.8445485,23.1473072 L12.6598443,23.2396597 L12.6498822,23.2499052 L12.6498822,23.2499052 L12.6471943,23.2611114 L12.6650943,23.6906389 L12.6699349,23.7034178 L12.6699349,23.7034178 L12.678386,23.7104931 L12.8793402,23.8032389 C12.8914285,23.8068999 12.9022333,23.8029875 12.9078286,23.7952264 L12.9118235,23.7811639 L12.8776777,23.1665331 C12.8752882,23.1545897 12.8674102,23.1470016 12.8583906,23.1452862 L12.8583906,23.1452862 Z M12.1430473,23.1473072 C12.1332178,23.1423925 12.1221763,23.1452606 12.1156365,23.1525954 L12.1099173,23.1665331 L12.0757714,23.7811639 C12.0751323,23.7926639 12.0828099,23.8018602 12.0926481,23.8045676 L12.108256,23.8032389 L12.3092106,23.7104931 L12.3186497,23.7024347 L12.3186497,23.7024347 L12.3225043,23.6906389 L12.340401,23.2611114 L12.337245,23.2485176 L12.337245,23.2485176 L12.3277531,23.2396597 L12.1430473,23.1473072 Z" id="MingCute" fill-rule="nonzero"> </path> <path d="M11.5144,2.14236 L10.2549,1.38672 L10.0135,2.83553 C9.63231,5.12379 8.06881,7.25037 6.34517,8.74417 C2.96986,11.6694 2.23067,14.8487 3.27601,17.4753 C4.27565,19.987 6.81362,21.7075 9.3895,21.9938 L9.98632,22.0601 C8.51202,21.1585 7.56557,19.0535 7.89655,17.4813 C8.22199,15.9355 9.33405,14.4869 11.4701,13.1519 L12.5472,12.4787 L12.9488,13.6836 C13.1863,14.3963 13.5962,14.968 14.0129,15.5492 C14.2138,15.8294 14.4162,16.1118 14.6018,16.4132 C15.2447,17.4581 15.415,18.6196 14.9999,19.7722 C14.6222,20.8211 13.9985,21.6446 13.1401,22.1016 L14.1105,21.9938 C16.5278,21.7252 18.3031,20.8982 19.4557,19.515 C20.5986,18.1436 20.9999,16.379 20.9999,14.4999 C20.9999,12.7494 20.2812,10.946 19.433,9.44531 C18.4392,7.68697 17.1418,6.22748 15.726,4.8117 C15.481,5.30173 15.5,5.5 14.9953,6.28698 C14.4118,4.73216 13.2963,3.21139 11.5144,2.14236 Z" id="路径" fill="var(--icon_tertiary)"> </path> </g> </g> </g> </g></svg>';
+        buttonCloned.removeAttribute("onClick");
+        buttonCloned.addEventListener("click", () => {
+          ModalManager.getOrCreateManager("c2").display(document.body.getAttribute("data-theme") !== "light");
+        });
+        expectedTop.insertBefore(buttonCloned, expectedTop.childNodes[0]);
+      }
+    } catch(e){}
+  }
+
+  async function doInjection() {
+    if (!/\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname) && !/\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) && !/\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname)) {
+      return;
+    }
+    await injectBannerButton();
+    await injectInputbutton();
+  }
+
+  function __doModalMenuInit() {
+    if (document.c2InjectorModalInit) return;
+    document.c2InjectorModalInit = true;
+
+    if(typeof GenericUtil !== 'undefined' && GenericUtil.attachObserver) {
+      GenericUtil.attachObserver(document, () => {
+        __updateModalMenu();
+      });
+    } else {
+      const observer = new MutationObserver(() => {
+        __updateModalMenu();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", doInjection);
+      window.addEventListener("load", doInjection);
+    } else {
+      doInjection();
+    }
+
+    setInterval(doInjection, 2000);
+  }
+
+  __doModalMenuInit();
 
 })();
