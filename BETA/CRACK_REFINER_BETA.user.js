@@ -23,7 +23,6 @@
 // ==/UserScript==
 
 // Ignitor 연동 플러그인
-
 !(async function () {
   'use strict';
 
@@ -649,7 +648,7 @@ Rules for replacements:
   }
 
   // React Fiber props의 메시지 데이터를 교정본 패치
-  // React 재조정(reconciliation) 시 DOM 롤백방지
+  // React 재조정 시 DOM 롤백방지
   function tryPatchReactFiber(element, originalText, newText) {
     try {
       const fiberKey = Object.keys(element).find(k =>
@@ -1171,7 +1170,7 @@ Rules for replacements:
       } else {
         if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
-          // 약 2초간(관찰 2회) 길이 변화 없으면 스트리밍 완료로 간주
+          // 약 2초간 길이 변화 없으면 스트리밍 완료로 간주
           if (idleCount === 2) {
             console.log('[교정기] 스트리밍 완료 감지 → 큐에 추가');
             enqueueRefine(lastLog.content, msgId);
@@ -1186,7 +1185,7 @@ Rules for replacements:
     }
   }
 
-  // 백업용 큐 처리 인터벌 (workerBusy 방어)
+  // 백업용 큐 처리 인터벌 시도ㄱ (workerBusy 방어)
   setInterval(() => {
     if (workerBusy && Date.now() - workerStartTime > WORKER_TIMEOUT) {
       console.warn('[교정기] 폴링 — workerBusy 타임아웃 강제 해제');
@@ -1672,7 +1671,7 @@ Rules for replacements:
     }
   }, 500);
 
-  // 모달 메뉴 및 버튼 주입 로직 (ignitor 독립성 확보)
+  // 모달 메뉴 및 버튼 주입 로직 (ignitor 독립성 목적)
   function __updateModalMenu() {
     const modal = document.getElementById("web-modal");
     if (modal && !document.getElementById("chasm-decentral-menu")) {
