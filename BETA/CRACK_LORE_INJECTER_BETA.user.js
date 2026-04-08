@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name        로어 인젝터
 // @namespace   로어-인젝터
-// @version     1.0.0
+// @version     1.0.1
 // @description RP 로어 자동 주입 및 추출
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
+// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA.user.js
+// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-toastify-injection@v1.0.0/crack/libraries/toastify-injection.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
