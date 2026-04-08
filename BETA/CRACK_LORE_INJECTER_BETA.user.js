@@ -2,7 +2,7 @@
 // @name        로어 인젝터
 // @namespace   로어-인젝터
 // @version     1.0.1
-// @description RP 로어 자동 주입 및 추출
+// @description 크랙 캐챗 로어 자동 주입 및 추출
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
 // @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA.user.js
