@@ -2,11 +2,11 @@
 // @name        로어 인젝터
 // @namespace   로어-인젝터
 // @version     1.0.1
-// @description 크랙 캐챗 로어 자동 주입 및 추출
+// @description RP 로어 자동 주입 및 추출
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
-// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA.user.js
-// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA.user.js
+// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA_1.0.1.user.js
+// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA_1.0.1.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-toastify-injection@v1.0.0/crack/libraries/toastify-injection.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
@@ -155,7 +155,20 @@ const _GM_xhr = (typeof GM_xmlhttpRequest !== 'undefined')
     await new Promise(r=>document.addEventListener('DOMContentLoaded',r));
   console.log('[Lore] DOM ready, 초기화 시작...');
 
-  const VER='v4.7.0';
+  const VER='v1.0.1';
+  const CHANGELOG = [
+    '[신규] 추출 스키마를 직접 편집할 수 있도록 변경 (도움말에서 작성법 확인 가능)',
+    '[신규] 로어 데이터 스냅샷 기능 추가 — 이전 상태로 되돌릴 수 있음',
+    '[신규] 추출 프롬프트 템플릿 기능 — 여러 프롬프트를 저장하고 전환 가능',
+    '[변경] OOC 접두사/접미사를 ** 로 감싸도록 기본값 변경',
+    '[수정] 자동 추출 시 AI 응답을 잘못 읽어오는 문제 해결',
+    '[수정] 서로 다른 로어 팩에 같은 이름이 있을 때 데이터가 섞이는 문제 해결',
+    '[수정] 자동 추출 결과가 간헐적으로 깨지는 문제 해결 (JSON 모드 적용)',
+    '[수정] 일부 모델에서 추론 설정이 범위를 벗어나는 문제 해결',
+    '',
+    '이전 버전(1.0.0)으로 돌아가려면 아래 링크를 설치하세요:',
+    'https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA_1.0.0.user.js',
+  ];
   const _gHost='generativelanguage'+'.googleapis.com';
   const _gBase='https://'+_gHost+'/v1beta/models/';
   const SAFETY=[{category:'HARM_CATEGORY_HARASSMENT',threshold:'BLOCK_NONE'},{category:'HARM_CATEGORY_HATE_SPEECH',threshold:'BLOCK_NONE'},{category:'HARM_CATEGORY_SEXUALLY_EXPLICIT',threshold:'BLOCK_NONE'},{category:'HARM_CATEGORY_DANGEROUS_CONTENT',threshold:'BLOCK_NONE'},{category:'HARM_CATEGORY_CIVIC_INTEGRITY',threshold:'BLOCK_NONE'}];
@@ -190,7 +203,13 @@ CRITICAL RULES:
 5. STATE REPLACEMENT: When a relationship status or promise status CHANGES, describe ONLY the current state in "summary". The system will replace the old state. Do NOT describe outdated states as current.
 
 Schema:
-[
+{schema}
+
+Conversation Log:
+{context}`;
+
+  // 기본 자동 추출 스키마
+  const DEFAULT_AUTO_EXTRACT_SCHEMA=`[
   {
     "type": "character|location|item|event|concept|setting",
     "name": "Entity Name",
@@ -236,10 +255,7 @@ Schema:
       "resolution": null
     }
   }
-]
-
-Conversation Log:
-{context}`;
+]`;
 
   // 기본 자동 추출 프롬프트 (DB 포함 - 병합 목적)
   const DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB=`You are a Lore Archivist for RP.
@@ -264,53 +280,7 @@ CRITICAL RULES:
 6. STATE REPLACEMENT: For relationship and promise types, describe ONLY the CURRENT state. The merge system will replace old states — writing outdated info will cause contradictions.
 
 Schema:
-[
-  {
-    "type": "character|location|item|event|concept|setting",
-    "name": "Entity Name",
-    "triggers": ["keyword1", "CharName&&keyword2", "keyword3"],
-    "scan_range": 5,
-    "summary": "Terse but detailed summary of new/updated info",
-    "detail": {
-      "attributes": "new traits, status, or conditions",
-      "current_state": "Current situation/emotional state (replaced on update)",
-      "last_interaction": "What happened last (replaced on update)",
-      "relations": ["(extraction reference only)"],
-      "background_or_history": "(extraction reference only)"
-    }
-  },
-  {
-    "type": "relationship",
-    "name": "CharA↔CharB",
-    "triggers": ["CharA&&CharB", "CharB&&CharA"],
-    "scan_range": 5,
-    "summary": "Current relationship state (CURRENT only, not historical)",
-    "detail": {
-      "parties": ["CharA", "CharB"],
-      "current_status": "one-word status",
-      "nicknames": { "CharA→CharB": "how A addresses B", "CharB→CharA": "how B addresses A" },
-      "arc": [
-        { "phase": "status_word", "summary": "what happened", "approx_turn": "~N" }
-      ]
-    }
-  },
-  {
-    "type": "promise",
-    "name": "Descriptive promise title (→ target)",
-    "triggers": ["Maker&&keyword", "Target&&keyword"],
-    "scan_range": 5,
-    "summary": "Promise content and current status",
-    "detail": {
-      "maker": "Who made the promise",
-      "target": "Who receives/benefits",
-      "condition": "What triggers fulfillment",
-      "status": "pending|fulfilled|broken|expired|modified",
-      "made_approx": "~turn N or context",
-      "resolved_approx": null,
-      "resolution": null
-    }
-  }
-]
+{schema}
 
 Existing Lore Database:
 {entries}
@@ -322,6 +292,36 @@ Conversation Log:
   const db=new Dexie('lore-injector');
   db.version(1).stores({entries:'++id, name, type, packName, *triggers',packs:'name, entryCount'});
   db.version(2).stores({entries:'++id, name, type, packName, project, *triggers',packs:'name, entryCount, project'});
+  db.version(3).stores({entries:'++id, name, type, packName, project, *triggers',packs:'name, entryCount, project',snapshots:'++id, packName, timestamp, type'});
+
+  async function createSnapshot(packName, label, type='auto'){
+    const entries=await db.entries.where('packName').equals(packName).toArray();
+    const clean=entries.map(({id,...rest})=>rest);
+    await db.snapshots.add({
+      packName,
+      timestamp:Date.now(),
+      label:label||'자동 저장',
+      type,
+      data:clean
+    });
+    // 스냅샷 개수 제한 (팩당 최근 10개 유지)
+    const all=await db.snapshots.where('packName').equals(packName).sortBy('timestamp');
+    if(all.length>10){
+      const toDelete=all.slice(0,all.length-10).map(s=>s.id);
+      await db.snapshots.bulkDelete(toDelete);
+    }
+  }
+
+  async function restoreSnapshot(snapshotId){
+    const snap=await db.snapshots.get(snapshotId);
+    if(!snap)return false;
+    await db.transaction('rw', db.packs, db.entries, async()=>{
+      await db.entries.where('packName').equals(snap.packName).delete();
+      for(const e of snap.data){await db.entries.add(e);}
+      await db.packs.update(snap.packName,{entryCount:snap.data.length});
+    });
+    return true;
+  }
 
   // Settings
   const _SKEY='lore-injector-v5';
@@ -329,8 +329,8 @@ Conversation Log:
 
   const defaultSettings = {
     enabled:true, position:'before',
-    prefix:'**[OOC: Reference — factual background data. Incorporate naturally, never repeat verbatim.]**',
-    suffix:'**[End of reference data]**', scanRange:6, scanOffset:5, maxEntries:3,
+    prefix:'**OOC: Reference — factual background data. Incorporate naturally, never repeat verbatim.',
+    suffix:'**', scanRange:6, scanOffset:5, maxEntries:3,
     cooldownEnabled:true, cooldownTurns:6,
     strictMatch:true, similarityMatch:true,
     activeProject:'',
@@ -339,11 +339,18 @@ Conversation Log:
     geminiCustomModel:'', geminiReasoning:'medium', geminiBudget:2048,
     extractPrompt:DEFAULT_EXTRACT_PROMPT,
     autoExtEnabled:false, autoExtTurns:11, autoExtScanRange:6, autoExtOffset:5, autoExtPack:'자동추출', autoExtMaxRetries:1,
-    autoExtPromptWithoutDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
-    autoExtPromptWithDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB,
     autoExtApiType:'key', autoExtVertexJson:'', autoExtVertexLocation:'global', autoExtVertexProjectId:'',
     autoExtKey:'', autoExtModel:'gemini-3-flash-preview', autoExtCustomModel:'', autoExtReasoning:'medium', autoExtBudget:2048,
     autoExtPrefix:'', autoExtSuffix:'', autoExtIncludeDb:false, autoExtIncludePersona:false,
+    
+    activeTemplateId:'default',
+    templates:[{
+      id:'default', name:'기본 프롬프트', isDefault:true,
+      schema:DEFAULT_AUTO_EXTRACT_SCHEMA,
+      promptWithoutDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
+      promptWithDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB
+    }],
+    
     autoPacks:['자동추출'],
     urlPacks:{}, urlDisabledEntries:{},
     urlTurnCounters:{}, urlCooldownMaps:{},
@@ -368,9 +375,27 @@ Conversation Log:
             if(this.config.autoExtMaxRetries === undefined) this.config.autoExtMaxRetries = 1;
             if(this.config.geminiApiType === undefined) this.config.geminiApiType = 'key';
             if(this.config.autoExtApiType === undefined) this.config.autoExtApiType = 'key';
+            
+            // 기존 레거시 프롬프트를 사용자 커스텀 템플릿으로 마이그레이션
+            if(this.config.autoExtSchema && !this.config.templates) {
+              this.config.activeTemplateId = 'legacy';
+              this.config.templates = [
+                {id:'default', name:'기본 프롬프트', isDefault:true, schema:DEFAULT_AUTO_EXTRACT_SCHEMA, promptWithoutDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB, promptWithDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB},
+                {id:'legacy', name:'이전 설정', isDefault:false, schema:this.config.autoExtSchema||DEFAULT_AUTO_EXTRACT_SCHEMA, promptWithoutDb:this.config.autoExtPromptWithoutDb||DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB, promptWithDb:this.config.autoExtPromptWithDb||DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB}
+              ];
+              delete this.config.autoExtSchema;
+              delete this.config.autoExtPromptWithoutDb;
+              delete this.config.autoExtPromptWithDb;
+            }
           }
         }
       } catch(e) { console.warn('[Lore] 설정 로드 실패:', e); }
+    },
+    getActiveTemplate: function() {
+      const id = this.config.activeTemplateId || 'default';
+      const t = (this.config.templates || []).find(x => x.id === id);
+      if(t) return t;
+      return {id:'default', name:'기본 프롬프트', isDefault:true, schema:DEFAULT_AUTO_EXTRACT_SCHEMA, promptWithoutDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB, promptWithDb:DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB};
     }
   };
   settings.load();
@@ -737,10 +762,13 @@ Conversation Log:
       headers = { 'Content-Type': 'application/json' };
     }
 
+    const generationConfig = { thinkingConfig };
+    if (opts.responseMimeType) generationConfig.responseMimeType = opts.responseMimeType;
+
     const body = JSON.stringify({
       safetySettings: SAFETY,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { thinkingConfig }
+      generationConfig
     });
 
     let lastStatus = 0, lastError = null;
@@ -777,7 +805,9 @@ Conversation Log:
           if ([400, 403, 404].includes(r.status)) break;
         } else {
           const json = await r.json();
-          const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+          const parts = json.candidates?.[0]?.content?.parts || [];
+          const textPart = parts.find(p => p.text && !p.thought);
+          const text = textPart?.text ?? null;
           if (text) return { text, status: r.status, error: null, retries: attempt };
           lastError = '응답 파싱 실패 (텍스트 없음)';
         }
@@ -798,7 +828,7 @@ Conversation Log:
       return{thinkingLevel:sel};
     }else{
       if(sel==='off')return{thinkingBudget:0};
-      if(sel==='minimal')return{thinkingBudget:256};
+      if(sel==='minimal')return{thinkingBudget:512};
       if(sel==='budget')return{thinkingBudget:settings.config.geminiBudget||0};
       const map={low:1024,medium:2048,high:4096};return{thinkingBudget:map[sel]||2048};
     }
@@ -829,14 +859,15 @@ Conversation Log:
       return{thinkingLevel:sel};
     }else{
       if(sel==='off')return{thinkingBudget:0};
-      if(sel==='minimal')return{thinkingBudget:256};
+      if(sel==='minimal')return{thinkingBudget:512};
       if(sel==='budget')return{thinkingBudget:settings.config.autoExtBudget||0};
       const map={low:1024,medium:2048,high:4096};return{thinkingBudget:map[sel]||2048};
     }
   }
 
-  async function autoExtGemini(prompt, maxRetries = 0){
-    return callGeminiApi(prompt, {
+  async function autoExtGemini(prompt, opts = {}){
+    const maxRetries = typeof opts === 'number' ? opts : (opts.maxRetries || 0);
+    const apiOpts = {
       apiType: settings.config.autoExtApiType || settings.config.geminiApiType || 'key',
       key: settings.config.autoExtKey || settings.config.geminiKey,
       vertexJson: settings.config.autoExtVertexJson || settings.config.geminiVertexJson,
@@ -846,7 +877,9 @@ Conversation Log:
       thinkingConfig: getAutoExtThinkingConfig(),
       maxRetries,
       tokenCache: autoExtVertexTokenCache
-    });
+    };
+    if (typeof opts === 'object') Object.assign(apiOpts, opts);
+    return callGeminiApi(prompt, apiOpts);
   }
 
   // TriggerScanner
@@ -943,13 +976,14 @@ Conversation Log:
 
   // 포매터
   class Fmt{
-    // 자동추출용: 하드코딩 렌더러 (토큰 절약)
+    // 자동추출용: 범용 렌더러 (토큰 절약형)
     static formatAuto(entries,opts={}){
       if(!entries.length)return'';
       const{prefix='',suffix=''}=opts;
+      const LABEL={personality:'성격',attributes:'특성',abilities:'능력',current_state:'현재',last_interaction:'최근',current_status:'현재 상태',nicknames:'호칭',relations:'관계',background_or_history:'배경',maker:'약속자',target:'대상',condition:'발동 조건',status:'상태',resolution:'결과',parties:'관계자'};
       const blocks=entries.map(e=>{
         const d=e.detail||{};
-        // relationship 타입: 현재 상태 + arc 서사
+        // relationship 특수 처리
         if(e.type==='relationship'){
           let line='* ['+e.name+']: '+(e.summary||'');
           if(d.current_status) line+=' ('+d.current_status+')';
@@ -959,25 +993,27 @@ Conversation Log:
           }
           return line;
         }
-        // promise 타입: 상태 + 조건 + 시점
-        if(e.type==='promise'){
-          let line='* ['+e.name+']: '+(e.summary||'');
-          const meta=[];
-          if(d.status) meta.push('상태: '+d.status);
-          if(d.condition) meta.push('조건: '+d.condition);
-          if(d.resolution) meta.push('결과: '+d.resolution);
-          if(meta.length>0) line+='\n  ↳ '+meta.join(' | ');
-          return line;
+        
+        let line='* ['+e.name+']: '+(e.summary||'');
+        const lines=[];
+        for(const[key,val]of Object.entries(d)){
+          if(val==null||val==='')continue;
+          const label=LABEL[key]||key;
+          if(Array.isArray(val)){
+            if(val.length===0)continue;
+            if(typeof val[0]==='object'){
+              lines.push('  '+label+': '+val.map(v=>Object.values(v).filter(Boolean).join(' / ')).join(' → '));
+            }else{
+              lines.push('  '+label+': '+val.join(', '));
+            }
+          }else if(typeof val==='object'){
+            const flat=Object.entries(val).map(([k2,v2])=>k2+': '+v2).join(' / ');
+            if(flat)lines.push('  '+label+': '+flat);
+          }else{
+            lines.push('  '+label+': '+String(val));
+          }
         }
-        // 기타 타입 (character, location, item 등): 개인 속성만 (관계/배경 제외)
-        let details=[];
-        if(d.personality)details.push('성격: '+d.personality);
-        if(d.attributes)details.push('특성: '+d.attributes);
-        if(d.abilities?.length)details.push('능력: '+(Array.isArray(d.abilities)?d.abilities.join(', '):d.abilities));
-        const detailStr = details.length ? ' (' + details.join(', ') + ')' : '';
-        let line='* ['+e.name+']: '+(e.summary||'')+detailStr;
-        if(d.current_state) line+='\n  현재: '+d.current_state;
-        if(d.last_interaction) line+='\n  최근: '+d.last_interaction;
+        if(lines.length>0)line+='\n'+lines.join('\n');
         return line;
       });
       const parts=[];if(prefix.trim())parts.push(prefix.trim());parts.push(blocks.join('\n'));if(suffix.trim())parts.push(suffix.trim());
@@ -1030,10 +1066,16 @@ Conversation Log:
     const proj=settings.config.activeProject||'';
     let pack=await db.packs.get(packName);
     if(!pack)await db.packs.put({name:packName,entryCount:0,project:proj});
+    else await createSnapshot(packName,'자동 병합 전 백업','auto');
     let addedCount=0;
+    let processedCount=0;
     for(const e of entries){
       if(!e.name)continue;
-      let existing=await db.entries.where('name').equals(e.name).first();
+      processedCount++;
+      let existing=await db.entries
+        .where('packName').equals(packName)
+        .and(x => x.name === e.name)
+        .first();
       if(existing){
         existing.triggers=[...new Set([...(existing.triggers||[]),...(e.triggers||[])])];
         // relationship/promise 타입: 상태 전이형 → 최신 상태로 교체
@@ -1097,7 +1139,7 @@ Conversation Log:
       await db.packs.update(packName,{entryCount:count});
       await setPackEnabled(packName,true);
     }
-    return entries.length;
+    return processedCount;
   }
 
   // 대화 로그 획득
@@ -1157,7 +1199,7 @@ Conversation Log:
           recentMsgs=recentMsgs.slice(0,recentMsgs.length-offsetCount);
           console.log(`[Lore] 오프셋 적용 후 남은 메시지: ${recentMsgs.length}개`);
         }else{
-          console.log(`[Lore] 메시지 부족(${recentMsgs.length} <= ${offsetCount})으로 오프셋을 최소화합니다.`);
+          console.log(`[Lore] 메시지 부족(${recentMsgs.length} <= ${offsetCount})으로 오프셋을 최소화함.`);
           // 오프셋을 적용하지 않고 최소한의 스캔 범위를 확보함 (혹은 무시)
         }
       }
@@ -1192,20 +1234,22 @@ Conversation Log:
           }
         }catch(e){console.warn('[Lore] 페르소나 조회 실패:',e);}
       }
-      const promptTpl = isInclude ? (settings.config.autoExtPromptWithDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB) : (settings.config.autoExtPromptWithoutDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
-      const prompt=personaPrefix+promptTpl.replace('{context}',context).replace('{entries}',entriesText);
+      const tpl = settings.getActiveTemplate();
+      const promptTpl = isInclude ? (tpl.promptWithDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB) : (tpl.promptWithoutDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
+      const userSchema = tpl.schema || DEFAULT_AUTO_EXTRACT_SCHEMA;
+      const prompt=personaPrefix+promptTpl.replace('{context}',context).replace('{entries}',entriesText).replace('{schema}',userSchema);
 
       let apiLog = null;
       try{
-        const res=await autoExtGemini(prompt, settings.config.autoExtMaxRetries || 1);
+        const res=await autoExtGemini(prompt, {
+          maxRetries: settings.config.autoExtMaxRetries || 1,
+          responseMimeType: "application/json"
+        });
         apiLog = { status: res.status, error: res.error, retries: res.retries };
 
         if(!res.text) throw new Error(`AI 응답없음 (상태코드: ${res.status}, 오류: ${res.error || '알 수 없음'})`);
 
-        let raw=res.text.replace(/^```json\s*/i,'').replace(/\s*```$/i,'').trim();
-        const s=raw.indexOf('['),e=raw.lastIndexOf(']');
-        if(s===-1||e===-1)throw new Error('유효한 JSON 형태가 아님');
-        const parsed=JSON.parse(raw.slice(s,e+1));
+        const parsed=JSON.parse(res.text);
 
         if(Array.isArray(parsed)&&parsed.length>0){
           const cnt=await mergeExtractedData(parsed, _url);
@@ -1273,13 +1317,13 @@ Conversation Log:
 
     let finalInjectText='';
     if(normalMatched.length>0){
-      const nPref=settings.config.prefix||'**[OOC: Lore — incorporate naturally, never repeat verbatim]**';
-      const nSuff=settings.config.suffix||'';
+      const nPref=settings.config.prefix||'**OOC: Lore — incorporate naturally, never repeat verbatim';
+      const nSuff=settings.config.suffix||'**';
       finalInjectText+=Fmt.formatManual(normalMatched,{prefix:nPref,suffix:nSuff});
     }
     if(autoMatched.length>0){
-      const aPref=settings.config.autoExtPrefix||'**[OOC: Established facts — maintain consistency]**';
-      const aSuff=settings.config.autoExtSuffix||'';
+      const aPref=settings.config.autoExtPrefix||'**OOC: Established facts — maintain consistency';
+      const aSuff=settings.config.autoExtSuffix||'**';
       finalInjectText+=Fmt.formatAuto(autoMatched,{prefix:aPref,suffix:aSuff});
     }
 
@@ -1507,6 +1551,75 @@ Conversation Log:
     if (config[jsonKey]) updateStatus();
   }
 
+  function showChangelogIfNew() {
+    const lastVer = _ls.getItem('lore-injector-last-ver');
+    if (lastVer === VER) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'changelog-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999999;display:flex;justify-content:center;align-items:center;font-family:inherit;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:12px;width:100%;max-width:400px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:16px;color:#eee;';
+
+    const title = document.createElement('div');
+    title.textContent = `업데이트 완료! (${VER})`;
+    title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;text-align:center;';
+
+    const list = document.createElement('ul');
+    list.style.cssText = 'margin:0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;';
+
+    CHANGELOG.forEach(item => {
+      const li = document.createElement('li');
+      if (item === '') {
+        li.style.listStyle = 'none';
+        li.style.height = '12px';
+      } else {
+        li.style.fontSize = '13px';
+        li.style.lineHeight = '1.4';
+        li.style.color = '#ccc';
+
+        if (item.includes('https://')) {
+          li.style.listStyle = 'none';
+          li.style.marginLeft = '-20px';
+          const parts = item.split(/(https:\/\/\S+)/);
+          parts.forEach(p => {
+            if (p.startsWith('https://')) {
+              const a = document.createElement('a');
+              a.href = p;
+              a.target = '_blank';
+              a.textContent = p;
+              a.style.color = '#4a9';
+              a.style.textDecoration = 'none';
+              li.appendChild(a);
+            } else {
+              li.appendChild(document.createTextNode(p));
+            }
+          });
+        } else {
+          li.textContent = item;
+        }
+      }
+      list.appendChild(li);
+    });
+
+    const btn = document.createElement('button');
+    btn.textContent = '확인';
+    btn.style.cssText = 'padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;margin-top:8px;transition:background 0.2s;';
+    btn.onmouseover = () => btn.style.background = '#555';
+    btn.onmouseout = () => btn.style.background = '#444';
+    btn.onclick = () => {
+      _ls.setItem('lore-injector-last-ver', VER);
+      document.body.removeChild(overlay);
+    };
+
+    box.appendChild(title);
+    box.appendChild(list);
+    box.appendChild(btn);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
+
   // 메뉴 통합
   function setupUI(){
     const modal=ModalManager.getOrCreateManager('c2');
@@ -1525,7 +1638,7 @@ Conversation Log:
           const left=document.createElement('div');
           left.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;';
           const title=document.createElement('div');title.textContent='주입 위치';title.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
-          const desc=document.createElement('div');desc.textContent='메시지 기준 설정 삽입 위치 선택.';desc.style.cssText='font-size:11px;color:#888;';
+          const desc=document.createElement('div');desc.textContent='메시지를 기준으로 로어가 삽입될 위치를 선택함.';desc.style.cssText='font-size:11px;color:#888;';
           left.appendChild(title);left.appendChild(desc);
           const right=document.createElement('div');right.style.cssText='display:flex;gap:6px;';
           const b1=document.createElement('button');const b2=document.createElement('button');
@@ -1546,7 +1659,7 @@ Conversation Log:
           const title1=document.createElement('div');title1.textContent='[일반 로어] 출력 설정';title1.style.cssText='font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;';nd.appendChild(title1);
 
           const prefLbl=document.createElement('div');prefLbl.textContent='접두사 (Prefix)';prefLbl.style.cssText='font-size:12px;color:#ccc;font-weight:bold;margin-bottom:4px;';
-          const prefDesc=document.createElement('div');prefDesc.textContent='수동으로 추가한 일반 로어 텍스트 시작 부분 삽입 문구.';prefDesc.style.cssText='font-size:11px;color:#888;margin-bottom:6px;';
+          const prefDesc=document.createElement('div');prefDesc.textContent='일반 로어 텍스트 시작 부분에 삽입되는 문구임.';prefDesc.style.cssText='font-size:11px;color:#888;margin-bottom:6px;';
           const prefInp=document.createElement('input');prefInp.value=settings.config.prefix||'';
           prefInp.style.cssText='width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
           prefInp.onchange=()=>{settings.config.prefix=prefInp.value;settings.save();};
@@ -1561,14 +1674,14 @@ Conversation Log:
           const title2=document.createElement('div');title2.textContent='[자동 추출 로어] 출력 설정';title2.style.cssText='font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;';nd.appendChild(title2);
 
           const aPrefLbl=document.createElement('div');aPrefLbl.textContent='전용 접두사';aPrefLbl.style.cssText='font-size:12px;color:#ccc;font-weight:bold;margin-bottom:4px;';
-          const aPrefDesc=document.createElement('div');aPrefDesc.textContent='대화 분석으로 자동 추가된 로어 텍스트 시작 부분 삽입 문구 (비워둘 시 기본값).';aPrefDesc.style.cssText='font-size:11px;color:#888;margin-bottom:6px;';
-          const aPrefInp=document.createElement('input');aPrefInp.value=settings.config.autoExtPrefix||'';aPrefInp.placeholder='[OOC: New lore established:]';
+          const aPrefDesc=document.createElement('div');aPrefDesc.textContent='자동 추가된 로어 텍스트 시작 부분에 삽입되는 문구임 (비워둘 시 기본값).';aPrefDesc.style.cssText='font-size:11px;color:#888;margin-bottom:6px;';
+          const aPrefInp=document.createElement('input');aPrefInp.value=settings.config.autoExtPrefix||'';aPrefInp.placeholder='**OOC: New lore established:';
           aPrefInp.style.cssText='width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
           aPrefInp.onchange=()=>{settings.config.autoExtPrefix=aPrefInp.value;settings.save();};
           nd.appendChild(aPrefLbl);nd.appendChild(aPrefDesc);nd.appendChild(aPrefInp);
 
           const aSuffLbl=document.createElement('div');aSuffLbl.textContent='전용 접미사';aSuffLbl.style.cssText='font-size:12px;color:#ccc;font-weight:bold;margin-bottom:4px;';
-          const aSuffInp=document.createElement('input');aSuffInp.value=settings.config.autoExtSuffix||'';aSuffInp.placeholder='[End of new lore]';
+          const aSuffInp=document.createElement('input');aSuffInp.value=settings.config.autoExtSuffix||'';aSuffInp.placeholder='**';
           aSuffInp.style.cssText='width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
           aSuffInp.onchange=()=>{settings.config.autoExtSuffix=aSuffInp.value;settings.save();};
           nd.appendChild(aSuffLbl);nd.appendChild(aSuffInp);
@@ -1602,7 +1715,7 @@ Conversation Log:
           const wrap=document.createElement('div');wrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;';
           const left=document.createElement('div');left.style.cssText='display:flex;flex-direction:column;gap:4px;flex:1;';
           const title=document.createElement('div');title.textContent='재주입 쿨다운';title.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
-          const desc=document.createElement('div');desc.textContent='주입된 로어가 지정 턴 동안 중복 주입되지 않게 제한함.';desc.style.cssText='font-size:11px;color:#888;';
+          const desc=document.createElement('div');desc.textContent='주입된 로어가 지정된 턴 동안 다시 주입되지 않도록 제한함.';desc.style.cssText='font-size:11px;color:#888;';
           left.appendChild(title);left.appendChild(desc);
           const right=document.createElement('div');right.style.cssText='display:flex;flex-direction:column;align-items:flex-end;gap:8px;';
           const swWrap=document.createElement('div');swWrap.style.cssText='display:flex;align-items:center;gap:8px;';
@@ -1629,7 +1742,7 @@ Conversation Log:
         panel.addBoxedField('','',{onInit:(nd)=>{
           setFullWidth(nd);
           const title=document.createElement('div');title.textContent='자체 스마트 필터 (고급 설정)';title.style.cssText='font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;';nd.appendChild(title);
-          nd.appendChild(createToggleRow('한국어 조사 필터','문맥에 맞는 조사 결합 형태만 식별.',settings.config.strictMatch,(val)=>{settings.config.strictMatch=val;settings.save();}));
+          nd.appendChild(createToggleRow('한국어 조사 필터','문맥에 맞는 조사 결합 형태만 식별함.',settings.config.strictMatch,(val)=>{settings.config.strictMatch=val;settings.save();}));
           nd.appendChild(createToggleRow('오타 허용 설정','단어 오타 시 형태 유사도 분석 후 반영.',settings.config.similarityMatch,(val)=>{settings.config.similarityMatch=val;settings.save();}));
 
           const resetBtn = document.createElement('button');
@@ -1970,6 +2083,19 @@ Conversation Log:
           }});
         };
         addHelpBox('로어 인젝션 개요',['세계관, 등장인물 정보 등을 대화에 자동 주입하는 기능임.','대화 내 등록된 키워드 발동 시 로어 데이터를 찾아 AI 메시지 앞/뒤에 추가함.']);
+        addHelpBox('자동 추출 스키마 작성법',[
+          '대화 자동 DB화 탭에서 추출을 원하는 항목 구조를 커스텀할 수 있음.',
+          '반드시 **JSON 배열(Array)** 형태로 작성해야 함.',
+          '<br/><b>[필수 포함 항목]</b>',
+          '- <code>type</code>: 추출할 항목의 종류 (예: character, quest 등)',
+          '- <code>name</code>: 항목의 이름',
+          '- <code>triggers</code>: 인젝터가 인식할 키워드 목록. 단일 단어 또는 <code>&&</code>를 이용한 조건부 조합이 가능함. (<b>이 값이 없으면 저장되어도 주입되지 않음!</b>)',
+          '- <code>summary</code>: 해당 항목의 짧은 요약',
+          '- <code>detail</code>: 세부 속성을 담는 객체(object)',
+          '<br/><b>[Detail 객체에 대한 팁]</b>',
+          '<code>detail</code> 내부에 자유롭게 키(Key)를 추가할 수 있습니다. (예: <code>"rank": "A"</code>, <code>"belonging": "Guild"</code>)',
+          '추가된 모든 키-값 쌍은 메세지에 삽입될 때 AI가 인식할 수 있도록 자동으로 출력 포맷에 포함됩니다.'
+        ]);
         addHelpBox('1. 초기 추천 설정 예시',[
           '<b>[주입 옵션]</b>',
           '- 주입 위치: 메시지 앞',
@@ -2030,9 +2156,9 @@ Conversation Log:
 
       const f2=document.createElement('div');f2.style.flex='1';
       const l2=document.createElement('div');l2.textContent='제외(오프셋) 턴';l2.style.cssText='font-size:12px;color:#888;margin-bottom:4px;';
-      const i2=document.createElement('input');i2.type='number';i2.min=0;i2.value=settings.config.autoExtOffset||5;
+      const i2=document.createElement('input');i2.type='number';i2.min=0;i2.value=settings.config.autoExtOffset!==undefined?settings.config.autoExtOffset:5;
       i2.style.cssText='width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
-      i2.onchange=()=>{settings.config.autoExtOffset=parseInt(i2.value)||0;settings.save();};
+      i2.onchange=()=>{const v=parseInt(i2.value);settings.config.autoExtOffset=isNaN(v)?0:v;settings.save();};
       f2.appendChild(l2);f2.appendChild(i2);
 
       const fRetry=document.createElement('div');fRetry.style.flex='1';
@@ -2143,32 +2269,137 @@ Conversation Log:
 
     panel.addBoxedField('','',{onInit:(nd)=>{
       setFullWidth(nd);
+      
+      // 템플릿 선택 UI
+      const tplHeader=document.createElement('div');tplHeader.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-top:1px solid #333;padding-top:12px;';
+      const tplTitle=document.createElement('div');tplTitle.textContent='프롬프트 템플릿 관리';tplTitle.style.cssText='font-size:14px;color:#4a9;font-weight:bold;';
+      
+      const tplActions=document.createElement('div');tplActions.style.cssText='display:flex;gap:6px;';
+      const newTplBtn=document.createElement('button');newTplBtn.textContent='+ 새 템플릿';newTplBtn.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:#258;border:none;color:#fff;cursor:pointer;';
+      
+      tplHeader.appendChild(tplTitle);tplHeader.appendChild(tplActions);
+      tplActions.appendChild(newTplBtn);
+      nd.appendChild(tplHeader);
 
-      // DB 미포함 프롬프트 (항상 표시)
-      const hdr1=document.createElement('div');hdr1.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;border-top:1px solid #333;padding-top:12px;';
-      const lbl1=document.createElement('div');lbl1.textContent='추출 프롬프트 (기존 로어 미포함 시)';lbl1.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
-      const resetBtn1=document.createElement('button');resetBtn1.textContent='기본값 복원';resetBtn1.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
-      hdr1.appendChild(lbl1);hdr1.appendChild(resetBtn1);nd.appendChild(hdr1);
+      const tplSelectWrap=document.createElement('div');tplSelectWrap.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;';
+      const tplSelect=document.createElement('select');
+      tplSelect.style.cssText='flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+      
+      const tplRenameBtn=document.createElement('button');tplRenameBtn.textContent='이름 변경';tplRenameBtn.style.cssText='font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
+      const tplDelBtn=document.createElement('button');tplDelBtn.textContent='삭제';tplDelBtn.style.cssText='font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #d66;color:#d66;cursor:pointer;';
+      
+      const renderTplOptions=()=>{
+        tplSelect.innerHTML='';
+        (settings.config.templates||[]).forEach(t=>{
+          const opt=document.createElement('option');opt.value=t.id;opt.textContent=t.name+(t.isDefault?' (기본/수정불가)':'');
+          tplSelect.appendChild(opt);
+        });
+        tplSelect.value=settings.config.activeTemplateId||'default';
+        const activeTpl=settings.getActiveTemplate();
+        tplRenameBtn.style.display=activeTpl.isDefault?'none':'block';
+        tplDelBtn.style.display=activeTpl.isDefault?'none':'block';
+        
+        taSchema.value=activeTpl.schema;
+        taSchema.disabled=activeTpl.isDefault;
+        taSchema.style.opacity=activeTpl.isDefault?'0.6':'1';
+        
+        ta1.value=activeTpl.promptWithoutDb;
+        ta1.disabled=activeTpl.isDefault;
+        ta1.style.opacity=activeTpl.isDefault?'0.6':'1';
+        
+        ta2.value=activeTpl.promptWithDb;
+        ta2.disabled=activeTpl.isDefault;
+        ta2.style.opacity=activeTpl.isDefault?'0.6':'1';
+      };
+      
+      tplSelectWrap.appendChild(tplSelect);tplSelectWrap.appendChild(tplRenameBtn);tplSelectWrap.appendChild(tplDelBtn);
+      nd.appendChild(tplSelectWrap);
 
-      const ta1=document.createElement('textarea');ta1.value=settings.config.autoExtPromptWithoutDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB;
+      newTplBtn.onclick=()=>{
+        const name=prompt('새 템플릿 이름을 입력할 것:','내 커스텀 템플릿');
+        if(!name)return;
+        const newId='tpl_'+Date.now();
+        const active=settings.getActiveTemplate();
+        settings.config.templates.push({
+          id:newId, name, isDefault:false,
+          schema:active.schema, promptWithoutDb:active.promptWithoutDb, promptWithDb:active.promptWithDb
+        });
+        settings.config.activeTemplateId=newId;
+        settings.save();
+        renderTplOptions();
+      };
+      
+      tplSelect.onchange=()=>{
+        settings.config.activeTemplateId=tplSelect.value;
+        settings.save();
+        renderTplOptions();
+      };
+      
+      tplRenameBtn.onclick=()=>{
+        const activeTpl=settings.getActiveTemplate();
+        if(activeTpl.isDefault)return;
+        const newName=prompt('템플릿 이름을 입력할 것:', activeTpl.name);
+        if(newName && newName.trim()){
+          const idx=settings.config.templates.findIndex(t=>t.id===activeTpl.id);
+          if(idx!==-1){
+            settings.config.templates[idx].name=newName.trim();
+            settings.save();
+            renderTplOptions();
+          }
+        }
+      };
+
+      tplDelBtn.onclick=()=>{
+        const activeId=settings.config.activeTemplateId;
+        const activeTpl=settings.getActiveTemplate();
+        if(activeTpl.isDefault)return;
+        if(confirm(`[${activeTpl.name}] 템플릿을 삭제함?`)){
+          settings.config.templates=settings.config.templates.filter(t=>t.id!==activeId);
+          settings.config.activeTemplateId='default';
+          settings.save();
+          renderTplOptions();
+        }
+      };
+
+      const saveTpl=(key, val)=>{
+        const id=settings.config.activeTemplateId;
+        const idx=(settings.config.templates||[]).findIndex(t=>t.id===id);
+        if(idx!==-1&&!settings.config.templates[idx].isDefault){
+          settings.config.templates[idx][key]=val;
+          settings.save();
+        }
+      };
+
+      // 스키마 편집 (템플릿 종속)
+      const lblSchema=document.createElement('div');lblSchema.textContent='자동 추출 스키마 설정 (JSON Array)';lblSchema.style.cssText='font-size:13px;color:#ccc;font-weight:bold;margin-bottom:4px;';
+      nd.appendChild(lblSchema);
+
+      const taSchema=document.createElement('textarea');
+      taSchema.style.cssText='width:100%;height:180px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;margin-bottom:16px;';
+      taSchema.onchange=()=>saveTpl('schema', taSchema.value);
+      nd.appendChild(taSchema);
+
+      // DB 미포함 프롬프트
+      const lbl1=document.createElement('div');lbl1.textContent='추출 프롬프트 (기존 로어 미포함 시)';lbl1.style.cssText='font-size:13px;color:#ccc;font-weight:bold;margin-bottom:4px;';
+      nd.appendChild(lbl1);
+
+      const ta1=document.createElement('textarea');
       ta1.style.cssText='width:100%;height:180px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;margin-bottom:16px;';
-      ta1.onchange=()=>{settings.config.autoExtPromptWithoutDb=ta1.value;settings.save();};
-      resetBtn1.onclick=()=>{if(confirm('기본값으로 복원함?')){ta1.value=DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB;settings.config.autoExtPromptWithoutDb=DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB;settings.save();}};
+      ta1.onchange=()=>saveTpl('promptWithoutDb', ta1.value);
       nd.appendChild(ta1);
 
-      // DB 포함 프롬프트 (항상 표시)
-      const hdr2=document.createElement('div');hdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;border-top:1px solid #333;padding-top:12px;';
-      const lbl2=document.createElement('div');lbl2.textContent='추출 프롬프트 (기존 로어 함께 전송 시)';lbl2.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
-      const resetBtn2=document.createElement('button');resetBtn2.textContent='기본값 복원';resetBtn2.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
-      hdr2.appendChild(lbl2);hdr2.appendChild(resetBtn2);nd.appendChild(hdr2);
+      // DB 포함 프롬프트
+      const lbl2=document.createElement('div');lbl2.textContent='추출 프롬프트 (기존 로어 함께 전송 시)';lbl2.style.cssText='font-size:13px;color:#ccc;font-weight:bold;margin-bottom:4px;';
+      nd.appendChild(lbl2);
 
-      const ta2=document.createElement('textarea');ta2.value=settings.config.autoExtPromptWithDb || DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;
-      ta2.style.cssText='width:100%;height:180px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;';
-      ta2.onchange=()=>{settings.config.autoExtPromptWithDb=ta2.value;settings.save();};
-      resetBtn2.onclick=()=>{if(confirm('기본값으로 복원함?')){ta2.value=DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;settings.config.autoExtPromptWithDb=DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;settings.save();}};
+      const ta2=document.createElement('textarea');
+      ta2.style.cssText='width:100%;height:180px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;margin-bottom:16px;';
+      ta2.onchange=()=>saveTpl('promptWithDb', ta2.value);
       nd.appendChild(ta2);
+      
+      renderTplOptions(); // 초기 렌더링
 
-      const logHdrRow=document.createElement('div');logHdrRow.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-top:16px;margin-bottom:8px;';
+      const logHdrRow=document.createElement('div');logHdrRow.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-top:16px;margin-bottom:8px;border-top:1px solid #333;padding-top:12px;';
       const logHdr=document.createElement('div');logHdr.textContent='추출 실행 기록';logHdr.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
       const clearBtn=document.createElement('button');clearBtn.textContent='로그 초기화';
       clearBtn.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #d66;color:#d66;cursor:pointer;';
@@ -2303,28 +2534,6 @@ Conversation Log:
       testRow.appendChild(testBtn);testRow.appendChild(testResult);nd.appendChild(testRow);
     }});
 
-    panel.addBoxedField('','',{onInit:(nd)=>{
-      setFullWidth(nd);
-      const hdr1=document.createElement('div');hdr1.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;';
-      const lbl1=document.createElement('div');lbl1.textContent='키워드 추출 프롬프트';lbl1.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
-      const rst1=document.createElement('button');rst1.textContent='기본값 복원';rst1.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
-      hdr1.appendChild(lbl1);hdr1.appendChild(rst1);nd.appendChild(hdr1);
-      const ta1=document.createElement('textarea');ta1.value=settings.config.extractPrompt;
-      ta1.style.cssText='width:100%;height:120px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;';
-      ta1.onchange=()=>{settings.config.extractPrompt=ta1.value;settings.save();};
-      rst1.onclick=()=>{if(confirm('기본값으로 복원함?')){ta1.value=DEFAULT_EXTRACT_PROMPT;settings.config.extractPrompt=DEFAULT_EXTRACT_PROMPT;settings.save();}};
-      nd.appendChild(ta1);
-
-      const hdr2=document.createElement('div');hdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin:16px 0 4px;';
-      const lbl2=document.createElement('div');lbl2.textContent='스마트 필터 프롬프트';lbl2.style.cssText='font-size:13px;color:#ccc;font-weight:bold;';
-      const rst2=document.createElement('button');rst2.textContent='기본값 복원';rst2.style.cssText='font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
-      hdr2.appendChild(lbl2);hdr2.appendChild(rst2);nd.appendChild(hdr2);
-      const ta2=document.createElement('textarea');ta2.value=settings.config.smartPrompt;
-      ta2.style.cssText='width:100%;height:120px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;';
-      ta2.onchange=()=>{settings.config.smartPrompt=ta2.value;settings.save();};
-      rst2.onclick=()=>{if(confirm('기본값으로 복원함?')){ta2.value=DEFAULT_SMART_PROMPT;settings.config.smartPrompt=DEFAULT_SMART_PROMPT;settings.save();}};
-      nd.appendChild(ta2);
-    }});
   }
 
   // renderPackUI - 설정 모음 관리
@@ -2508,17 +2717,85 @@ Conversation Log:
           const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`${pack.name}.json`;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
         };
 
+        const snapBtn=document.createElement('button');snapBtn.textContent='스냅샷';snapBtn.style.cssText=B+'color:#da8;border-color:#653;';
+        
         const delBtn=document.createElement('button');delBtn.textContent='삭제';delBtn.style.cssText=B+'color:#a55;border-color:#633;';
         delBtn.onclick=async()=>{
           if(!confirm(`[${pack.name}] 로어와 모든 항목을 삭제?`))return;
           await db.entries.where('packName').equals(pack.name).delete();
+          await db.snapshots.where('packName').equals(pack.name).delete();
           await db.packs.delete(pack.name);
           m.replaceContentPanel((p)=>renderPackUI(p,m),'로어 불러오기/관리');
         };
 
-        actions.appendChild(convBtn);actions.appendChild(renameBtn);actions.appendChild(exportBtn);actions.appendChild(delBtn);
+        actions.appendChild(convBtn);actions.appendChild(renameBtn);actions.appendChild(exportBtn);actions.appendChild(snapBtn);actions.appendChild(delBtn);
         header.appendChild(actions);
         packDiv.appendChild(header);
+        
+        const snapContainer=document.createElement('div');
+        snapContainer.style.cssText='display:none;padding:10px;background:#0a0a0a;border-top:1px solid #333;flex-direction:column;gap:8px;';
+        
+        snapBtn.onclick=async()=>{
+          const isHidden=snapContainer.style.display==='none';
+          if(isHidden){
+            await renderSnapshots();
+            snapContainer.style.display='flex';
+          }else{
+            snapContainer.style.display='none';
+          }
+        };
+
+        const renderSnapshots=async()=>{
+          snapContainer.innerHTML='';
+          const title=document.createElement('div');title.textContent='백업 스냅샷 관리 (최대 10개)';title.style.cssText='font-size:12px;color:#ccc;font-weight:bold;margin-bottom:4px;';
+          snapContainer.appendChild(title);
+          
+          const addRow=document.createElement('div');addRow.style.cssText='display:flex;gap:6px;margin-bottom:8px;';
+          const snapNameInp=document.createElement('input');snapNameInp.placeholder='수동 백업 이름 (선택)';snapNameInp.style.cssText='flex:1;padding:4px 6px;border:1px solid #333;border-radius:3px;background:#111;color:#ccc;font-size:11px;';
+          const addSnapBtn=document.createElement('button');addSnapBtn.textContent='현재 상태 저장';addSnapBtn.style.cssText='padding:4px 8px;font-size:11px;border-radius:3px;background:#285;border:none;color:#fff;cursor:pointer;';
+          addSnapBtn.onclick=async()=>{
+            await createSnapshot(pack.name, snapNameInp.value.trim()||'수동 저장', 'manual');
+            await renderSnapshots();
+          };
+          addRow.appendChild(snapNameInp);addRow.appendChild(addSnapBtn);
+          snapContainer.appendChild(addRow);
+
+          const snaps=await db.snapshots.where('packName').equals(pack.name).reverse().sortBy('timestamp');
+          if(!snaps.length){
+            const emp=document.createElement('div');emp.textContent='저장된 스냅샷 없음.';emp.style.cssText='font-size:11px;color:#666;';snapContainer.appendChild(emp);
+          }else{
+            for(const s of snaps){
+              const sRow=document.createElement('div');sRow.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:4px;background:#111;border-radius:3px;border:1px solid #222;';
+              const sLeft=document.createElement('div');sLeft.style.cssText='display:flex;flex-direction:column;';
+              const dt=new Date(s.timestamp).toLocaleString();
+              const sLbl=document.createElement('span');sLbl.textContent=`${s.label} (${s.type==='auto'?'자동':'수동'})`;sLbl.style.cssText=`font-size:11px;color:${s.type==='auto'?'#88c':'#da8'};font-weight:bold;`;
+              const sDt=document.createElement('span');sDt.textContent=`${dt} - 항목 ${s.data.length}개`;sDt.style.cssText='font-size:10px;color:#888;';
+              sLeft.appendChild(sLbl);sLeft.appendChild(sDt);
+              
+              const sRight=document.createElement('div');sRight.style.cssText='display:flex;gap:4px;';
+              const resBtn=document.createElement('button');resBtn.textContent='복원';resBtn.style.cssText='font-size:10px;padding:2px 6px;border-radius:2px;background:transparent;border:1px solid #264;color:#4a9;cursor:pointer;';
+              resBtn.onclick=async()=>{
+                if(confirm('현재 로어 데이터가 이 스냅샷 시점으로 덮어씌워집니다. 진행?')){
+                  await restoreSnapshot(s.id);
+                  alert('복원됨.');
+                  m.replaceContentPanel((p)=>renderPackUI(p,m),'로어 불러오기/관리');
+                }
+              };
+              const sDelBtn=document.createElement('button');sDelBtn.textContent='삭제';sDelBtn.style.cssText='font-size:10px;padding:2px 6px;border-radius:2px;background:transparent;border:1px solid #633;color:#a55;cursor:pointer;';
+              sDelBtn.onclick=async()=>{
+                if(confirm('삭제함?')){
+                  await db.snapshots.delete(s.id);
+                  await renderSnapshots();
+                }
+              };
+              sRight.appendChild(resBtn);sRight.appendChild(sDelBtn);
+              sRow.appendChild(sLeft);sRow.appendChild(sRight);
+              snapContainer.appendChild(sRow);
+            }
+          }
+        };
+
+        packDiv.appendChild(snapContainer);
         nd.appendChild(packDiv);
       }
     }});
@@ -2526,6 +2803,7 @@ Conversation Log:
 
   // UI 초기화
   try{
+    showChangelogIfNew();
     setupUI();
     console.log('[Lore] 초기화 완료 - UI 준비됨 ('+VER+')');
   }catch(e){
