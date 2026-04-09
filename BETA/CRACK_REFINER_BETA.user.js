@@ -5,8 +5,8 @@
 // @description 로어·메모리 기반 AI 응답 자동 교정
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
-// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA.user.js
-// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA.user.js
+// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA_1.0.1.user.js
+// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA_1.0.1.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-toastify-injection@v1.0.0/crack/libraries/toastify-injection.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
@@ -45,6 +45,20 @@
 
   // 상수 및 설정
   const VER = 'v1.0.1';
+  const CHANGELOG = [
+    '[신규] 추출 스키마를 직접 편집할 수 있도록 변경 (도움말에서 작성법 확인 가능)',
+    '[신규] 로어 데이터 스냅샷 기능 추가 — 이전 상태로 되돌릴 수 있음',
+    '[신규] 추출 프롬프트 템플릿 기능 — 여러 프롬프트를 저장하고 전환 가능',
+    '[변경] OOC 접두사/접미사를 ** 로 감싸도록 기본값 변경',
+    '[수정] 자동 추출 시 AI 응답을 잘못 읽어오는 문제 해결',
+    '[수정] 서로 다른 로어 팩에 같은 이름이 있을 때 데이터가 섞이는 문제 해결',
+    '[수정] 자동 추출 결과가 간헐적으로 깨지는 문제 해결 (JSON 모드 적용)',
+    '[수정] 일부 모델에서 추론 설정이 범위를 벗어나는 문제 해결',
+    '',
+    '이전 버전(1.0.0)으로 돌아가려면 아래 링크를 설치하세요:',
+    '[로어 인젝터] https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_LORE_INJECTER_BETA_1.0.0.user.js',
+    '[AI 교정기] https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/BETA/CRACK_REFINER_BETA_1.0.0.user.js',
+  ];
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -485,7 +499,7 @@ Rules for replacements:
     return cache.token;
   }
 
-  async function callGeminiApi(prompt) {
+  async function callGeminiApi(prompt, maxRetries = 1) {
     const isVertex = settings.config.geminiApiType === 'vertex';
     const model = settings.config.geminiModel === '_custom' ? settings.config.geminiCustomModel : settings.config.geminiModel;
     let url, headers;
@@ -516,7 +530,7 @@ Rules for replacements:
       else thinkingConfig = { thinkingLevel: sel };
     } else {
       if (sel === 'off') thinkingConfig = { thinkingBudget: 0 };
-      else if (sel === 'minimal') thinkingConfig = { thinkingBudget: 256 };
+      else if (sel === 'minimal') thinkingConfig = { thinkingBudget: 512 };
       else if (sel === 'budget') thinkingConfig = { thinkingBudget: settings.config.geminiBudget || 0 };
       else { const map = { low: 1024, medium: 2048, high: 4096 }; thinkingConfig = { thinkingBudget: map[sel] || 2048 }; }
     }
@@ -527,17 +541,41 @@ Rules for replacements:
       generationConfig: { thinkingConfig }
     });
 
-    const r = await gmFetch(url, { method: 'POST', headers, body });
-    if (!r.ok) {
-      const err = await r.text().catch(() => '');
-      throw new Error(`API 오류 (${r.status}): ${err.slice(0, 200)}`);
+    let lastError = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const r = await gmFetch(url, { method: 'POST', headers, body });
+        
+        if (r.status === 401 && isVertex) {
+          vertexTokenCache.token = null;
+          vertexTokenCache.expiry = 0;
+          if (attempt < maxRetries) {
+            try {
+              const sa = parseServiceAccountJson(settings.config.geminiVertexJson);
+              const newToken = await getVertexAccessToken(sa, vertexTokenCache);
+              headers['Authorization'] = `Bearer ${newToken}`;
+            } catch (e) { lastError = new Error('토큰 갱신 실패: ' + e.message); break; }
+            continue;
+          }
+        }
+
+        if (!r.ok) {
+          const err = await r.text().catch(() => '');
+          lastError = new Error(`API 오류 (${r.status}): ${err.slice(0, 200)}`);
+          if ([400, 403, 404].includes(r.status)) break;
+        } else {
+          const json = await r.json();
+          const parts = json.candidates?.[0]?.content?.parts || [];
+          const textPart = parts.find(p => p.text && !p.thought);
+          if (textPart) return textPart.text;
+          const anyText = parts.find(p => p.text);
+          if (anyText) return anyText.text;
+          lastError = new Error('응답 파싱 실패 (텍스트 없음)');
+        }
+      } catch (e) { lastError = e; }
+      if (attempt < maxRetries) await new Promise(res => setTimeout(res, 2000));
     }
-    const json = await r.json();
-    const parts = json.candidates?.[0]?.content?.parts || [];
-    const textPart = parts.find(p => p.text && !p.thought);
-    if (textPart) return textPart.text;
-    const anyText = parts.find(p => p.text);
-    return anyText?.text || '';
+    throw lastError || new Error('API 호출 실패');
   }
 
   // UI 팝업
@@ -970,7 +1008,13 @@ Rules for replacements:
         const replacements = parsed.replacements || [];
         if (replacements.length > 0) {
           for (const r of replacements) {
-            if (r.from && r.to !== undefined) correctedText = correctedText.replace(r.from, r.to);
+            if (r.from && r.to !== undefined) {
+              const matchCount = correctedText.split(r.from).length - 1;
+              if (matchCount > 1) {
+                console.warn(`[Refiner] "${r.from.slice(0, 30)}..." matched ${matchCount} times — replacing first only`);
+              }
+              correctedText = correctedText.replace(r.from, r.to); // intentionally first-match only
+            }
           }
         } else if (parsed.refined_text) {
           correctedText = parsed.refined_text; // 레거시 호환
@@ -1407,7 +1451,7 @@ Rules for replacements:
     testResult.style.cssText = 'font-size:12px;color:#888;word-break:break-all;';
     testBtn.onclick = async () => {
       const v = (config[apiTypeKey] || 'key') === 'vertex';
-      if (v ? !config[jsonKey] : !config[keyKey]) { alert('API 키를 입력하세요.'); return; }
+      if (v ? !config[jsonKey] : !config[keyKey]) { alert('API 키를 입력할 것.'); return; }
       testBtn.disabled = true; testResult.textContent = '테스트 중...';
       try {
         const r = await callGeminiApi('Say "OK" in one word.');
@@ -1418,6 +1462,75 @@ Rules for replacements:
     };
     testRow.appendChild(testBtn); testRow.appendChild(testResult); nd.appendChild(testRow);
     updateTypeBtns();
+  }
+
+  function showChangelogIfNew() {
+    const lastVer = _ls.getItem('speech-refiner-last-ver');
+    if (lastVer === VER) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'changelog-overlay-refiner';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999999;display:flex;justify-content:center;align-items:center;font-family:inherit;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:12px;width:100%;max-width:400px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:16px;color:#eee;';
+
+    const title = document.createElement('div');
+    title.textContent = `업데이트 완료! (${VER})`;
+    title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;text-align:center;';
+
+    const list = document.createElement('ul');
+    list.style.cssText = 'margin:0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;';
+
+    CHANGELOG.forEach(item => {
+      const li = document.createElement('li');
+      if (item === '') {
+        li.style.listStyle = 'none';
+        li.style.height = '12px';
+      } else {
+        li.style.fontSize = '13px';
+        li.style.lineHeight = '1.4';
+        li.style.color = '#ccc';
+
+        if (item.includes('https://')) {
+          li.style.listStyle = 'none';
+          li.style.marginLeft = '-20px';
+          const parts = item.split(/(https:\/\/\S+)/);
+          parts.forEach(p => {
+            if (p.startsWith('https://')) {
+              const a = document.createElement('a');
+              a.href = p;
+              a.target = '_blank';
+              a.textContent = p;
+              a.style.color = '#4a9';
+              a.style.textDecoration = 'none';
+              li.appendChild(a);
+            } else {
+              li.appendChild(document.createTextNode(p));
+            }
+          });
+        } else {
+          li.textContent = item;
+        }
+      }
+      list.appendChild(li);
+    });
+
+    const btn = document.createElement('button');
+    btn.textContent = '확인';
+    btn.style.cssText = 'padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;margin-top:8px;transition:background 0.2s;';
+    btn.onmouseover = () => btn.style.background = '#555';
+    btn.onmouseout = () => btn.style.background = '#444';
+    btn.onclick = () => {
+      _ls.setItem('speech-refiner-last-ver', VER);
+      document.body.removeChild(overlay);
+    };
+
+    box.appendChild(title);
+    box.appendChild(list);
+    box.appendChild(btn);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
   }
 
   // 설정 UI
@@ -1453,7 +1566,7 @@ Rules for replacements:
             left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
             const t = document.createElement('div'); t.textContent = '참조 대화 턴 수';
             t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
-            const d = document.createElement('div'); d.textContent = '최근 몇 턴을 맥락으로 포함할지 설정 (1 이상 권장).';
+            const d = document.createElement('div'); d.textContent = '최근 몇 턴을 맥락으로 포함할지 설정함 (1 이상 권장).';
             d.style.cssText = 'font-size:11px;color:#888;line-height:1.4;word-break:keep-all;';
             left.appendChild(t); left.appendChild(d);
             const right = document.createElement('div'); right.style.cssText = 'display:flex;align-items:center;';
@@ -1476,7 +1589,7 @@ Rules for replacements:
             mtleft.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
             const mtt = document.createElement('div'); mtt.textContent = '키워드 검색 대화 턴 수';
             mtt.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
-            const mtd = document.createElement('div'); mtd.textContent = '최근 N개 대화에서 키워드 일치 여부 확인. (필터링 ON: 전체 적용 / OFF: 고정DB에만 적용)';
+            const mtd = document.createElement('div'); mtd.textContent = '최근 N개 대화에서 키워드 일치 여부를 확인함. (필터링 ON: 전체 적용 / OFF: 고정DB에만 적용)';
             mtd.style.cssText = 'font-size:11px;color:#888;line-height:1.4;word-break:keep-all;';
             mtleft.appendChild(mtt); mtleft.appendChild(mtd);
             const mtright = document.createElement('div'); mtright.style.cssText = 'display:flex;align-items:center;';
@@ -1666,6 +1779,7 @@ Rules for replacements:
 
   setTimeout(() => {
     try {
+      showChangelogIfNew();
       setupUI();
       console.log(`[교정기] UI 준비 완료 (${VER})`);
     } catch (e) {
