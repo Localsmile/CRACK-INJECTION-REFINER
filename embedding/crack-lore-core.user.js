@@ -15,9 +15,7 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   if (_w.__LoreCore) return; // 중복 로드 방지
 
-  // ═══════════════════════════════════════════════════════
-  // §1. 상수 & 기본 설정
-  // ═══════════════════════════════════════════════════════
+  // 상수 & 기본 설정
 
   const VER = '1.0.0';
   const _gHost = 'generativelanguage.googleapis.com';
@@ -30,8 +28,7 @@
     { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
   ];
 
-  // 플랫폼 제약 기반 최적 기본값
-  // 컨텍스트 ~5500토큰, 최근 3-5턴 보존, 요약 10-20턴 갱신, 입력 2000자
+  // 최적 기본값
   const PLATFORM = {
     contextTokens: 5500,
     recentTurnsSafe: 4, // AI가 확실히 기억하는 턴 수
@@ -42,7 +39,7 @@
   };
 
   const DEFAULTS = {
-    // === 주입 예산 ===
+    // 주입 예산
     loreBudgetChars: 350, // 최대 로어 글자수
     targetCharsPerEntry: {full: 140, compact: 70, micro: 35},
     autoCompression: true, // 예산 내 자동 압축
@@ -91,9 +88,7 @@
     importMaxEntries: 50
   };
 
-  // ═══════════════════════════════════════════════════════
-  // §2. 데이터베이스 (Dexie 싱글턴)
-  // ═══════════════════════════════════════════════════════
+  // 데이터베이스 (Dexie 싱글턴)
 
   let _db = null;
   function getDB() {
@@ -124,9 +119,7 @@
     return _db;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §3. 네트워크 유틸리티
-  // ═══════════════════════════════════════════════════════
+  // 네트워크
 
   const _GM_xhr = (typeof GM_xmlhttpRequest !== 'undefined')
     ? GM_xmlhttpRequest
@@ -161,9 +154,7 @@
     });
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §4. Vertex AI 인증
-  // ═══════════════════════════════════════════════════════
+  // Vertex AI 인증
 
   function parseServiceAccountJson(jsonStr) {
     try {
@@ -227,9 +218,7 @@
     return cache.token;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §5. Gemini API — 텍스트 생성
-  // ═══════════════════════════════════════════════════════
+  // Gemini API — 텍스트 생성
 
   async function callGeminiApi(prompt, opts = {}) {
     const {
@@ -293,9 +282,7 @@
     return { text: null, error: lastError };
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §6. Gemini API — 임베딩
-  // ═══════════════════════════════════════════════════════
+  // Gemini API — 임베딩
 
   async function embedTexts(texts, opts = {}) {
     const {
@@ -354,9 +341,7 @@
     return results[0];
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §7. 벡터 연산
-  // ═══════════════════════════════════════════════════════
+  // 벡터 연산
 
   function normalizeVector(vec) {
     let norm = 0;
@@ -377,9 +362,7 @@
     return denom === 0 ? 0 : dot / denom;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §8. 플랫폼 연동
-  // ═══════════════════════════════════════════════════════
+  // 플랫폼 연동
 
   function getCurUrl() { return window.location.pathname; }
 
@@ -437,9 +420,7 @@
     return null;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §9. 시간 감쇠 (Ebbinghaus 기반)
-  // ═══════════════════════════════════════════════════════
+  // 시간 감쇠 (Ebbinghaus 기반)
 
   // 반환값 0~1: 0 = AI가 확실히 기억, 1 = 완전히 잊혀짐
   function calcForgottenScore(turnsSinceLastMention, halfLife) {
@@ -452,9 +433,7 @@
     return hl[entryType] || hl.default || 15;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §10. 활성 캐릭터 감지
-  // ═══════════════════════════════════════════════════════
+  // 활성 캐릭터 감지
 
   function detectActiveCharacters(recentMsgs, allEntries) {
     // 최근 3턴(6메시지) 텍스트 풀
@@ -491,9 +470,7 @@
     return activeNames.some(name => text.includes(name.toLowerCase()));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §11. 첫만남 추적
-  // ═══════════════════════════════════════════════════════
+  // 첫만남 추적
 
   async function checkFirstEncounter(char1, char2) {
     const db = getDB();
@@ -527,9 +504,7 @@
     return unmet;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §12. Working Memory (씬 상태)
-  // ═══════════════════════════════════════════════════════
+  // Working Memory (씬 상태)
 
   async function getWorkingMemory(url) {
     const db = getDB();
@@ -578,9 +553,7 @@
     return '[씬:' + parts.join('/') + ']';
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §13. 호칭 매트릭스
-  // ═══════════════════════════════════════════════════════
+  // 호칭 매트릭스
 
   function buildHonorificMatrix(entries, activeNames) {
     const matrix = {};
@@ -590,7 +563,7 @@
 
     for (const e of relEntries) {
       for (const [key, value] of Object.entries(e.detail.nicknames)) {
-        // key 형태: "소피아→주인공" 또는 "CharA→CharB"
+        // key 형태: "CharA→CharB"
         const match = key.match(/^(.+?)→(.+?)$/);
         if (!match) continue;
         const [, from, to] = match;
@@ -621,9 +594,7 @@
     return result;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §14. 트리거 스캐너 (개선판)
-  // ═══════════════════════════════════════════════════════
+  // 트리거 스캐너
 
   function bigramSimilarity(s1, s2) {
     if (s1 === s2) return 1.0;
@@ -705,9 +676,7 @@
     return results;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §15. 하이브리드 검색 엔진
-  // ═══════════════════════════════════════════════════════
+  // 하이브리드 검색 엔진
 
   async function hybridSearch(input, msgs, entries, config, apiOpts) {
     const triggerResults = triggerScan(input, msgs, entries, config);
@@ -789,9 +758,7 @@
     return { scored, activeNames };
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §16. 예산 기반 포매터
-  // ═══════════════════════════════════════════════════════
+  // 예산 기반 포매터
 
   function formatEntryFull(e) {
     const d = e.detail || {};
@@ -893,9 +860,7 @@
     return `\n${pfx}\n${body}\n${sfx}\n`;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §17. 임베딩 관리
-  // ═══════════════════════════════════════════════════════
+  // 임베딩 관리
 
   // 엔트리에 임베딩 생성/갱신
   async function ensureEmbedding(entry, apiOpts) {
@@ -968,9 +933,7 @@
     return h.toString(36);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §18. 지식 변환기 (Knowledge Importer)
-  // ═══════════════════════════════════════════════════════
+  // 지식 변환기
 
   const IMPORT_SCHEMA = `[
   { "type": "character|location|item|event|concept",
@@ -1115,9 +1078,7 @@ Source Material:
     return await embedPack(packName, apiOpts, onProgress);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §19. 중복 감지 (플랫폼 요약 vs 로어)
-  // ═══════════════════════════════════════════════════════
+  // 중복 감지 (플랫폼 요약 vs 로어)
 
   function detectDuplicatesInSummary(entries, memories) {
     const summaryText = [
@@ -1145,9 +1106,7 @@ Source Material:
     return duplicates;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §20. UI 헬퍼
-  // ═══════════════════════════════════════════════════════
+  // UI 헬퍼
 
   // 상태 배지 — API 작업 중 표시용
   var _statusBadge=null;
@@ -1284,9 +1243,7 @@ Source Material:
     updateBtns();
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §21. 설정 관리
-  // ═══════════════════════════════════════════════════════
+  // 설정 관리
 
   const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
 
@@ -1321,9 +1278,7 @@ Source Material:
     _ls.setItem('lore-last-mention', JSON.stringify(all));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // §22. 공용 API 내보내기
-  // ═══════════════════════════════════════════════════════
+  // 공용 API 내보내기
 
   _w.__LoreCore = {
     VER,
