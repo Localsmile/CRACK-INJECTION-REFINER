@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.1.0
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v4.1)
+// @version     1.1
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.1)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -25,7 +25,7 @@
   if (_w.__LoreCore) return;
 
   // 상수 및 기본 설정
-  const VER = '1.1.0';
+  const VER = '1.1';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
