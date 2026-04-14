@@ -500,7 +500,7 @@
             if (strict) {
               try {
                 const esc = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp(`(^|[\\s\\.,!?\\'\\"\u3000])${esc}(은|는|이|가|을|를|의|에|에게|한테|로|으로|과|와|다|도|만|부터|까지|[\\s\\.,!?\\'\\"\u3000]|$)`, 'i');
+              const regex = new RegExp(`(^|[\\s\\.,!?\\'\\"\u3000])${esc}(은|는|이|가|을|를|의|에|에게|한테|로|으로|과|와|다|도|만|부터|까지|조차|마저|치고|서야|이라도|조차도|로서|로써|[\\s\\.,!?\\'\\"\u3000]|$)`, 'i');
                 if (regex.test(block.text)) isExact = true;
               } catch { if (block.text.includes(part)) isExact = true; }
             } else { if (block.text.includes(part)) isExact = true; }
