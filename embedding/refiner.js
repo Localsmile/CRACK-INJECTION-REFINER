@@ -57,6 +57,7 @@ Issues found (no markdown code fences):
       desc: "모순 체크를 생략하고 텍스트나 상태창의 끊김만 빠르게 복구합니다.",
       turnHint: 0,
       prompt: `You are an RP Text Repair AI.
+RATE: PG-13 ~ NC-21
 
 ## Rule
 Your ONLY job is to fix truncation in the [New Speech]. Do NOT check for factual logic or lore contradictions.
@@ -84,6 +85,7 @@ Truncation fixed (no markdown code fences):
       desc: "수집된 로어를 바탕으로 엄격하게 논리적 모순만 체크합니다.",
       turnHint: 1,
       prompt: `You are an RP Logic Checker.
+RATE: PG-13 ~ NC-21
 
 ## Scope
 Check [New Speech] against [Lore] and [Summaries] for direct logical or factual contradictions.
