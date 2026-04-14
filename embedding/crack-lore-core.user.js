@@ -810,24 +810,38 @@
     const text = `${entry.name}: ${entry.summary || ''}`;
     const hash = simpleHash(text);
     const docTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
-    const currentModel = apiOpts.model || DEFAULTS.embeddingModel;
-    if (existing && existing.hash === hash && existing.model === currentModel && existing.taskType === docTaskType) return;
+    const targetModel = apiOpts.model || DEFAULTS.embeddingModel;
+
+    if (existing && existing.hash === hash) {
+      const needsRegen = (existing.model && existing.model !== targetModel) || (existing.taskType !== docTaskType && targetModel.includes('embedding-001'));
+      if (!needsRegen) return;
+    }
+
     const vec = await embedText(text, { ...apiOpts, taskType: docTaskType });
-    await db.embeddings.put({
-      entryId: entry.id, field: 'summary', vector: vec, hash, model: apiOpts.model || DEFAULTS.embeddingModel,
+    const data = {
+      entryId: entry.id, field: 'summary', vector: vec, hash, model: targetModel,
       taskType: docTaskType, updatedAt: Date.now()
-    });
+    };
+    if (existing) data.id = existing.id;
+    await db.embeddings.put(data);
+
     if (entry.type === 'promise' && entry.detail?.condition) {
       const condText = entry.detail.condition;
       const condHash = simpleHash(condText);
       const existingCond = await db.embeddings.where({ entryId: entry.id, field: 'condition' }).first();
-      if (!existingCond || existingCond.hash !== condHash) {
-        const condVec = await embedText(condText, { ...apiOpts, taskType: docTaskType });
-        await db.embeddings.put({
-          entryId: entry.id, field: 'condition', vector: condVec, hash: condHash, model: apiOpts.model || DEFAULTS.embeddingModel,
-          taskType: docTaskType, updatedAt: Date.now()
-        });
+      
+      if (existingCond && existingCond.hash === condHash) {
+        const needsRegenCond = (existingCond.model && existingCond.model !== targetModel) || (existingCond.taskType !== docTaskType && targetModel.includes('embedding-001'));
+        if (!needsRegenCond) return;
       }
+
+      const condVec = await embedText(condText, { ...apiOpts, taskType: docTaskType });
+      const condData = {
+        entryId: entry.id, field: 'condition', vector: condVec, hash: condHash, model: targetModel,
+        taskType: docTaskType, updatedAt: Date.now()
+      };
+      if (existingCond) condData.id = existingCond.id;
+      await db.embeddings.put(condData);
     }
   }
 
@@ -835,7 +849,14 @@
     const db = getDB();
     const entries = await db.entries.where('packName').equals(packName).toArray();
     const docTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
+    const targetModel = apiOpts.model || DEFAULTS.embeddingModel;
     let done = 0;
+    
+    // 배치 처리를 위해 해당 팩의 모든 요약 임베딩 ID를 미리 매핑
+    const allEmbs = await db.embeddings.where('entryId').anyOf(entries.map(e => e.id)).toArray();
+    const embMap = {};
+    for (const eb of allEmbs) { if (eb.field === 'summary') embMap[eb.entryId] = eb; }
+
     for (let i = 0; i < entries.length; i += 5) {
       const batch = entries.slice(i, i + 5);
       const texts = batch.map(e => `${e.name}: ${e.summary || ''}`);
@@ -843,10 +864,13 @@
         const vecs = await embedTexts(texts, { ...apiOpts, taskType: docTaskType });
         for (let j = 0; j < batch.length; j++) {
           const hash = simpleHash(texts[j]);
-          await db.embeddings.put({
+          const existing = embMap[batch[j].id];
+          const data = {
             entryId: batch[j].id, field: 'summary', vector: vecs[j], hash,
-            model: apiOpts.model || DEFAULTS.embeddingModel, taskType: docTaskType, updatedAt: Date.now()
-          });
+            model: targetModel, taskType: docTaskType, updatedAt: Date.now()
+          };
+          if (existing) data.id = existing.id;
+          await db.embeddings.put(data);
         }
       } catch (e) {
         console.warn('[LoreCore] 배치 임베딩 실패, 개별 처리:', e.message);
