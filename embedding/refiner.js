@@ -3,97 +3,42 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   if (_w.__LoreRefiner) return;
 
-  const DEFAULT_PROMPT = `You are an RP Continuity Checker.
-RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)
+  const TEMPLATES = {
+    full: {
+      name: "전체 검수 (모순 파악 + 끊김 복구)",
+      desc: "로어 모순 파악과 코드블록/문장 끊김 복구를 동시에 수행합니다.",
+      turnHint: 1,
+      prompt: `You are an RP Continuity Checker.
+RATE: PG-13 ~ NC-21
 
 ## Scope
 You receive:
-- [Lore]: partial character/world data (NOT exhaustive — may be missing characters, locations, or rules that exist in the RP system prompt you cannot see)
-- [Summaries]: memory snapshots from the chat platform
+- [Lore]: partial character/world data
+- [Summaries]: memory snapshots
 - [Recent Context]: last N turns of dialogue
-- [New Speech]: the latest AI-generated RP response to check
+- [New Speech]: the latest AI-generated RP response
 
-You do NOT have the RP system prompt. You cannot see character definitions, world rules, or narration instructions the RP AI operates under.
-
-## Core Rule
-Your ONLY evidence sources are [Lore] and [Summaries].
-Absence of information is NOT evidence of error.
-An error exists ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].
+## Rule
+Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].
 
 ## What Counts as an Error
-
 1. EXPLICIT FACTUAL CONTRADICTION
-   [New Speech] states something that is the logical opposite of an explicit fact in [Lore] or [Summaries].
-   - Lore: "A와 B는 자매" → Speech: "A와 B는 연인" → error
-   - Lore: "C는 사망" → Speech: C acting alive → error
-   - Lore has no entry for character D → Speech mentions D → NOT an error
-
 2. PRESENCE / ABSENCE CONTRADICTION
-   A character is present in [New Speech] who is explicitly stated as absent, dead, or otherwise unable to be there according to [Lore] or [Summaries]. Or vice versa: a character explicitly stated to be present is missing from a scene where [Lore] confirms they must be.
-   - Lore: "C는 해외 출장 중" → Speech: C가 국내 카페에 등장 → error
-   - No location data for C → C appears anywhere → NOT an error
-
 3. NICKNAME / TITLE MISMATCH
-   A character uses or is called a 호칭 that contradicts a 호칭 explicitly defined in [Lore] (especially relationship entries with nicknames fields).
-   - Lore: A→B 호칭 "언니" → Speech: A calls B "누나" → error
-   - No 호칭 defined for a pair → any 호칭 → NOT an error
-
 4. STATE CONTRADICTION
-   A character's physical/emotional state in [New Speech] contradicts their current_state in [Lore].
-   - Lore: "A: 왼팔 부상" → Speech: A swings a sword with left arm → error
-   - No state recorded → any state → NOT an error
-
 5. PROMISE / ARC CONTRADICTION
-   [New Speech] references a promise, contract, or relationship milestone whose status contradicts [Lore] or [Summaries].
-   - Lore promise status: "pending" → Speech: "약속을 지켜줘서 고마워" → error
-   - Lore relationship arc shows phase "hostile" as latest → Speech treats them as allies without transition → error
-   - No promise/arc data → any reference → NOT an error
-
-## What is NEVER an Error
-- Characters, locations, items, abilities, or events NOT mentioned in [Lore] or [Summaries]. They may exist in the RP system prompt.
-- Writing style, tone, vocabulary, sentence structure, narration voice.
-- Markdown formatting, line breaks, decorative elements.
-- Content that is new, unexpected, or creative but not contradicted by evidence.
-- Emotional or narrative choices that differ from what you might expect.
 
 ## Truncation Repair
-
-Token limits may cut [New Speech] short. Two cases:
-
-A) SENTENCE TRUNCATION
-   [New Speech] ends mid-word or mid-clause. Complete ONLY the final interrupted sentence using [Recent Context] as reference. Do not add new narrative content.
-
-B) STATUS BLOCK TRUNCATION
-   Some RPs use a fenced code block as a status display at the end of each turn.
-   - If [Recent Context] contains a complete status block AND [New Speech] has a truncated or absent status block → restore it.
-   - Template: use the MOST RECENT complete status block from [Recent Context].
-   - Update only values that [New Speech] content logically changes (e.g., HP after damage). Keep all other values unchanged.
-   - If NO status block exists anywhere in [Recent Context] → do nothing.
-
-## Principle
-Make the MINIMUM surgical fix. Preserve everything else byte-for-byte. If uncertain whether something is an error, it is NOT an error — PASS.
-
-## Decision Process
-For each potential issue:
-1. Can I point to a SPECIFIC statement in [Lore] or [Summaries] that this contradicts?
-2. YES → flag it.
-3. NO (including "no data exists") → PASS.
+A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
+B) STATUS BLOCK TRUNCATION: Restore truncated/absent status blocks using [Recent Context].
 
 ## Output Format
 Reason MUST be in Korean.
-
-No issues and no truncation repair needed:
+No issues/repairs needed:
 {passWord}
 
-Issues or repairs found (no markdown code fences):
+Issues found (no markdown code fences):
 {"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
-
-Rules for replacements:
-- "from" must be an EXACT character-by-character substring of [New Speech].
-- "to" is the minimal corrected version.
-- Change only what is wrong. Do not rewrite surrounding text.
-- Multiple fixes = multiple objects in the array.
-- For truncation: "from" = incomplete fragment, "to" = completed version.
 
 [Lore]:
 {lore}
@@ -105,7 +50,68 @@ Rules for replacements:
 {context}
 
 [New Speech]:
-{message}`;
+{message}`
+    },
+    repairOnly: {
+      name: "단순 끊김 복구 (모순 체크 생략)",
+      desc: "모순 체크를 생략하고 텍스트나 상태창의 끊김만 빠르게 복구합니다.",
+      turnHint: 0,
+      prompt: `You are an RP Text Repair AI.
+
+## Rule
+Your ONLY job is to fix truncation in the [New Speech]. Do NOT check for factual logic or lore contradictions.
+
+## Truncation Repair
+A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence using [Recent Context] as reference.
+B) STATUS BLOCK TRUNCATION: If [Recent Context] contains a complete status block and [New Speech] does not, restore it correctly.
+
+## Output Format
+Reason MUST be in Korean.
+No truncation found:
+{passWord}
+
+Truncation fixed (no markdown code fences):
+{"reason":"끊김 복구","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
+
+[Recent Context]:
+{context}
+
+[New Speech]:
+{message}`
+    },
+    logicOnly: {
+      name: "로어 모순 검수 (끊김 복구 생략)",
+      desc: "수집된 로어를 바탕으로 엄격하게 논리적 모순만 체크합니다.",
+      turnHint: 1,
+      prompt: `You are an RP Logic Checker.
+
+## Scope
+Check [New Speech] against [Lore] and [Summaries] for direct logical or factual contradictions.
+Do NOT fix truncated sentences or missing status blocks.
+
+## Output Format
+Reason MUST be in Korean.
+No logical contradictions:
+{passWord}
+
+Contradictions found (no markdown code fences):
+{"reason":"모순 설명","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
+
+[Lore]:
+{lore}
+
+[Summaries]:
+{memory}
+
+[Recent Context]:
+{context}
+
+[New Speech]:
+{message}`
+    }
+  };
+
+  const DEFAULT_PROMPT = TEMPLATES.full.prompt;
 
   let Core = null;
   let ConfigGetter = null;
@@ -388,12 +394,32 @@ Rules for replacements:
     if (activeEntries.length > 0) {
       const matchTurns = config.refinerMatchTurns || 5;
       const _tMsgs = await Core.fetchLogs(Math.max(4, matchTurns * 2));
-      const autoPacks = config.autoPacks || ['자동추출'];
-      const _fE = activeEntries.filter(x => !autoPacks.includes(x.packName));
-      const _aE = activeEntries.filter(x => autoPacks.includes(x.packName));
-      const _mF = matchEntriesByTrigger(_fE, _tMsgs, assistantText);
-      const _mA = matchEntriesByTrigger(_aE, _tMsgs, assistantText);
-      const _lE = config.refinerLoreMode === 'matchedOnly' ? [..._mF, ..._mA] : [..._mF, ..._aE];
+      
+      let _lE = [];
+      if (config.refinerLoreMode === 'semantic' && config.embeddingEnabled) {
+        const apiOpts = {
+          apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
+          vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+          model: config.embeddingModel || 'gemini-embedding-001'
+        };
+        const searchConfig = { scanRange: matchTurns, strictMatch: true, similarityMatch: true, embeddingEnabled: true, embeddingWeight: 0.5 };
+        try {
+          const searchResult = await Core.hybridSearch(assistantText, _tMsgs, activeEntries, searchConfig, apiOpts);
+          _lE = searchResult.scored.slice(0, 10).map(s => s.entry);
+        } catch (e) {
+          console.warn('[Refiner] Semantic search failed, falling back to trigger match.');
+        }
+      }
+
+      if (_lE.length === 0) {
+        const autoPacks = config.autoPacks || ['자동추출'];
+        const _fE = activeEntries.filter(x => !autoPacks.includes(x.packName));
+        const _aE = activeEntries.filter(x => autoPacks.includes(x.packName));
+        const _mF = matchEntriesByTrigger(_fE, _tMsgs, assistantText);
+        const _mA = matchEntriesByTrigger(_aE, _tMsgs, assistantText);
+        _lE = config.refinerLoreMode === 'matchedOnly' ? [..._mF, ..._mA] : [..._mF, ..._aE];
+      }
+      
       if (_lE.length > 0) loreText = renderLoreForRefiner(_lE);
       else loreText = '(키워드 매칭된 로어 없음)';
     }
@@ -413,7 +439,7 @@ Rules for replacements:
 
     // 3. 컨텍스트
     let contextText = '최근 대화 내역 없음.';
-    const turns = config.refinerContextTurns || 1;
+    const turns = config.refinerContextTurns !== undefined ? config.refinerContextTurns : 1;
     if (turns > 0) {
       const recentMsgs = await Core.fetchLogs(turns * 2);
       if (recentMsgs && recentMsgs.length > 0) {
@@ -670,6 +696,7 @@ Rules for replacements:
 
   _w.__LoreRefiner = {
     DEFAULT_PROMPT,
+    TEMPLATES,
     init: function(coreInstance, configGetterFn, logCb, toastCb, getPacksCb) {
       Core = coreInstance;
       ConfigGetter = configGetterFn;
