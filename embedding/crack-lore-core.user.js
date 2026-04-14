@@ -472,7 +472,7 @@
       const pairs = Object.entries(targets).map(([to, hon]) => `${to}=${hon}`);
       lines.push(`${from}→` + pairs.join('/'));
     }
-    let result = '[호칭] ' + lines.join(' ');
+    let result = '[Titles] ' + lines.join(' ');
     if (result.length > budget) result = result.slice(0, budget - 3) + '...';
     return result;
   }
