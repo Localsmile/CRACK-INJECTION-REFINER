@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const isInitialized = !!_w.__LoreRefiner;
+  if (_w.__LoreRefiner) return;
 
   const TEMPLATES = {
     full: {
@@ -692,11 +692,6 @@ Contradictions found (no markdown code fences):
       }
       if (refineQueue.length > 0 && !workerBusy) processQueue();
     }, 2000);
-  }
-
-  if (isInitialized) {
-    Object.assign(_w.__LoreRefiner, { DEFAULT_PROMPT, TEMPLATES });
-    return;
   }
 
   _w.__LoreRefiner = {
