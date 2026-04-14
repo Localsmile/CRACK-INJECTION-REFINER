@@ -809,8 +809,9 @@
     const existing = await db.embeddings.where({ entryId: entry.id, field: 'summary' }).first();
     const text = `${entry.name}: ${entry.summary || ''}`;
     const hash = simpleHash(text);
-    if (existing && existing.hash === hash) return;
     const docTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
+    const currentModel = apiOpts.model || DEFAULTS.embeddingModel;
+    if (existing && existing.hash === hash && existing.model === currentModel && existing.taskType === docTaskType) return;
     const vec = await embedText(text, { ...apiOpts, taskType: docTaskType });
     await db.embeddings.put({
       entryId: entry.id, field: 'summary', vector: vec, hash, model: apiOpts.model || DEFAULTS.embeddingModel,
