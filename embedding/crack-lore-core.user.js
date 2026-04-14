@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.0.1
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어
+// @version     1.1.0
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v4.1)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -22,11 +22,13 @@
 (function () {
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  if (_w.__LoreCore) return; // 중복 로드 방지
+  if (_w.__LoreCore) return;
 
-  // 상수 & 기본 설정
+  // ═══════════════════════════════════════════════════════
+  // §1. 상수 & 기본 설정
+  // ═══════════════════════════════════════════════════════
 
-  const VER = '1.0.0';
+  const VER = '1.1.0';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -37,67 +39,63 @@
     { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
   ];
 
-  // 기본값
   const PLATFORM = {
     contextTokens: 5500,
-    recentTurnsSafe: 4, // AI가 확실히 기억하는 턴 수
-    summaryRefreshTurns: 15, // 요약 갱신 주기 중앙값
+    recentTurnsSafe: 4,
+    summaryRefreshTurns: 15,
     inputCharLimit: 2000,
     outputTokens: 800,
     avgUserInputChars: 80,
   };
 
   const DEFAULTS = {
-    // === 주입 예산 ===
-    loreBudgetChars: 350, // 최대 로어 글자수
+    loreBudgetChars: 350,
+    loreBudgetMax: 600, // v4.1
     targetCharsPerEntry: {full: 140, compact: 70, micro: 35},
-    autoCompression: true, // 예산 내 자동 압축
-    // 검색
-    scanRange: 4, // 트리거 검색 턴 범위
-    scanOffset: 2, // 최근 N턴 스킵
+    autoCompression: true,
+    scanRange: 4,
+    scanOffset: 2,
     maxEntries: 4,
-    strictMatch: true, // 한국어 조사 필터
-    similarityMatch: true, // 바이그램 오타 허용
-    // 시간 감쇠
+    strictMatch: true,
+    similarityMatch: true,
     decayEnabled: true,
     decayHalfLife: {
-      identity: 50, // 캐릭터 핵심
-      relationship: 20,
+      identity: 80,       // v4.1: 50→80
+      character: 80,      // v4.1: 50→80
+      relationship: 40,   // v4.1: 20→40
       first_encounter: 40,
-      promise: 12,
-      event: 8,
+      promise: 25,        // v4.1: 12→25
+      event: 12,          // v4.1: 8→12
       scene: 3,
-      default: 15
+      default: 20         // v4.1: 15→20
     },
-    // 임베딩
-    embeddingEnabled: false, // 기본: OFF, 고급사용자: ON
+    aiMemoryTurns: 4, // v4.1
+    embeddingEnabled: false,
     embeddingModel: 'gemini-embedding-001',
-    embeddingDimensions: 768, // MRL 768차원
-    embeddingTaskType: 'SEMANTIC_SIMILARITY',
-    embeddingWeight: 0.4, // trigger 0.6 + embedding 0.4
-    // 활성 캐릭터
+    embeddingDimensions: 768,
+    embeddingTaskType: 'RETRIEVAL_DOCUMENT', // v4.1: SEMANTIC_SIMILARITY→RETRIEVAL_DOCUMENT
+    embeddingWeight: 0.4,
     activeCharDetection: true,
     activeCharBoost: 3.0,
     inactiveCharPenalty: 0.15,
-    // Working Memory
     workingMemoryEnabled: true,
-    workingMemoryChars: 60, // 씬 태그 예산
-    honorificMatrixChars: 80, // 호칭 예산
-    // 자동추출
+    workingMemoryChars: 60,
+    honorificMatrixChars: 80,
     autoExtTurns: 8,
     autoExtScanRange: 4,
     autoExtOffset: 2,
     autoExtMaxRetries: 1,
-    // 포맷
     prefix: '**OOC:Lore',
     suffix: '**',
     position: 'before',
-    // 지식 변환
     importChunkSize: 3000,
     importMaxEntries: 50
   };
 
-  // 데이터베이스 (Dexie 싱글턴)
+  // ═══════════════════════════════════════════════════════
+  // §2. 데이터베이스 (Dexie 싱글턴)
+  // ═══════════════════════════════════════════════════════
+
   let _db = null;
   function getDB() {
     if (_db) return _db;
@@ -115,7 +113,6 @@
       packs: 'name, entryCount, project',
       snapshots: '++id, packName, timestamp, type'
     });
-    // v4: 임베딩 + Working Memory + 메타데이터 추가
     _db.version(4).stores({
       entries: '++id, name, type, packName, project, *triggers',
       packs: 'name, entryCount, project',
@@ -127,7 +124,10 @@
     return _db;
   }
 
-  // 네트워크 유틸리티
+  // ═══════════════════════════════════════════════════════
+  // §3. 네트워크 유틸리티
+  // ═══════════════════════════════════════════════════════
+
   const _GM_xhr = (typeof GM_xmlhttpRequest !== 'undefined')
     ? GM_xmlhttpRequest
     : (typeof GM !== 'undefined' && GM.xmlHttpRequest)
@@ -161,7 +161,9 @@
     });
   }
 
-  // Vertex AI 인증
+  // ═══════════════════════════════════════════════════════
+  // §4. Vertex AI 인증
+  // ═══════════════════════════════════════════════════════
 
   function parseServiceAccountJson(jsonStr) {
     try {
@@ -197,7 +199,6 @@
     const cache = _tokenCaches[cacheKey];
     const now = Math.floor(Date.now() / 1000);
     if (cache.token && cache.expiry > now + 60) return cache.token;
-
     const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const payload = b64url(JSON.stringify({
       iss: sa.clientEmail, sub: sa.clientEmail, aud: sa.tokenUri,
@@ -225,7 +226,9 @@
     return cache.token;
   }
 
-  //  Gemini API — 텍스트 생성
+  // ═══════════════════════════════════════════════════════
+  // §5. Gemini API — 텍스트 생성
+  // ═══════════════════════════════════════════════════════
 
   async function callGeminiApi(prompt, opts = {}) {
     const {
@@ -235,63 +238,84 @@
       thinkingConfig = {}, maxRetries = 1,
       responseMimeType, cacheKey = 'generate'
     } = opts;
-
     const isVertex = apiType === 'vertex';
     let url, headers;
-
     if (isVertex) {
       const sa = parseServiceAccountJson(vertexJson);
-      if (!sa.ok) return { text: null, error: sa.error };
+      if (!sa.ok) return { text: null, status: 0, error: sa.error, retries: 0 };
       const projId = vertexProjectId || sa.projectId;
-      if (!projId) return { text: null, error: 'project_id 누락' };
-      const token = await getVertexAccessToken(sa, cacheKey);
-      const is3x = model.includes('gemini-3');
-      const host = is3x ? 'aiplatform.googleapis.com' : `${vertexLocation}-aiplatform.googleapis.com`;
-      const loc = is3x ? 'global' : vertexLocation;
-      url = `https://${host}/v1/projects/${projId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
-      headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+      if (!projId) return { text: null, status: 0, error: 'project_id 누락', retries: 0 };
+      try {
+        const token = await getVertexAccessToken(sa, cacheKey);
+        const is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
+        const host = is3x ? 'aiplatform.googleapis.com' : `${vertexLocation}-aiplatform.googleapis.com`;
+        const loc = is3x ? 'global' : vertexLocation;
+        url = `https://${host}/v1/projects/${projId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
+        headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+      } catch (e) {
+        return { text: null, status: 0, error: e.message, retries: 0 };
+      }
     } else {
-      if (!key) return { text: null, error: 'API 키 누락' };
+      if (!key) return { text: null, status: 0, error: 'API 키 누락', retries: 0 };
       url = _gBase + model + ':generateContent?key=' + key;
       headers = { 'Content-Type': 'application/json' };
     }
-
-    const genConfig = { thinkingConfig };
+    
+    // thinkingConfig가 비어있지 않은 경우에만 추가
+    const genConfig = {};
+    if (Object.keys(thinkingConfig).length > 0) genConfig.thinkingConfig = thinkingConfig;
     if (responseMimeType) genConfig.responseMimeType = responseMimeType;
-
     const body = JSON.stringify({
       safetySettings: SAFETY,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: genConfig
     });
-
-    let lastError = null;
+    
+    let lastStatus = 0, lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const r = isVertex
           ? await gmFetch(url, { method: 'POST', headers, body })
           : await fetch(url, { method: 'POST', headers, body })
-              .then(resp => ({ ok: resp.ok, status: resp.status, json: () => resp.json() }));
+              .then(resp => ({ ok: resp.ok, status: resp.status, text: () => resp.text(), json: () => resp.json() }));
+        lastStatus = r.status;
+        
+        if (r.status === 401 && isVertex) {
+          if (_tokenCaches[cacheKey]) {
+            _tokenCaches[cacheKey].token = null;
+            _tokenCaches[cacheKey].expiry = 0;
+          }
+          if (attempt < maxRetries) {
+            try {
+              const sa2 = parseServiceAccountJson(vertexJson);
+              const newToken = await getVertexAccessToken(sa2, cacheKey);
+              headers['Authorization'] = `Bearer ${newToken}`;
+            } catch (e) { lastError = e.message; break; }
+            continue;
+          }
+        }
+        
         if (!r.ok) {
-          const err = r.text ? await r.text() : '';
-          lastError = `HTTP ${r.status}`;
+          const errBody = r.text ? await r.text().catch(() => '') : '';
+          lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\\n/g, ' ')}`;
           if ([400, 403, 404].includes(r.status)) break;
         } else {
           const json = await r.json();
           const parts = json.candidates?.[0]?.content?.parts || [];
           const textPart = parts.find(p => p.text && !p.thought);
-          if (textPart) return { text: textPart.text, error: null };
-          lastError = '텍스트 없음';
+          const text = textPart?.text ?? null;
+          if (text) return { text, status: r.status, error: null, retries: attempt };
+          lastError = '응답 파싱 실패';
         }
       } catch (e) { lastError = e.message; }
-      if (attempt < maxRetries) await new Promise(r => setTimeout(r, 2000));
+      if (attempt < maxRetries) await new Promise(res => setTimeout(res, 2000));
     }
-    return { text: null, error: lastError };
+    return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
   }
 
-
-  //  Gemini API — 임베딩
-
+  // ═══════════════════════════════════════════════════════
+  // §6. Gemini API — 임베딩
+  // ═══════════════════════════════════════════════════════
 
   async function embedTexts(texts, opts = {}) {
     const {
@@ -302,10 +326,8 @@
       taskType = DEFAULTS.embeddingTaskType,
       cacheKey = 'embed'
     } = opts;
-
     const arr = Array.isArray(texts) ? texts : [texts];
     const isVertex = apiType === 'vertex';
-
     if (isVertex) {
       const sa = parseServiceAccountJson(vertexJson);
       if (!sa.ok) throw new Error(sa.error);
@@ -345,15 +367,14 @@
     }
   }
 
-  // 단일 텍스트 임베딩 (편의 함수)
   async function embedText(text, opts) {
     const results = await embedTexts(text, opts);
     return results[0];
   }
 
-
-  //  벡터 연산
-
+  // ═══════════════════════════════════════════════════════
+  // §7. 벡터 연산
+  // ═══════════════════════════════════════════════════════
 
   function normalizeVector(vec) {
     let norm = 0;
@@ -374,8 +395,10 @@
     return denom === 0 ? 0 : dot / denom;
   }
 
+  // ═══════════════════════════════════════════════════════
+  // §8. 플랫폼 연동
+  // ═══════════════════════════════════════════════════════
 
-  //  크랙 연동
   function getCurUrl() { return window.location.pathname; }
 
   function getCurrentChatId() {
@@ -397,7 +420,6 @@
     let token = '';
     try { token = CrackUtil.cookie().getAuthToken(); } catch (e) {}
     if (!token) return { goal: [], shortTerm: [], relationship: [], longTerm: [] };
-
     const headers = { 'Authorization': 'Bearer ' + token };
     const result = { goal: [], shortTerm: [], relationship: [], longTerm: [] };
     const endpoints = {
@@ -432,11 +454,11 @@
     return null;
   }
 
+  // ═══════════════════════════════════════════════════════
+  // §9. 시간 감쇠 (Ebbinghaus 기반)
+  // ═══════════════════════════════════════════════════════
 
-  //  시간 감쇠 (Ebbinghaus 기반)
-
-
-  // 반환값 0~1: 0 = AI가 확실히 기억, 1 = 완전히 잊혀짐
+  // [deprecated v4.1] 하위호환용 유지
   function calcForgottenScore(turnsSinceLastMention, halfLife) {
     if (turnsSinceLastMention <= 0) return 0;
     return 1 - Math.exp(-turnsSinceLastMention * Math.LN2 / halfLife);
@@ -444,361 +466,504 @@
 
   function getHalfLife(entryType, config) {
     const hl = config?.decayHalfLife || DEFAULTS.decayHalfLife;
-    return hl[entryType] || hl.default || 15;
+    return hl[entryType] || hl.default || 20;
   }
 
-
-  //  활성 캐릭터 감지
-
-
-  function detectActiveCharacters(recentMsgs, allEntries) {
-    // 최근 3턴(6메시지) 텍스트 풀
-    const recent = recentMsgs.slice(-6);
-    const pool = recent.map(m => m.message || '').join(' ').toLowerCase();
-
-    // identity/character 타입 엔트리에서 캐릭터명 추출
-    const characters = allEntries
-      .filter(e => e.type === 'identity' || e.type === 'character')
-      .map(e => {
-        const names = [e.name];
-        // 호칭도 검색 대상에 포함
-        if (e.detail?.nicknames) {
-          Object.values(e.detail.nicknames).forEach(n => {
-            if (typeof n === 'string') names.push(n);
-          });
-        }
-        return { entry: e, names: names.map(n => n.toLowerCase()) };
-      });
-
-    const active = [];
-    for (const c of characters) {
-      if (c.names.some(n => n.length >= 2 && pool.includes(n))) {
-        active.push(c.entry.name);
-      }
-    }
-    return active;
-  }
-
-  // 엔트리가 활성 캐릭터와 관련있는지 판단
-  function isRelatedToActive(entry, activeNames) {
-    if (!activeNames.length) return true; // 감지 불가시 전부 허용
-    const text = (entry.name + ' ' + (entry.triggers || []).join(' ')).toLowerCase();
-    return activeNames.some(name => text.includes(name.toLowerCase()));
-  }
-
-
-  //  첫만남 추적
-
-
-  async function checkFirstEncounter(char1, char2) {
-    const db = getDB();
-    // 양방향 검색
-    let enc = await db.encounters.where({ char1, char2 }).first();
-    if (!enc) enc = await db.encounters.where({ char1: char2, char2: char1 }).first();
-    return enc || null;
-  }
-
-  async function recordFirstEncounter(char1, char2, data) {
-    const db = getDB();
-    await db.encounters.put({
-      char1, char2,
-      location: data.location || '',
-      introducer: data.introducer || '',
-      turnApprox: data.turnApprox || 0,
-      impressions: data.impressions || {},
-      timestamp: Date.now()
-    });
-  }
-
-  // 활성 캐릭터 쌍 중 미조우 쌍 탐지
-  async function findUnmetPairs(activeNames) {
-    const unmet = [];
-    for (let i = 0; i < activeNames.length; i++) {
-      for (let j = i + 1; j < activeNames.length; j++) {
-        const enc = await checkFirstEncounter(activeNames[i], activeNames[j]);
-        if (!enc) unmet.push([activeNames[i], activeNames[j]]);
-      }
-    }
-    return unmet;
-  }
-
-
-  //  Working Memory (씬 상태)
-
-
-  async function getWorkingMemory(url) {
-    const db = getDB();
-    return await db.workingMemory.get(url) || {
-      url, scene: '', emotion: '', activeChars: [],
-      lastAction: '', turn: 0
-    };
-  }
-
-  async function updateWorkingMemory(url, data) {
-    const db = getDB();
-    const existing = await getWorkingMemory(url);
-    await db.workingMemory.put({ ...existing, ...data, url });
-  }
-
-  // [deprecated v4] 씬 키워드 추출 — 인젝터에서 더이상 호출 안 함. 하위호환용 유지.
-  function extractSceneKeywords(recentMsgs) {
-    const last2 = recentMsgs.slice(-4).map(m => m.message || '').join(' ');
-
-    // 장소 패턴
-    const locationPatterns = /(?:에서|으로|에|장소[:\s]*|곳[:\s]*)([가-힣a-zA-Z]+(?:방|집|카페|학교|공원|거리|사무실|병원|숲|바다|호텔|교실|옥상|지하|성|궁전|마을|도시|광장|시장|골목|강|호수|산|절벽|동굴|탑|성벽|아파트|편의점))/gi;
-    const locations = [];
-    let m;
-    while ((m = locationPatterns.exec(last2)) !== null) locations.push(m[1]);
-
-    // 행동 패턴
-    const actionWords = ['키스', '포옹', '악수', '싸움', '도망', '울', '웃',
-      '잡', '안', '밀', '때리', '달리', '숨', '기다', '잠',
-      '먹', '마시', '요리', '노래', '춤', '싸우', '치료'];
-    const actions = actionWords.filter(w => last2.includes(w));
-
-    // 감정 패턴
-    const emotionWords = ['기쁨', '슬픔', '분노', '공포', '놀람', '긴장',
-      '행복', '불안', '절망', '설렘', '부끄', '당황', '차분'];
-    const emotions = emotionWords.filter(w => last2.includes(w));
-
-    return { locations, actions, emotions };
-  }
-
-  // [deprecated v4]
-  function formatSceneTag(keywords) {
-    const parts = [];
-    if (keywords.locations.length) parts.push(keywords.locations.slice(-1)[0]);
-    if (keywords.actions.length) parts.push(keywords.actions.slice(-2).join('/'));
-    if (keywords.emotions.length) parts.push(keywords.emotions.slice(-1)[0]);
-    if (!parts.length) return '';
-    return '[씬:' + parts.join('/') + ']';
-  }
-
-
-  //  호칭 매트릭스
-
-
-  function buildHonorificMatrix(entries, activeNames) {
-    const matrix = {};
-    const relEntries = entries.filter(e =>
-      e.type === 'relationship' && e.detail?.nicknames
-    );
-
-    for (const e of relEntries) {
-      for (const [key, value] of Object.entries(e.detail.nicknames)) {
-        // key 형태: "소피아→주인공" 또는 "CharA→CharB"
-        const match = key.match(/^(.+?)→(.+?)$/);
-        if (!match) continue;
-        const [, from, to] = match;
-        // 활성 캐릭터 필터
-        if (activeNames.length > 0) {
-          const fromActive = activeNames.some(n => from.includes(n) || n.includes(from));
-          const toActive = activeNames.some(n => to.includes(n) || n.includes(to));
-          if (!fromActive && !toActive) continue;
-        }
-        if (!matrix[from]) matrix[from] = {};
-        matrix[from][to] = value;
-      }
-    }
-    return matrix;
-  }
-
-  function formatHonorificMatrix(matrix, budget) {
-    const lines = [];
-    for (const [from, targets] of Object.entries(matrix)) {
-      const pairs = Object.entries(targets).map(([to, hon]) => `${to}=${hon}`);
-      lines.push(`${from}→` + pairs.join('/'));
-    }
-    let result = '[호칭] ' + lines.join(' ');
-    if (result.length > budget) {
-      // 예산 초과 시 자르기
-      result = result.slice(0, budget - 3) + '...';
-    }
-    return result;
-  }
-
-
-  //  트리거 스캐너
-
-
-  function bigramSimilarity(s1, s2) {
-    if (s1 === s2) return 1.0;
-    if (s1.length < 2 || s2.length < 2) return 0.0;
-    const bigrams = (str) => {
-      const bg = []; for (let i = 0; i < str.length - 1; i++) bg.push(str.slice(i, i + 2));
-      return bg;
-    };
-    const bg1 = bigrams(s1), bg2 = [...bigrams(s2)];
-    let intersection = 0;
-    for (const b of bg1) {
-      const idx = bg2.indexOf(b);
-      if (idx >= 0) { intersection++; bg2[idx] = null; }
-    }
-    return (2.0 * intersection) / (bigrams(s1).length + bigrams(s2).length);
-  }
-
-  function triggerScan(input, msgs, entries, config) {
-    const range = config.scanRange || DEFAULTS.scanRange;
-    const offset = config.scanOffset || DEFAULTS.scanOffset;
-    const strict = config.strictMatch !== false;
-    const simMatch = config.similarityMatch === true;
-
-    let historyMsgs = [];
-    if (offset > 0 && msgs.length > offset) {
-      historyMsgs = msgs.slice(-(range + offset), -offset).map(m => m.message);
+  // v4.1: 2단계 재주입 스코어
+  // Layer 1: AI 기억 한계 초과 여부
+  // Layer 2: 로어 자체의 관련성 감쇠
+  // 반환 0~1: 0=주입 불필요, 1=즉시 주입 필요
+  function calcReinjectionScore(turnsSinceLastMention, entryType, config) {
+    if (turnsSinceLastMention <= 0) return 0;
+    const aiMem = config?.aiMemoryTurns || 4;
+    const halfLife = getHalfLife(entryType, config);
+    let needsReinjection;
+    if (turnsSinceLastMention <= aiMem) {
+      needsReinjection = 0;
     } else {
-      historyMsgs = msgs.slice(-range).map(m => m.message);
+      const overLimit = turnsSinceLastMention - aiMem;
+      needsReinjection = 1 - Math.exp(-overLimit * 0.5);
     }
+    const relevanceDecay = Math.exp(
+      -turnsSinceLastMention * Math.LN2 / halfLife
+    );
+    return needsReinjection * relevanceDecay;
+  }
 
-    const textBlocks = [];
-    const hLen = historyMsgs.length;
-    for (let i = 0; i < hLen; i++) {
-      textBlocks.push({ text: historyMsgs[i].toLowerCase(), weight: 10 + ((i + 1) / hLen) * 40 });
+
+// ═══════════════════════════════════════════════════════
+// §10. 활성 캐릭터 감지
+// ═══════════════════════════════════════════════════════
+
+function detectActiveCharacters(recentMsgs, allEntries) {
+  const recent = recentMsgs.slice(-6);
+  const pool = recent.map(m => m.message || '').join(' ').toLowerCase();
+  const characters = allEntries
+    .filter(e => e.type === 'identity' || e.type === 'character')
+    .map(e => {
+      const names = [e.name];
+      if (e.detail?.nicknames) {
+        Object.values(e.detail.nicknames).forEach(n => {
+          if (typeof n === 'string') names.push(n);
+        });
+      }
+      return { entry: e, names: names.map(n => n.toLowerCase()) };
+    });
+  const active = [];
+  for (const c of characters) {
+    if (c.names.some(n => n.length >= 2 && pool.includes(n))) {
+      active.push(c.entry.name);
     }
-    textBlocks.push({ text: input.toLowerCase(), weight: 100 });
+  }
+  return active;
+}
 
-    const results = [];
-    for (const e of entries) {
-      let bestScore = 0;
-      for (const t of (e.triggers || [])) {
-        if (!t || t.length < 2) continue;
-        const andParts = t.split('&&').map(p => p.trim().toLowerCase());
-        let andMatched = true, minScore = Infinity;
+function isRelatedToActive(entry, activeNames) {
+  if (!activeNames.length) return true;
+  const text = (entry.name + ' ' + (entry.triggers || []).join(' ')).toLowerCase();
+  return activeNames.some(name => text.includes(name.toLowerCase()));
+}
 
-        for (const part of andParts) {
-          let partBest = 0;
-          for (const block of textBlocks) {
-            let isExact = false, simScore = 0;
-            if (strict) {
-              try {
-                const esc = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp(`(^|[\\s\\.,!?\\'\\"\u3000])${esc}(은|는|이|가|을|를|의|에|에게|한테|로|으로|과|와|다|도|만|부터|까지|[\\s\\.,!?\\'\\"\u3000]|$)`, 'i');
-                if (regex.test(block.text)) isExact = true;
-              } catch { if (block.text.includes(part)) isExact = true; }
-            } else {
-              if (block.text.includes(part)) isExact = true;
-            }
-            if (!isExact && simMatch) {
-              for (const w of block.text.split(/[\s.,!?'\"]+/)) {
-                if (w.length >= 2) {
-                  const s = bigramSimilarity(part, w);
-                  if (s >= 0.75 && s > simScore) simScore = s;
-                }
+// ═══════════════════════════════════════════════════════
+// §11. 첫만남 추적
+// ═══════════════════════════════════════════════════════
+
+async function checkFirstEncounter(char1, char2) {
+  const db = getDB();
+  let enc = await db.encounters.where({ char1, char2 }).first();
+  if (!enc) enc = await db.encounters.where({ char1: char2, char2: char1 }).first();
+  return enc || null;
+}
+
+async function recordFirstEncounter(char1, char2, data) {
+  const db = getDB();
+  await db.encounters.put({
+    char1, char2,
+    location: data.location || '',
+    introducer: data.introducer || '',
+    turnApprox: data.turnApprox || 0,
+    impressions: data.impressions || {},
+    timestamp: Date.now()
+  });
+}
+
+async function findUnmetPairs(activeNames) {
+  const unmet = [];
+  for (let i = 0; i < activeNames.length; i++) {
+    for (let j = i + 1; j < activeNames.length; j++) {
+      const enc = await checkFirstEncounter(activeNames[i], activeNames[j]);
+      if (!enc) unmet.push([activeNames[i], activeNames[j]]);
+    }
+  }
+  return unmet;
+}
+
+// ═══════════════════════════════════════════════════════
+// §12. Working Memory (씬 상태)
+// ═══════════════════════════════════════════════════════
+
+async function getWorkingMemory(url) {
+  const db = getDB();
+  return await db.workingMemory.get(url) || {
+    url, scene: '', emotion: '', activeChars: [],
+    lastAction: '', turn: 0
+  };
+}
+
+async function updateWorkingMemory(url, data) {
+  const db = getDB();
+  const existing = await getWorkingMemory(url);
+  await db.workingMemory.put({ ...existing, ...data, url });
+}
+
+// [deprecated v4] 하위호환용 유지
+function extractSceneKeywords(recentMsgs) {
+  const last2 = recentMsgs.slice(-4).map(m => m.message || '').join(' ');
+  const locationPatterns = /(?:에서|으로|에|장소[:\s]*|곳[:\s]*)([\uAC00-\uD7A3a-zA-Z]+(?:방|집|카페|학교|공원|거리|사무실|병원|숲|바다|호텔|교실|옥상|지하|성|궁전|마을|도시|광장|시장|골목|강|호수|산|절벽|동굴|탑|성벽|아파트|편의점))/gi;
+  const locations = [];
+  let m;
+  while ((m = locationPatterns.exec(last2)) !== null) locations.push(m[1]);
+  const actionWords = ['키스', '포옹', '악수', '싸움', '도망', '울', '웃',
+    '잡', '안', '밀', '때리', '달리', '숨', '기다', '잠',
+    '먹', '마시', '요리', '노래', '춤', '싸우', '치료'];
+  const actions = actionWords.filter(w => last2.includes(w));
+  const emotionWords = ['기쁨', '슬픔', '분노', '공포', '놀람', '긴장',
+    '행복', '불안', '절망', '설렘', '부끄', '당황', '차분'];
+  const emotions = emotionWords.filter(w => last2.includes(w));
+  return { locations, actions, emotions };
+}
+
+// [deprecated v4]
+function formatSceneTag(keywords) {
+  const parts = [];
+  if (keywords.locations.length) parts.push(keywords.locations.slice(-1)[0]);
+  if (keywords.actions.length) parts.push(keywords.actions.slice(-2).join('/'));
+  if (keywords.emotions.length) parts.push(keywords.emotions.slice(-1)[0]);
+  if (!parts.length) return '';
+  return '[씬:' + parts.join('/') + ']';
+}
+
+// ═══════════════════════════════════════════════════════
+// §13. 호칭 매트릭스
+// ═══════════════════════════════════════════════════════
+
+function buildHonorificMatrix(entries, activeNames) {
+  const matrix = {};
+  const relEntries = entries.filter(e =>
+    e.type === 'relationship' && e.detail?.nicknames
+  );
+  for (const e of relEntries) {
+    for (const [key, value] of Object.entries(e.detail.nicknames)) {
+      const match = key.match(/^(.+?)→(.+?)$/);
+      if (!match) continue;
+      const [, from, to] = match;
+      if (activeNames.length > 0) {
+        const fromActive = activeNames.some(n => from.includes(n) || n.includes(from));
+        const toActive = activeNames.some(n => to.includes(n) || n.includes(to));
+        if (!fromActive && !toActive) continue;
+      }
+      if (!matrix[from]) matrix[from] = {};
+      matrix[from][to] = value;
+    }
+  }
+  return matrix;
+}
+
+function formatHonorificMatrix(matrix, budget) {
+  const lines = [];
+  for (const [from, targets] of Object.entries(matrix)) {
+    const pairs = Object.entries(targets).map(([to, hon]) => `${to}=${hon}`);
+    lines.push(`${from}→` + pairs.join('/'));
+  }
+  let result = '[호칭] ' + lines.join(' ');
+  if (result.length > budget) {
+    result = result.slice(0, budget - 3) + '...';
+  }
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════
+// §14. 트리거 스캐너 (개선판)
+// ═══════════════════════════════════════════════════════
+
+function bigramSimilarity(s1, s2) {
+  if (s1 === s2) return 1.0;
+  if (s1.length < 2 || s2.length < 2) return 0.0;
+  const bigrams = (str) => {
+    const bg = []; for (let i = 0; i < str.length - 1; i++) bg.push(str.slice(i, i + 2));
+    return bg;
+  };
+  const bg1 = bigrams(s1), bg2 = [...bigrams(s2)];
+  let intersection = 0;
+  for (const b of bg1) {
+    const idx = bg2.indexOf(b);
+    if (idx >= 0) { intersection++; bg2[idx] = null; }
+  }
+  return (2.0 * intersection) / (bigrams(s1).length + bigrams(s2).length);
+}
+
+function triggerScan(input, msgs, entries, config) {
+  const range = config.scanRange || DEFAULTS.scanRange;
+  const offset = config.scanOffset || DEFAULTS.scanOffset;
+  const strict = config.strictMatch !== false;
+  const simMatch = config.similarityMatch === true;
+  let historyMsgs = [];
+  if (offset > 0 && msgs.length > offset) {
+    historyMsgs = msgs.slice(-(range + offset), -offset).map(m => m.message);
+  } else {
+    historyMsgs = msgs.slice(-range).map(m => m.message);
+  }
+  const textBlocks = [];
+  const hLen = historyMsgs.length;
+  for (let i = 0; i < hLen; i++) {
+    textBlocks.push({ text: historyMsgs[i].toLowerCase(), weight: 10 + ((i + 1) / hLen) * 40 });
+  }
+  textBlocks.push({ text: input.toLowerCase(), weight: 100 });
+  const results = [];
+  for (const e of entries) {
+    let bestScore = 0;
+    for (const t of (e.triggers || [])) {
+      if (!t || t.length < 2) continue;
+      const andParts = t.split('&&').map(p => p.trim().toLowerCase());
+      let andMatched = true, minScore = Infinity;
+      for (const part of andParts) {
+        let partBest = 0;
+        for (const block of textBlocks) {
+          let isExact = false, simScore = 0;
+          if (strict) {
+            try {
+              const esc = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`(^|[\\s\\.,!?\\'\\"\u3000])${esc}(은|는|이|가|을|를|의|에|에게|한테|로|으로|과|와|다|도|만|부터|까지|[\\s\\.,!?\\'\\"\u3000]|$)`, 'i');
+              if (regex.test(block.text)) isExact = true;
+            } catch { if (block.text.includes(part)) isExact = true; }
+          } else {
+            if (block.text.includes(part)) isExact = true;
+          }
+          if (!isExact && simMatch) {
+            for (const w of block.text.split(/[\s.,!?'"]+/)) {
+              if (w.length >= 2) {
+                const s = bigramSimilarity(part, w);
+                if (s >= 0.75 && s > simScore) simScore = s;
               }
             }
-            if (isExact || simScore > 0) {
-              const score = block.weight * (isExact ? 1.0 : simScore * 0.7);
-              if (score > partBest) partBest = score;
-            }
           }
-          if (partBest === 0) { andMatched = false; break; }
-          if (partBest < minScore) minScore = partBest;
+          if (isExact || simScore > 0) {
+            const score = block.weight * (isExact ? 1.0 : simScore * 0.7);
+            if (score > partBest) partBest = score;
+          }
         }
-        if (andMatched && minScore > bestScore) bestScore = minScore;
+        if (partBest === 0) { andMatched = false; break; }
+        if (partBest < minScore) minScore = partBest;
       }
-      if (bestScore > 0) results.push({ entry: e, triggerScore: bestScore });
+      if (andMatched && minScore > bestScore) bestScore = minScore;
     }
-    return results;
+    if (bestScore > 0) results.push({ entry: e, triggerScore: bestScore });
+  }
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════
+// §15. 하이브리드 검색 엔진
+// ═══════════════════════════════════════════════════════
+
+async function hybridSearch(input, msgs, entries, config, apiOpts) {
+  const triggerResults = triggerScan(input, msgs, entries, config);
+  const embWeight = config.embeddingWeight || DEFAULTS.embeddingWeight;
+  const trigWeight = 1 - embWeight;
+  const activeNames = config.activeCharDetection !== false
+    ? detectActiveCharacters(msgs, entries)
+    : [];
+
+  const maxTrig = Math.max(...triggerResults.map(r => r.triggerScore), 1);
+
+  let embeddingScores = {};
+  if (config.embeddingEnabled) {
+    try {
+      const db = getDB();
+      // v4.1: 쿼리는 RETRIEVAL_QUERY
+      const queryTaskType = (apiOpts.model || '').includes('embedding-001')
+        ? 'RETRIEVAL_QUERY' : apiOpts.taskType;
+      const queryVec = await embedText(input, { ...apiOpts, taskType: queryTaskType });
+      const allEmbs = await db.embeddings.toArray();
+      for (const emb of allEmbs) {
+        const sim = cosineSim(queryVec, emb.vector);
+        const key = emb.entryId;
+        if (!embeddingScores[key] || sim > embeddingScores[key]) {
+          embeddingScores[key] = sim;
+        }
+      }
+    } catch (e) {
+      console.warn('[LoreCore] 임베딩 검색 실패, 트리거만 사용:', e.message);
+    }
   }
 
+  const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
+  const url = getCurUrl();
+  const turnCounters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
+  const currentTurn = turnCounters[url] || 0;
+  const lastMentionMap = JSON.parse(_ls.getItem('lore-last-mention') || '{}')[url] || {};
 
-  //  하이브리드 검색 엔진
+  const scored = [];
+  const trigMap = {};
+  for (const r of triggerResults) trigMap[r.entry.id] = r.triggerScore / maxTrig;
 
+  for (const entry of entries) {
+    const tScore = trigMap[entry.id] || 0;
+    const eScore = embeddingScores[entry.id] || 0;
 
-  async function hybridSearch(input, msgs, entries, config, apiOpts) {
-    const triggerResults = triggerScan(input, msgs, entries, config);
-    const embWeight = config.embeddingWeight || DEFAULTS.embeddingWeight;
-    const trigWeight = 1 - embWeight;
-    const activeNames = config.activeCharDetection !== false
-      ? detectActiveCharacters(msgs, entries)
-      : [];
+    let score;
+    if (config.embeddingEnabled && eScore > 0) {
+      score = trigWeight * tScore + embWeight * eScore;
+    } else {
+      score = tScore;
+    }
+    if (score === 0 && eScore === 0) continue;
 
-    // 트리거 점수 정규화 (0-1)
-    const maxTrig = Math.max(...triggerResults.map(r => r.triggerScore), 1);
-
-    // 임베딩 검색 (활성화된 경우)
-    let embeddingScores = {};
-    if (config.embeddingEnabled) {
-      try {
-        const db = getDB();
-        const queryVec = await embedText(input, apiOpts);
-        const allEmbs = await db.embeddings.toArray();
-        for (const emb of allEmbs) {
-          const sim = cosineSim(queryVec, emb.vector);
-          const key = emb.entryId;
-          if (!embeddingScores[key] || sim > embeddingScores[key]) {
-            embeddingScores[key] = sim;
-          }
-        }
-      } catch (e) {
-        console.warn('[LoreCore] 임베딩 검색 실패, 트리거만 사용:', e.message);
-      }
+    // v4.1: 2단계 재주입 스코어
+    if (config.decayEnabled !== false) {
+      const lastMention = lastMentionMap[entry.id] || 0;
+      const turnsSince = currentTurn - lastMention;
+      const reinjScore = calcReinjectionScore(turnsSince, entry.type, config);
+      if (reinjScore === 0 && score < 0.5) continue;
+      score *= (0.2 + 0.8 * reinjScore);
     }
 
-    // 턴 카운터 (시간 감쇠용)
-    const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
-    const url = getCurUrl();
-    const turnCounters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    const currentTurn = turnCounters[url] || 0;
-    const lastMentionMap = JSON.parse(_ls.getItem('lore-last-mention') || '{}')[url] || {};
-
-    // 전체 엔트리에 대해 종합 점수 계산
-    const scored = [];
-    const trigMap = {};
-    for (const r of triggerResults) trigMap[r.entry.id] = r.triggerScore / maxTrig;
-
-    for (const entry of entries) {
-      const tScore = trigMap[entry.id] || 0;
-      const eScore = embeddingScores[entry.id] || 0;
-
-      // 하이브리드 점수
-      let score;
-      if (config.embeddingEnabled && eScore > 0) {
-        score = trigWeight * tScore + embWeight * eScore;
+    // 활성 캐릭터 부스트/감점
+    if (config.activeCharDetection !== false && activeNames.length > 0) {
+      if (isRelatedToActive(entry, activeNames)) {
+        score *= (config.activeCharBoost || DEFAULTS.activeCharBoost);
       } else {
-        score = tScore; // 임베딩 없으면 트리거만
+        score *= (config.inactiveCharPenalty || DEFAULTS.inactiveCharPenalty);
       }
-      if (score === 0 && eScore === 0) continue; // 아무 매칭도 없으면 스킵
+    }
 
-      // 시간 감쇠 부스트 (잊혀졌을수록 높은 점수)
-      if (config.decayEnabled !== false) {
-        const lastMention = lastMentionMap[entry.id] || 0;
-        const turnsSince = currentTurn - lastMention;
-        const halfLife = getHalfLife(entry.type, config);
-        const forgotten = calcForgottenScore(turnsSince, halfLife);
-        score *= (0.3 + 0.7 * forgotten); // 최소 30% 유지, 잊혀질수록 100%
-      }
+    // source confidence
+    const srcBoost = {'user_stated':1.0,'imported':0.9,'auto_extracted':0.7};
+    score *= (srcBoost[entry.source] || 0.8);
 
-      // 활성 캐릭터 부스트/감점
-      if (config.activeCharDetection !== false && activeNames.length > 0) {
-        if (isRelatedToActive(entry, activeNames)) {
-          score *= (config.activeCharBoost || DEFAULTS.activeCharBoost);
-        } else {
-          score *= (config.inactiveCharPenalty || DEFAULTS.inactiveCharPenalty);
-        }
-      }
+    // v4.1: importance gating boost
+    const gs = entry.gateScore;
+    score *= (gs ? 0.7 + 0.3 * (gs / 30) : 0.85);
 
-      // v4: source confidence
-    const srcBoost={'user_stated':1.0,'imported':0.9,'auto_extracted':0.7};
-    score*=(srcBoost[entry.source]||0.8);
     scored.push({ entry, score });
-    }
-
-    scored.sort((a, b) => b.score - a.score);
-    // v4: search stats for weight auto-tuning
-    const searchStats={trigOnly:0,embOnly:0,both:0};
-    if(config.embeddingEnabled){
-      for(const{entry}of scored){
-        const t=trigMap[entry.id]||0;const e=embeddingScores[entry.id]||0;
-        if(t>0&&e>0)searchStats.both++;else if(t>0)searchStats.trigOnly++;else if(e>0)searchStats.embOnly++;
-      }
-    }
-    return { scored, activeNames, searchStats };
   }
 
+  scored.sort((a, b) => b.score - a.score);
 
-  //  예산 기반 포매터
+  // search stats for weight auto-tuning
+  const searchStats = {trigOnly:0, embOnly:0, both:0};
+  if (config.embeddingEnabled) {
+    for (const {entry} of scored) {
+      const t = trigMap[entry.id] || 0;
+      const e = embeddingScores[entry.id] || 0;
+      if (t > 0 && e > 0) searchStats.both++;
+      else if (t > 0) searchStats.trigOnly++;
+      else if (e > 0) searchStats.embOnly++;
+    }
+  }
+  return { scored, activeNames, searchStats };
+}
 
+// ═══════════════════════════════════════════════════════
+// §15.5 Gemini 스마트 Reranker (v4.1)
+// ═══════════════════════════════════════════════════════
+
+async function smartRerank(query, candidates, recentContext, apiOpts) {
+  if (!candidates || candidates.length <= 3) return candidates;
+  const maxCandidates = 8;
+  const subset = candidates.slice(0, maxCandidates);
+  const candidateList = subset.map((c, i) => {
+    const e = c.entry;
+    const summ = (e.summary || '').slice(0, 40);
+    const status = e.detail?.current_status || e.detail?.status || '';
+    return i + ': ' + e.name + (status ? '|' + status : '') + (summ ? ' ' + summ : '');
+  }).join('\n');
+  const ctx = (recentContext || '').slice(-200);
+  const prompt = 'Given the conversation context, rate each lore entry 1-5 for relevance to the current situation. Return ONLY a JSON array of objects [{"i":index,"s":score}], sorted by score descending.\n\nContext: "' + ctx + '"\nQuery: "' + query.slice(0, 100) + '"\n\nEntries:\n' + candidateList;
+  try {
+    const res = await callGeminiApi(prompt, {
+      apiType: apiOpts.apiType || 'key',
+      key: apiOpts.key,
+      vertexJson: apiOpts.vertexJson,
+      vertexLocation: apiOpts.vertexLocation || 'global',
+      vertexProjectId: apiOpts.vertexProjectId,
+      model: apiOpts.rerankModel || apiOpts.model || 'gemini-3-flash-preview',
+      thinkingConfig: { thinkingLevel: 'minimal' },
+      responseMimeType: 'application/json',
+      maxRetries: 0,
+      cacheKey: 'rerank'
+    });
+    if (!res.text) return candidates;
+    const parsed = JSON.parse(res.text);
+    if (!Array.isArray(parsed)) return candidates;
+    const scoreMap = {};
+    for (const item of parsed) {
+      if (typeof item.i === 'number' && typeof item.s === 'number') scoreMap[item.i] = item.s;
+    }
+    const reranked = [], unranked = [];
+    for (let i = 0; i < subset.length; i++) {
+      if (scoreMap[i] !== undefined) reranked.push({ ...subset[i], rerankScore: scoreMap[i] });
+      else unranked.push(subset[i]);
+    }
+    reranked.sort((a, b) => b.rerankScore - a.rerankScore);
+    const remaining = candidates.slice(maxCandidates);
+    return [...reranked, ...unranked, ...remaining];
+  } catch (e) {
+    console.warn('[LoreCore] rerank 실패, 원본 유지:', e.message);
+    return candidates;
+  }
+}
+
+
+  // ═══════════════════════════════════════════════════════
+  // §16. 예산 기반 포매터
+  // ═══════════════════════════════════════════════════════
+
+  function charLen(s){return[...s].length;}
+  const TYPE_ABBR={character:'人',identity:'人',relationship:'係',promise:'約',location:'地',event:'事',item:'物',concept:'設',setting:'設'};
+  
+  function cfFull(e){
+    const d=e.detail||{};const abbr=TYPE_ABBR[e.type]||'';const status=d.current_status||d.status||'';
+    let line=abbr?'['+abbr+':'+e.name:'['+e.name;if(status)line+='|'+status;line+=']';
+    if(e.summary){const sum=charLen(e.summary)>60?[...e.summary].slice(0,57).join('')+'...':e.summary;line+=' '+sum;}
+    if(d.nicknames&&typeof d.nicknames==='object'){const pairs=Object.entries(d.nicknames);if(pairs.length>0){const nk=pairs.map(([k,v])=>{const m=k.match(/^(.+?)→(.+?)$/);return m?m[1]+'→'+m[2]+'='+v:k+'='+v;}).join(' ');line+=' 呼'+nk;}}
+    if(e.type==='promise'&&d.condition)line+=' 조건:'+([...d.condition].slice(0,25).join(''));
+    return line;
+  }
+  function cfCompact(e){
+    const d=e.detail||{};const status=d.current_status||d.status||'';
+    let line=e.name;if(status)line+='|'+status;line+=':';
+    if(e.summary){const sum=charLen(e.summary)>35?[...e.summary].slice(0,32).join('')+'...':e.summary;line+=' '+sum;}
+    if(d.nicknames&&typeof d.nicknames==='object'){const vals=Object.entries(d.nicknames);if(vals.length>0){const nk=vals.map(([k,v])=>v).join('/');line+=' 呼'+nk;}}
+    if(e.type==='promise'&&d.status)line+='['+d.status+']';
+    return line;
+  }
+  function cfMicro(e){
+    const d=e.detail||{};const val=d.current_status||d.status||(e.summary?[...e.summary].slice(0,15).join(''):e.type);
+    let hon='';if(d.nicknames&&typeof d.nicknames==='object'){const vals=Object.values(d.nicknames);if(vals.length>0)hon='/'+vals[0];}
+    return e.name+'='+val+hon;
+  }
+
+  function adaptiveFormat(opts){
+    const{entries=[],activeNames=[],unmetPairs=[],honorifics='',budget=350,config={}}=opts;
+    if(!entries.length||budget<30)return{text:'',included:[],usedChars:0,level:'none'};
+    const parts=[];let remaining=budget;
+    // 1. 호칭
+    if(honorifics&&config.honorificMatrixEnabled!==false){
+      const hB=Math.min(Math.floor(remaining*0.2),80);
+      let hT=honorifics;
+      if(charLen(hT)>hB)hT=[...hT].slice(0,hB-3).join('')+'...';
+      parts.push(hT);remaining-=charLen(hT)+1;
+    }
+    // 2. 첫만남 경고
+    if(config.firstEncounterWarning!==false&&unmetPairs.length){
+      const fB=Math.floor(remaining*0.1);let fUsed=0;
+      for(const[a,b]of unmetPairs){
+        const tag='[初?'+a+'⇄'+b+']';const tl=charLen(tag);
+        if(fUsed+tl>fB)break;parts.push(tag);fUsed+=tl+1;
+      }
+      remaining-=fUsed;
+    }
+    // 3. 로어 엔트리
+    const included=[];const loreParts=[];let loreUsed=0;let level='full';
+    for(let i=0;i<entries.length;i++){
+      const e=entries[i];
+      const tag=(i<entries.length*0.25||i===0)?'[!] ':'';
+      const line=tag+cfFull(e);const len=charLen(line);
+      if(loreUsed+len+1>remaining)break;
+      loreParts.push(line);included.push(e);loreUsed+=len+1;
+    }
+    const rem1=entries.slice(included.length);
+    if(rem1.length>0&&remaining-loreUsed>30){
+      level='mixed';
+      for(const e of rem1){
+        const line=cfCompact(e);const len=charLen(line);
+        if(loreUsed+len+1>remaining)break;
+        loreParts.push(line);included.push(e);loreUsed+=len+1;
+      }
+    }
+    const rem2=entries.slice(included.length);
+    if(rem2.length>0&&remaining-loreUsed>15){
+      level='mixed+micro';
+      for(const e of rem2){
+        const line=cfMicro(e);const len=charLen(line);
+        if(loreUsed+len+1>remaining)break;
+        loreParts.push(line);included.push(e);loreUsed+=len+1;
+      }
+    }
+    if(included.length===0&&entries.length>0){
+      level='compact';
+      for(const e of entries){
+        let line=cfCompact(e);let len=charLen(line);
+        if(loreUsed+len+1>remaining){line=cfMicro(e);len=charLen(line);level='micro';}
+        if(loreUsed+len+1>remaining)break;
+        loreParts.push(line);included.push(e);loreUsed+=len+1;
+      }
+    }
+    if(loreParts.length>0)parts.push(loreParts.join('\n'));
+    const usedChars=budget-remaining+loreUsed;
+    return{text:parts.join('\n'),included,usedChars,level};
+  }
 
   function formatEntryFull(e) {
     const d = e.detail || {};
@@ -829,8 +994,6 @@
   function budgetFormat(entries, budget, config) {
     if (!entries.length) return '';
     const target = config?.targetCharsPerEntry || DEFAULTS.targetCharsPerEntry;
-
-    // 자동 레벨 선택
     let level;
     if (config?.autoCompression !== false) {
       const avgBudget = budget / entries.length;
@@ -840,7 +1003,6 @@
     } else {
       level = 'compact';
     }
-
     const formatter = { full: formatEntryFull, compact: formatEntryCompact, micro: formatEntryMicro }[level];
     const lines = [];
     let used = 0;
@@ -848,12 +1010,11 @@
       const line = formatter(e);
       if (used + line.length > budget) break;
       lines.push(line);
-      used += line.length + 1; // +1 for newline
+      used += line.length + 1;
     }
     return lines.join('\n');
   }
 
-  // 전체 주입 텍스트 조립
   function assembleInjection(opts) {
     const {
       entries = [], activeNames = [], unmetPairs = [],
@@ -863,97 +1024,89 @@
     const budget = config.loreBudgetChars || DEFAULTS.loreBudgetChars;
     const parts = [];
     let remaining = budget;
-
-    // 1. 씬 태그
     if (sceneTag && config.workingMemoryEnabled !== false) {
       parts.push(sceneTag);
       remaining -= sceneTag.length + 1;
     }
-
-    // 2. 호칭 매트릭스
     if (honorifics && config.workingMemoryEnabled !== false) {
       const hBudget = Math.min(remaining * 0.3, config.honorificMatrixChars || DEFAULTS.honorificMatrixChars);
       const hText = honorifics.length <= hBudget ? honorifics : honorifics.slice(0, hBudget - 3) + '...';
       parts.push(hText);
       remaining -= hText.length + 1;
     }
-
-    // 3. 미조우 쌍 경고
     for (const [a, b] of unmetPairs) {
       const tag = `[첫만남없음:${a}↔${b}]`;
-      if (remaining - tag.length < 50) break; // 로어용 최소 50자 확보
+      if (remaining - tag.length < 50) break;
       parts.push(tag);
       remaining -= tag.length + 1;
     }
-
-    // 4. 로어 엔트리 (남은 예산)
     if (remaining > 20 && entries.length > 0) {
       const loreText = budgetFormat(entries, remaining, config);
       if (loreText) parts.push(loreText);
     }
-
     const body = parts.join('\n');
     if (!body) return '';
-
     const pfx = prefix || config.prefix || DEFAULTS.prefix;
     const sfx = suffix || config.suffix || DEFAULTS.suffix;
     return `\n${pfx}\n${body}\n${sfx}\n`;
   }
 
+  // ═══════════════════════════════════════════════════════
+  // §17. 임베딩 관리
+  // ═══════════════════════════════════════════════════════
 
-  //  임베딩 관리
-
-
-  // 엔트리에 임베딩 생성/갱신
   async function ensureEmbedding(entry, apiOpts) {
     const db = getDB();
     const existing = await db.embeddings.where({ entryId: entry.id, field: 'summary' }).first();
     const text = `${entry.name}: ${entry.summary || ''}`;
     const hash = simpleHash(text);
-
-    if (existing && existing.hash === hash) return; // 변경 없으면 스킵
-
-    const vec = await embedText(text, apiOpts);
+    if (existing && existing.hash === hash) return;
+    // v4.1: 문서는 RETRIEVAL_DOCUMENT
+    const docTaskType = (apiOpts.model || '').includes('embedding-001')
+      ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
+    const vec = await embedText(text, { ...apiOpts, taskType: docTaskType });
     await db.embeddings.put({
       entryId: entry.id, field: 'summary',
       vector: vec, hash, model: apiOpts.model || DEFAULTS.embeddingModel,
+      taskType: docTaskType, // v4.1
       updatedAt: Date.now()
     });
-
-    // promise의 condition도 별도 임베딩
     if (entry.type === 'promise' && entry.detail?.condition) {
       const condText = entry.detail.condition;
       const condHash = simpleHash(condText);
       const existingCond = await db.embeddings.where({ entryId: entry.id, field: 'condition' }).first();
       if (!existingCond || existingCond.hash !== condHash) {
-        const condVec = await embedText(condText, apiOpts);
+        const condVec = await embedText(condText, { ...apiOpts, taskType: docTaskType });
         await db.embeddings.put({
           entryId: entry.id, field: 'condition',
           vector: condVec, hash: condHash,
           model: apiOpts.model || DEFAULTS.embeddingModel,
+          taskType: docTaskType, // v4.1
           updatedAt: Date.now()
         });
       }
     }
   }
 
-  // 팩 전체에 임베딩 일괄 생성
   async function embedPack(packName, apiOpts, onProgress) {
     const db = getDB();
     const entries = await db.entries.where('packName').equals(packName).toArray();
+    // v4.1: 문서는 RETRIEVAL_DOCUMENT
+    const docTaskType = (apiOpts.model || '').includes('embedding-001')
+      ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
     let done = 0;
-    // 배치: 5개씩 묶어서 처리 (API 호출 절약)
     for (let i = 0; i < entries.length; i += 5) {
       const batch = entries.slice(i, i + 5);
       const texts = batch.map(e => `${e.name}: ${e.summary || ''}`);
       try {
-        const vecs = await embedTexts(texts, apiOpts);
+        const vecs = await embedTexts(texts, { ...apiOpts, taskType: docTaskType });
         for (let j = 0; j < batch.length; j++) {
           const hash = simpleHash(texts[j]);
           await db.embeddings.put({
             entryId: batch[j].id, field: 'summary',
             vector: vecs[j], hash,
             model: apiOpts.model || DEFAULTS.embeddingModel,
+            taskType: docTaskType, // v4.1
             updatedAt: Date.now()
           });
         }
@@ -975,80 +1128,36 @@
     return h.toString(36);
   }
 
-
-  //  지식 변환기 (Knowledge Importer)
-
-
-  const IMPORT_SCHEMA = `[
-  { "type": "character|location|item|event|concept",
-    "name": "엔티티 이름",
-    "triggers": ["키워드1", "키워드2", "관련어&&조합"],
-    "summary": "핵심 요약 (1-2문장)",
-    "detail": {
-      "attributes": "특성/외형/능력",
-      "relations": ["관계 설명"],
-      "background_or_history": "배경"
-    }
-  },
-  { "type": "relationship",
-    "name": "A↔B",
-    "triggers": ["A&&B", "B&&A"],
-    "summary": "관계 요약",
-    "detail": {
-      "parties": ["A", "B"],
-      "current_status": "상태",
-      "nicknames": { "A→B": "호칭", "B→A": "호칭" }
-    }
+  async function convertLegacyPack(packName, apiOpts, onProgress) {
+    return await embedPack(packName, apiOpts, onProgress);
   }
-]`;
 
-  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.
-Convert the following source material into structured lore entries for an RP memory system.
+  // ═══════════════════════════════════════════════════════
+  // §18. 지식 변환기 (Knowledge Importer)
+  // ═══════════════════════════════════════════════════════
 
-RULES:
-1. JSON ONLY. Output a valid JSON array. No markdown.
-2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.
-3. Each entity needs 3-5 triggers (exact keywords from the source).
-4. For relationships, use bidirectional compound triggers: A&&B and B&&A.
-5. Keep summaries terse but complete. Use noun/stem endings for Korean.
-6. Extract characters, locations, items, relationships, factions, key events.
-7. For well-known franchises (게임, 애니, 소설 등), focus on RP-relevant info:
-   - Character personalities, speech patterns, relationships
-   - Key locations and their atmosphere
-   - Important items/abilities
-   - Faction dynamics
-8. Maximum {maxEntries} entries.
+  const IMPORT_SCHEMA = `[\n  { "type": "character|location|item|event|concept",\n    "name": "엔티티 이름",\n    "triggers": ["키워드1", "키워드2", "관련어&&조합"],\n    "summary": "핵심 요약 (1-2문장)",\n    "detail": {\n      "attributes": "특성/외형/능력",\n      "relations": ["관계 설명"],\n      "background_or_history": "배경"\n    }\n  },\n  { "type": "relationship",\n    "name": "A↔B",\n    "triggers": ["A&&B", "B&&A"],\n    "summary": "관계 요약",\n    "detail": {\n      "parties": ["A", "B"],\n      "current_status": "상태",\n      "nicknames": { "A→B": "호칭", "B→A": "호칭" }\n    }\n  }\n]`;
 
-Schema:
-{schema}
+  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.\nConvert the following source material into structured lore entries for an RP memory system.\n\nRULES:\n1. JSON ONLY. Output a valid JSON array. No markdown.\n2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.\n3. Each entity needs 3-5 triggers (exact keywords from the source).\n4. For relationships, use bidirectional compound triggers: A&&B and B&&A.\n5. Keep summaries terse but complete. Use noun/stem endings for Korean.\n6. Extract characters, locations, items, relationships, factions, key events.\n7. For well-known franchises, focus on RP-relevant info.\n8. Maximum {maxEntries} entries.\n\nSchema:\n{schema}\n\nSource Material:\n{source}`;
 
-Source Material:
-{source}`;
-
-  // 텍스트 → 구조화 로어 변환
   async function importFromText(text, packName, apiOpts, opts = {}) {
     const maxEntries = opts.maxEntries || DEFAULTS.importMaxEntries;
     const chunkSize = opts.chunkSize || DEFAULTS.importChunkSize;
     const allEntries = [];
-
-    // 긴 텍스트는 청크로 분할
     const chunks = [];
     for (let i = 0; i < text.length; i += chunkSize) {
       chunks.push(text.slice(i, i + chunkSize));
     }
-
     for (const chunk of chunks) {
       const prompt = IMPORT_PROMPT_TEMPLATE
         .replace('{source}', chunk)
         .replace('{schema}', IMPORT_SCHEMA)
         .replace('{maxEntries}', String(maxEntries));
-
       const res = await callGeminiApi(prompt, {
         ...apiOpts,
         responseMimeType: 'application/json',
         maxRetries: 1
       });
-
       if (res.text) {
         try {
           const parsed = JSON.parse(res.text);
@@ -1058,13 +1167,10 @@ Source Material:
         }
       }
     }
-
-    // DB에 저장
     if (allEntries.length > 0) {
       const db = getDB();
       let pack = await db.packs.get(packName);
       if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: '' });
-
       for (const e of allEntries) {
         e.packName = packName;
         e.project = '';
@@ -1078,12 +1184,10 @@ Source Material:
     return allEntries.length;
   }
 
-  // 기존 JSON 로어 직접 임포트
   async function importFromJson(jsonArray, packName) {
     const db = getDB();
     let pack = await db.packs.get(packName);
     if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: '' });
-
     let count = 0;
     for (const e of jsonArray) {
       if (!e.name) continue;
@@ -1099,12 +1203,10 @@ Source Material:
     return count;
   }
 
-  // URL에서 텍스트 추출 후 변환 (위키 등)
   async function importFromUrl(url, packName, apiOpts, opts = {}) {
     try {
       const resp = await gmFetch(url, { method: 'GET', headers: {} });
       const html = await resp.text();
-      // HTML → 평문 변환 (간단 버전)
       const text = html
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -1119,14 +1221,9 @@ Source Material:
     }
   }
 
-  // 기존 팩의 모든 엔트리에 임베딩 추가 (레거시 변환용)
-  async function convertLegacyPack(packName, apiOpts, onProgress) {
-    return await embedPack(packName, apiOpts, onProgress);
-  }
-
-
-  //  중복 감지 (크랙 요약 vs 로어)
-
+  // ═══════════════════════════════════════════════════════
+  // §19. 중복 감지
+  // ═══════════════════════════════════════════════════════
 
   function detectDuplicatesInSummary(entries, memories) {
     const summaryText = [
@@ -1134,17 +1231,13 @@ Source Material:
       ...(memories.relationship || []),
       ...(memories.longTerm || [])
     ].join(' ').toLowerCase();
-
     if (!summaryText) return [];
-
     const duplicates = [];
     for (const e of entries) {
-      // 엔트리 이름이 요약에 포함되면 중복 가능성
       const name = e.name.toLowerCase();
       const keywords = (e.triggers || []).map(t => t.toLowerCase().split('&&')).flat();
       const nameInSummary = summaryText.includes(name);
       const keywordsInSummary = keywords.filter(k => k.length >= 3 && summaryText.includes(k));
-
       if (nameInSummary && keywordsInSummary.length >= 2) {
         duplicates.push({ entryId: e.id, name: e.name, confidence: 0.8 });
       } else if (nameInSummary) {
@@ -1154,32 +1247,31 @@ Source Material:
     return duplicates;
   }
 
+  // ═══════════════════════════════════════════════════════
+  // §20. UI 헬퍼
+  // ═══════════════════════════════════════════════════════
 
-  //  UI 헬퍼
-
-
-  // 상태 배지 — API 작업 중 표시용
-  var _statusBadge=null;
-  var _pulseStyleAdded=false;
-  function showStatusBadge(text){
-    if(!_pulseStyleAdded){
-      _pulseStyleAdded=true;
-      var style=document.createElement('style');
-      style.textContent='@keyframes lore-pulse{0%,100%{opacity:1}50%{opacity:.3}}';
+  var _statusBadge = null;
+  var _pulseStyleAdded = false;
+  function showStatusBadge(text) {
+    if (!_pulseStyleAdded) {
+      _pulseStyleAdded = true;
+      var style = document.createElement('style');
+      style.textContent = '@keyframes lore-pulse{0%,100%{opacity:1}50%{opacity:.3}}';
       document.head.appendChild(style);
     }
-    if(!_statusBadge){
-      _statusBadge=document.createElement('div');
-      _statusBadge.id='lore-status-badge';
-      _statusBadge.style.cssText='position:fixed;bottom:70px;right:20px;z-index:999998;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:8px 16px;font-size:12px;color:#ccc;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .3s;opacity:0;pointer-events:none;';
+    if (!_statusBadge) {
+      _statusBadge = document.createElement('div');
+      _statusBadge.id = 'lore-status-badge';
+      _statusBadge.style.cssText = 'position:fixed;bottom:70px;right:20px;z-index:999998;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:8px 16px;font-size:12px;color:#ccc;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .3s;opacity:0;pointer-events:none;';
       document.body.appendChild(_statusBadge);
     }
-    _statusBadge.innerHTML='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite"></span> '+text;
-    _statusBadge.style.opacity='1';
-    _statusBadge.style.pointerEvents='auto';
+    _statusBadge.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite"></span> ' + text;
+    _statusBadge.style.opacity = '1';
+    _statusBadge.style.pointerEvents = 'auto';
   }
-  function hideStatusBadge(){
-    if(_statusBadge){_statusBadge.style.opacity='0';_statusBadge.style.pointerEvents='none';}
+  function hideStatusBadge() {
+    if (_statusBadge) { _statusBadge.style.opacity = '0'; _statusBadge.style.pointerEvents = 'none'; }
   }
 
   function setFullWidth(node) {
@@ -1231,7 +1323,6 @@ Source Material:
     const locKey = prefix + 'VertexLocation';
     const projKey = prefix + 'VertexProjectId';
     const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
-
     const typeRow = document.createElement('div');
     typeRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;';
     const btnKey = document.createElement('button');
@@ -1239,7 +1330,6 @@ Source Material:
     const keyArea = document.createElement('div');
     const vertexArea = document.createElement('div');
     const isVertex = () => (config[apiTypeKey] || 'key') === 'vertex';
-
     const updateBtns = () => {
       const v = isVertex();
       btnKey.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${!v ? '#285' : '#444'};background:${!v ? '#285' : 'transparent'};color:${!v ? '#fff' : '#ccc'};`;
@@ -1253,7 +1343,6 @@ Source Material:
     btnVertex.onclick = () => { config[apiTypeKey] = 'vertex'; updateBtns(); };
     typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex);
     nd.appendChild(typeRow);
-
     const ki = document.createElement('input'); ki.type = 'text';
     ki.value = config[keyKey] || ''; ki.placeholder = 'AIzaSy...';
     ki.setAttribute('autocomplete', 'off');
@@ -1267,14 +1356,12 @@ Source Material:
       config[keyKey] = val;
     };
     keyArea.appendChild(ki); nd.appendChild(keyArea);
-
     const jta = document.createElement('textarea');
     jta.value = config[jsonKey] || '';
     jta.placeholder = '{ "type": "service_account", ... }';
     jta.style.cssText = S + 'height:100px;font-family:monospace;resize:vertical;';
     jta.onchange = () => { config[jsonKey] = jta.value; };
     vertexArea.appendChild(jta);
-
     const locRow = document.createElement('div');
     locRow.style.cssText = 'display:flex;gap:12px;margin-top:8px;';
     const locInput = document.createElement('input');
@@ -1289,13 +1376,12 @@ Source Material:
     const pd = document.createElement('div'); pd.style.flex = '1'; pd.appendChild(projInput);
     locRow.appendChild(ld); locRow.appendChild(pd);
     vertexArea.appendChild(locRow); nd.appendChild(vertexArea);
-
     updateBtns();
   }
 
-
-  //  설정 관리
-
+  // ═══════════════════════════════════════════════════════
+  // §21. 설정 관리
+  // ═══════════════════════════════════════════════════════
 
   const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
 
@@ -1314,7 +1400,6 @@ Source Material:
     try { _ls.setItem(key, JSON.stringify(config)); } catch (e) {}
   }
 
-  // 턴 카운터 관리
   function incrementTurn(url) {
     const counters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
     counters[url] = (counters[url] || 0) + 1;
@@ -1330,9 +1415,9 @@ Source Material:
     _ls.setItem('lore-last-mention', JSON.stringify(all));
   }
 
-
-  //  공용 API 내보내기
-
+  // ═══════════════════════════════════════════════════════
+  // §22. 공용 API 내보내기
+  // ═══════════════════════════════════════════════════════
 
   _w.__LoreCore = {
     VER,
@@ -1358,7 +1443,7 @@ Source Material:
     normalizeVector,
     cosineSim,
 
-    // 크랙
+    // 플랫폼
     getCurUrl,
     getCurrentChatId,
     fetchLogs,
@@ -1368,10 +1453,12 @@ Source Material:
     // 검색
     triggerScan,
     hybridSearch,
+    smartRerank, // v4.1
     bigramSimilarity,
 
     // 시간 감쇠
-    calcForgottenScore,
+    calcForgottenScore,      // deprecated, 하위호환
+    calcReinjectionScore,    // v4.1
     getHalfLife,
 
     // 활성 캐릭터
@@ -1399,6 +1486,11 @@ Source Material:
     formatEntryMicro,
     budgetFormat,
     assembleInjection,
+    adaptiveFormat,
+    charLen,
+    cfFull,
+    cfCompact,
+    cfMicro,
 
     // 임베딩 관리
     ensureEmbedding,
