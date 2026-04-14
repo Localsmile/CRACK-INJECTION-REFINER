@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.2
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.2)
+// @version     1.3
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.3)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -25,7 +25,7 @@
   if (_w.__LoreCore) return;
 
   // 상수 및 기본 설정
-  const VER = '1.2';
+  const VER = '1.3';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -621,7 +621,8 @@
       return i + ': ' + e.name + (status ? '|' + status : '') + (summ ? ' ' + summ : '');
     }).join('\n');
     const ctx = (recentContext || '').slice(-200);
-    const prompt = 'Given the conversation context, rate each lore entry 1-5 for relevance to the current situation. Return ONLY a JSON array of objects [{"i":index,"s":score}], sorted by score descending.\n\nContext: "' + ctx + '"\nQuery: "' + query.slice(0, 100) + '"\n\nEntries:\n' + candidateList;
+    let prompt = apiOpts.rerankerPrompt || 'Given the conversation context, rate each lore entry 1-5 for relevance to the current situation. Return ONLY a JSON array of objects [{"i":index,"s":score}], sorted by score descending.\n\nContext: "{context}"\nQuery: "{query}"\n\nEntries:\n{candidates}';
+    prompt = prompt.replace('{context}', ctx).replace('{query}', query.slice(0, 100)).replace('{candidates}', candidateList);
     try {
       const res = await callGeminiApi(prompt, {
         apiType: apiOpts.apiType || 'key', key: apiOpts.key, vertexJson: apiOpts.vertexJson, vertexLocation: apiOpts.vertexLocation || 'global', vertexProjectId: apiOpts.vertexProjectId,
