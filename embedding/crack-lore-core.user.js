@@ -243,14 +243,28 @@
       return json.predictions.map(p => normalizeVector(p.embeddings.values));
     } else {
       if (!key) throw new Error('API 키 누락');
-      const url = _gBase + model + ':embedContent?key=' + key;
-      const bodyObj = { content: { parts: arr.map(t => ({ text: t })) }, output_dimensionality: dimensions };
-      if (model.includes('embedding-001')) bodyObj.taskType = taskType;
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyObj) });
-      if (!r.ok) throw new Error('임베딩 API 실패: ' + r.status);
-      const json = await r.json();
-      const embs = json.embeddings || [json.embedding];
-      return embs.map(e => normalizeVector(e.values));
+      if (arr.length === 1) {
+        const url = _gBase + model + ':embedContent?key=' + key;
+        const bodyObj = { content: { parts: [{ text: arr[0] }] }, output_dimensionality: dimensions };
+        if (model.includes('embedding-001')) bodyObj.taskType = taskType;
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyObj) });
+        if (!r.ok) throw new Error('임베딩 API 실패: ' + r.status);
+        const json = await r.json();
+        const embs = json.embeddings || [json.embedding];
+        return embs.map(e => normalizeVector(e.values));
+      } else {
+        const url = _gBase + model + ':batchEmbedContents?key=' + key;
+        const requests = arr.map(t => {
+          const req = { model: 'models/' + model, content: { parts: [{ text: t }] }, outputDimensionality: dimensions };
+          if (model.includes('embedding-001')) req.taskType = taskType;
+          return req;
+        });
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests }) });
+        if (!r.ok) throw new Error('배치 임베딩 API 실패: ' + r.status);
+        const json = await r.json();
+        if (!json.embeddings) throw new Error('임베딩 결과가 없습니다.');
+        return json.embeddings.map(e => normalizeVector(e.values));
+      }
     }
   }
 
