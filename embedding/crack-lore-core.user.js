@@ -326,7 +326,7 @@
       const token = await getVertexAccessToken(sa, cacheKey);
       const embLoc = (!vertexLocation || vertexLocation === 'global') ? 'us-central1' : vertexLocation;
       const host = `${embLoc}-aiplatform.googleapis.com`;
-      const url = `https://${host}/v1/projects/${projId}/locations/${vertexLocation}/publishers/google/models/${model}:predict`;
+      const url = `https://${host}/v1/projects/${projId}/locations/${embLoc}/publishers/google/models/${model}:predict`;
       const r = await gmFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
