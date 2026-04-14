@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.1
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.1)
+// @version     1.2
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.2)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -25,7 +25,7 @@
   if (_w.__LoreCore) return;
 
   // 상수 및 기본 설정
-  const VER = '1.1';
+  const VER = '1.2';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -472,7 +472,7 @@
       const pairs = Object.entries(targets).map(([to, hon]) => `${to}=${hon}`);
       lines.push(`${from}→` + pairs.join('/'));
     }
-    let result = '[Titles] ' + lines.join(' ');
+    let result = '[Call] ' + lines.join(' ');
     if (result.length > budget) result = result.slice(0, budget - 3) + '...';
     return result;
   }
@@ -646,21 +646,21 @@
 
   // 예산 기반 포매터
   function charLen(s){return[...s].length;}
-  const TYPE_ABBR={character:'人',identity:'人',relationship:'係',promise:'約',location:'地',event:'事',item:'物',concept:'設',setting:'設'};
+  const TYPE_ABBR={character:'Char',identity:'Char',relationship:'Rel',promise:'Prom',location:'Loc',event:'Evt',item:'Item',concept:'Sys',setting:'Sys'};
   
   function cfFull(e){
     const d=e.detail||{};const abbr=TYPE_ABBR[e.type]||'';const status=d.current_status||d.status||'';
     let line=abbr?'['+abbr+':'+e.name:'['+e.name;if(status)line+='|'+status;line+=']';
     if(e.summary){const sum=charLen(e.summary)>60?[...e.summary].slice(0,57).join('')+'...':e.summary;line+=' '+sum;}
-    if(d.nicknames&&typeof d.nicknames==='object'){const pairs=Object.entries(d.nicknames);if(pairs.length>0){const nk=pairs.map(([k,v])=>{const m=k.match(/^(.+?)→(.+?)$/);return m?m[1]+'→'+m[2]+'='+v:k+'='+v;}).join(' ');line+=' 呼'+nk;}}
-    if(e.type==='promise'&&d.condition)line+=' 조건:'+([...d.condition].slice(0,25).join(''));
+    if(d.nicknames&&typeof d.nicknames==='object'){const pairs=Object.entries(d.nicknames);if(pairs.length>0){const nk=pairs.map(([k,v])=>{const m=k.match(/^(.+?)→(.+?)$/);return m?m[1]+'->'+m[2]+':'+v:k+':'+v;}).join(', ');line+=' Call:'+nk;}}
+    if(e.type==='promise'&&d.condition)line+=' Cond:'+([...d.condition].slice(0,25).join(''));
     return line;
   }
   function cfCompact(e){
     const d=e.detail||{};const status=d.current_status||d.status||'';
     let line=e.name;if(status)line+='|'+status;line+=':';
     if(e.summary){const sum=charLen(e.summary)>35?[...e.summary].slice(0,32).join('')+'...':e.summary;line+=' '+sum;}
-    if(d.nicknames&&typeof d.nicknames==='object'){const vals=Object.entries(d.nicknames);if(vals.length>0){const nk=vals.map(([k,v])=>v).join('/');line+=' 呼'+nk;}}
+    if(d.nicknames&&typeof d.nicknames==='object'){const vals=Object.entries(d.nicknames);if(vals.length>0){const nk=vals.map(([k,v])=>v).join('/');line+=' Call:'+nk;}}
     if(e.type==='promise'&&d.status)line+='['+d.status+']';
     return line;
   }
@@ -683,7 +683,7 @@
     if(config.firstEncounterWarning!==false&&unmetPairs.length){
       const fB=Math.floor(remaining*0.1);let fUsed=0;
       for(const[a,b]of unmetPairs){
-        const tag='[初?'+a+'⇄'+b+']';const tl=charLen(tag);
+        const tag='[Unmet:'+a+'&'+b+']';const tl=charLen(tag);
         if(fUsed+tl>fB)break;parts.push(tag);fUsed+=tl+1;
       }
       remaining-=fUsed;
@@ -788,7 +788,7 @@
       parts.push(hText); remaining -= hText.length + 1;
     }
     for (const [a, b] of unmetPairs) {
-      const tag = `[첫만남없음:${a}↔${b}]`;
+      const tag = `[Unmet:${a}&${b}]`;
       if (remaining - tag.length < 50) break;
       parts.push(tag); remaining -= tag.length + 1;
     }
