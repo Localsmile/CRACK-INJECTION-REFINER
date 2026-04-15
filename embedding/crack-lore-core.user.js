@@ -1037,7 +1037,8 @@
     return wrap;
   }
 
-  function createApiInput(config, prefix, nd) {
+  function createApiInput(config, prefix, nd, onChange) {
+    const triggerSave = () => { if (typeof onChange === 'function') onChange(); };
     const apiTypeKey = prefix + 'ApiType';
     const keyKey = prefix === 'gemini' ? 'geminiKey' : prefix + 'Key';
     const jsonKey = prefix + 'VertexJson';
@@ -1060,8 +1061,8 @@
     };
     btnKey.textContent = 'API Key';
     btnVertex.textContent = 'Vertex AI (JSON)';
-    btnKey.onclick = () => { config[apiTypeKey] = 'key'; updateBtns(); };
-    btnVertex.onclick = () => { config[apiTypeKey] = 'vertex'; updateBtns(); };
+    btnKey.onclick = () => { config[apiTypeKey] = 'key'; updateBtns(); triggerSave(); };
+    btnVertex.onclick = () => { config[apiTypeKey] = 'vertex'; updateBtns(); triggerSave(); };
     typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex);
     nd.appendChild(typeRow);
     const ki = document.createElement('input'); ki.type = 'text';
@@ -1072,27 +1073,28 @@
       const val = ki.value.trim();
       if (val.startsWith('{') && val.includes('client_email')) {
         config[apiTypeKey] = 'vertex'; config[jsonKey] = val;
-        ki.value = ''; updateBtns(); return;
+        ki.value = ''; updateBtns(); triggerSave(); return;
       }
       config[keyKey] = val;
+      triggerSave();
     };
     keyArea.appendChild(ki); nd.appendChild(keyArea);
     const jta = document.createElement('textarea');
     jta.value = config[jsonKey] || '';
     jta.placeholder = '{ "type": "service_account", ... }';
     jta.style.cssText = S + 'height:100px;font-family:monospace;resize:vertical;';
-    jta.onchange = () => { config[jsonKey] = jta.value; };
+    jta.onchange = () => { config[jsonKey] = jta.value; triggerSave(); };
     vertexArea.appendChild(jta);
     const locRow = document.createElement('div');
     locRow.style.cssText = 'display:flex;gap:12px;margin-top:8px;';
     const locInput = document.createElement('input');
     locInput.value = config[locKey] || 'global';
     locInput.placeholder = 'Location'; locInput.style.cssText = S;
-    locInput.onchange = () => { config[locKey] = locInput.value || 'global'; };
+    locInput.onchange = () => { config[locKey] = locInput.value || 'global'; triggerSave(); };
     const projInput = document.createElement('input');
     projInput.value = config[projKey] || '';
     projInput.placeholder = 'Project ID'; projInput.style.cssText = S;
-    projInput.onchange = () => { config[projKey] = projInput.value; };
+    projInput.onchange = () => { config[projKey] = projInput.value; triggerSave(); };
     const ld = document.createElement('div'); ld.style.flex = '1'; ld.appendChild(locInput);
     const pd = document.createElement('div'); pd.style.flex = '1'; pd.appendChild(projInput);
     locRow.appendChild(ld); locRow.appendChild(pd);
