@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.2
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.2)
+// @version     1.0.1
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.0.1)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -25,7 +25,7 @@
   if (_w.__LoreCore) return;
 
   // 상수 및 기본 설정
-  const VER = '1.2';
+  const VER = '1.0.1';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -690,17 +690,22 @@
       }
       remaining-=fUsed;
     }
-    const included=[];const loreParts=[];let loreUsed=0;let level='full';
-    for(let i=0;i<entries.length;i++){
-      const e=entries[i];
-      const tag=(i<entries.length*0.25||i===0)?'[!] ':'';
-      const line=tag+cfFull(e);const len=charLen(line);
-      if(loreUsed+len+1>remaining)break;
-      loreParts.push(line);included.push(e);loreUsed+=len+1;
+    const included=[];const loreParts=[];let loreUsed=0;
+    const cmpMode = config.compressionMode || 'auto';
+    let level=cmpMode;
+    
+    if(cmpMode === 'auto' || cmpMode === 'full') {
+      for(let i=0;i<entries.length;i++){
+        const e=entries[i];
+        const tag=(i<entries.length*0.25||i===0)?'[!] ':'';
+        const line=tag+cfFull(e);const len=charLen(line);
+        if(loreUsed+len+1>remaining)break;
+        loreParts.push(line);included.push(e);loreUsed+=len+1;
+      }
     }
     const rem1=entries.slice(included.length);
-    if(rem1.length>0&&remaining-loreUsed>30){
-      level='mixed';
+    if(rem1.length>0 && (cmpMode === 'auto' || cmpMode === 'compact') && remaining-loreUsed>30){
+      if(cmpMode === 'auto') level='mixed';
       for(const e of rem1){
         const line=cfCompact(e);const len=charLen(line);
         if(loreUsed+len+1>remaining)break;
@@ -708,8 +713,8 @@
       }
     }
     const rem2=entries.slice(included.length);
-    if(rem2.length>0&&remaining-loreUsed>15){
-      level='mixed+micro';
+    if(rem2.length>0 && (cmpMode === 'auto' || cmpMode === 'micro') && remaining-loreUsed>15){
+      if(cmpMode === 'auto') level='mixed+micro';
       for(const e of rem2){
         const line=cfMicro(e);const len=charLen(line);
         if(loreUsed+len+1>remaining)break;
