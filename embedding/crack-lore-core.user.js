@@ -622,7 +622,7 @@
       return i + ': ' + e.name + (status ? '|' + status : '') + (summ ? ' ' + summ : '');
     }).join('\n');
     const ctx = (recentContext || '').slice(-200);
-    const promptTpl = apiOpts.rerankPrompt || DEFAULTS.rerankPrompt;
+    const promptTpl = (apiOpts.rerankPrompt && typeof apiOpts.rerankPrompt === 'string') ? apiOpts.rerankPrompt : DEFAULTS.rerankPrompt;
     const prompt = promptTpl.replace('{context}', ctx).replace('{query}', query.slice(0, 100)).replace('{candidates}', candidateList);
     try {
       const res = await callGeminiApi(prompt, {
