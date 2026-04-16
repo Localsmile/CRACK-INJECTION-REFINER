@@ -3,7 +3,7 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   if (_w.__LoreRefiner) return;
 
-  const PROMPT_VERSION = 'v1.1.0-reunion-honorific';
+  const PROMPT_VERSION = 'v1.2.0-user-impersonation';
 
   const TEMPLATES = {
     full: {
@@ -31,6 +31,9 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
 5. PROMISE / ARC CONTRADICTION
 6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뵙겠습니다", unfamiliarity.
 7. HONORIFIC REGRESSION: Using an older vocative (per [Call] matrix's "←prev" hint) without an in-story trigger (fight, reveal, reset).
+8. USER IMPERSONATION: AI narrated the user's character's actions, decisions, dialogue, or internal thoughts WITHOUT user's explicit prior input.
+   Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렴이 일었다" when user expressed no such feeling.
+   Allowed: describing physical cues the AI's character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know.
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
@@ -760,6 +763,51 @@ Issues found (no markdown code fences):
 {context}
 
 [New Speech]:
+{message}`,
+`You are an RP Continuity Checker.
+RATE: PG-13 ~ NC-21
+
+## Scope
+You receive:
+- [Lore]: partial character/world data
+- [Summaries]: memory snapshots
+- [Recent Context]: last N turns of dialogue
+- [New Speech]: the latest AI-generated RP response
+
+## Rule
+Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].
+
+## What Counts as an Error
+1. EXPLICIT FACTUAL CONTRADICTION
+2. PRESENCE / ABSENCE CONTRADICTION
+3. NICKNAME / TITLE MISMATCH
+4. STATE CONTRADICTION
+5. PROMISE / ARC CONTRADICTION
+6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뵙겠습니다", unfamiliarity.
+7. HONORIFIC REGRESSION: Using an older vocative (per [Call] matrix's "←prev" hint) without an in-story trigger (fight, reveal, reset).
+
+## Truncation Repair
+A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
+B) STATUS BLOCK TRUNCATION: Restore truncated/absent status blocks using [Recent Context].
+
+## Output Format
+Reason MUST be in Korean.
+No issues/repairs needed:
+{passWord}
+
+Issues found (no markdown code fences):
+{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
+
+[Lore]:
+{lore}
+
+[Summaries]:
+{memory}
+
+[Recent Context]:
+{context}
+
+[New Speech]:
 {message}`
   ];
 
@@ -782,6 +830,12 @@ Issues found (no markdown code fences):
     },
     setNeedsWarmup: function() {
       _needsWarmup = true;
+    },
+    // 수동 검수: fingerprint 체크 우회, 큐 건너뛰고 즉시 실행
+    manualRefine: async function(text, msgId) {
+      if (!text) return;
+      if (msgId) processedFingerprints.delete(msgId);
+      try { await refineMessage(text); } catch(e) { console.error('[Refiner] manual fail:', e); throw e; }
     }
   };
 
