@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.1.0
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.1.0)
+// @version     1.2.0
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.2.0)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -25,7 +25,7 @@
   if (_w.__LoreCore) return;
 
   // 상수 및 기본 설정
-  const VER = '1.1.0';
+  const VER = '1.2.0';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -123,6 +123,15 @@ Entries:
     });
     _db.version(5).stores({
       entries: '++id, name, type, packName, project, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, model, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, &[char1+char2], lastSeenTurn'
+    });
+    // v6: Shard 아키텍처 — rootId 인덱스 추가. Root는 rootId:null, Shard는 rootId:<root id>
+    _db.version(6).stores({
+      entries: '++id, name, type, packName, project, rootId, isCurrentArc, *triggers',
       packs: 'name, entryCount, project',
       snapshots: '++id, packName, timestamp, type',
       embeddings: '++id, entryId, model, &[entryId+field]',
@@ -240,6 +249,12 @@ Entries:
           const errBody = r.text ? await r.text().catch(() => '') : '';
           lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\\n/g, ' ')}`;
           if ([400, 403, 404].includes(r.status)) break;
+          // 429 Rate limit: exponential backoff with jitter
+          if (r.status === 429 && attempt < maxRetries) {
+            const waitMs = Math.pow(2, attempt + 1) * 1000 + Math.random() * 500;
+            await new Promise(res => setTimeout(res, waitMs));
+            continue;
+          }
         } else {
           const json = await r.json();
           const parts = json.candidates?.[0]?.content?.parts || [];
