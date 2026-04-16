@@ -57,11 +57,11 @@
     similarityMatch: true,
     decayEnabled: true,
     decayHalfLife: {
-      identity: 80, character: 80, relationship: 40,
-      first_encounter: 40, promise: 25, event: 12,
-      scene: 3, default: 20
+      identity: 15, character: 15, relationship: 8,
+      first_encounter: 8, promise: 5, event: 4,
+      scene: 2, default: 6
     },
-    aiMemoryTurns: 4,
+    aiMemoryTurns: 3,
     embeddingEnabled: false,
     embeddingModel: 'gemini-embedding-001',
     embeddingDimensions: 768,
@@ -397,7 +397,7 @@ Entries:
     });
     const active = [];
     for (const c of characters) {
-      if (c.names.some(n => n.length >= 2 && pool.includes(n))) active.push(c.entry.name);
+      if (c.names.some(n => n.length >= 3 && pool.includes(n))) active.push(c.entry.name);
     }
     return active;
   }
@@ -982,7 +982,11 @@ Entries:
       let pack = await db.packs.get(packName);
       if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: '' });
       for (const e of allEntries) {
-        e.packName = packName; e.project = ''; e.enabled = true; e.source = e.source || 'imported';
+        e.packName = packName; e.project = ''; e.enabled = true;
+        e.src = e.src || (e.source === 'user_stated' ? 'us' : (e.source === 'auto_extracted' ? 'ax' : 'im'));
+        e.source = e.source || 'imported';
+        e.ts = e.ts || Date.now();
+        e.lastUpdated = e.ts;
         await db.entries.put(e);
       }
       const count = await db.entries.where('packName').equals(packName).count();
@@ -998,7 +1002,11 @@ Entries:
     let count = 0;
     for (const e of jsonArray) {
       if (!e.name) continue;
-      e.packName = packName; e.project = e.project || ''; e.enabled = true; e.source = e.source || 'imported';
+      e.packName = packName; e.project = e.project || ''; e.enabled = true;
+      e.src = e.src || (e.source === 'user_stated' ? 'us' : (e.source === 'auto_extracted' ? 'ax' : 'im'));
+      e.source = e.source || 'imported';
+      e.ts = e.ts || Date.now();
+      e.lastUpdated = e.ts;
       await db.entries.put(e); count++;
     }
     const total = await db.entries.where('packName').equals(packName).count();
