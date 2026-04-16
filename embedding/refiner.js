@@ -130,7 +130,7 @@ Contradictions found (no markdown code fences):
   } catch (e) {}
 
   function saveProcessedFingerprints() {
-    const arr = Array.from(processedFingerprints).slice(-30);
+    const arr = Array.from(processedFingerprints).slice(-100);
     try { _ls.setItem(_PROCESSED_KEY, JSON.stringify(arr)); } catch (e) {}
   }
 
@@ -639,6 +639,7 @@ Contradictions found (no markdown code fences):
   let lastAssistantMsgId = null;
   let lastMsgLength = 0;
   let idleCount = 0;
+  let lastChangeTime = 0;
   let _needsWarmup = true;
   let _lastKnownUrl = '';
   let _chatObserver = null;
@@ -669,13 +670,14 @@ Contradictions found (no markdown code fences):
 
       if (msgId !== lastAssistantMsgId) {
         Core.showStatusBadge('AI 응답 수신 대기...');
-        lastAssistantMsgId = msgId; lastMsgLength = contentLen; idleCount = 0;
+        lastAssistantMsgId = msgId; lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
       } else {
         if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
-          if (idleCount === 2) enqueueRefine(lastLog.content, msgId);
+          // 길이 안정 + 최소 경과시간(4시) 두 조건 충족 시에만 교정 트리거
+          if (idleCount >= 2 && Date.now() - lastChangeTime > 4000) enqueueRefine(lastLog.content, msgId);
         } else {
-          lastMsgLength = contentLen; idleCount = 0;
+          lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
         }
       }
     } catch (e) {}
