@@ -791,6 +791,7 @@ Entries:
   }
 
   function formatEntryFull(e) {
+    if (e.inject?.full) return cfFull(e);
     const d = e.detail || {};
     let line = `[${e.name}|${d.current_status || e.type}] ${e.summary || ''}`;
     if (d.nicknames && typeof d.nicknames === 'object') {
@@ -804,6 +805,7 @@ Entries:
   }
 
   function formatEntryCompact(e) {
+    if (e.inject?.compact) return cfCompact(e);
     const d = e.detail || {};
     let line = `[${e.name}|${d.current_status || e.type}]`;
     if (e.summary) line += ` ${e.summary.slice(0, 40)}`;
@@ -812,6 +814,7 @@ Entries:
   }
 
   function formatEntryMicro(e) {
+    if (e.inject?.micro) return cfMicro(e);
     const d = e.detail || {};
     return `${e.name}:${(d.current_status || e.summary || e.type).slice(0, 15)}`;
   }
@@ -923,7 +926,7 @@ Entries:
 
     for (let i = 0; i < entries.length; i += 5) {
       const batch = entries.slice(i, i + 5);
-      const texts = batch.map(e => `${e.name}: ${e.summary || ''}`);
+      const texts = batch.map(e => e.embed_text ? `${e.name} ${e.embed_text}` : `${e.name}: ${e.summary || ''}`);
       try {
         const vecs = await embedTexts(texts, { ...apiOpts, taskType: docTaskType });
         for (let j = 0; j < batch.length; j++) {
