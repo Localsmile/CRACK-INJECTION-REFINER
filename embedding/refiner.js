@@ -568,14 +568,18 @@ Contradictions found (no markdown code fences):
               lastMsgLength = newText.length;
 
               if (editResult.ok) {
-                // 서버 반영 지연 대비: 90초간 GET 응답을 교정본으로 덮어씀 (inject 측 __refinedMessages)
+                // 서버 반영 지연 대비: 10분간 GET 응답을 교정본으로 덮어씀. localStorage 영속화로 새로고침도 버팀
                 if (_w.__refinedMessages && lastBot.id) {
-                  _w.__refinedMessages.set(lastBot.id, { text: newText, expires: Date.now() + 90000 });
+                  _w.__refinedMessages.set(lastBot.id, { text: newText, expires: Date.now() + 600000 });
                 }
                 const domUpdated = refreshMessageInDOM(assistantText, newText);
                 if (ToastCallback) ToastCallback(`교정 반영 완료 — ${parsed.reason}`, '#285');
+                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status);
               } else {
-                if (ToastCallback) ToastCallback('서버 수정 실패.', '#a55');
+                let errText = '';
+                try { errText = editResult.text ? await editResult.text() : ''; } catch(ex) {}
+                console.error('[Refiner] PATCH 실패. status=', editResult.status, 'body=', errText.slice(0, 300));
+                if (ToastCallback) ToastCallback(`서버 수정 실패 (${editResult.status}) — 콘솔 확인`, '#a55');
               }
             } else {
               if (ToastCallback) ToastCallback('대상 메시지 탐색 실패. 교정본은 로그에 저장됨.', '#a55');
