@@ -387,9 +387,9 @@ Contradictions found (no markdown code fences):
   }
 
   // 메인 로직
-  async function refineMessage(assistantText) {
+  async function refineMessage(assistantText, force = false) {
     const config = ConfigGetter();
-    if (!config.refinerEnabled) return;
+    if (!config.refinerEnabled && !force) return;
 
     Core.showStatusBadge('응답 검수 중...');
     const chatRoomId = Core.getCurrentChatId();
@@ -831,11 +831,11 @@ Issues found (no markdown code fences):
     setNeedsWarmup: function() {
       _needsWarmup = true;
     },
-    // 수동 검수: fingerprint 체크 우회, 큐 건너뛰고 즉시 실행
+    // 수동 검수: fingerprint 체크 우회, refinerEnabled 무시, 즉시 실행
     manualRefine: async function(text, msgId) {
       if (!text) return;
       if (msgId) processedFingerprints.delete(msgId);
-      try { await refineMessage(text); } catch(e) { console.error('[Refiner] manual fail:', e); throw e; }
+      try { await refineMessage(text, true); } catch(e) { console.error('[Refiner] manual fail:', e); throw e; }
     }
   };
 
