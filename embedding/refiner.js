@@ -565,7 +565,7 @@ Contradictions found (no markdown code fences):
               lastMsgLength = newText.length;
 
               if (editResult.ok) {
-                // 서버 반영 지연 대비: 90초간 GET 응답을 교정본으로 덮어쓸 (inject시측 __refinedMessages)
+                // 서버 반영 지연 대비: 90초간 GET 응답을 교정본으로 덮어씀 (inject 측 __refinedMessages)
                 if (_w.__refinedMessages && lastBot.id) {
                   _w.__refinedMessages.set(lastBot.id, { text: newText, expires: Date.now() + 90000 });
                 }
@@ -682,7 +682,7 @@ Contradictions found (no markdown code fences):
       } else {
         if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
-          // 길이 안정 + 최소 경과시간(4시) 두 조건 충족 시에만 교정 트리거
+          // 길이 안정 + 최소 경과시간(4초) 두 조건 충족 시에만 교정 트리거
           if (idleCount >= 2 && Date.now() - lastChangeTime > 4000) enqueueRefine(lastLog.content, msgId);
         } else {
           lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
