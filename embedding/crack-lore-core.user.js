@@ -82,7 +82,27 @@
     position: 'before',
     importChunkSize: 3000,
     importMaxEntries: 50,
-    rerankPrompt: 'Given the conversation context, rate each lore entry 1-5 for relevance to the current situation. Return ONLY a JSON array of objects [{"i":index,"s":score}], sorted by score descending.\n\nContext: "{context}"\nQuery: "{query}"\n\nEntries:\n{candidates}'
+    rerankPrompt: `Given the current RP conversation context, score each lore entry for INJECTION PRIORITY (1-5).
+
+Scoring criteria:
+5 = Directly referenced or contradicted in current scene
+4 = Active character/location in current scene
+3 = Related to active relationship or pending promise
+2 = Background info that adds depth
+1 = Not relevant to current scene
+
+Rules:
+- Pending promises near trigger conditions → boost to 4-5
+- Inactive characters not in scene → cap at 2
+- Return JSON array: [{"i":<index>,"s":<score>}]
+- Sort by score descending
+- Omit entries scoring 1
+
+Context: "{context}"
+Query: "{query}"
+
+Entries:
+{candidates}`
   };
 
   // 데이터베이스
@@ -449,9 +469,11 @@
   // 호칭 매트릭스
   function buildHonorificMatrix(entries, activeNames) {
     const matrix = {};
-    const relEntries = entries.filter(e => e.type === 'relationship' && e.detail?.nicknames);
-    for (const e of relEntries) {
-      for (const [key, value] of Object.entries(e.detail.nicknames)) {
+    for (const e of entries) {
+      const nicknames = e.call || (e.detail?.nicknames) || null;
+      if (!nicknames || typeof nicknames !== 'object') continue;
+      if (e.type !== 'rel' && e.type !== 'relationship') continue;
+      for (const [key, value] of Object.entries(nicknames)) {
         const match = key.match(/^(.+?)→(.+?)$/);
         if (!match) continue;
         const [, from, to] = match;
@@ -548,7 +570,17 @@
       try {
         const db = getDB();
         const queryTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_QUERY' : apiOpts.taskType;
-        const queryVec = await embedText(input, { ...apiOpts, taskType: queryTaskType });
+        let queryText = input;
+        if (msgs.length > 0) {
+          const recentAI = msgs
+            .slice(-4)
+            .filter(m => m.role === 'assistant')
+            .map(m => m.message)
+            .join(' ')
+            .slice(0, 200);
+          if (recentAI) queryText = `${input} ${recentAI}`;
+        }
+        const queryVec = await embedText(queryText, { ...apiOpts, taskType: queryTaskType });
         const allEmbs = await db.embeddings.toArray();
         for (const emb of allEmbs) {
           const sim = cosineSim(queryVec, emb.vector);
@@ -589,9 +621,14 @@
         else { score *= (config.inactiveCharPenalty || DEFAULTS.inactiveCharPenalty); }
       }
 
-      const srcBoost = {'user_stated':1.0,'imported':0.9,'auto_extracted':0.7};
-      score *= (srcBoost[entry.source] || 0.8);
-      const gs = entry.gateScore;
+      const srcBoost = {
+        'us':1.0, 'user_stated':1.0,
+        'im':0.9, 'imported':0.9,
+        'ax':0.7, 'auto_extracted':0.7
+      };
+      const source = entry.src ?? entry.source ?? 'ax';
+      score *= (srcBoost[source] || 0.8);
+      const gs = entry.gs ?? entry.gateScore ?? 0;
       score *= (gs ? 0.7 + 0.3 * (gs / 30) : 0.85);
 
       scored.push({ entry, score });
@@ -617,6 +654,11 @@
     const subset = candidates.slice(0, maxCandidates);
     const candidateList = subset.map((c, i) => {
       const e = c.entry;
+      if (e.inject?.full) {
+        let line = `${i}: [${e.type}] ${e.name}|${e.state || ''} ${e.inject.full}`;
+        if (e.cond) line += ` cond:${e.cond}`;
+        return line;
+      }
       const summ = (e.summary || '').slice(0, 40);
       const status = e.detail?.current_status || e.detail?.status || '';
       return i + ': ' + e.name + (status ? '|' + status : '') + (summ ? ' ' + summ : '');
@@ -651,6 +693,15 @@
   const TYPE_ABBR={character:'Char',identity:'Char',relationship:'Rel',promise:'Prom',location:'Loc',event:'Evt',item:'Item',concept:'Sys',setting:'Sys'};
   
   function cfFull(e){
+    if (e.inject?.full) {
+      let line = `[${e.name}|${e.state || e.type}] ${e.inject.full}`;
+      if (e.call) {
+        const pairs = Object.entries(e.call)
+          .map(([k,v]) => `${k}:${v}`).join('/');
+        line += ` Call:${pairs}`;
+      }
+      return line;
+    }
     const d=e.detail||{};const abbr=TYPE_ABBR[e.type]||'';const status=d.current_status||d.status||'';
     let line=abbr?'['+abbr+':'+e.name:'['+e.name;if(status)line+='|'+status;line+=']';
     if(e.summary){const sum=charLen(e.summary)>60?[...e.summary].slice(0,57).join('')+'...':e.summary;line+=' '+sum;}
@@ -659,6 +710,9 @@
     return line;
   }
   function cfCompact(e){
+    if (e.inject?.compact) {
+      return `${e.name}|${e.state || ''}: ${e.inject.compact}`;
+    }
     const d=e.detail||{};const status=d.current_status||d.status||'';
     let line=e.name;if(status)line+='|'+status;line+=':';
     if(e.summary){const sum=charLen(e.summary)>35?[...e.summary].slice(0,32).join('')+'...':e.summary;line+=' '+sum;}
@@ -667,6 +721,7 @@
     return line;
   }
   function cfMicro(e){
+    if (e.inject?.micro) return e.inject.micro;
     const d=e.detail||{};const val=d.current_status||d.status||(e.summary?[...e.summary].slice(0,15).join(''):e.type);
     let hon='';if(d.nicknames&&typeof d.nicknames==='object'){const vals=Object.values(d.nicknames);if(vals.length>0)hon='/'+vals[0];}
     return e.name+'='+val+hon;
@@ -814,7 +869,9 @@
   async function ensureEmbedding(entry, apiOpts) {
     const db = getDB();
     const existing = await db.embeddings.where({ entryId: entry.id, field: 'summary' }).first();
-    const text = `${entry.name}: ${entry.summary || ''}`;
+    const text = entry.embed_text
+      ? `${entry.name} ${entry.embed_text}`
+      : `${entry.name}: ${entry.summary || ''}`;
     const hash = simpleHash(text);
     const docTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
     const targetModel = apiOpts.model || DEFAULTS.embeddingModel;
