@@ -340,6 +340,16 @@ Contradictions found (no markdown code fences):
   function renderLoreForRefiner(entries) {
     const L = {personality:'성격',attributes:'특성',abilities:'능력',current_state:'현재',last_interaction:'최근',current_status:'현재 상태',nicknames:'호칭',relations:'관계',background_or_history:'배경',maker:'약속자',target:'대상',condition:'발동 조건',status:'상태',resolution:'결과',parties:'관계자',ingredients:'재료',steps:'순서',tips:'참고',rules:'규칙',effects:'효과'};
     return entries.map(e => {
+      if (e.inject?.full) {
+        let line = `[${e.type}] ${e.name}: ${e.inject.full}`;
+        if (e.state) line += ` (${e.state})`;
+        if (e.call) {
+          const c = Object.entries(e.call).map(([k,v])=>`${k}:${v}`).join(', ');
+          line += ` | 호칭: ${c}`;
+        }
+        if (e.cond) line += ` | 조건: ${e.cond}`;
+        return line;
+      }
       const d = e.detail || {};
       let line = '[' + (e.type||'entity') + '] ' + e.name + ': ' + (e.summary||'');
       for (const [k, v] of Object.entries(d)) {
