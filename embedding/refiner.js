@@ -577,10 +577,6 @@ Contradictions found (no markdown code fences):
               lastMsgLength = newText.length;
 
               if (editResult.ok) {
-                // 서버 반영 지연 대비: 10분간 GET 응답을 교정본으로 덮어씀. localStorage 영속화로 새로고침도 버팀
-                if (_w.__refinedMessages && lastBot.id) {
-                  _w.__refinedMessages.set(lastBot.id, { text: newText, expires: Date.now() + 600000 });
-                }
                 const domUpdated = refreshMessageInDOM(assistantText, newText);
                 if (ToastCallback) ToastCallback(`교정 반영 완료 — ${parsed.reason}`, '#285');
                 console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status);
