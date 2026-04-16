@@ -3,6 +3,8 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   if (_w.__LoreRefiner) return;
 
+  const PROMPT_VERSION = 'v1.1.0-reunion-honorific';
+
   const TEMPLATES = {
     full: {
       name: "전체 검수 (모순 파악 + 끊김 복구)",
@@ -27,6 +29,8 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
 3. NICKNAME / TITLE MISMATCH
 4. STATE CONTRADICTION
 5. PROMISE / ARC CONTRADICTION
+6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뵙겠습니다", unfamiliarity.
+7. HONORIFIC REGRESSION: Using an older vocative (per [Call] matrix's "←prev" hint) without an in-story trigger (fight, reveal, reset).
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
@@ -561,6 +565,10 @@ Contradictions found (no markdown code fences):
               lastMsgLength = newText.length;
 
               if (editResult.ok) {
+                // 서버 반영 지연 대비: 90초간 GET 응답을 교정본으로 덮어쓸 (inject시측 __refinedMessages)
+                if (_w.__refinedMessages && lastBot.id) {
+                  _w.__refinedMessages.set(lastBot.id, { text: newText, expires: Date.now() + 90000 });
+                }
                 const domUpdated = refreshMessageInDOM(assistantText, newText);
                 if (ToastCallback) ToastCallback(`교정 반영 완료 — ${parsed.reason}`, '#285');
               } else {
@@ -708,9 +716,58 @@ Contradictions found (no markdown code fences):
     }, 2000);
   }
 
+  // 이전 기본 프롬프트 (자동 업그레이드 매칭용). 신규 버전으로 갱신할 때 올려놓음.
+  const LEGACY_PROMPTS = [
+`You are an RP Continuity Checker.
+RATE: PG-13 ~ NC-21
+
+## Scope
+You receive:
+- [Lore]: partial character/world data
+- [Summaries]: memory snapshots
+- [Recent Context]: last N turns of dialogue
+- [New Speech]: the latest AI-generated RP response
+
+## Rule
+Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].
+
+## What Counts as an Error
+1. EXPLICIT FACTUAL CONTRADICTION
+2. PRESENCE / ABSENCE CONTRADICTION
+3. NICKNAME / TITLE MISMATCH
+4. STATE CONTRADICTION
+5. PROMISE / ARC CONTRADICTION
+
+## Truncation Repair
+A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
+B) STATUS BLOCK TRUNCATION: Restore truncated/absent status blocks using [Recent Context].
+
+## Output Format
+Reason MUST be in Korean.
+No issues/repairs needed:
+{passWord}
+
+Issues found (no markdown code fences):
+{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
+
+[Lore]:
+{lore}
+
+[Summaries]:
+{memory}
+
+[Recent Context]:
+{context}
+
+[New Speech]:
+{message}`
+  ];
+
   _w.__LoreRefiner = {
     DEFAULT_PROMPT,
     TEMPLATES,
+    PROMPT_VERSION,
+    LEGACY_PROMPTS,
     init: function(coreInstance, configGetterFn, logCb, toastCb, getPacksCb) {
       Core = coreInstance;
       ConfigGetter = configGetterFn;
