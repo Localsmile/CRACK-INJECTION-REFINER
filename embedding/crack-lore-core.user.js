@@ -49,7 +49,7 @@
     loreBudgetChars: 350,
     loreBudgetMax: 600,
     targetCharsPerEntry: {full: 140, compact: 70, micro: 35},
-    autoCompression: true,
+    autoCompression: false,
     scanRange: 4,
     scanOffset: 2,
     maxEntries: 4,
@@ -691,7 +691,7 @@
       remaining-=fUsed;
     }
     const included=[];const loreParts=[];let loreUsed=0;
-    const cmpMode = config.compressionMode || 'auto';
+    const cmpMode = (config.useCompressedFormat === false || config.autoCompression === false) ? 'full' : (config.compressionMode || 'auto');
     let level=cmpMode;
     
     if(cmpMode === 'auto' || cmpMode === 'full') {
