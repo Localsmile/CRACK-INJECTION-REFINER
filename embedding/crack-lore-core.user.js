@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.0.1
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.0.1)
+// @version     1.1.0
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.1.0)
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
@@ -25,7 +25,7 @@
   if (_w.__LoreCore) return;
 
   // 상수 및 기본 설정
-  const VER = '1.0.1';
+  const VER = '1.1.0';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
   const SAFETY = [
@@ -120,6 +120,14 @@ Entries:
       embeddings: '++id, entryId, model, &[entryId+field]',
       workingMemory: 'url',
       encounters: '++id, &[char1+char2]'
+    });
+    _db.version(5).stores({
+      entries: '++id, name, type, packName, project, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, model, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, &[char1+char2], lastSeenTurn'
     });
     return _db;
   }
@@ -393,11 +401,25 @@ Entries:
     const characters = allEntries.filter(e => e.type === 'identity' || e.type === 'character').map(e => {
       const names = [e.name];
       if (e.detail?.nicknames) { Object.values(e.detail.nicknames).forEach(n => { if (typeof n === 'string') names.push(n); }); }
-      return { entry: e, names: names.map(n => n.toLowerCase()) };
+      return { entry: e, names: names.map(n => (n || '').toLowerCase()).filter(Boolean) };
     });
     const active = [];
     for (const c of characters) {
-      if (c.names.some(n => n.length >= 3 && pool.includes(n))) active.push(c.entry.name);
+      let hit = false;
+      for (const n of c.names) {
+        const isCJK = /[가-힣㐀-鿿]/.test(n);
+        const minLen = isCJK ? 2 : 3;
+        if (n.length < minLen) continue;
+        if (isCJK) {
+          if (pool.includes(n)) { hit = true; break; }
+        } else {
+          try {
+            const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, 'i').test(pool)) { hit = true; break; }
+          } catch { if (pool.includes(n)) { hit = true; break; } }
+        }
+      }
+      if (hit) active.push(c.entry.name);
     }
     return active;
   }
@@ -418,7 +440,28 @@ Entries:
 
   async function recordFirstEncounter(char1, char2, data) {
     const db = getDB();
-    await db.encounters.put({ char1, char2, location: data.location || '', introducer: data.introducer || '', turnApprox: data.turnApprox || 0, impressions: data.impressions || {}, timestamp: Date.now() });
+    const existing = await checkFirstEncounter(char1, char2);
+    const turn = data.turnApprox || 0;
+    if (existing) {
+      await db.encounters.update(existing.id, {
+        lastSeenTurn: turn,
+        totalEncounters: (existing.totalEncounters || 1) + 1,
+        lastSeenAt: Date.now()
+      });
+    } else {
+      await db.encounters.put({
+        char1, char2,
+        location: data.location || '',
+        introducer: data.introducer || '',
+        turnApprox: turn,
+        firstMetTurn: turn,
+        lastSeenTurn: turn,
+        totalEncounters: 1,
+        impressions: data.impressions || {},
+        timestamp: Date.now(),
+        lastSeenAt: Date.now()
+      });
+    }
   }
 
   async function findUnmetPairs(activeNames) {
@@ -430,6 +473,31 @@ Entries:
       }
     }
     return unmet;
+  }
+
+  async function findReunionPairs(activeNames, currentTurn, minGap) {
+    const gap = minGap || 10;
+    const out = [];
+    for (let i = 0; i < activeNames.length; i++) {
+      for (let j = i + 1; j < activeNames.length; j++) {
+        const enc = await checkFirstEncounter(activeNames[i], activeNames[j]);
+        if (!enc) continue;
+        const last = enc.lastSeenTurn != null ? enc.lastSeenTurn : (enc.firstMetTurn != null ? enc.firstMetTurn : (enc.turnApprox || 0));
+        const diff = currentTurn - last;
+        if (diff >= gap) out.push({ pair: [activeNames[i], activeNames[j]], gap: diff });
+      }
+    }
+    return out;
+  }
+
+  function formatFirstEncounterBlock(pair) {
+    const [a, b] = pair;
+    return `[★ FIRST ENCOUNTER — ${a} × ${b} ★]\n서사상 첫 대면. 서로의 이름/외형/배경 모름.\n- 호칭은 중립어("저 사람", "당신", "~씨")만 허용\n- 이전 장면의 친밀도/별칭/내부 농담 금지\n- 자기소개는 자연스러운 흐름으로만, 첫인상 감각 묘사 1개 포함`;
+  }
+
+  function formatReunionTag(pair, gap) {
+    const [a, b] = pair;
+    return `[Reunion: ${a}↔${b} — ${gap}턴만에 재회. 이미 아는 사이. 처음 본 듯한 대사/자기소개 금지]`;
   }
 
   // Working Memory
@@ -469,35 +537,57 @@ Entries:
   // 호칭 매트릭스
   function buildHonorificMatrix(entries, activeNames) {
     const matrix = {};
+    const prevMap = {};
     for (const e of entries) {
-      const nicknames = e.call || (e.detail?.nicknames) || null;
-      if (!nicknames || typeof nicknames !== 'object') continue;
       if (e.type !== 'rel' && e.type !== 'relationship') continue;
-      for (const [key, value] of Object.entries(nicknames)) {
-        const match = key.match(/^(.+?)→(.+?)$/);
-        if (!match) continue;
-        const [, from, to] = match;
-        if (activeNames.length > 0) {
-          const fromActive = activeNames.some(n => from.includes(n) || n.includes(from));
-          const toActive = activeNames.some(n => to.includes(n) || n.includes(to));
-          if (!fromActive && !toActive) continue;
+      const nicknames = e.call || (e.detail?.nicknames) || null;
+      if (nicknames && typeof nicknames === 'object') {
+        for (const [key, value] of Object.entries(nicknames)) {
+          const match = key.match(/^(.+?)→(.+?)$/);
+          if (!match) continue;
+          const [, from, to] = match;
+          if (activeNames.length > 0) {
+            const fromActive = activeNames.some(n => from.includes(n) || n.includes(from));
+            const toActive = activeNames.some(n => to.includes(n) || n.includes(to));
+            if (!fromActive && !toActive) continue;
+          }
+          if (!matrix[from]) matrix[from] = {};
+          matrix[from][to] = value;
         }
-        if (!matrix[from]) matrix[from] = {};
-        matrix[from][to] = value;
+      }
+      const hist = Array.isArray(e.callHistory) ? e.callHistory : [];
+      if (hist.length >= 2) {
+        const byKey = {};
+        for (const h of hist) {
+          if (!h || !h.from || !h.to || !h.term) continue;
+          const k = `${h.from}→${h.to}`;
+          (byKey[k] = byKey[k] || []).push(h);
+        }
+        for (const k in byKey) {
+          const arr = byKey[k].sort((a,b) => (a.turn||0) - (b.turn||0));
+          const last = arr[arr.length-1], prev = arr[arr.length-2];
+          if (prev && last && prev.term !== last.term) prevMap[k] = prev.term;
+        }
       }
     }
-    return matrix;
+    return { matrix, prevMap };
   }
 
-  function formatHonorificMatrix(matrix, budget) {
+  function formatHonorificMatrix(result, budget) {
+    const src = result && typeof result === 'object' && result.matrix ? result : { matrix: result || {}, prevMap: {} };
+    const { matrix, prevMap } = src;
     const lines = [];
     for (const [from, targets] of Object.entries(matrix)) {
-      const pairs = Object.entries(targets).map(([to, hon]) => `${to}=${hon}`);
+      const pairs = Object.entries(targets).map(([to, hon]) => {
+        const k = `${from}→${to}`;
+        const prev = prevMap && prevMap[k];
+        return prev ? `${to}=${hon}(←${prev})` : `${to}=${hon}`;
+      });
       lines.push(`${from}→` + pairs.join('/'));
     }
-    let result = '[Call] ' + lines.join(' ');
-    if (result.length > budget) result = result.slice(0, budget - 3) + '...';
-    return result;
+    let out = '[Call] ' + lines.join(' ');
+    if (out.length > budget) out = out.slice(0, budget - 3) + '...';
+    return out;
   }
 
   // 검색 로직
@@ -1207,7 +1297,7 @@ Entries:
   _w.__LoreCore = {
     VER, DEFAULTS, PLATFORM, getDB, gmFetch, callGeminiApi, embedText, embedTexts, parseServiceAccountJson, getVertexAccessToken,
     normalizeVector, cosineSim, getCurUrl, getCurrentChatId, fetchLogs, fetchAllMemories, fetchPersonaName, triggerScan, hybridSearch, smartRerank, bigramSimilarity,
-    calcForgottenScore, calcReinjectionScore, getHalfLife, detectActiveCharacters, isRelatedToActive, checkFirstEncounter, recordFirstEncounter, findUnmetPairs,
+    calcForgottenScore, calcReinjectionScore, getHalfLife, detectActiveCharacters, isRelatedToActive, checkFirstEncounter, recordFirstEncounter, findUnmetPairs, findReunionPairs, formatFirstEncounterBlock, formatReunionTag,
     getWorkingMemory, updateWorkingMemory, extractSceneKeywords, formatSceneTag, buildHonorificMatrix, formatHonorificMatrix,
     formatEntryFull, formatEntryCompact, formatEntryMicro, budgetFormat, assembleInjection, adaptiveFormat, charLen, cfFull, cfCompact, cfMicro,
     ensureEmbedding, embedPack, convertLegacyPack, importFromText, importFromJson, importFromUrl, detectDuplicatesInSummary,
