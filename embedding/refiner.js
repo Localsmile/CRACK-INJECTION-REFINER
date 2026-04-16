@@ -530,6 +530,15 @@ Contradictions found (no markdown code fences):
         return;
       }
 
+      // parsed가 있는데 replacements도 refined_text도 없으면 조용히 끝나지 말고 로그에 기록
+      if (parsed && !parsed.replacements && !parsed.refined_text) {
+        const preview = JSON.stringify(parsed).slice(0, 150);
+        console.warn('[Refiner] parsed에 replacements/refined_text 없음:', parsed);
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명 (' + preview + ')', isError: true, reason: parsed.reason || '(이유 없음)' });
+        Core.hideStatusBadge();
+        if (ToastCallback) ToastCallback('교정 응답 구조 불명 — 콘솔 확인', '#a55');
+        return;
+      }
       if (parsed && (parsed.replacements || parsed.refined_text)) {
         let correctedText = assistantText;
         const replacements = parsed.replacements || [];
