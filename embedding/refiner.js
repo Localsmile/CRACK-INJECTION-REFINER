@@ -3,7 +3,7 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   if (_w.__LoreRefiner) return;
 
-  const PROMPT_VERSION = 'v1.2.0-user-impersonation';
+  const PROMPT_VERSION = 'v1.3.0-verbatim-statusblock';
 
   const TEMPLATES = {
     full: {
@@ -37,7 +37,10 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
-B) STATUS BLOCK TRUNCATION: Restore truncated/absent status blocks using [Recent Context].
+B) STATUS BLOCK TRUNCATION (RP status panels, typically fenced code blocks like \`\`\`...\`\`\` at the END of an AI message containing stats/variables/HP/etc.):
+   - If [New Speech] is missing its status block but [Recent Context] shows a previous AI turn HAD one, COPY the most recent status block VERBATIM from [Recent Context].
+   - Do NOT invent new fields, values, or formats. Do NOT mix in OOC/Lore/narrative.
+   - Identity copy only. Only update numeric deltas if they are explicitly stated in [New Speech]; otherwise leave values unchanged.
 
 ## Output Format
 Reason MUST be in Korean.
@@ -71,7 +74,10 @@ Your ONLY job is to fix truncation in the [New Speech]. Do NOT check for factual
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence using [Recent Context] as reference.
-B) STATUS BLOCK TRUNCATION: If [Recent Context] contains a complete status block and [New Speech] does not, restore it correctly.
+B) STATUS BLOCK TRUNCATION (RP status panels, typically fenced code blocks at the END of an AI message):
+   - If [Recent Context] has a status block and [New Speech] is missing it, COPY the most recent one VERBATIM.
+   - Do NOT invent fields/values/formats. Do NOT mix in OOC/Lore/narrative.
+   - Identity copy only.
 
 ## Output Format
 Reason MUST be in Korean.
@@ -489,22 +495,16 @@ Contradictions found (no markdown code fences):
         maxRetries: 1
       };
       
-      // 추론 설정 매핑
-      const sel = config.autoExtReasoning || 'medium';
-      const is3x = apiOpts.model.includes('gemini-3');
-      const isPro = apiOpts.model.includes('pro');
-      let tConf = {};
+      // 교정은 빠른 패턴 매칭 작업이므로 reasoning 최소화.
+      // Gemini 3.x와 2.x는 설정 방식이 다름: 3.x는 thinkingLevel 문자열, 2.x는 thinkingBudget 숫자.
+      const is3x = apiOpts.model.includes('gemini-3') || apiOpts.model.includes('gemini-2.0-flash-thinking');
       if (is3x) {
-        if (sel === 'off' || sel === 'minimal') tConf = { thinkingLevel: isPro ? 'low' : 'minimal' };
-        else if (sel === 'budget') tConf = { thinkingLevel: (config.autoExtBudget || 0) <= 2048 ? 'low' : 'medium' };
-        else tConf = { thinkingLevel: sel };
+        const isPro = apiOpts.model.includes('pro');
+        apiOpts.thinkingConfig = isPro ? { thinkingLevel: 'low' } : { thinkingLevel: 'minimal' };
       } else {
-        if (sel === 'off') tConf = { thinkingBudget: 0 };
-        else if (sel === 'minimal') tConf = { thinkingBudget: 512 };
-        else if (sel === 'budget') tConf = { thinkingBudget: config.autoExtBudget || 0 };
-        else { const map = { low: 1024, medium: 2048, high: 4096 }; tConf = { thinkingBudget: map[sel] || 2048 }; }
+        // 2.x: thinkingConfig 생략 = 기본 thinking 동작 (Old 버전과 동일, 적당히 빠름)
+        // 명시적 제어를 원하면 { thinkingBudget: 0 } 이 사용자 설정으로 대체되쥬서 터보로 터보 사용자가 까베핵을 유뱌g할 수 있음으로 생략.
       }
-      apiOpts.thinkingConfig = tConf;
 
       const response = await Core.callGeminiApi(prompt, apiOpts);
       if (!response.text) throw new Error(response.error || 'AI 응답 없음');
@@ -734,6 +734,54 @@ Contradictions found (no markdown code fences):
 
   // 이전 기본 프롬프트 (자동 업그레이드 매칭용). 신규 버전으로 갱신할 때 올려놓음.
   const LEGACY_PROMPTS = [
+`You are an RP Continuity Checker.
+RATE: PG-13 ~ NC-21
+
+## Scope
+You receive:
+- [Lore]: partial character/world data
+- [Summaries]: memory snapshots
+- [Recent Context]: last N turns of dialogue
+- [New Speech]: the latest AI-generated RP response
+
+## Rule
+Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].
+
+## What Counts as an Error
+1. EXPLICIT FACTUAL CONTRADICTION
+2. PRESENCE / ABSENCE CONTRADICTION
+3. NICKNAME / TITLE MISMATCH
+4. STATE CONTRADICTION
+5. PROMISE / ARC CONTRADICTION
+6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뽵겙습니다", unfamiliarity.
+7. HONORIFIC REGRESSION: Using an older vocative (per [Call] matrix's "←prev" hint) without an in-story trigger (fight, reveal, reset).
+8. USER IMPERSONATION: AI narrated the user's character's actions, decisions, dialogue, or internal thoughts WITHOUT user's explicit prior input.
+   Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렴이 일었다" when user expressed no such feeling.
+   Allowed: describing physical cues the AI's character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know.
+
+## Truncation Repair
+A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
+B) STATUS BLOCK TRUNCATION: Restore truncated/absent status blocks using [Recent Context].
+
+## Output Format
+Reason MUST be in Korean.
+No issues/repairs needed:
+{passWord}
+
+Issues found (no markdown code fences):
+{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
+
+[Lore]:
+{lore}
+
+[Summaries]:
+{memory}
+
+[Recent Context]:
+{context}
+
+[New Speech]:
+{message}`,
 `You are an RP Continuity Checker.
 RATE: PG-13 ~ NC-21
 
