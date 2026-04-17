@@ -491,7 +491,7 @@ Contradictions found (no markdown code fences):
     }
 
     // 4. 검수 요청
-    Core.showStatusBadge('에리가 큰언니에게 묻는 중');
+    Core.showStatusBadge('에리가 잼민이에게 묻는 중');
     const passWord = config.refinerPassKeyword || 'PASS';
     const promptTpl = config.refinerCustomPrompt || DEFAULT_PROMPT;
     const prompt = promptTpl
