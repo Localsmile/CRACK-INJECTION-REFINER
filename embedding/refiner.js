@@ -578,8 +578,12 @@ Contradictions found (no markdown code fences):
 
               if (editResult.ok) {
                 const domUpdated = refreshMessageInDOM(assistantText, newText);
-                if (ToastCallback) ToastCallback(`교정 반영 완료 — ${parsed.reason}`, '#285');
-                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status);
+                // 코드블록/상태창 같은 복잡한 마크다운은 fiber 패치 실패할 수 있음.
+                // SWR 재요청을 2초, 5초 후에도 트리거해서 서버본 강제 대체 유도.
+                setTimeout(triggerSWRRevalidation, 2000);
+                setTimeout(triggerSWRRevalidation, 5000);
+                if (ToastCallback) ToastCallback(domUpdated ? `교정 반영 — ${parsed.reason}` : `교정됨(새로고침하면 반영) — ${parsed.reason}`, '#285');
+                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'domUpdated=', domUpdated);
               } else {
                 let errText = '';
                 try { errText = editResult.text ? await editResult.text() : ''; } catch(ex) {}
