@@ -640,7 +640,7 @@ Contradictions found (no markdown code fences):
         const combinedReason = [localRepair && localRepair.reason, parsed && parsed.reason].filter(Boolean).join(' + ') || '교정';
 
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: combinedReason });
-        Core.showStatusBadge(localRepair ? '에리가 상태창 붙이는 중 픩️' : '에리가 뭐가 발견 ⚠️');
+        Core.showStatusBadge(localRepair ? '에리가 상태창 붙이는 중️' : '에리가 뭐가 발견 ⚠️');
         setTimeout(Core.hideStatusBadge, 3000);
 
         const applyRefinement = async (newText) => {
