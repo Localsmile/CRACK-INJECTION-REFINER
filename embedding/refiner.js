@@ -143,7 +143,7 @@ Contradictions found (no markdown code fences):
     try { _ls.setItem(_PROCESSED_KEY, JSON.stringify(arr)); } catch (e) {}
   }
 
-  // DOM 헬퍼
+  // DOM
   function stripMarkdown(text) {
     return text
       .replace(/```\w*\n?/g, '')
@@ -459,9 +459,7 @@ Contradictions found (no markdown code fences):
     } catch (e) {}
 
     // 3. 컨텍스트
-    // 중요: user 메시지에는 injecter가 주입한 OOC/로어 블록이 있음. 이걸 그대로 넣으면
-    // Gemini가 "최근 인용 구조화 블록"을 상태창이라고 오인해서 복사하는 문제 발생.
-    // 모든 알려진 OOC 포맷을 메시지에서 삭제해서 refiner에게 전달.
+    // user 턴 OOC 제거
     function stripInjectedOOC(msg, role) {
       if (!msg || role !== 'user') return msg;
       return msg
@@ -472,75 +470,25 @@ Contradictions found (no markdown code fences):
         .replace(/Remember these established facts[\s\S]*?(?=\n\n|$)/g, '')
         .trim();
     }
-    // 턴 정의 (LO 기준):
-    //   turns=0: 현재 USER 입력 (AI는 New Speech로 별도 전달)
-    //   turns=1: 직전 USER+AI 쌍 + 현재 USER  ← 직전 AI 상태창 소스가 여기!
-    //   turns=N: N턴 전부터 현재 USER까지 = 2N+1개 메시지
-    // fetchLogs는 오래된→최근 순서. 마지막 요소는 방금 생성된 AI (= New Speech 자체)이므로 제외.
-    // 버퍼 1개 더 가져와서 New Speech 제거 후 2N+1개만 사용.
+    // turns=N → 2N+1 메시지 (New Speech 중복 제거)
     let contextText = '최근 대화 내역 없음.';
-    let ctxMsgs = [];
     const turns = config.refinerContextTurns !== undefined ? config.refinerContextTurns : 1;
     if (turns > 0) {
-      const fetchN = turns * 2 + 2;
-      const allMsgs = await Core.fetchLogs(fetchN);
+      const allMsgs = await Core.fetchLogs(turns * 2 + 2);
       if (allMsgs && allMsgs.length > 0) {
-        ctxMsgs = allMsgs.slice();
-        // 끝에 있는 New Speech(방금 AI)를 제거 — 중복 방지
+        let ctxMsgs = allMsgs.slice();
         const last = ctxMsgs[ctxMsgs.length - 1];
         if (last && last.role === 'assistant' && assistantText) {
           const a = (last.message || '').slice(0, 100);
           const b = assistantText.slice(0, 100);
           if (a === b) ctxMsgs = ctxMsgs.slice(0, -1);
         }
-        const take = turns * 2 + 1;
-        ctxMsgs = ctxMsgs.slice(-take);
+        ctxMsgs = ctxMsgs.slice(-(turns * 2 + 1));
         if (ctxMsgs.length > 0) {
-          contextText = ctxMsgs.map(m => {
-            const cleanMsg = stripInjectedOOC(m.message, m.role);
-            return `${m.role}: ${cleanMsg}`;
-          }).join('\n\n');
+          contextText = ctxMsgs.map(m => `${m.role}: ${stripInjectedOOC(m.message, m.role)}`).join('\n\n');
         }
       }
     }
-
-    // 3.5. 로컬 자동 코드블록(상태창) 복구
-    // AI 프롬프트에 맡기지 않고 코드 레벨에서 확정적으로 감지/복구.
-    // 중요: /m 플래그 사용하면 $가 줄끝에 매치되어 non-greedy와 조합되면 첫 코드블록을 잡음.
-    // /m 없이 문자열 끝으로 앵커 → 항상 마지막 코드블록을 정확히 포착.
-    let workingText = assistantText;
-    let localRepair = null;
-    try {
-      // 복수 fence 스타일 지원 (⁠```⁠, ⁠~~~⁠)
-      const fences = [/```[\s\S]+?```\s*$/, /~~~[\s\S]+?~~~\s*$/];
-      const trimmedNew = assistantText.trim();
-      const newHasEndBlock = fences.some(re => re.test(trimmedNew));
-      console.log('[Refiner] 로컬 복구 시작. newHasEndBlock=', newHasEndBlock, 'ctxMsgs.length=', ctxMsgs.length);
-      if (!newHasEndBlock) {
-        // 뒤에서부터 가장 최근 AI 턴 찾기
-        for (let i = ctxMsgs.length - 1; i >= 0; i--) {
-          if (ctxMsgs[i].role !== 'assistant') continue;
-          const prevTrimmed = (ctxMsgs[i].message || '').trim();
-          console.log('[Refiner] 직전 AI 턴 뒤끝 200자:', JSON.stringify(prevTrimmed.slice(-200)));
-          let matched = null;
-          for (const re of fences) {
-            const m = prevTrimmed.match(re);
-            if (m && m[0]) { matched = m[0]; break; }
-          }
-          if (matched) {
-            workingText = assistantText.replace(/\s+$/, '') + '\n\n' + matched;
-            localRepair = { codeBlock: matched, reason: '상태창(코드블록) 누락 — 직전 AI 턴 VERBATIM 복구' };
-            console.log('[Refiner] ✅ 로컬 코드블록 복구:', matched.slice(0, 150));
-          } else {
-            console.log('[Refiner] ❌ 직전 AI 턴에 코드블록 없음');
-          }
-          break; // 직전 AI 한 턴만 확인
-        }
-        if (!localRepair) console.log('[Refiner] 로컬 복구 대상 못 찾음 (ctxMsgs에 assistant 턴 없거나 코드블록 없음)');
-      } else {
-        console.log('[Refiner] New Speech에 이미 코드블록 있음 — 복구 건너뜀');
-      }
-    } catch(e) { console.warn('[Refiner] 로컬 복구 감지 실패:', e); }
 
     // 4. 검수 요청
     Core.showStatusBadge('에리가 큰언니에게 묻는 중');
@@ -550,7 +498,7 @@ Contradictions found (no markdown code fences):
       .replace('{lore}', loreText)
       .replace('{memory}', memoryText)
       .replace('{context}', contextText)
-      .replace('{message}', workingText)
+      .replace('{message}', assistantText)
       .replace('{passWord}', passWord);
 
     try {
@@ -565,15 +513,11 @@ Contradictions found (no markdown code fences):
         maxRetries: 1
       };
       
-      // 교정은 빠른 패턴 매칭 작업이므로 reasoning 최소화.
-      // Gemini 3.x와 2.x는 설정 방식이 다름: 3.x는 thinkingLevel 문자열, 2.x는 thinkingBudget 숫자.
+      // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)
       const is3x = apiOpts.model.includes('gemini-3') || apiOpts.model.includes('gemini-2.0-flash-thinking');
       if (is3x) {
         const isPro = apiOpts.model.includes('pro');
         apiOpts.thinkingConfig = isPro ? { thinkingLevel: 'low' } : { thinkingLevel: 'minimal' };
-      } else {
-        // 2.x: thinkingConfig 생략 = 기본 thinking 동작 (Old 버전과 동일, 적당히 빠름)
-        // 명시적 제어를 원하면 { thinkingBudget: 0 } 이 사용자 설정으로 대체되쥬서 터보로 터보 사용자가 까베핵을 유뱌g할 수 있음으로 생략.
       }
 
       const response = await Core.callGeminiApi(prompt, apiOpts);
@@ -581,8 +525,7 @@ Contradictions found (no markdown code fences):
       const text = response.text.trim();
 
       const isPass = text.includes(passWord) && text.length < passWord.length + 10;
-      // PASS 판정이라도 로컬 복구가 있으면 어차피 적용 필요시 아래로 fall through
-      if (isPass && !localRepair) {
+      if (isPass) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true });
         Core.showStatusBadge('에리: 이상 없음');
         setTimeout(Core.hideStatusBadge, 2000);
@@ -591,56 +534,36 @@ Contradictions found (no markdown code fences):
       }
 
       let parsed = null;
-      if (!isPass) {
-        try {
-          const raw = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-          parsed = JSON.parse(raw);
-        } catch (e) {
-          // 파싱 실패해도 로컬 복구 있으면 그것만이라도 적용
-          if (!localRepair) {
-            if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true });
-            Core.hideStatusBadge();
-            if (ToastCallback) ToastCallback('에리: 응답 해석 실패, 원본 유지', '#a55');
-            return;
-          }
-        }
-
-        if (parsed && !parsed.replacements && !parsed.refined_text && !localRepair) {
-          const preview = JSON.stringify(parsed).slice(0, 150);
-          console.warn('[Refiner] parsed에 replacements/refined_text 없음:', parsed);
-          if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명 (' + preview + ')', isError: true, reason: parsed.reason || '(이유 없음)' });
-          Core.hideStatusBadge();
-          if (ToastCallback) ToastCallback('에리: 응답 구조 불명 (콘솔 확인)', '#a55');
-          return;
-        }
+      try {
+        const raw = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true });
+        Core.hideStatusBadge();
+        if (ToastCallback) ToastCallback('에리: 응답 해석 실패, 원본 유지', '#a55');
+        return;
       }
 
-      if (localRepair || (parsed && (parsed.replacements || parsed.refined_text))) {
-        // workingText = 로컬 복구 적용된 베이스 (복구 없으면 assistantText와 동일)
-        let correctedText = workingText;
-        const replacements = (parsed && parsed.replacements) || [];
+        if (parsed && !parsed.replacements && !parsed.refined_text) {
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명', isError: true, reason: parsed.reason || '(이유 없음)' });
+        Core.hideStatusBadge();
+        if (ToastCallback) ToastCallback('에리: 응답 구조 불명', '#a55');
+        return;
+      }
+
+      if (parsed && (parsed.replacements || parsed.refined_text)) {
+        let correctedText = assistantText;
+        const replacements = parsed.replacements || [];
         if (replacements.length > 0) {
           for (const r of replacements) {
-            if (r.from && r.to !== undefined) {
-              correctedText = correctedText.replace(r.from, r.to);
-            }
+            if (r.from && r.to !== undefined) correctedText = correctedText.replace(r.from, r.to);
           }
-        } else if (parsed && parsed.refined_text) {
+        } else if (parsed.refined_text) {
           correctedText = parsed.refined_text;
         }
 
-        // 최종 변화 없으면 PASS 처리
-        if (correctedText === assistantText) {
-          if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS (no change)', isPass: true });
-          Core.hideStatusBadge();
-          if (ToastCallback) ToastCallback('에리: 변화 없음', '#4a9');
-          return;
-        }
-
-        const combinedReason = [localRepair && localRepair.reason, parsed && parsed.reason].filter(Boolean).join(' + ') || '교정';
-
-        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: combinedReason });
-        Core.showStatusBadge(localRepair ? '에리가 상태창 붙이는 중️' : '에리가 뭐가 발견 ⚠️');
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: parsed.reason });
+        Core.showStatusBadge('에리가 뭔가 발견');
         setTimeout(Core.hideStatusBadge, 3000);
 
         const applyRefinement = async (newText) => {
@@ -665,10 +588,8 @@ Contradictions found (no markdown code fences):
 
               if (editResult.ok) {
                 const domUpdated = refreshMessageInDOM(assistantText, newText);
-                // refreshMessageInDOM이 이미 내부적으로 triggerSWRRevalidation 호출함.
-                // 중복 호출은 React와 간섭 생기므로 서버 반영 지연 대비해서 6초 후에 한 번만 추가 호출.
                 setTimeout(triggerSWRRevalidation, 6000);
-                if (ToastCallback) ToastCallback(domUpdated ? `에리가 고침 — ${combinedReason}` : `에리가 고침(새로고침 시 반영) — ${combinedReason}`, '#285');
+                if (ToastCallback) ToastCallback(domUpdated ? `에리가 고침 — ${parsed.reason}` : `에리가 고침(새로고침 시 반영) — ${parsed.reason}`, '#285');
                 console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'domUpdated=', domUpdated);
               } else {
                 let errText = '';
@@ -691,7 +612,7 @@ Contradictions found (no markdown code fences):
           if (existingPopup) {
             if (ToastCallback) ToastCallback('에리: 제안을 로그에 보관함', '#258');
           } else {
-            showRefineConfirm(combinedReason, correctedText, applyRefinement, () => {});
+            showRefineConfirm(parsed.reason, correctedText, applyRefinement, () => {});
           }
         }
       }
@@ -784,7 +705,6 @@ Contradictions found (no markdown code fences):
       } else {
         if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
-          // 길이 안정 + 최소 경과시간(4초) 두 조건 충족 시에만 교정 트리거
           if (idleCount >= 2 && Date.now() - lastChangeTime > 4000) enqueueRefine(lastLog.content, msgId);
         } else {
           lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
@@ -818,7 +738,7 @@ Contradictions found (no markdown code fences):
     }, 2000);
   }
 
-  // 이전 기본 프롬프트 (자동 업그레이드 매칭용). 신규 버전으로 갱신할 때 올려놓음.
+  // LEGACY
   const LEGACY_PROMPTS = [
 `You are an RP Continuity Checker.
 RATE: PG-13 ~ NC-21
@@ -978,7 +898,7 @@ Issues found (no markdown code fences):
     setNeedsWarmup: function() {
       _needsWarmup = true;
     },
-    // 수동 검수: fingerprint 체크 우회, refinerEnabled 무시, 즉시 실행
+    // 수동 검수
     manualRefine: async function(text, msgId) {
       if (!text) return;
       if (msgId) processedFingerprints.delete(msgId);
