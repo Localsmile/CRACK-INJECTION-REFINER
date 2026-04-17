@@ -3,7 +3,7 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   if (_w.__LoreRefiner) return;
 
-  const PROMPT_VERSION = 'v1.3.0-verbatim-statusblock';
+  const PROMPT_VERSION = 'v1.4.0-old-style-simple';
 
   const TEMPLATES = {
     full: {
@@ -35,21 +35,10 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
    Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렴이 일었다" when user expressed no such feeling.
    Allowed: describing physical cues the AI's character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know.
 
-## CRITICAL: Role Distinction in [Recent Context]
-[Recent Context] turns are labeled [USER] (human input) and [AI] (RP character response).
-- Status blocks EXIST ONLY in [AI] turns — never in [USER] turns.
-- [USER] turns may contain injected lore/OOC/system notes; these are NOT status blocks. Ignore them entirely when looking for a status template.
-- When restoring a status block, ONLY look at the most recent [AI] turn's fenced code block.
-
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
-B) CODE BLOCK RECOVERY (triple-backtick fenced code blocks, \`\`\`...\`\`\`):
-   - RP status panels (HP/stats/variables/scene info) are ALWAYS formatted as triple-backtick code blocks at the END of an [AI] message.
-   - If the most recent [AI] turn ENDED with a \`\`\`code block\`\`\` and [New Speech] is missing it (truncated mid-output or lost entirely), COPY that code block VERBATIM — INCLUDING the triple backticks \`\`\` on both sides.
-   - Output format MUST be a triple-backtick code block. Do NOT render as plain text or markdown.
-   - Source: ONLY the most recent [AI] turn in [Recent Context]. NEVER [USER] turns. NEVER convert OOC/lore/narrative into a code block.
-   - Identity copy only. Only update numeric deltas if explicitly stated in [New Speech]; otherwise leave values unchanged.
-   - If [New Speech] already has a proper code block at the end, do NOT touch it.
+B) STATUS BLOCK TRUNCATION (triple-backtick fenced code blocks \`\`\`...\`\`\` at the END of an assistant message, containing RP stats/HP/variables/scene info):
+   Restore truncated/absent status blocks using [Recent Context]. Copy the most recent assistant-side code block verbatim (including the triple backticks). Only update numeric values if [New Speech] explicitly states them.
 
 ## Output Format
 Reason MUST be in Korean.
@@ -81,18 +70,10 @@ RATE: PG-13 ~ NC-21
 ## Rule
 Your ONLY job is to fix truncation in the [New Speech]. Do NOT check for factual logic or lore contradictions.
 
-## CRITICAL: Role Distinction
-[Recent Context] turns are labeled [USER] (human input, may contain injected lore/OOC) and [AI] (RP response, may contain status block).
-Status blocks EXIST ONLY in [AI] turns. NEVER look at [USER] turns for status block sources.
-
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence using [Recent Context] as reference.
-B) CODE BLOCK RECOVERY (triple-backtick fenced code blocks, \`\`\`...\`\`\`):
-   - RP status panels are ALWAYS triple-backtick code blocks at the END of an [AI] message.
-   - If the most recent [AI] turn ended with a \`\`\`code block\`\`\` and [New Speech] is missing it, COPY VERBATIM including the triple backticks \`\`\` on both sides.
-   - Output MUST be a triple-backtick code block. Source: ONLY [AI] turns.
-   - Do NOT invent fields/values/formats. Do NOT convert OOC/lore into code blocks.
-   - Identity copy only.
+B) STATUS BLOCK TRUNCATION (triple-backtick code blocks \`\`\`...\`\`\` at the END of an assistant message):
+   If [Recent Context] contains a complete status block and [New Speech] does not, restore it verbatim including the triple backticks.
 
 ## Output Format
 Reason MUST be in Korean.
@@ -517,8 +498,7 @@ Contradictions found (no markdown code fences):
         if (ctxMsgs.length > 0) {
           contextText = ctxMsgs.map(m => {
             const cleanMsg = stripInjectedOOC(m.message, m.role);
-            const roleLabel = m.role === 'user' ? '[USER]' : '[AI]';
-            return `${roleLabel}: ${cleanMsg}`;
+            return `${m.role}: ${cleanMsg}`;
           }).join('\n\n');
         }
       }
@@ -604,9 +584,9 @@ Contradictions found (no markdown code fences):
       // PASS 판정이라도 로컬 복구가 있으면 어차피 적용 필요시 아래로 fall through
       if (isPass && !localRepair) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true });
-        Core.showStatusBadge('에리: 이상 없음 ✅');
+        Core.showStatusBadge('에리: 이상 없음');
         setTimeout(Core.hideStatusBadge, 2000);
-        if (ToastCallback) ToastCallback('에리: 통과 ✅', '#4a9');
+        if (ToastCallback) ToastCallback('에리: 통과', '#4a9');
         return;
       }
 
@@ -653,14 +633,14 @@ Contradictions found (no markdown code fences):
         if (correctedText === assistantText) {
           if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS (no change)', isPass: true });
           Core.hideStatusBadge();
-          if (ToastCallback) ToastCallback('에리: 변화 없음 ✅', '#4a9');
+          if (ToastCallback) ToastCallback('에리: 변화 없음', '#4a9');
           return;
         }
 
         const combinedReason = [localRepair && localRepair.reason, parsed && parsed.reason].filter(Boolean).join(' + ') || '교정';
 
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: combinedReason });
-        Core.showStatusBadge(localRepair ? '에리가 상태창 붙이는 중' : '에리가 뭐가 발견 ⚠️');
+        Core.showStatusBadge(localRepair ? '에리가 상태창 붙이는 중 픩️' : '에리가 뭐가 발견 ⚠️');
         setTimeout(Core.hideStatusBadge, 3000);
 
         const applyRefinement = async (newText) => {
