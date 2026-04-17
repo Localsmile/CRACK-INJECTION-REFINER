@@ -498,12 +498,13 @@ Contradictions found (no markdown code fences):
     // fetchLogs는 오래된→최근 순서. 마지막 요소는 방금 생성된 AI (= New Speech 자체)이므로 제외.
     // 버퍼 1개 더 가져와서 New Speech 제거 후 2N+1개만 사용.
     let contextText = '최근 대화 내역 없음.';
+    let ctxMsgs = [];
     const turns = config.refinerContextTurns !== undefined ? config.refinerContextTurns : 1;
     if (turns > 0) {
       const fetchN = turns * 2 + 2;
       const allMsgs = await Core.fetchLogs(fetchN);
       if (allMsgs && allMsgs.length > 0) {
-        let ctxMsgs = allMsgs.slice();
+        ctxMsgs = allMsgs.slice();
         // 끝에 있는 New Speech(방금 AI)를 제거 — 중복 방지
         const last = ctxMsgs[ctxMsgs.length - 1];
         if (last && last.role === 'assistant' && assistantText) {
@@ -511,7 +512,6 @@ Contradictions found (no markdown code fences):
           const b = assistantText.slice(0, 100);
           if (a === b) ctxMsgs = ctxMsgs.slice(0, -1);
         }
-        // 2N+1개만 유지 (터버 버퍼 제거)
         const take = turns * 2 + 1;
         ctxMsgs = ctxMsgs.slice(-take);
         if (ctxMsgs.length > 0) {
@@ -524,6 +524,28 @@ Contradictions found (no markdown code fences):
       }
     }
 
+    // 3.5. 로컬 자동 코드블록(상태창) 복구
+    // AI 프롬프트에 맡기지 않고 코드 레벨에서 확정적으로 감지/복구.
+    // 조건: [New Speech] 끝에 코드블록 없고 & 직전 [AI] 턴 끝에 코드블록 있으면 → VERBATIM append.
+    // AI가 PASS로 내버려도 이건 무조건 복구됨.
+    let workingText = assistantText;
+    let localRepair = null;
+    try {
+      const endCodeBlockRe = /```[\s\S]+?```\s*$/m;
+      if (!endCodeBlockRe.test(assistantText.trim())) {
+        for (let i = ctxMsgs.length - 1; i >= 0; i--) {
+          if (ctxMsgs[i].role !== 'assistant') continue;
+          const m = (ctxMsgs[i].message || '').match(endCodeBlockRe);
+          if (m && m[0]) {
+            workingText = assistantText.replace(/\s+$/, '') + '\n\n' + m[0];
+            localRepair = { codeBlock: m[0], reason: '상태창(코드블록) 누락 — 직전 AI 턴 VERBATIM 복구' };
+            console.log('[Refiner] 로컬 코드블록 복구 감지:', m[0].slice(0, 100));
+            break;
+          }
+        }
+      }
+    } catch(e) { console.warn('[Refiner] 로컬 복구 감지 실패:', e); }
+
     // 4. 검수 요청
     Core.showStatusBadge('AI에게 검수 요청 중...');
     const passWord = config.refinerPassKeyword || 'PASS';
@@ -532,7 +554,7 @@ Contradictions found (no markdown code fences):
       .replace('{lore}', loreText)
       .replace('{memory}', memoryText)
       .replace('{context}', contextText)
-      .replace('{message}', assistantText)
+      .replace('{message}', workingText)
       .replace('{passWord}', passWord);
 
     try {
@@ -563,7 +585,8 @@ Contradictions found (no markdown code fences):
       const text = response.text.trim();
 
       const isPass = text.includes(passWord) && text.length < passWord.length + 10;
-      if (isPass) {
+      // PASS 판정이라도 로컬 복구가 있으면 어차피 적용 필요시 아래로 fall through
+      if (isPass && !localRepair) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true });
         Core.showStatusBadge('✅ 문제없음');
         setTimeout(Core.hideStatusBadge, 2000);
@@ -572,40 +595,56 @@ Contradictions found (no markdown code fences):
       }
 
       let parsed = null;
-      try {
-        const raw = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-        parsed = JSON.parse(raw);
-      } catch (e) {
-        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true });
-        Core.hideStatusBadge();
-        if (ToastCallback) ToastCallback('응답을 해석할 수 없어 원본 유지.', '#a55');
-        return;
+      if (!isPass) {
+        try {
+          const raw = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+          parsed = JSON.parse(raw);
+        } catch (e) {
+          // 파싱 실패해도 로컬 복구 있으면 그것만이라도 적용
+          if (!localRepair) {
+            if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true });
+            Core.hideStatusBadge();
+            if (ToastCallback) ToastCallback('응답을 해석할 수 없어 원본 유지.', '#a55');
+            return;
+          }
+        }
+
+        if (parsed && !parsed.replacements && !parsed.refined_text && !localRepair) {
+          const preview = JSON.stringify(parsed).slice(0, 150);
+          console.warn('[Refiner] parsed에 replacements/refined_text 없음:', parsed);
+          if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명 (' + preview + ')', isError: true, reason: parsed.reason || '(이유 없음)' });
+          Core.hideStatusBadge();
+          if (ToastCallback) ToastCallback('교정 응답 구조 불명 — 콘솔 확인', '#a55');
+          return;
+        }
       }
 
-      // parsed가 있는데 replacements도 refined_text도 없으면 조용히 끝나지 말고 로그에 기록
-      if (parsed && !parsed.replacements && !parsed.refined_text) {
-        const preview = JSON.stringify(parsed).slice(0, 150);
-        console.warn('[Refiner] parsed에 replacements/refined_text 없음:', parsed);
-        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명 (' + preview + ')', isError: true, reason: parsed.reason || '(이유 없음)' });
-        Core.hideStatusBadge();
-        if (ToastCallback) ToastCallback('교정 응답 구조 불명 — 콘솔 확인', '#a55');
-        return;
-      }
-      if (parsed && (parsed.replacements || parsed.refined_text)) {
-        let correctedText = assistantText;
-        const replacements = parsed.replacements || [];
+      if (localRepair || (parsed && (parsed.replacements || parsed.refined_text))) {
+        // workingText = 로컬 복구 적용된 베이스 (복구 없으면 assistantText와 동일)
+        let correctedText = workingText;
+        const replacements = (parsed && parsed.replacements) || [];
         if (replacements.length > 0) {
           for (const r of replacements) {
             if (r.from && r.to !== undefined) {
               correctedText = correctedText.replace(r.from, r.to);
             }
           }
-        } else if (parsed.refined_text) {
+        } else if (parsed && parsed.refined_text) {
           correctedText = parsed.refined_text;
         }
 
-        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: parsed.reason });
-        Core.showStatusBadge('⚠️ 교정 제안 있음');
+        // 최종 변화 없으면 PASS 처리
+        if (correctedText === assistantText) {
+          if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS (no change)', isPass: true });
+          Core.hideStatusBadge();
+          if (ToastCallback) ToastCallback('변화 없음 ✅', '#4a9');
+          return;
+        }
+
+        const combinedReason = [localRepair && localRepair.reason, parsed && parsed.reason].filter(Boolean).join(' + ') || '교정';
+
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: combinedReason });
+        Core.showStatusBadge(localRepair ? '⚠️ 상태창 복구' : '⚠️ 교정 제안 있음');
         setTimeout(Core.hideStatusBadge, 3000);
 
         const applyRefinement = async (newText) => {
@@ -633,7 +672,7 @@ Contradictions found (no markdown code fences):
                 // refreshMessageInDOM이 이미 내부적으로 triggerSWRRevalidation 호출함.
                 // 중복 호출은 React와 간섭 생기므로 서버 반영 지연 대비해서 6초 후에 한 번만 추가 호출.
                 setTimeout(triggerSWRRevalidation, 6000);
-                if (ToastCallback) ToastCallback(domUpdated ? `교정 반영 — ${parsed.reason}` : `교정됨(새로고침하면 반영) — ${parsed.reason}`, '#285');
+                if (ToastCallback) ToastCallback(domUpdated ? `교정 반영 — ${combinedReason}` : `교정됨(새로고침하면 반영) — ${combinedReason}`, '#285');
                 console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'domUpdated=', domUpdated);
               } else {
                 let errText = '';
@@ -656,7 +695,7 @@ Contradictions found (no markdown code fences):
           if (existingPopup) {
             if (ToastCallback) ToastCallback('교정 제안이 로그에 저장됨.', '#258');
           } else {
-            showRefineConfirm(parsed.reason, correctedText, applyRefinement, () => {});
+            showRefineConfirm(combinedReason, correctedText, applyRefinement, () => {});
           }
         }
       }
