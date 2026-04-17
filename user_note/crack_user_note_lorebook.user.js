@@ -260,7 +260,12 @@ GM_addStyle(`
 	.nlb-toggle-sl:before { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; left: 2px; top: 2px; transition: .15s; }
 	.nlb-toggle input:checked + .nlb-toggle-sl { background: rgba(120,200,140,0.6); }
 	.nlb-toggle input:checked + .nlb-toggle-sl:before { left: 16px; }
-	.nlb-tpl-pop { position: fixed; z-index: 999999; background: #1a1a22; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; width: 320px; max-width: calc(100vw - 24px); max-height: 60vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.6); color: #eee; }
+	.nlb-tpl-pop { position: fixed; z-index: 999999; background: #1a1a22; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 0 10px 10px; width: 320px; max-width: calc(100vw - 24px); max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; box-shadow: 0 8px 32px rgba(0,0,0,0.6); color: #eee; }
+	.nlb-tpl-pop.nlb-pop-mobile { left: 12px !important; right: 12px; top: auto !important; bottom: 12px; width: auto; max-width: none; max-height: 70vh; }
+	.nlb-pop-head { position: sticky; top: 0; margin: 0 -10px 8px; padding: 8px 10px; background: #1a1a22; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 8px; z-index: 1; }
+	.nlb-pop-head-title { flex: 1; font-size: 12px; font-weight: 600; opacity: 0.8; }
+	.nlb-pop-close { width: 26px; height: 26px; padding: 0; font-size: 16px; line-height: 1; border-radius: 5px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: inherit; cursor: pointer; }
+	.nlb-pop-close:hover { background: rgba(255,255,255,0.1); }
 	.nlb-tpl-group { margin-bottom: 10px; }
 	.nlb-tpl-item { padding: 6px 8px; font-size: 13px; display: flex; gap: 6px; align-items: center; border-radius: 4px; }
 	.nlb-tpl-item:hover { background: rgba(255,255,255,0.05); }
@@ -597,9 +602,17 @@ let _pop = null;
 async function openTplPop(anchor){
 	if (_pop){ _pop.remove(); _pop = null; return; }
 	const rect = anchor.getBoundingClientRect();
-	const pop = h('div', { cls: 'nlb-tpl-pop' });
-	pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - 400) + 'px';
-	pop.style.left = Math.min(rect.left, window.innerWidth - 340) + 'px';
+	const isMobile = window.innerWidth <= 640;
+	const pop = h('div', { cls: 'nlb-tpl-pop' + (isMobile ? ' nlb-pop-mobile' : '') });
+	if (!isMobile){
+		pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - 400) + 'px';
+		pop.style.left = Math.min(rect.left, window.innerWidth - 340) + 'px';
+	}
+
+	const head = h('div', { cls: 'nlb-pop-head' });
+	head.appendChild(h('span', { cls: 'nlb-pop-head-title' }, '템플릿'));
+	head.appendChild(h('button', { cls: 'nlb-pop-close', title: '닫기', onclick: () => { pop.remove(); _pop = null; } }, '×'));
+	pop.appendChild(head);
 
 	const cfg = loadCfg(ctx.chatId);
 	const tpls = await db.templates.toArray();
@@ -668,10 +681,18 @@ async function openTplPop(anchor){
 async function openHelpPop(anchor){
 	if (_pop){ _pop.remove(); _pop = null; return; }
 	const rect = anchor.getBoundingClientRect();
-	const pop = h('div', { cls: 'nlb-tpl-pop' });
-	pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - 500) + 'px';
-	pop.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
-	pop.style.width = '340px';
+	const isMobile = window.innerWidth <= 640;
+	const pop = h('div', { cls: 'nlb-tpl-pop' + (isMobile ? ' nlb-pop-mobile' : '') });
+	if (!isMobile){
+		pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - 500) + 'px';
+		pop.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
+		pop.style.width = '340px';
+	}
+
+	const head = h('div', { cls: 'nlb-pop-head' });
+	head.appendChild(h('span', { cls: 'nlb-pop-head-title' }, '도움말'));
+	head.appendChild(h('button', { cls: 'nlb-pop-close', title: '닫기', onclick: () => { pop.remove(); _pop = null; } }, '×'));
+	pop.appendChild(head);
 
 	const sections = [
 		['템플릿 종류', [
@@ -765,11 +786,20 @@ function injectIntoModal(modal){
 	_w.addEventListener('nlb:swapped', onSwap);
 }
 
-function setup(){ const modal = findModal(); if (modal) injectIntoModal(modal); }
+function closePop(){ if (_pop){ _pop.remove(); _pop = null; } }
+function setup(){
+	const modal = findModal();
+	if (modal) injectIntoModal(modal);
+	// 모달 사라지면 팝오버도 같이 제거 (모바일 유저노트 닫힘 잔존 방지)
+	if (!modal && _pop) closePop();
+	if (ctx.root && !document.body.contains(ctx.root)){ ctx.root = null; closePop(); }
+}
 function start(){
 	setup();
 	const obs = new MutationObserver(() => setup());
 	obs.observe(document.body, { childList: true, subtree: true });
+	// 모바일 방향 전환/리사이즈 시 팝오버 위치 재조정 대신 닫기
+	window.addEventListener('resize', () => { if (_pop) closePop(); });
 	console.log('[NLB] v1.0.0 loaded');
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
