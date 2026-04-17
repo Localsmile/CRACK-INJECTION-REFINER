@@ -35,11 +35,18 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
    Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렴이 일었다" when user expressed no such feeling.
    Allowed: describing physical cues the AI's character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know.
 
+## CRITICAL: Role Distinction in [Recent Context]
+[Recent Context] turns are labeled [USER] (human input) and [AI] (RP character response).
+- Status blocks EXIST ONLY in [AI] turns — never in [USER] turns.
+- [USER] turns may contain injected lore/OOC/system notes; these are NOT status blocks. Ignore them entirely when looking for a status template.
+- When restoring a status block, ONLY look at the most recent [AI] turn's fenced code block.
+
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
-B) STATUS BLOCK TRUNCATION (RP status panels, typically fenced code blocks like \`\`\`...\`\`\` at the END of an AI message containing stats/variables/HP/etc.):
-   - If [New Speech] is missing its status block but [Recent Context] shows a previous AI turn HAD one, COPY the most recent status block VERBATIM from [Recent Context].
-   - Do NOT invent new fields, values, or formats. Do NOT mix in OOC/Lore/narrative.
+B) STATUS BLOCK TRUNCATION (RP status panels, typically fenced code blocks like \`\`\`...\`\`\` at the END of an [AI] message containing stats/variables/HP/etc.):
+   - Source: ONLY the most recent [AI] turn in [Recent Context]. NEVER [USER] turns.
+   - If [New Speech] is missing its status block but the most recent [AI] turn HAD one, COPY that status block VERBATIM.
+   - Do NOT invent new fields, values, or formats. Do NOT mix in OOC/Lore/narrative/user input.
    - Identity copy only. Only update numeric deltas if they are explicitly stated in [New Speech]; otherwise leave values unchanged.
 
 ## Output Format
@@ -72,11 +79,16 @@ RATE: PG-13 ~ NC-21
 ## Rule
 Your ONLY job is to fix truncation in the [New Speech]. Do NOT check for factual logic or lore contradictions.
 
+## CRITICAL: Role Distinction
+[Recent Context] turns are labeled [USER] (human input, may contain injected lore/OOC) and [AI] (RP response, may contain status block).
+Status blocks EXIST ONLY in [AI] turns. NEVER look at [USER] turns for status block sources.
+
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence using [Recent Context] as reference.
-B) STATUS BLOCK TRUNCATION (RP status panels, typically fenced code blocks at the END of an AI message):
-   - If [Recent Context] has a status block and [New Speech] is missing it, COPY the most recent one VERBATIM.
-   - Do NOT invent fields/values/formats. Do NOT mix in OOC/Lore/narrative.
+B) STATUS BLOCK TRUNCATION (fenced code blocks at the END of an [AI] message):
+   - Source: ONLY the most recent [AI] turn. NEVER [USER] turns.
+   - If [New Speech] is missing it, COPY the most recent [AI] status block VERBATIM.
+   - Do NOT invent fields/values/formats. Do NOT mix in OOC/Lore/narrative/user input.
    - Identity copy only.
 
 ## Output Format
@@ -463,12 +475,29 @@ Contradictions found (no markdown code fences):
     } catch (e) {}
 
     // 3. 컨텍스트
+    // 중요: user 메시지에는 injecter가 주입한 OOC/로어 블록이 있음. 이걸 그대로 넣으면
+    // Gemini가 "최근 인용 구조화 블록"을 상태창이라고 오인해서 복사하는 문제 발생.
+    // 모든 알려진 OOC 포맷을 메시지에서 삭제해서 refiner에게 전달.
+    function stripInjectedOOC(msg, role) {
+      if (!msg || role !== 'user') return msg;
+      return msg
+        .replace(/\*\*OOC:[\s\S]*?\*\*/g, '')
+        .replace(/\[System:[\s\S]*?\[\/System\]/g, '')
+        .replace(/\(Narrator's note:[\s\S]*?\(End note\)/g, '')
+        .replace(/\/\*\*[\s\S]*?\*\*\//g, '')
+        .replace(/Remember these established facts[\s\S]*?(?=\n\n|$)/g, '')
+        .trim();
+    }
     let contextText = '최근 대화 내역 없음.';
     const turns = config.refinerContextTurns !== undefined ? config.refinerContextTurns : 1;
     if (turns > 0) {
       const recentMsgs = await Core.fetchLogs(turns * 2);
       if (recentMsgs && recentMsgs.length > 0) {
-        contextText = recentMsgs.map(m => `${m.role}: ${m.message}`).join('\n\n');
+        contextText = recentMsgs.map(m => {
+          const cleanMsg = stripInjectedOOC(m.message, m.role);
+          const roleLabel = m.role === 'user' ? '[USER]' : '[AI]';
+          return `${roleLabel}: ${cleanMsg}`;
+        }).join('\n\n');
       }
     }
 
@@ -578,10 +607,9 @@ Contradictions found (no markdown code fences):
 
               if (editResult.ok) {
                 const domUpdated = refreshMessageInDOM(assistantText, newText);
-                // 코드블록/상태창 같은 복잡한 마크다운은 fiber 패치 실패할 수 있음.
-                // SWR 재요청을 2초, 5초 후에도 트리거해서 서버본 강제 대체 유도.
-                setTimeout(triggerSWRRevalidation, 2000);
-                setTimeout(triggerSWRRevalidation, 5000);
+                // refreshMessageInDOM이 이미 내부적으로 triggerSWRRevalidation 호출함.
+                // 중복 호출은 React와 간섭 생기므로 서버 반영 지연 대비해서 6초 후에 한 번만 추가 호출.
+                setTimeout(triggerSWRRevalidation, 6000);
                 if (ToastCallback) ToastCallback(domUpdated ? `교정 반영 — ${parsed.reason}` : `교정됨(새로고침하면 반영) — ${parsed.reason}`, '#285');
                 console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'domUpdated=', domUpdated);
               } else {
