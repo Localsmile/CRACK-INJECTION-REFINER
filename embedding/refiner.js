@@ -43,11 +43,13 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
-B) STATUS BLOCK TRUNCATION (RP status panels, typically fenced code blocks like \`\`\`...\`\`\` at the END of an [AI] message containing stats/variables/HP/etc.):
-   - Source: ONLY the most recent [AI] turn in [Recent Context]. NEVER [USER] turns.
-   - If [New Speech] is missing its status block but the most recent [AI] turn HAD one, COPY that status block VERBATIM.
-   - Do NOT invent new fields, values, or formats. Do NOT mix in OOC/Lore/narrative/user input.
-   - Identity copy only. Only update numeric deltas if they are explicitly stated in [New Speech]; otherwise leave values unchanged.
+B) CODE BLOCK RECOVERY (triple-backtick fenced code blocks, \`\`\`...\`\`\`):
+   - RP status panels (HP/stats/variables/scene info) are ALWAYS formatted as triple-backtick code blocks at the END of an [AI] message.
+   - If the most recent [AI] turn ENDED with a \`\`\`code block\`\`\` and [New Speech] is missing it (truncated mid-output or lost entirely), COPY that code block VERBATIM — INCLUDING the triple backticks \`\`\` on both sides.
+   - Output format MUST be a triple-backtick code block. Do NOT render as plain text or markdown.
+   - Source: ONLY the most recent [AI] turn in [Recent Context]. NEVER [USER] turns. NEVER convert OOC/lore/narrative into a code block.
+   - Identity copy only. Only update numeric deltas if explicitly stated in [New Speech]; otherwise leave values unchanged.
+   - If [New Speech] already has a proper code block at the end, do NOT touch it.
 
 ## Output Format
 Reason MUST be in Korean.
@@ -85,10 +87,11 @@ Status blocks EXIST ONLY in [AI] turns. NEVER look at [USER] turns for status bl
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence using [Recent Context] as reference.
-B) STATUS BLOCK TRUNCATION (fenced code blocks at the END of an [AI] message):
-   - Source: ONLY the most recent [AI] turn. NEVER [USER] turns.
-   - If [New Speech] is missing it, COPY the most recent [AI] status block VERBATIM.
-   - Do NOT invent fields/values/formats. Do NOT mix in OOC/Lore/narrative/user input.
+B) CODE BLOCK RECOVERY (triple-backtick fenced code blocks, \`\`\`...\`\`\`):
+   - RP status panels are ALWAYS triple-backtick code blocks at the END of an [AI] message.
+   - If the most recent [AI] turn ended with a \`\`\`code block\`\`\` and [New Speech] is missing it, COPY VERBATIM including the triple backticks \`\`\` on both sides.
+   - Output MUST be a triple-backtick code block. Source: ONLY [AI] turns.
+   - Do NOT invent fields/values/formats. Do NOT convert OOC/lore into code blocks.
    - Identity copy only.
 
 ## Output Format
