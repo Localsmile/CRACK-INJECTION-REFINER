@@ -491,16 +491,36 @@ Contradictions found (no markdown code fences):
         .replace(/Remember these established facts[\s\S]*?(?=\n\n|$)/g, '')
         .trim();
     }
+    // 턴 정의 (LO 기준):
+    //   turns=0: 현재 USER 입력 (AI는 New Speech로 별도 전달)
+    //   turns=1: 직전 USER+AI 쌍 + 현재 USER  ← 직전 AI 상태창 소스가 여기!
+    //   turns=N: N턴 전부터 현재 USER까지 = 2N+1개 메시지
+    // fetchLogs는 오래된→최근 순서. 마지막 요소는 방금 생성된 AI (= New Speech 자체)이므로 제외.
+    // 버퍼 1개 더 가져와서 New Speech 제거 후 2N+1개만 사용.
     let contextText = '최근 대화 내역 없음.';
     const turns = config.refinerContextTurns !== undefined ? config.refinerContextTurns : 1;
     if (turns > 0) {
-      const recentMsgs = await Core.fetchLogs(turns * 2);
-      if (recentMsgs && recentMsgs.length > 0) {
-        contextText = recentMsgs.map(m => {
-          const cleanMsg = stripInjectedOOC(m.message, m.role);
-          const roleLabel = m.role === 'user' ? '[USER]' : '[AI]';
-          return `${roleLabel}: ${cleanMsg}`;
-        }).join('\n\n');
+      const fetchN = turns * 2 + 2;
+      const allMsgs = await Core.fetchLogs(fetchN);
+      if (allMsgs && allMsgs.length > 0) {
+        let ctxMsgs = allMsgs.slice();
+        // 끝에 있는 New Speech(방금 AI)를 제거 — 중복 방지
+        const last = ctxMsgs[ctxMsgs.length - 1];
+        if (last && last.role === 'assistant' && assistantText) {
+          const a = (last.message || '').slice(0, 100);
+          const b = assistantText.slice(0, 100);
+          if (a === b) ctxMsgs = ctxMsgs.slice(0, -1);
+        }
+        // 2N+1개만 유지 (터버 버퍼 제거)
+        const take = turns * 2 + 1;
+        ctxMsgs = ctxMsgs.slice(-take);
+        if (ctxMsgs.length > 0) {
+          contextText = ctxMsgs.map(m => {
+            const cleanMsg = stripInjectedOOC(m.message, m.role);
+            const roleLabel = m.role === 'user' ? '[USER]' : '[AI]';
+            return `${roleLabel}: ${cleanMsg}`;
+          }).join('\n\n');
+        }
       }
     }
 
