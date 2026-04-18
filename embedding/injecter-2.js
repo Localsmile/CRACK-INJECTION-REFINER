@@ -6,8 +6,11 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.0.1';
+  const VER = '1.0.2';
   const CHANGELOG = [
+    '서사 무결성 보안: 엔트리 덮어쓰기 전 append-only 버전 백업 자동 기록 (entryVersions 테이블, 최대 20개 유지)',
+    '로어 관리 UI에 버전 이력 조회/복원 버튼 추가',
+    '주입 로그 확장: 총 글자수/한도 표시 + 섹션별 사용량 내역(씬/첫만남/재회/호칭/로어)',
     '시간 감쇠(Decay) 로직을 통한 오래된 기억 재주입 기능 추가',
     '대화 내 활성 캐릭터 감지 및 연관 로어 부스트/패널티 시스템 도입',
     'Gemini 임베딩을 이용한 시맨틱 하이브리드 검색 구현',
