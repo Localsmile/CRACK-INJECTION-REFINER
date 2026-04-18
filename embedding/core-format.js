@@ -57,9 +57,46 @@
     return e.name + '=' + val + hon;
   }
 
+  function bundleGroupKey(e, activeNames) {
+    if (e.type === 'character' || e.type === 'identity') return e.name;
+    if (e.type === 'rel' || e.type === 'relationship') {
+      let parties = e.parties || e.detail?.parties;
+      if ((!parties || parties.length < 2) && typeof e.name === 'string') {
+        if (e.name.includes('↔')) parties = e.name.split('↔').map(s => s.trim()).filter(Boolean);
+        else if (e.name.includes('&')) parties = e.name.split('&').map(s => s.trim()).filter(Boolean);
+      }
+      if (parties && parties.length) {
+        const hit = parties.find(p => (activeNames||[]).some(n => n === p || p.includes(n) || n.includes(p)));
+        return hit || parties[0];
+      }
+    }
+    if (e.type === 'promise' || e.type === 'prom') {
+      if (typeof e.name === 'string') {
+        const m = e.name.match(/^([^:\[→—-]+)/);
+        if (m) return m[1].trim();
+      }
+    }
+    return e.name;
+  }
+
   function adaptiveFormat(opts) {
-    const { entries = [], activeNames = [], unmetPairs = [], honorifics = '', budget = 350, config = {} } = opts;
-    if (!entries.length || budget < 30) return { text: '', included: [], usedChars: 0, level: 'none' };
+    const { entries: rawEntries = [], activeNames = [], unmetPairs = [], honorifics = '', budget = 350, config = {} } = opts;
+    if (!rawEntries.length || budget < 30) return { text: '', included: [], usedChars: 0, level: 'none', bundledCount: 0 };
+    // Bundling: 같은 주체(활성 캐릭터/당사자) 엔트리를 인접 배치.
+    let entries = rawEntries;
+    let bundledCount = 0;
+    if (config.bundleByEntity !== false) {
+      const order = []; const groups = new Map();
+      for (const e of rawEntries) {
+        const k = bundleGroupKey(e, activeNames);
+        if (!groups.has(k)) { groups.set(k, []); order.push(k); }
+        groups.get(k).push(e);
+      }
+      const ordered = [];
+      for (const k of order) for (const e of groups.get(k)) ordered.push(e);
+      entries = ordered;
+      bundledCount = entries.length - order.length;
+    }
     const parts = []; let remaining = budget;
     if (honorifics && config.honorificMatrixEnabled !== false) {
       const hB = Math.min(Math.floor(remaining * 0.2), 80);
@@ -117,7 +154,7 @@
     }
     if (loreParts.length > 0) parts.push(loreParts.join('\n'));
     const usedChars = budget - remaining + loreUsed;
-    return { text: parts.join('\n'), included, usedChars, level };
+    return { text: parts.join('\n'), included, usedChars, level, bundledCount };
   }
 
   // 하위 호환 포맷터
@@ -209,7 +246,7 @@
   }
 
   Object.assign(C, {
-    charLen, cfFull, cfCompact, cfMicro, adaptiveFormat,
+    charLen, cfFull, cfCompact, cfMicro, adaptiveFormat, bundleGroupKey,
     formatEntryFull, formatEntryCompact, formatEntryMicro, budgetFormat, assembleInjection,
     formatFirstEncounterBlock, formatReunionTag,
     __formatLoaded: true
