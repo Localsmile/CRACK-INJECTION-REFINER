@@ -122,6 +122,16 @@ Entries:
       workingMemory: 'url',
       encounters: '++id, &[char1+char2], lastSeenTurn'
     });
+    // v7: entryVersions — append-only 개별 엔트리 버전 이력
+    _db.version(7).stores({
+      entries: '++id, name, type, packName, project, rootId, isCurrentArc, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, model, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, &[char1+char2], lastSeenTurn',
+      entryVersions: '++id, entryId, ts, turn'
+    });
     return _db;
   }
 
