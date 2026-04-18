@@ -41,6 +41,7 @@
       model: config.embeddingModel || 'gemini-embedding-001'
     };
     const searchConfig = {
+      chatKey: chatKey, turnCounter: turnCounter,
       scanRange: config.scanRange || 6, scanOffset: config.scanOffset || 0,
       strictMatch: config.strictMatch !== false, similarityMatch: config.similarityMatch === true,
       embeddingEnabled: config.embeddingEnabled || false, embeddingWeight: config.embeddingWeight || 0.4,
