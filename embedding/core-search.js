@@ -1,4 +1,4 @@
-// crack-lore-core / search 모듈 (v1.3.7)
+// crack-lore-core / search 모듈 (v1.3.8)
 // 역할: 트리거 스캔, 하이브리드 검색, LLM 리랭커
 // 의존: kernel (callGeminiApi, cosineSimilarity, getDB, simpleHash, DEFAULTS, embedText),
 //       memory (calcReinjectionScore, detectActiveCharacters, isRelatedToActive)
@@ -157,9 +157,11 @@
       const matched = tHit ? tHit.matched : '';
 
       // 언급 시점 해석: entry 프로퍼티 우선, 없으면 localStorage 맵 fallback
-      const lmt = e.lastMentionedTurn != null
+      let lmt = e.lastMentionedTurn != null
         ? e.lastMentionedTurn
         : (lastMentionMap && lastMentionMap[e.id] != null ? lastMentionMap[e.id] : null);
+      // 방어: 저장된 lmt가 현재 카운터보다 크면(세션 리셋/데이터 불일치) 미언급으로 취급
+      if (lmt != null && turnCounter != null && lmt > turnCounter) lmt = null;
       // 재주입 필요도 (최근 언급된 엔트리에 약한 가산)
       if (decayEnabled && turnCounter != null && lmt != null) {
         const turnsSince = turnCounter - lmt;
@@ -243,5 +245,5 @@
     bigramSimilarity, buildScanPool, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });
-  console.log('[LoreCore:search] loaded v1.3.7');
+  console.log('[LoreCore:search] loaded v1.3.8');
 })();
