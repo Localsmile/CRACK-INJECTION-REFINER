@@ -6,8 +6,10 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.0.7';
+  const VER = '1.0.8';
   const CHANGELOG = [
+    '빠른 설정 개선: 리랭커 프리셋에 의미 기반 응답 교정(임베딩 모드) 자동 포함',
+    '도움말 재구성: 빠른 시작 + 폴딩 섹션 8개(기능/예시/설정 3단 구조)로 스크롤 부하 감소',
     '주입 로그 UI 확장: Bundling/Delta Skip 카운터를 주입 기록 각 항목에 표시(번들/스킵)',
     '리랭커 스코어 보정: 하이브리드·LLM 점수 min-max 정규화 후 블렌딩(기본 5:5), 무관(≤2점) 자동 필터, 앵커 최상위 고정. config로 rerankBlendWeight/rerankMinLlmScore/rerankAnchorBoost/rerankMaxCandidates 노출',
     '추출 프롬프트 강화: 앵커 엔트리 보호 필드 출력 금지 + Slot Preservation 규칙 추가. 변경 없는 슬롯은 생략해 토큰 절약 + 불필요한 덮어쓰기 모순 감소',
