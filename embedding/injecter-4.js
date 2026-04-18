@@ -1,386 +1,280 @@
-// == 인젝터 모듈 4/6 — 추출 파이프라인 ==
-// mergeExtractedData, runAutoExtract, _doExtract, extBadge watchdog
+// == 인젝터 모듈 5/6 — inject ==
+// 주입 파이프라인 + __loreRegister(inject)
 (async function(){
   'use strict';
   if(document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
 
   const deadline = Date.now() + 15000;
-  while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
-  if (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded)) { console.error('[LoreInj:4] settings 미로드'); return; }
-  if (_w.__LoreInj.__extractLoaded) return;
+  while (!(_w.__LoreInj && _w.__LoreInj.__extractLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
+  if (!(_w.__LoreInj && _w.__LoreInj.__extractLoaded)) { console.error('[LoreInj:5] extract 미로드'); return; }
+  if (_w.__LoreInj.__injectLoaded) return;
 
   const {
-    C, db, _ls, settings,
-    parseJsonLoose, createSnapshot,
-    getChatKey, getTurnCounter,
-    getAutoExtPackForUrl,
-    addExtLog, setPackEnabled
+    C, db, _ls, settings, OOC_FORMATS,
+    getChatKey, incrementTurnCounter, recordEntryMention,
+    getCooldownMap, setCooldownLastTurn,
+    addInjLog, runAutoExtract
   } = _w.__LoreInj;
 
-  async function mergeExtractedData(entries, url) {
-    const packName = await getAutoExtPackForUrl(url);
-    const chatKey = getChatKey();
-    let ap = [...(settings.config.autoPacks || [])];
-    if (!ap.includes(packName)) { ap.push(packName); settings.config.autoPacks = ap; settings.save(); }
-    const proj = settings.config.activeProject || '';
-    let pack = await db.packs.get(packName);
-    if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: proj });
-    else await createSnapshot(packName, '자동 병합 전 백업', 'auto');
-
-    let addedCount = 0, processedCount = 0;
-    for (const e of entries) {
-      if (!e.name) continue;
-      e.gs = (e.imp || 5) + (e.sur || 5) + (e.emo || 5);
-      if (settings.config.importanceGating !== false) {
-        if (e.gs < (settings.config.importanceThreshold || 12)) continue;
-        e.gateScore = e.gs;
-      }
-      processedCount++;
-      let existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name).first();
-      if (existing) {
-        // 서사 무결성: 덮어쓰기 전 현재 상태 백업 (append-only)
-        try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge'); } catch(ex) {}
-        // Narrative Anchor: 앵커 엔트리는 summary/state/detail/call/inject 등 내러티브 필드 보호.
-        // 스냅샷 떠놨다가 put 직전 복원. eventHistory/triggers 병합만 허용.
-        const _anchorGuard = existing.anchor === true;
-        const _anchorSnap = _anchorGuard ? {
-          summary: existing.summary,
-          state: existing.state,
-          detail: existing.detail ? JSON.parse(JSON.stringify(existing.detail)) : undefined,
-          call: existing.call ? JSON.parse(JSON.stringify(existing.call)) : undefined,
-          callHistory: existing.callHistory ? JSON.parse(JSON.stringify(existing.callHistory)) : undefined,
-          inject: existing.inject ? JSON.parse(JSON.stringify(existing.inject)) : undefined,
-          cond: existing.cond,
-          imp: existing.imp, sur: existing.sur, emo: existing.emo, gs: existing.gs,
-          arc: existing.arc ? JSON.parse(JSON.stringify(existing.arc)) : undefined
-        } : null;
-        if (!_anchorGuard && ['relationship', 'promise', 'rel', 'prom'].includes(e.type)) {
-          const oldS = existing.state || existing.detail?.current_status || existing.detail?.status || null;
-          const newS = e.state || e.detail?.current_status || e.detail?.status || null;
-          if (oldS && newS && oldS !== newS) {
-            const cLog = JSON.parse(_ls.getItem('lore-contradictions') || '[]');
-            cLog.unshift({ name: e.name, type: e.type, oldStatus: oldS, newStatus: newS, turn: getTurnCounter(chatKey), time: Date.now() });
-            if (cLog.length > 50) cLog.length = 50;
-            _ls.setItem('lore-contradictions', JSON.stringify(cLog));
-          }
-        }
-        existing.triggers = [...new Set([...(existing.triggers || []), ...(e.triggers || [])])];
-        if (e.embed_text) existing.embed_text = e.embed_text;
-        if (e.inject) existing.inject = e.inject;
-        if (e.state !== undefined) existing.state = e.state;
-        if (e.call) existing.call = { ...(existing.call || {}), ...e.call };
-        if (Array.isArray(e.callDelta) && e.callDelta.length > 0) {
-          existing.callHistory = existing.callHistory || [];
-          for (const d of e.callDelta) {
-            if (!d.from || !d.to || !d.term) continue;
-            existing.callHistory.push({
-              turn: d.turnApprox || getTurnCounter(chatKey),
-              from: d.from, to: d.to, term: d.term,
-              prevTerm: d.prevTerm || null, ts: Date.now()
-            });
-          }
-          if (existing.callHistory.length > 30) existing.callHistory = existing.callHistory.slice(-30);
-        }
-        if (Array.isArray(e.eventHistory) && e.eventHistory.length > 0) {
-          existing.eventHistory = existing.eventHistory || [];
-          for (const ev of e.eventHistory) {
-            if (!ev || !ev.summary) continue;
-            const normSum = ev.summary.trim();
-            if (existing.eventHistory.some(x => x.summary === normSum)) continue;
-            existing.eventHistory.push({
-              turn: ev.turn || getTurnCounter(chatKey),
-              summary: normSum,
-              imp: ev.imp || 5,
-              emo: ev.emo || 5,
-              ts: Date.now()
-            });
-          }
-          existing.eventHistory.sort((a,b) => (a.turn||0) - (b.turn||0));
-          if (existing.eventHistory.length > 30) {
-            const oldEvents = existing.eventHistory.slice(0, 20);
-            const recentEvents = existing.eventHistory.slice(20);
-            const rootId = existing.rootId || existing.id;
-            const lastTurn = oldEvents[oldEvents.length - 1]?.turn || 0;
-            const firstTurn = oldEvents[0]?.turn || 0;
-            const shardEntry = {
-              name: `${existing.name} [과거 t${firstTurn}~t${lastTurn}]`,
-              type: existing.type,
-              packName: existing.packName,
-              project: existing.project || '',
-              enabled: true,
-              triggers: [...(existing.triggers || [])],
-              embed_text: existing.embed_text,
-              rootId: rootId,
-              isCurrentArc: false,
-              eventHistory: oldEvents,
-              inject: {
-                full: `${existing.name}[과거사] ${oldEvents.slice(-2).map(ev => `t${ev.turn}:${ev.summary.slice(0,40)}`).join('|')}`,
-                compact: `${existing.name}[과거 ${oldEvents.length}건]`,
-                micro: `${existing.name}=과거`
-              },
-              state: '과거사',
-              source: 'shard_split',
-              src: 'sh',
-              ts: Date.now(),
-              lastUpdated: Date.now(),
-              imp: existing.imp, emo: existing.emo, sur: existing.sur,
-              gs: existing.gs
-            };
-            await db.entries.put(shardEntry);
-            existing.eventHistory = recentEvents;
-            existing.rootId = null;
-            existing.isCurrentArc = true;
-          }
-          if (existing.inject && typeof existing.inject === 'object') {
-            const base = (existing.inject.full || '').split(' | 최근:')[0];
-            const recent = existing.eventHistory.slice(-2).map(ev => `t${ev.turn}:${ev.summary.slice(0,40)}`).join('|');
-            existing.inject.full = recent ? base + ' | 최근:' + recent : base;
-          }
-        }
-        if (e.cond !== undefined) existing.cond = e.cond;
-        if (e.imp) existing.imp = e.imp;
-        if (e.sur) existing.sur = e.sur;
-        if (e.emo) existing.emo = e.emo;
-        existing.gs = (existing.imp || 5) + (existing.sur || 5) + (existing.emo || 5);
-        existing.ts = Date.now();
-
-        if (e.type === 'rel' && Array.isArray(e.arc)) {
-          existing.arc = existing.arc || [];
-          for (const a of e.arc) {
-            const dup = existing.arc.find(x => x.ph === a.ph && x.t === a.t);
-            if (dup) Object.assign(dup, a); else existing.arc.push(a);
-          }
-        }
-
-        if (['relationship', 'promise'].includes(e.type)) {
-          if (e.summary) existing.summary = e.summary;
-          if (e.detail) {
-            existing.detail = existing.detail || {};
-            if (e.detail.current_status !== undefined) existing.detail.current_status = e.detail.current_status;
-            if (e.detail.status !== undefined) existing.detail.status = e.detail.status;
-            if (e.detail.parties) existing.detail.parties = e.detail.parties;
-            if (e.detail.condition !== undefined) existing.detail.condition = e.detail.condition;
-
-            if (e.detail.nicknames) {
-              existing.detail.nicknames = existing.detail.nicknames || {};
-              Object.assign(existing.detail.nicknames, e.detail.nicknames);
-            }
-
-            if (Array.isArray(e.detail.arc)) {
-              existing.detail.arc = existing.detail.arc || [];
-              for (const newArc of e.detail.arc) {
-                const dup = existing.detail.arc.find(a => a.phase === newArc.phase && a.approx_turn === newArc.approx_turn);
-                if (dup) Object.assign(dup, newArc); else existing.detail.arc.push(newArc);
-              }
-            }
-          }
-        } else if (e.type !== 'rel' && e.type !== 'prom') {
-          if (e.summary && (!existing.summary || !existing.summary.includes(e.summary))) existing.summary = existing.summary ? existing.summary + ' / ' + e.summary : e.summary;
-          if (e.detail) {
-            existing.detail = existing.detail || {};
-            if (e.detail.current_state !== undefined) existing.detail.current_state = e.detail.current_state;
-            if (e.detail.last_interaction !== undefined) existing.detail.last_interaction = e.detail.last_interaction;
-            for (const k in e.detail) {
-              if (['current_state', 'last_interaction'].includes(k)) continue;
-              if (!existing.detail[k]) existing.detail[k] = e.detail[k];
-              else if (Array.isArray(e.detail[k])) existing.detail[k] = [...new Set([...(existing.detail[k] || []), ...e.detail[k]])];
-              else if (typeof existing.detail[k] === 'string' && typeof e.detail[k] === 'string' && !existing.detail[k].includes(e.detail[k])) existing.detail[k] += ' ' + e.detail[k];
-            }
-          }
-        }
-        if (e.gateScore) existing.gateScore = e.gateScore;
-        existing.lastUpdated = Date.now();
-
-        if (e.type === 'relationship' || e.type === 'rel') {
-          let parties = (e.detail?.parties) || e.parties;
-          if ((!parties || parties.length < 2) && typeof e.name === 'string') {
-            if (e.name.includes('↔')) parties = e.name.split('↔').map(s => s.trim()).filter(Boolean);
-            else if (e.name.includes('&')) parties = e.name.split('&').map(s => s.trim()).filter(Boolean);
-          }
-          if (parties && parties.length >= 2) {
-            const [c1, c2] = parties;
-            try { await C.recordFirstEncounter(c1, c2, { turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
-          }
-        }
-        // Narrative Anchor: 보호 필드 복원
-        if (_anchorSnap) {
-          for (const k of Object.keys(_anchorSnap)) {
-            if (_anchorSnap[k] === undefined) delete existing[k];
-            else existing[k] = _anchorSnap[k];
-          }
-        }
-        await db.entries.put(existing);
-      } else {
-        e.packName = packName; e.project = proj; e.enabled = true;
-        e.src = e.src || (e.source === 'user_stated' ? 'us' : (e.source === 'imported' ? 'im' : 'ax'));
-        e.source = e.source || 'auto_extracted';
-        e.ts = Date.now();
-        e.lastUpdated = e.ts;
-        if ((e.type === 'rel' || e.type === 'relationship') && Array.isArray(e.callDelta) && e.callDelta.length > 0) {
-          e.callHistory = e.callHistory || [];
-          for (const d of e.callDelta) {
-            if (!d.from || !d.to || !d.term) continue;
-            e.callHistory.push({
-              turn: d.turnApprox || getTurnCounter(chatKey),
-              from: d.from, to: d.to, term: d.term,
-              prevTerm: d.prevTerm || null, ts: Date.now()
-            });
-          }
-        }
-        if (Array.isArray(e.eventHistory) && e.eventHistory.length > 0) {
-          e.eventHistory = e.eventHistory.filter(ev => ev && ev.summary).map(ev => ({
-            turn: ev.turn || getTurnCounter(chatKey),
-            summary: ev.summary.trim(),
-            imp: ev.imp || 5, emo: ev.emo || 5, ts: Date.now()
-          })).sort((a,b) => (a.turn||0) - (b.turn||0));
-          if (e.eventHistory.length > 30) e.eventHistory = e.eventHistory.slice(-30);
-          if (e.inject && typeof e.inject === 'object') {
-            const base = (e.inject.full || '').split(' | 최근:')[0];
-            const recent = e.eventHistory.slice(-2).map(ev => `t${ev.turn}:${ev.summary.slice(0,40)}`).join('|');
-            e.inject.full = recent ? base + ' | 최근:' + recent : base;
-          }
-        }
-        await db.entries.put(e); addedCount++;
-      }
-    }
-    if (addedCount > 0) {
-      const count = await db.entries.where('packName').equals(packName).count();
-      await db.packs.update(packName, { entryCount: count });
-      await setPackEnabled(packName, true);
-    }
-    return processedCount;
-  }
-
-  const _extQ = { running: false, pendingTurns: 0, manualPending: false };
-  let _extBadgeMsg = null, _extBadgeWatchdog = null;
-  function extBadgeShow(msg) {
-    _extBadgeMsg = msg;
-    try { C.showStatusBadge(msg); } catch(e){}
-    if (_extBadgeWatchdog) return;
-    _extBadgeWatchdog = setInterval(() => {
-      if (!_extBadgeMsg) return;
-      const badge = document.getElementById('lore-status-badge');
-      if (badge && badge.style.opacity === '1' && (badge.textContent || '').includes(_extBadgeMsg)) return;
-      try { C.showStatusBadge(_extBadgeMsg); } catch(e){}
-    }, 1500);
-  }
-  function extBadgeHide() {
-    _extBadgeMsg = null;
-    if (_extBadgeWatchdog) { clearInterval(_extBadgeWatchdog); _extBadgeWatchdog = null; }
-    try { C.hideStatusBadge(); } catch(e){}
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && _extBadgeMsg) { try { C.showStatusBadge(_extBadgeMsg); } catch(e){} }
-  });
-
-  async function runAutoExtract(isManual = false) {
-    if (_extQ.running) { _extQ.pendingTurns++; if (isManual) _extQ.manualPending = true; return; }
-    _extQ.running = true; _extQ.pendingTurns = 0; _extQ.manualPending = false;
-    extBadgeShow('에리가 대화 분석 중');
-    try { await _doExtract(isManual); }
-    finally {
-      _extQ.running = false; extBadgeHide();
-      if (_extQ.pendingTurns > 0 || _extQ.manualPending) { const nextManual = _extQ.manualPending; setTimeout(() => runAutoExtract(nextManual), 500); }
-    }
-  }
-
-  async function _doExtract(isManual) {
+  const MAX_INPUT_CHARS = 2000;
+  async function inject(userInput) {
+    if (!settings.config.enabled) return userInput;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const apiType = settings.config.autoExtApiType || 'key'; const isVertex = apiType === 'vertex';
-    const hasKey = settings.config.autoExtKey; const hasJson = settings.config.autoExtVertexJson;
-    if (isVertex ? !hasJson : !hasKey) { if (isManual) alert('API 설정 미완료.'); return; }
-    const scanR = settings.config.autoExtScanRange || 6; const extraTurns = _extQ.pendingTurns || 0;
-    const effectiveRange = scanR + extraTurns; const fetchCount = (effectiveRange + settings.config.autoExtOffset) * 2;
-    let recentMsgs = await C.fetchLogs(fetchCount > 0 ? fetchCount : 20);
-    if (!recentMsgs.length) { if (isManual) alert('대화 기록 없음.'); return; }
-    const offsetCount = settings.config.autoExtOffset * 2;
-    if (offsetCount > 0 && recentMsgs.length > offsetCount) recentMsgs = recentMsgs.slice(0, recentMsgs.length - offsetCount);
-    const context = recentMsgs.map(m => m.role + ': ' + m.message).join('\n');
-    let entriesText = '[]';
-    if (settings.config.autoExtIncludeDb) {
-      const packName = await getAutoExtPackForUrl(_url);
-      const existingEntries = await db.entries.where('packName').equals(packName).toArray();
-      if (existingEntries.length > 0) {
-        let filtered = existingEntries;
-        if (existingEntries.length > 30) {
-          const ctxLower = context.toLowerCase();
-          const scoreEntry = (e) => {
-            let s = 0;
-            const hay = (e.name || '') + ' ' + (e.triggers || []).join(' ') + ' ' + (e.embed_text || '');
-            const hayLower = hay.toLowerCase();
-            if (ctxLower.includes((e.name || '').toLowerCase()) && e.name) s += 100;
-            for (const t of (e.triggers || [])) {
-              if (!t || t.length < 2) continue;
-              const parts = t.split('&&').map(p => p.trim().toLowerCase());
-              if (parts.every(p => ctxLower.includes(p))) { s += 30; break; }
-            }
-            s += (e.imp || 5) + (e.emo || 0);
-            if (e.lastUpdated) s += Math.max(0, 20 - Math.floor((Date.now() - e.lastUpdated) / 86400000));
-            if (e.isCurrentArc) s += 50;
-            return s;
-          };
-          const scored = existingEntries.map(e => ({ e, s: scoreEntry(e) }));
-          scored.sort((a, b) => b.s - a.s);
+    const turnCounter = incrementTurnCounter(chatKey);
+    if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
 
-          const relevant = scored.filter(x => x.s >= 100).map(x => x.e);
-          const topImp = scored.filter(x => x.s < 100).slice(0, Math.max(0, 40 - relevant.length)).map(x => x.e);
-          filtered = [...relevant, ...topImp];
-        }
-        const clean = filtered.map(({ id, packName, project, enabled, ...rest }) => rest);
-        entriesText = JSON.stringify(clean, null, 2);
-      }
-    }
-    let personaPrefix = '';
-    if (settings.config.autoExtIncludePersona) {
-      const pName = await C.fetchPersonaName();
-      if (pName) personaPrefix = `[User Persona: "${pName}"] All "user" role messages are from this character. Use "${pName}" as the character name, NOT "user".\n\n`;
-    }
-    const tpl = settings.getActiveTemplate();
-    const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
-    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', tpl.schema);
+    const activePacksArr = settings.config.urlPacks?.[_url] || [];
+    if (!activePacksArr.length) return userInput;
+    const allForPacks = await db.entries.where('packName').anyOf(activePacksArr).toArray();
+    const disabledSet = new Set(settings.config.urlDisabledEntries?.[_url] || []);
+    let enabled = allForPacks.filter(e => !disabledSet.has(e.id));
+    if (!enabled.length) return userInput;
 
-    let apiLog = null;
+    const fetchCount = Math.max(20, (settings.config.scanRange || 6) * 3);
+    const recentMsgs = await C.fetchLogs(fetchCount);
+
+    const config = settings.config;
+    const apiOpts = {
+      apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
+      vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+      model: config.embeddingModel || 'gemini-embedding-001'
+    };
+    const searchConfig = {
+      scanRange: config.scanRange || 6, scanOffset: config.scanOffset || 0,
+      strictMatch: config.strictMatch !== false, similarityMatch: config.similarityMatch === true,
+      embeddingEnabled: config.embeddingEnabled || false, embeddingWeight: config.embeddingWeight || 0.4,
+      decayEnabled: config.decayEnabled !== false, decayHalfLife: config.decayHalfLife || C.DEFAULTS.decayHalfLife,
+      aiMemoryTurns: config.aiMemoryTurns || 4, activeCharDetection: config.activeCharDetection !== false,
+      activeCharBoost: config.activeCharBoostEnabled !== false ? C.DEFAULTS.activeCharBoost : 1.0,
+      inactiveCharPenalty: config.activeCharBoostEnabled !== false ? C.DEFAULTS.inactiveCharPenalty : 1.0
+    };
+
+    let scored = [], activeNames = [];
     try {
-      const apiOpts = {
-        apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
-        vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-        model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-        maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json'
-      };
-      const res = await C.callGeminiApi(prompt, apiOpts);
-      apiLog = { status: res.status, error: res.error, retries: res.retries };
-      if (!res.text) throw new Error('AI 응답없음 (' + (res.error || '알수없음') + ')');
-      const parsed = parseJsonLoose(res.text);
-      if (!parsed) throw new Error('JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const cnt = await mergeExtractedData(parsed, _url);
-        let embedMsg = '';
-        if (settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
-          try {
-            const epName = await getAutoExtPackForUrl(_url);
-            extBadgeShow('에리가 임베딩 갱신 중');
-            const embedOpts = { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-            await C.embedPack(epName, embedOpts);
-            embedMsg = ' (자동 임베딩 완료)';
-          } catch(embErr) { console.warn('[Lore] 자동임베딩 실패:', embErr.message); embedMsg = ' (자동 임베딩 실패)'; }
+      const r = await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts);
+      scored = r.scored || []; activeNames = r.activeNames || [];
+      if (r.searchStats && config.embeddingEnabled) {
+        const sk = 'lore-hybrid-stats';
+        const st = JSON.parse(_ls.getItem(sk) || '{"to":0,"eo":0,"b":0,"n":0,"injLog":[],"lastInjected":[]}');
+        st.to += r.searchStats.trigOnly; st.eo += r.searchStats.embOnly; st.b += r.searchStats.both; st.n++;
+        if (st.lastInjected && st.lastInjected.length && recentMsgs.length >= 2) {
+          const lastAIMsg = [...recentMsgs].reverse().find(m => m.role === 'assistant');
+          const lastAI = (lastAIMsg?.message || '').toLowerCase();
+          const reflected = st.lastInjected.filter(n => lastAI.includes(n.toLowerCase())).length;
+          st.injLog.push(reflected / Math.max(st.lastInjected.length, 1));
+          if (st.injLog.length > 30) st.injLog.shift();
         }
-        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: cnt, msgs: recentMsgs.length, isManual, status: '성공', api: apiLog });
-        if (isManual) alert(cnt + '개 로어 추출 및 병합됨.' + embedMsg);
-      } else {
-        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '추출 내용 없음', api: apiLog });
-        if (isManual) alert('새로운 설정 정보 없음.');
+        if (st.n > 0 && st.n % 20 === 0) {
+          const total = st.to + st.eo + st.b;
+          if (total > 5) {
+            const embContrib = (st.eo + st.b * 0.5) / total;
+            const avgReflection = st.injLog.length > 0 ? st.injLog.reduce((a,b) => a + b, 0) / st.injLog.length : 0.5;
+            const feedbackAdj = avgReflection > 0.4 ? 0 : (0.4 - avgReflection) * 0.3;
+            const target = Math.max(0.15, Math.min(0.65, embContrib + feedbackAdj));
+            const smoothed = 0.7 * (config.embeddingWeight || 0.4) + 0.3 * target;
+            settings.config.embeddingWeight = parseFloat(smoothed.toFixed(3)); settings.save();
+          }
+        }
+        _ls.setItem(sk, JSON.stringify(st));
       }
-    } catch (err) {
-      addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '실패', error: err.message, api: apiLog });
-      if (isManual) alert('추출 실패: ' + err.message);
+    } catch(e) {
+      const tr = C.triggerScan(userInput, recentMsgs, enabled, searchConfig);
+      scored = tr.map(r => ({ entry: r.entry, score: r.triggerScore }));
+      activeNames = C.detectActiveCharacters(recentMsgs, enabled);
     }
+
+    if (config.pendingPromiseBoost !== false) {
+      for (const s of scored) { if (s.entry.type === 'promise' && s.entry.detail?.status === 'pending') s.score = Math.max(s.score, 0.3); }
+      scored.sort((a,b) => b.score - a.score);
+    }
+
+    for (const s of scored) {
+      if (s.entry.rootId && !s.entry.isCurrentArc) s.score *= 0.3;
+    }
+    scored.sort((a,b) => b.score - a.score);
+
+    if (activeNames.length >= 2 && config.firstEncounterWarning !== false) {
+      for (let i = 0; i < activeNames.length; i++) {
+        for (let j = i + 1; j < activeNames.length; j++) {
+          try {
+            await C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter });
+          } catch(e) {}
+        }
+      }
+    }
+
+    if (config.rerankEnabled) {
+      try {
+        C.showStatusBadge('에리가 로어 재정렬 중');
+        const last2 = recentMsgs.slice(-4).map(m => m.role + ': ' + m.message).join('\n');
+        scored = await C.smartRerank(userInput, scored, last2, {
+          apiType: config.autoExtApiType || 'key', key: config.autoExtKey,
+          vertexJson: config.autoExtVertexJson, vertexLocation: config.autoExtVertexLocation || 'global',
+          vertexProjectId: config.autoExtVertexProjectId,
+          model: config.rerankModel || config.autoExtModel || 'gemini-3-flash-preview'
+        });
+        C.hideStatusBadge();
+      } catch(e) { C.hideStatusBadge(); }
+    }
+
+    if (config.cooldownEnabled) {
+      const cMap = getCooldownMap(chatKey);
+      scored = scored.filter(s => {
+        const last = cMap[s.entry.id];
+        return last === undefined || (turnCounter - last) >= config.cooldownTurns;
+      });
+    }
+
+    // Delta skip: 최근 N턴 이내 동일 콘텐츠로 주입된 엔트리는 재주입 생략 (예산 확보).
+    const _deltaKey = 'lore-recent-injections:' + chatKey;
+    let _recentInj = {}; try { _recentInj = JSON.parse(_ls.getItem(_deltaKey) || '{}'); } catch(e) {}
+    const _deltaTurns = config.deltaSkipTurns != null ? config.deltaSkipTurns : 3;
+    let _deltaSkippedCount = 0;
+    const _filteredScored = (config.deltaSkipEnabled === false) ? scored : scored.filter(s => {
+      const rec = _recentInj[s.entry.id];
+      if (!rec) return true;
+      if (turnCounter - (rec.turn || 0) >= _deltaTurns) return true;
+      const sig = String(s.entry.lastUpdated || s.entry.ts || '');
+      if (sig !== rec.sig) return true;
+      _deltaSkippedCount++;
+      return false;
+    });
+    const topEntries = _filteredScored.slice(0, config.maxEntries || 4).map(s => s.entry);
+    if (!topEntries.length) return userInput;
+    for (const e of topEntries) { recordEntryMention(chatKey, e.id); setCooldownLastTurn(chatKey, e.id, turnCounter); }
+
+    const pfx = config.prefix || OOC_FORMATS.default.prefix;
+    const sfx = config.suffix || OOC_FORMATS.default.suffix;
+    const wrapperChars = C.charLen(pfx) + C.charLen(sfx) + 6;
+    const availableTotal = MAX_INPUT_CHARS - C.charLen(userInput) - wrapperChars;
+    if (availableTotal < 30) {
+      addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: turnCounter, matched: [], count: 0, note: '공간부족' });
+      return userInput;
+    }
+
+    const maxBudget = config.loreBudgetMax || 600; const minBudget = config.loreBudgetChars || 350;
+    const effectiveBudget = Math.min(availableTotal, Math.max(minBudget, Math.min(availableTotal, maxBudget)));
+
+    let honorifics = '';
+    if (config.honorificMatrixEnabled !== false) honorifics = C.formatHonorificMatrix(C.buildHonorificMatrix(enabled, activeNames), 80);
+    let unmetPairs = [];
+    if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames); } catch(e) {}
+    if (unmetPairs.length > 0) {
+      const knownPairs = new Set();
+      for (const r of enabled) {
+        if (r.type !== 'rel' && r.type !== 'relationship') continue;
+        let parties = r.parties || r.detail?.parties;
+        if ((!parties || parties.length < 2) && typeof r.name === 'string') {
+          if (r.name.includes('↔')) parties = r.name.split('↔').map(s => s.trim()).filter(Boolean);
+          else if (r.name.includes('&')) parties = r.name.split('&').map(s => s.trim()).filter(Boolean);
+        }
+        if (parties && parties.length >= 2) knownPairs.add([parties[0], parties[1]].sort().join('|'));
+      }
+      if (knownPairs.size > 0) {
+        unmetPairs = unmetPairs.filter(pair => !knownPairs.has([pair[0], pair[1]].sort().join('|')));
+      }
+    }
+
+    let firstEncounterBlock = '';
+    if (unmetPairs.length > 0 && config.firstEncounterWarning !== false) {
+      try {
+        const feKey = 'lore-fe-recent-' + chatKey;
+        const log = JSON.parse(_ls.getItem(feKey) || '[]');
+        const fresh = unmetPairs.filter(p => {
+          const k = [...p].sort().join('|');
+          const last = log.find(x => x.key === k);
+          return !last || (turnCounter - last.turn) >= 5;
+        });
+        if (fresh.length > 0) {
+          const pick = fresh[0];
+          firstEncounterBlock = C.formatFirstEncounterBlock(pick);
+          log.push({ key: [...pick].sort().join('|'), turn: turnCounter });
+          _ls.setItem(feKey, JSON.stringify(log.slice(-20)));
+          unmetPairs = unmetPairs.filter(p => p !== pick);
+        }
+      } catch(e) {}
+    }
+
+    let reunionTags = '';
+    if (config.firstEncounterWarning !== false) {
+      try {
+        const reunions = await C.findReunionPairs(activeNames, turnCounter, 10);
+        if (reunions.length > 0) {
+          reunionTags = reunions.slice(0, 2).map(r => C.formatReunionTag(r.pair, r.gap)).join('\n');
+        }
+      } catch(e) {}
+    }
+
+    let sceneTag = '';
+    if (recentMsgs.length > 0) {
+      try {
+        const kw = C.extractSceneKeywords(recentMsgs);
+        sceneTag = C.formatSceneTag(kw);
+      } catch(e) {}
+    }
+
+    try {
+      await C.updateWorkingMemory(_url, {
+        turn: turnCounter,
+        activeChars: activeNames.slice(0, 5),
+        scene: sceneTag,
+        lastAction: (recentMsgs[recentMsgs.length - 1]?.message || '').slice(0, 80),
+        updatedAt: Date.now()
+      });
+    } catch(e) {}
+
+    const fmtResult = C.adaptiveFormat({ entries: topEntries, activeNames, unmetPairs, honorifics, budget: effectiveBudget, config });
+    if (!fmtResult.text && !firstEncounterBlock && !reunionTags && !sceneTag) return userInput;
+
+    const body = [sceneTag, firstEncounterBlock, reunionTags, fmtResult.text].filter(Boolean).join('\n');
+    let injected = '\n' + pfx + '\n' + body + '\n' + sfx + '\n';
+    if (C.charLen(userInput) + C.charLen(injected) + 2 > MAX_INPUT_CHARS) {
+      addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: turnCounter, matched: [], count: 0, note: '최종 길이 초과, 주입 취소' });
+      return userInput;
+    }
+
+    try {
+      const sk = 'lore-hybrid-stats'; const st = JSON.parse(_ls.getItem(sk) || '{}');
+      st.lastInjected = topEntries.map(e => e.name); _ls.setItem(sk, JSON.stringify(st));
+    } catch(e) {}
+
+    const _injectedLen = C.charLen(injected);
+    const _userLen = C.charLen(userInput);
+    // Delta skip 기록 갱신
+    try {
+      for (const e of topEntries) {
+        _recentInj[e.id] = { turn: turnCounter, sig: String(e.lastUpdated || e.ts || '') };
+      }
+      for (const k of Object.keys(_recentInj)) {
+        if (turnCounter - (_recentInj[k].turn || 0) > 20) delete _recentInj[k];
+      }
+      _ls.setItem(_deltaKey, JSON.stringify(_recentInj));
+    } catch(e) {}
+
+    addInjLog(chatKey, {
+      time: new Date().toLocaleTimeString(), turn: turnCounter,
+      matched: fmtResult.included.map(e => e.name), count: fmtResult.included.length,
+      budget: effectiveBudget, used: fmtResult.usedChars, level: fmtResult.level,
+      activeChars: activeNames.slice(0, 5),
+      userInputChars: _userLen, injectedChars: _injectedLen,
+      totalChars: _userLen + _injectedLen + 2, maxChars: MAX_INPUT_CHARS,
+      deltaSkipped: _deltaSkippedCount,
+      bundled: fmtResult.bundledCount || 0,
+      sections: {
+        scene: C.charLen(sceneTag || ''),
+        firstEnc: C.charLen(firstEncounterBlock || ''),
+        reunion: C.charLen(reunionTags || ''),
+        honor: C.charLen(honorifics || ''),
+        lore: C.charLen(fmtResult.text || '')
+      }
+    });
+
+    return config.position === 'before' ? injected + '\n\n' + userInput : userInput + '\n\n' + injected;
   }
 
-  Object.assign(_w.__LoreInj, {
-    mergeExtractedData, runAutoExtract,
-    extBadgeShow, extBadgeHide,
-    __extractLoaded: true
-  });
-  console.log('[LoreInj:4] extract loaded');
+  if (_w.__loreRegister) _w.__loreRegister(inject);
+
+  Object.assign(_w.__LoreInj, { inject, __injectLoaded: true });
+  console.log('[LoreInj:5] inject loaded & registered');
 })();
