@@ -6,8 +6,13 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.0.2';
+  const VER = '1.0.7';
   const CHANGELOG = [
+    '주입 로그 UI 확장: Bundling/Delta Skip 카운터를 주입 기록 각 항목에 표시(번들/스킵)',
+    '리랭커 스코어 보정: 하이브리드·LLM 점수 min-max 정규화 후 블렌딩(기본 5:5), 무관(≤2점) 자동 필터, 앵커 최상위 고정. config로 rerankBlendWeight/rerankMinLlmScore/rerankAnchorBoost/rerankMaxCandidates 노출',
+    '추출 프롬프트 강화: 앵커 엔트리 보호 필드 출력 금지 + Slot Preservation 규칙 추가. 변경 없는 슬롯은 생략해 토큰 절약 + 불필요한 덮어쓰기 모순 감소',
+    '인젝션 최적화: 동일 주체(활성 캐릭터/당사자) 엔트리를 그룹핑하는 Bundling + 최근 3턴 내 변경 없는 엔트리 재주입 생략하는 Delta Skip 도입. 주입 로그에 deltaSkipped/bundled 카운터 포함',
+    '서사 앵커(Narrative Anchor) 도입: 로어 관리 UI에서 엔트리 앵커 지정 가능. 앵커 엔트리는 자동 추출 병합 시 summary/state/detail/call/inject 덮어쓰기 차단(eventHistory/triggers 추가만 허용), 재주입 우선도 최대 고정',
     '서사 무결성 보안: 엔트리 덮어쓰기 전 append-only 버전 백업 자동 기록 (entryVersions 테이블, 최대 20개 유지)',
     '로어 관리 UI에 버전 이력 조회/복원 버튼 추가',
     '주입 로그 확장: 총 글자수/한도 표시 + 섹션별 사용량 내역(씬/첫만남/재회/호칭/로어)',
@@ -175,6 +180,19 @@ CRITICAL RULES:
     - Maximum 3 new events per entry per extraction pass.
     - Summary must be concrete noun-ending Korean for search: "LO와 첫 키스, 카페에서" not "행복한 순간".
     - If no new significant event occurred, OMIT eventHistory for that entry.
+11. ANCHOR AWARENESS (CRITICAL — USER-LOCKED NARRATIVE FACTS):
+    - Some existing entries have "anchor": true. These are user-locked canonical facts.
+    - For anchored entries: NEVER output summary, state, detail, call, inject, cond, imp, sur, emo, gs, arc. These fields are PROTECTED and any output will be discarded by the merge layer.
+    - You MAY still APPEND new items to eventHistory (if genuinely new and imp+emo >= 10).
+    - You MAY add new keywords to triggers.
+    - If nothing new qualifies for an anchored entry, OMIT it entirely from output. Do not echo its existing fields.
+12. SLOT PRESERVATION (non-anchored entries):
+    - For each existing entry, compare each slot against the new conversation.
+    - If a slot (summary, state, detail.*, call, inject, cond) is unchanged by the new scene, OMIT that slot. Only output slots that ACTUALLY changed or are newly observed.
+    - Do not regenerate identical summaries. If new info adds detail, write an APPENDED summary: "<existing kernel> / <new detail>" — keep it concise, max 60 chars.
+    - For "state": output only if the status actually changed (e.g. pending→fulfilled, 우호→적대). Stable states are preserved automatically.
+    - For "call": output only the pairs that changed or are newly observed; do not repeat unchanged honorifics.
+    - This reduces contradictions and saves tokens — trust the DB to retain what you don't output.
 
 COMPRESSION FORMAT RULES:
 - "embed_text": keyword cluster, NOT sentences. Noun/stem forms only. Space-separated. Include character names, locations, concepts, emotional keywords. Max 60 chars.
