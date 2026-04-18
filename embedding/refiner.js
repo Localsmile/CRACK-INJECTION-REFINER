@@ -333,12 +333,12 @@ Contradictions found (no markdown code fences):
     const btnCancel = document.createElement('button');
     btnCancel.textContent = '원본 유지';
     btnCancel.style.cssText = 'padding:10px 16px;border-radius:6px;border:none;background:#444;color:#ccc;cursor:pointer;font-weight:bold;';
-    btnCancel.onclick = () => { document.body.removeChild(overlay); onCancel(); };
+    btnCancel.onclick = () => { document.body.removeChild(overlay); onCancel(); setTimeout(() => processQueue(), 100); };
 
     const btnConfirm = document.createElement('button');
     btnConfirm.textContent = '교정본 변경';
     btnConfirm.style.cssText = 'padding:10px 16px;border-radius:6px;border:none;background:#285;color:#fff;cursor:pointer;font-weight:bold;';
-    btnConfirm.onclick = () => { document.body.removeChild(overlay); onConfirm(refTa.value); };
+    btnConfirm.onclick = () => { document.body.removeChild(overlay); onConfirm(refTa.value); setTimeout(() => processQueue(), 100); };
 
     btnRow.appendChild(btnCancel); btnRow.appendChild(btnConfirm);
     box.appendChild(title); box.appendChild(reasonTitle); box.appendChild(reasonText);
@@ -641,6 +641,7 @@ Contradictions found (no markdown code fences):
 
   async function processQueue() {
     if (refineQueue.length === 0) return;
+    if (document.querySelector('#refiner-confirm-overlay')) return;
     if (workerBusy) {
       if (Date.now() - workerStartTime > WORKER_TIMEOUT) {
         workerBusy = false; Core.hideStatusBadge();
@@ -696,7 +697,9 @@ Contradictions found (no markdown code fences):
       const contentLen = lastLog.content ? lastLog.content.length : 0;
 
       if (_needsWarmup) {
-        lastAssistantMsgId = msgId; lastMsgLength = contentLen; idleCount = 0; _needsWarmup = false; return;
+        lastAssistantMsgId = msgId; lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now(); _needsWarmup = false;
+        if (msgId) { processedFingerprints.add(msgId); saveProcessedFingerprints(); }
+        return;
       }
 
       if (msgId !== lastAssistantMsgId) {
