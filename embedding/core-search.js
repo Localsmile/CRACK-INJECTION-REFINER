@@ -1,4 +1,4 @@
-// crack-lore-core / search 모듈 (v1.3.8)
+// crack-lore-core / search 모듈 (v1.3.9)
 // 역할: 트리거 스캔, 하이브리드 검색, LLM 리랭커
 // 의존: kernel (callGeminiApi, cosineSimilarity, getDB, simpleHash, DEFAULTS, embedText),
 //       memory (calcReinjectionScore, detectActiveCharacters, isRelatedToActive)
@@ -234,8 +234,10 @@
       const kept = reranked.filter(s => s.llmScore > minLlmScore || s.entry.anchor === true);
       const droppedCount = reranked.length - kept.length;
       if (droppedCount > 0) console.log('[LoreCore:rerank] 무관 ' + droppedCount + '개 제거 (llm<=' + minLlmScore + ')');
+      // kept 전멸이면 리랭크 결과 무시하고 원본 순서 유지
+      if (kept.length === 0) { console.warn('[LoreCore:rerank] 전체 후보가 무관 판정 → 원본 순서 우선'); return candidates; }
       kept.sort((a, b) => b.score - a.score);
-      const minKept = kept.length ? kept[kept.length - 1].score : 0;
+      const minKept = kept[kept.length - 1].score;
       const tail = candidates.slice(maxCandidates).map(s => Object.assign({}, s, { origScore: s.score, score: Math.min(s.score, minKept * 0.99) }));
       return kept.concat(tail);
     } catch (e) { console.warn('[LoreCore] 리랭크 실패, 기본 순서 사용:', e && e.message); return candidates; }
@@ -245,5 +247,5 @@
     bigramSimilarity, buildScanPool, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });
-  console.log('[LoreCore:search] loaded v1.3.8');
+  console.log('[LoreCore:search] loaded v1.3.9');
 })();
