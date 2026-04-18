@@ -226,8 +226,44 @@
               const copyBtn = document.createElement('button'); copyBtn.textContent = '복사'; copyBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; copyBtn.onclick = (ev) => { ev.stopPropagation(); const clean = {...e}; delete clean.id; delete clean.packName; delete clean.project; delete clean.enabled; navigator.clipboard.writeText(JSON.stringify(clean, null, 2)).then(() => alert('복사됨.')).catch(() => alert('실패')); };
               const editBtn = document.createElement('button'); editBtn.textContent = '수정'; editBtn.style.cssText = B + 'color:#88c;border-color:#446;';
               const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
-              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(editBtn); right.appendChild(delBtn);
+              const histBtn = document.createElement('button'); histBtn.textContent = '이력'; histBtn.style.cssText = B + 'color:#da8;border-color:#642;';
+              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(histBtn); right.appendChild(editBtn); right.appendChild(delBtn);
               header.appendChild(left); header.appendChild(right); row.appendChild(header);
+
+              // 버전 이력 패널 (append-only 백업 조회/복원)
+              const historyContainer = document.createElement('div');
+              historyContainer.style.cssText = 'display:none;margin-top:8px;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:4px;';
+              histBtn.onclick = async (ev) => {
+                ev.stopPropagation();
+                if (historyContainer.style.display !== 'none') { historyContainer.style.display = 'none'; return; }
+                historyContainer.innerHTML = '<div style="font-size:11px;color:#888;">불러오는 중...</div>';
+                historyContainer.style.display = 'block';
+                try {
+                  if (!C.getEntryVersions) { historyContainer.innerHTML = '<div style="font-size:11px;color:#d66;">버전 이력 기능 미로드 (core 재로드 필요).</div>'; return; }
+                  const versions = await C.getEntryVersions(e.id);
+                  if (!versions || !versions.length) { historyContainer.innerHTML = '<div style="font-size:11px;color:#888;">저장된 버전 없음. 다음 덮어쓰기부터 기록됨.</div>'; return; }
+                  historyContainer.innerHTML = '';
+                  const hdr = document.createElement('div'); hdr.textContent = versions.length + '개 버전 (최신순)'; hdr.style.cssText = 'font-size:11px;color:#da8;margin-bottom:6px;font-weight:bold;'; historyContainer.appendChild(hdr);
+                  for (const v of versions) {
+                    const vrow = document.createElement('div'); vrow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;padding:4px 0;border-bottom:1px dashed #222;gap:8px;';
+                    const info = document.createElement('div'); info.style.cssText = 'font-size:11px;color:#aaa;flex:1;min-width:0;';
+                    const sumPrev = (v.snapshot && v.snapshot.summary) ? String(v.snapshot.summary).slice(0, 80) : '';
+                    const stPrev = (v.snapshot && (v.snapshot.state || v.snapshot.detail?.current_status)) ? ' / state: ' + (v.snapshot.state || v.snapshot.detail?.current_status) : '';
+                    info.innerHTML = '<span style="color:#ccc;">' + new Date(v.ts).toLocaleString() + '</span> <span style="color:#69b;">[' + (v.reason||'auto') + ']</span><br><span style="font-size:10px;color:#888;word-break:break-all;">' + (sumPrev || '(요약 없음)') + stPrev + '</span>';
+                    const vbtns = document.createElement('div'); vbtns.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+                    const resBtn = document.createElement('button'); resBtn.textContent = '복원'; resBtn.style.cssText = 'padding:3px 8px;font-size:10px;border-radius:3px;background:#258;color:#fff;border:none;cursor:pointer;';
+                    resBtn.onclick = async (ev2) => {
+                      ev2.stopPropagation();
+                      if (!confirm('이 버전으로 복원? 현재 상태는 자동 백업됨.')) return;
+                      try { const restored = await C.restoreEntryVersion(v.id); Object.assign(e, restored); nameSpan.textContent = '[' + e.type + '] ' + e.name; nameSpan.appendChild(embStatusSpan); alert('복원됨.'); historyContainer.style.display = 'none'; }
+                      catch(err) { alert('실패: ' + err.message); }
+                    };
+                    vbtns.appendChild(resBtn);
+                    vrow.appendChild(info); vrow.appendChild(vbtns); historyContainer.appendChild(vrow);
+                  }
+                } catch(err) { historyContainer.innerHTML = '<div style="font-size:11px;color:#d66;">오류: ' + err.message + '</div>'; }
+              };
+              row.appendChild(historyContainer);
 
               const editContainer = document.createElement('div'); editContainer.style.cssText = 'display:none;margin-top:8px;flex-direction:column;gap:8px;';
               const ta = document.createElement('textarea'); ta.style.cssText = 'width:100%;height:200px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;';
