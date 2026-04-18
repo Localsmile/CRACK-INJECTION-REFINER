@@ -225,7 +225,23 @@
       st.lastInjected = topEntries.map(e => e.name); _ls.setItem(sk, JSON.stringify(st));
     } catch(e) {}
 
-    addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: turnCounter, matched: fmtResult.included.map(e => e.name), count: fmtResult.included.length, budget: effectiveBudget, used: fmtResult.usedChars, level: fmtResult.level, activeChars: activeNames.slice(0, 5) });
+    const _injectedLen = C.charLen(injected);
+    const _userLen = C.charLen(userInput);
+    addInjLog(chatKey, {
+      time: new Date().toLocaleTimeString(), turn: turnCounter,
+      matched: fmtResult.included.map(e => e.name), count: fmtResult.included.length,
+      budget: effectiveBudget, used: fmtResult.usedChars, level: fmtResult.level,
+      activeChars: activeNames.slice(0, 5),
+      userInputChars: _userLen, injectedChars: _injectedLen,
+      totalChars: _userLen + _injectedLen + 2, maxChars: MAX_INPUT_CHARS,
+      sections: {
+        scene: C.charLen(sceneTag || ''),
+        firstEnc: C.charLen(firstEncounterBlock || ''),
+        reunion: C.charLen(reunionTags || ''),
+        honor: C.charLen(honorifics || ''),
+        lore: C.charLen(fmtResult.text || '')
+      }
+    });
 
     return config.position === 'before' ? injected + '\n\n' + userInput : userInput + '\n\n' + injected;
   }
