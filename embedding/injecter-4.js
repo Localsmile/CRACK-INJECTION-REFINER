@@ -41,7 +41,21 @@
       if (existing) {
         // 서사 무결성: 덮어쓰기 전 현재 상태 백업 (append-only)
         try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge'); } catch(ex) {}
-        if (['relationship', 'promise', 'rel', 'prom'].includes(e.type)) {
+        // Narrative Anchor: 앵커 엔트리는 summary/state/detail/call/inject 등 내러티브 필드 보호.
+        // 스냅샷 떠놨다가 put 직전 복원. eventHistory/triggers 병합만 허용.
+        const _anchorGuard = existing.anchor === true;
+        const _anchorSnap = _anchorGuard ? {
+          summary: existing.summary,
+          state: existing.state,
+          detail: existing.detail ? JSON.parse(JSON.stringify(existing.detail)) : undefined,
+          call: existing.call ? JSON.parse(JSON.stringify(existing.call)) : undefined,
+          callHistory: existing.callHistory ? JSON.parse(JSON.stringify(existing.callHistory)) : undefined,
+          inject: existing.inject ? JSON.parse(JSON.stringify(existing.inject)) : undefined,
+          cond: existing.cond,
+          imp: existing.imp, sur: existing.sur, emo: existing.emo, gs: existing.gs,
+          arc: existing.arc ? JSON.parse(JSON.stringify(existing.arc)) : undefined
+        } : null;
+        if (!_anchorGuard && ['relationship', 'promise', 'rel', 'prom'].includes(e.type)) {
           const oldS = existing.state || existing.detail?.current_status || existing.detail?.status || null;
           const newS = e.state || e.detail?.current_status || e.detail?.status || null;
           if (oldS && newS && oldS !== newS) {
@@ -187,6 +201,13 @@
           if (parties && parties.length >= 2) {
             const [c1, c2] = parties;
             try { await C.recordFirstEncounter(c1, c2, { turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
+          }
+        }
+        // Narrative Anchor: 보호 필드 복원
+        if (_anchorSnap) {
+          for (const k of Object.keys(_anchorSnap)) {
+            if (_anchorSnap[k] === undefined) delete existing[k];
+            else existing[k] = _anchorSnap[k];
           }
         }
         await db.entries.put(existing);
