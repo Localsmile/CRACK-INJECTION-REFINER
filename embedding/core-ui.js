@@ -10,6 +10,7 @@
   // 상태 배지
   var _statusBadge = null;
   var _pulseStyleAdded = false;
+  var _statusLabel = null;
   function showStatusBadge(text) {
     if (!_pulseStyleAdded) {
       _pulseStyleAdded = true;
@@ -21,11 +22,16 @@
       _statusBadge = document.createElement('div');
       _statusBadge.id = 'lore-status-badge';
       _statusBadge.style.cssText = 'position:fixed;bottom:70px;right:20px;z-index:999998;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:8px 16px;font-size:12px;color:#ccc;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .3s;opacity:0;pointer-events:none;';
+      var dot = document.createElement('span');
+      dot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite;flex-shrink:0;';
+      _statusLabel = document.createElement('span');
+      _statusBadge.appendChild(dot);
+      _statusBadge.appendChild(_statusLabel);
       document.body.appendChild(_statusBadge);
     }
-    _statusBadge.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite"></span> ' + text;
-    _statusBadge.style.opacity = '1';
-    _statusBadge.style.pointerEvents = 'auto';
+    if (_statusLabel.textContent !== text) _statusLabel.textContent = text;
+    if (_statusBadge.style.opacity !== '1') _statusBadge.style.opacity = '1';
+    if (_statusBadge.style.pointerEvents !== 'auto') _statusBadge.style.pointerEvents = 'auto';
   }
   function hideStatusBadge() {
     if (_statusBadge) { _statusBadge.style.opacity = '0'; _statusBadge.style.pointerEvents = 'none'; }
