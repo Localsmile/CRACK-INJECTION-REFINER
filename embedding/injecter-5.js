@@ -126,7 +126,21 @@
       });
     }
 
-    const topEntries = scored.slice(0, config.maxEntries || 4).map(s => s.entry);
+    // Delta skip: 최근 N턴 이내 동일 콘텐츠로 주입된 엔트리는 재주입 생략 (예산 확보).
+    const _deltaKey = 'lore-recent-injections:' + chatKey;
+    let _recentInj = {}; try { _recentInj = JSON.parse(_ls.getItem(_deltaKey) || '{}'); } catch(e) {}
+    const _deltaTurns = config.deltaSkipTurns != null ? config.deltaSkipTurns : 3;
+    let _deltaSkippedCount = 0;
+    const _filteredScored = (config.deltaSkipEnabled === false) ? scored : scored.filter(s => {
+      const rec = _recentInj[s.entry.id];
+      if (!rec) return true;
+      if (turnCounter - (rec.turn || 0) >= _deltaTurns) return true;
+      const sig = String(s.entry.lastUpdated || s.entry.ts || '');
+      if (sig !== rec.sig) return true;
+      _deltaSkippedCount++;
+      return false;
+    });
+    const topEntries = _filteredScored.slice(0, config.maxEntries || 4).map(s => s.entry);
     if (!topEntries.length) return userInput;
     for (const e of topEntries) { recordEntryMention(chatKey, e.id); setCooldownLastTurn(chatKey, e.id, turnCounter); }
 
@@ -227,6 +241,17 @@
 
     const _injectedLen = C.charLen(injected);
     const _userLen = C.charLen(userInput);
+    // Delta skip 기록 갱신
+    try {
+      for (const e of topEntries) {
+        _recentInj[e.id] = { turn: turnCounter, sig: String(e.lastUpdated || e.ts || '') };
+      }
+      for (const k of Object.keys(_recentInj)) {
+        if (turnCounter - (_recentInj[k].turn || 0) > 20) delete _recentInj[k];
+      }
+      _ls.setItem(_deltaKey, JSON.stringify(_recentInj));
+    } catch(e) {}
+
     addInjLog(chatKey, {
       time: new Date().toLocaleTimeString(), turn: turnCounter,
       matched: fmtResult.included.map(e => e.name), count: fmtResult.included.length,
@@ -234,6 +259,8 @@
       activeChars: activeNames.slice(0, 5),
       userInputChars: _userLen, injectedChars: _injectedLen,
       totalChars: _userLen + _injectedLen + 2, maxChars: MAX_INPUT_CHARS,
+      deltaSkipped: _deltaSkippedCount,
+      bundled: fmtResult.bundledCount || 0,
       sections: {
         scene: C.charLen(sceneTag || ''),
         firstEnc: C.charLen(firstEncounterBlock || ''),
