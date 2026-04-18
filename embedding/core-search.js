@@ -120,9 +120,13 @@
     return scored.filter(s => s.score > 0).slice(0, topN);
   }
 
-  async function smartRerank(query, candidates, recentMsgs, apiOpts) {
+  async function smartRerank(query, candidates, recentMsgs, apiOpts, config) {
     if (!candidates.length) return candidates;
-    const maxCandidates = 8;
+    const cfg = config || {};
+    const maxCandidates = cfg.rerankMaxCandidates || 8;
+    const blendWeight = cfg.rerankBlendWeight != null ? cfg.rerankBlendWeight : 0.5; // LLM 비중 (0=하이브리드만, 1=LLM만)
+    const minLlmScore = cfg.rerankMinLlmScore != null ? cfg.rerankMinLlmScore : 2;   // 이하는 무관 취급 제거 (앵커 예외)
+    const anchorBoost = cfg.rerankAnchorBoost != null ? cfg.rerankAnchorBoost : 1.0; // 앵커 최종 점수 가산
     const truncated = candidates.slice(0, maxCandidates);
     const recentText = recentMsgs.slice(-4).map(m => `${m.role}: ${(m.message || '').slice(0, 100)}`).join('\n');
     const listText = truncated.map((s, i) => `${i + 1}. [${s.entry.type}] ${s.entry.name}: ${(s.entry.summary || '').slice(0, 100)}`).join('\n');
@@ -131,9 +135,28 @@
       const res = await callGeminiApi(prompt, { ...apiOpts, model: 'gemini-3-flash-preview', responseMimeType: 'application/json', maxOutputTokens: 256, thinkingLevel: 'minimal', maxRetries: 1 });
       const data = JSON.parse(res.text);
       if (!Array.isArray(data.scores)) return candidates;
-      const reranked = truncated.map((s, i) => ({ ...s, llmScore: data.scores[i] || 3, score: s.score * 0.3 + (data.scores[i] || 3) / 5 * 0.7 }));
-      reranked.sort((a, b) => b.score - a.score);
-      return [...reranked, ...candidates.slice(maxCandidates)];
+      // 하이브리드 스코어 min-max 정규화 (레인지 불일치 보정)
+      const hScores = truncated.map(s => s.score);
+      const hMin = Math.min(...hScores), hMax = Math.max(...hScores);
+      const hRange = (hMax - hMin) || 1;
+      const reranked = truncated.map((s, i) => {
+        const raw = data.scores[i];
+        const llmScore = (typeof raw === 'number' && raw >= 1 && raw <= 5) ? raw : 3; // 비정상 응답은 중립 3
+        const hybNorm = (s.score - hMin) / hRange;  // 0..1
+        const llmNorm = (llmScore - 1) / 4;         // 0..1
+        let finalScore = (1 - blendWeight) * hybNorm + blendWeight * llmNorm;
+        if (s.entry.anchor === true) finalScore += anchorBoost; // 앵커는 무조건 최상위
+        return { ...s, origScore: s.score, llmScore, score: finalScore };
+      });
+      // 무관 필터 (앵커는 끝까지 살려둔다)
+      const kept = reranked.filter(s => s.llmScore > minLlmScore || s.entry.anchor === true);
+      const droppedCount = reranked.length - kept.length;
+      if (droppedCount > 0) console.log(`[LoreCore:rerank] 무관 ${droppedCount}개 제거 (llm<=${minLlmScore})`);
+      kept.sort((a, b) => b.score - a.score);
+      // 리랭크 범위 밖 후보는 원 순서 유지, 하지만 kept 최저점보다 높이 올라가지 않도록 score 접어들림
+      const minKept = kept.length ? kept[kept.length - 1].score : 0;
+      const tail = candidates.slice(maxCandidates).map(s => ({ ...s, origScore: s.score, score: Math.min(s.score, minKept * 0.99) }));
+      return [...kept, ...tail];
     } catch (e) { console.warn('[LoreCore] 리랭크 실패, 기본 순서 사용:', e.message); return candidates; }
   }
 
