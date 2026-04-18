@@ -677,7 +677,30 @@
           }});
         };
 
-        makeLogBox('주입 기록', '#4a9', iLog, (clear, i, nd) => { if(clear) clearInjLog(chatKey); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;'; let h = `<span style="color:#ccc;font-size:12px;">${i.turn}턴 (${i.time})</span>`; if(i.budget) h += `<br><span style="font-size:10px;color:#69b;">예산: ${i.used}/${i.budget} (${Math.round((i.used||0)/i.budget*100)}%)</span>`; h += `<br><span style="font-size:11px;color:#888;">${i.count>0?i.count+'개: '+i.matched.join(', '):i.note||'매치없음'}</span>`; r.innerHTML = h; nd.appendChild(r); } });
+        makeLogBox('주입 기록', '#4a9', iLog, (clear, i, nd) => {
+          if(clear) { clearInjLog(chatKey); return; }
+          const r = document.createElement('div');
+          r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;';
+          let h = `<span style="color:#ccc;font-size:12px;">${i.turn}턴 (${i.time})</span>`;
+          if(i.totalChars && i.maxChars) {
+            const pct = Math.round(i.totalChars / i.maxChars * 100);
+            const color = pct > 80 ? '#d66' : pct > 60 ? '#da8' : '#4a9';
+            h += `<br><span style="font-size:11px;color:${color};font-weight:bold;">총 ${i.totalChars}/${i.maxChars}자 (${pct}%)</span>`;
+            h += ` <span style="font-size:10px;color:#888;">유저 ${i.userInputChars||0} + 주입 ${i.injectedChars||0}</span>`;
+          }
+          if(i.sections) {
+            const s = i.sections; const parts = [];
+            if(s.scene) parts.push(`씬 ${s.scene}`);
+            if(s.firstEnc) parts.push(`첫만남 ${s.firstEnc}`);
+            if(s.reunion) parts.push(`재회 ${s.reunion}`);
+            if(s.honor) parts.push(`호칭 ${s.honor}`);
+            if(s.lore) parts.push(`로어 ${s.lore}`);
+            if(parts.length) h += `<br><span style="font-size:10px;color:#69b;">내역: ${parts.join(' / ')}</span>`;
+          }
+          if(i.budget) h += `<br><span style="font-size:10px;color:#888;">로어예산 ${i.used||0}/${i.budget}${i.level?' ('+i.level+')':''}</span>`;
+          h += `<br><span style="font-size:11px;color:#888;">${i.count>0?i.count+'개: '+i.matched.join(', '):i.note||'매치없음'}</span>`;
+          r.innerHTML = h; nd.appendChild(r);
+        });
         makeLogBox('추출 기록', '#da8', eLog, (clear, i, nd) => { if(clear) clearExtLog(chatKey); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:${i.status==='실패'?'#d66':i.status==='성공'?'#4a9':'#ccc'}">[${i.time}] ${i.isManual?'수동':'자동'} - ${i.status} (${i.count||0}개)</span>${i.api?`<br><span style="font-size:10px;color:#69b;">API: ${i.api.status}${i.api.error?' | '+i.api.error:''}</span>`:''}`; nd.appendChild(r); } });
         makeLogBox('교정 기록', '#ea5', rLog, (clear, i, nd) => { if(clear){ settings.config.urlRefinerLogs[chatKey]=[]; settings.save(); } else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:${i.isPass?'#4a9':i.isError?'#d66':'#ea5'};">[${i.time}] ${i.isPass?'✅ 통과':i.isError?'❌ 에러':'✏️ 교정됨'}</span>${i.reason?`<br><span style="font-size:11px;color:#da7;">💡 ${i.reason}</span>`:''}`; nd.appendChild(r); } });
         makeLogBox('모순 기록', '#d96', cLog, (clear, i, nd) => { if(clear) _ls.removeItem('lore-contradictions'); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:#d96;font-weight:bold;">${i.name}</span><br><span style="color:#a55;">"${i.oldStatus}" → "${i.newStatus}"</span><br><span style="font-size:10px;color:#888;">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`; nd.appendChild(r); } });
