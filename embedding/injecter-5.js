@@ -132,7 +132,8 @@
     let _recentInj = {}; try { _recentInj = JSON.parse(_ls.getItem(_deltaKey) || '{}'); } catch(e) {}
     const _deltaTurns = config.deltaSkipTurns != null ? config.deltaSkipTurns : 3;
     let _deltaSkippedCount = 0;
-    const _filteredScored = (config.deltaSkipEnabled === false) ? scored : scored.filter(s => {
+    // Delta skip은 기본 OFF. 명시적으로 true로 켜야 동작 (재생성 시나리오와 충돌 방지)
+    const _filteredScored = (config.deltaSkipEnabled !== true) ? scored : scored.filter(s => {
       const rec = _recentInj[s.entry.id];
       if (!rec) return true;
       if (turnCounter - (rec.turn || 0) >= _deltaTurns) return true;
