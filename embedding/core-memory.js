@@ -20,8 +20,9 @@
     return hl[entryType] || hl.default || 20;
   }
 
-  function calcReinjectionScore(turnsSinceLastMention, entryType, config) {
+  function calcReinjectionScore(turnsSinceLastMention, entryType, config, entry) {
     if (turnsSinceLastMention <= 0) return 0;
+    if (entry && entry.anchor === true) return 1;
     const aiMem = config?.aiMemoryTurns || 4;
     const halfLife = getHalfLife(entryType, config);
     let needsReinjection;
@@ -263,8 +264,10 @@
     return restored;
   }
 
+  function isAnchor(entry) { return !!(entry && entry.anchor === true); }
+
   Object.assign(C, {
-    calcForgottenScore, calcReinjectionScore, getHalfLife,
+    calcForgottenScore, calcReinjectionScore, getHalfLife, isAnchor,
     detectActiveCharacters, isRelatedToActive,
     checkFirstEncounter, recordFirstEncounter, findUnmetPairs, findReunionPairs,
     getWorkingMemory, updateWorkingMemory, extractSceneKeywords, formatSceneTag,
