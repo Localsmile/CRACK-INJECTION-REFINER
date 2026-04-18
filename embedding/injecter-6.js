@@ -360,7 +360,8 @@
             const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
             const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal;
             i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
-            i.onchange = () => { settings.config[key] = parseInt(i.value) || defaultVal; settings.save(); };
+            const saveNum = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } };
+            i.oninput = saveNum; i.onchange = saveNum;
             f.appendChild(l); f.appendChild(i); return f;
           };
           row1.appendChild(makeInput('주기(턴)', 'autoExtTurns', 8)); row1.appendChild(makeInput('범위(턴)', 'autoExtScanRange', 6)); row1.appendChild(makeInput('오프셋', 'autoExtOffset', 5));
@@ -373,7 +374,8 @@
           const i3 = document.createElement('input'); i3.type = 'text';
           getAutoExtPackForUrl(C.getCurUrl()).then(name => i3.value = name);
           i3.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
-          i3.onchange = () => { const val = i3.value || '자동추출'; settings.config.autoExtPack = val; setAutoExtPackForUrl(C.getCurUrl(), val); };
+          const savePackName = () => { const val = i3.value || '자동추출'; settings.config.autoExtPack = val; setAutoExtPackForUrl(C.getCurUrl(), val); };
+          i3.oninput = savePackName; i3.onchange = savePackName;
           const s3 = document.createElement('select'); s3.style.cssText = 'width:100px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
           db.packs.toArray().then(packs => { const opt = document.createElement('option'); opt.value = ''; opt.textContent = '기존 선택'; s3.appendChild(opt); packs.forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; s3.appendChild(o); }); });
           s3.onchange = () => { if (s3.value) { i3.value = s3.value; settings.config.autoExtPack = s3.value; setAutoExtPackForUrl(C.getCurUrl(), s3.value); s3.value = ''; } };
@@ -385,6 +387,8 @@
           const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.4;'; btnStatus.textContent = '';
           btnRun.onclick = async () => {
             if (!confirm('수동 추출 시작?')) return;
+            // 현재 입력된 설정 강제 저장 (onchange 미발동 대비)
+            settings.save();
             btnRun.disabled = true;
             const origText = btnRun.textContent;
             const startMs = Date.now();
@@ -985,7 +989,12 @@
   }
 
   // 4) Fallback 기어 버튼: 배너 주입 실패/페이지 구조 변경 시에도 접근 가능
+  // 모바일(≤768px)에서는 채팅 전송 버튼과 충돌 가능 → 숨김 (🔥 배너로 대체 진입)
   function ensureGearButton() {
+    if (window.innerWidth <= 768) {
+      const ex = document.getElementById('lore-inj-gear-btn'); if (ex) ex.remove();
+      return;
+    }
     if (document.getElementById('lore-inj-gear-btn')) return;
     const btn = document.createElement('button');
     btn.id = 'lore-inj-gear-btn';
@@ -1006,6 +1015,8 @@
   ensureGearButton();
   const gearObs = new MutationObserver(() => { ensureGearButton(); });
   gearObs.observe(document.body, { childList: true });
+  // 화면 회전/리사이즈 시 모바일 여부 재평가
+  window.addEventListener('resize', () => { ensureGearButton(); });
 
   Object.assign(_w.__LoreInj, { __uiLoaded: true });
   console.log('[LoreInj:6] UI loaded (Chasm Tools banner + gear fallback attached)');
