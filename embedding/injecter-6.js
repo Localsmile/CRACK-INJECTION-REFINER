@@ -903,9 +903,110 @@
     });
   }
 
-  // [마지막에 setupUI() 호출]
   setupUI();
 
+  // === 모놀리스 원본 DOM 진입점 이식 ===
+  // 1) 좌측 설정 메뉴에 "결정화 캐즘" 링크 추가
+  function __updateModalMenu() {
+    const modal = document.getElementById('web-modal');
+    if (modal && !document.getElementById('chasm-decentral-menu')) {
+      const itemFound = modal.getElementsByTagName('a');
+      for (let item of itemFound) {
+        if (item.getAttribute('href') === '/setting') {
+          const clonedElement = item.cloneNode(true);
+          clonedElement.id = 'chasm-decentral-menu';
+          const textElement = clonedElement.getElementsByTagName('span')[0];
+          if (textElement) textElement.innerText = '결정화 캐즘';
+          clonedElement.setAttribute('href', 'javascript: void(0)');
+          clonedElement.onclick = (event) => {
+            event.preventDefault(); event.stopPropagation();
+            MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+          };
+          item.parentElement?.append(clonedElement);
+          break;
+        }
+      }
+    }
+  }
+
+  // 2) 채팅창 상단 패널에 "🔥 Chasm Tools" 버튼 삽입
+  async function injectBannerButton() {
+    const selected = document.getElementsByClassName('burner-button');
+    if (selected && selected.length > 0) return;
+    try {
+      const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+      const topPanel = document.getElementsByClassName(isStory ? 'css-1c5w7et' : 'css-l8r172');
+      if (topPanel && topPanel.length > 0) {
+        const topContainer = topPanel[0].childNodes[topPanel.length - 1]?.getElementsByTagName('div');
+        if (!topContainer || topContainer.length <= 0) return;
+        const topList = topContainer[0].children[0].children;
+        const top = topList[topList.length - 1];
+        if (!top) return;
+        const buttonCloned = document.createElement('button');
+        buttonCloned.innerHTML = '<p></p>'; buttonCloned.style.cssText = 'margin-right: 10px'; buttonCloned.className = 'burner-button';
+        const textNode = buttonCloned.getElementsByTagName('p');
+        top.insertBefore(buttonCloned, top.childNodes[0]); textNode[0].innerText = '🔥  Chasm Tools';
+        buttonCloned.removeAttribute('onClick');
+        buttonCloned.addEventListener('click', () => { MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light'); });
+      }
+    } catch(e) {}
+  }
+
+  async function doInjection() {
+    if (!/\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname) && !/\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) && !/\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname)) return;
+    await injectBannerButton();
+  }
+
+  function __doModalMenuInit() {
+    if (document.c2InjectorModalInit) return;
+    document.c2InjectorModalInit = true;
+    if (typeof GenericUtil !== 'undefined' && GenericUtil.attachObserver) {
+      GenericUtil.attachObserver(document, () => { __updateModalMenu(); });
+    } else {
+      const observer = new MutationObserver(() => { __updateModalMenu(); });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', doInjection); window.addEventListener('load', doInjection); } else { doInjection(); }
+    setInterval(doInjection, 2000);
+  }
+
+  // 3) 변경 로그 팝업 (버전 업데이트 시 1회)
+  function showChangelogIfNew() {
+    const lastVer = _ls.getItem('lore-injector-last-ver');
+    if (lastVer === VER) return;
+    const overlay = document.createElement('div'); overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999999;display:flex;justify-content:center;align-items:center;';
+    const box = document.createElement('div'); box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:12px;width:100%;max-width:400px;padding:24px;display:flex;flex-direction:column;gap:16px;color:#eee;';
+    const title = document.createElement('div'); title.textContent = '업데이트 완료! (' + VER + ')'; title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;text-align:center;';
+    const list = document.createElement('ul'); list.style.cssText = 'margin:0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;';
+    CHANGELOG.forEach(item => { const li = document.createElement('li'); li.style.fontSize = '13px'; li.style.color = '#ccc'; li.textContent = item; list.appendChild(li); });
+    const btn = document.createElement('button'); btn.textContent = '확인'; btn.style.cssText = 'padding:10px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;margin-top:8px;';
+    btn.onclick = () => { _ls.setItem('lore-injector-last-ver', VER); document.body.removeChild(overlay); };
+    box.appendChild(title); box.appendChild(list); box.appendChild(btn); overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  // 4) Fallback 기어 버튼: 배너 주입 실패/페이지 구조 변경 시에도 접근 가능
+  function ensureGearButton() {
+    if (document.getElementById('lore-inj-gear-btn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'lore-inj-gear-btn';
+    btn.title = 'Lore Injector 설정 (Fallback)';
+    btn.textContent = '⚙';
+    btn.style.cssText = 'position:fixed;right:16px;bottom:16px;width:40px;height:40px;border-radius:50%;background:#258;color:#fff;border:1px solid #1a5;font-size:20px;cursor:pointer;z-index:9998;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:0;opacity:.75;';
+    btn.onmouseenter = () => { btn.style.opacity = '1'; btn.style.background = '#369'; };
+    btn.onmouseleave = () => { btn.style.opacity = '.75'; btn.style.background = '#258'; };
+    btn.onclick = () => {
+      try { MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light'); }
+      catch(e) { console.error('[LoreInj:6] display() 실패:', e); alert('모달 열기 실패: ' + (e.message || e)); }
+    };
+    document.body.appendChild(btn);
+  }
+
+  showChangelogIfNew();
+  __doModalMenuInit();
+  ensureGearButton();
+  const gearObs = new MutationObserver(() => { ensureGearButton(); });
+  gearObs.observe(document.body, { childList: true });
+
   Object.assign(_w.__LoreInj, { __uiLoaded: true });
-  console.log('[LoreInj:6] UI loaded');
+  console.log('[LoreInj:6] UI loaded (Chasm Tools banner + gear fallback attached)');
 })();
