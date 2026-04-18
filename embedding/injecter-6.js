@@ -47,7 +47,7 @@
         const PRESETS = {
           beginner: { name: '기본 추천', desc: '임베딩 검색 + 8턴 주기 자동 추출. 일반 RP.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: false, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } },
           minimal: { name: '수동 검색', desc: '자동 추출 OFF. 수동 추출만 사용. API 호출 최소.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: false, autoEmbedOnExtract: true, scanOffset: 2, maxEntries: 3, cooldownTurns: 6, loreBudgetChars: 250, loreBudgetMax: 400, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: false, importanceGating: true, importanceThreshold: 12, rerankEnabled: false, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } },
-          advanced: { name: '정밀 (리랭커)', desc: '5턴 주기 자동 추출 + LLM 재정렬 + 로어 많이 주입. 장문 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.4, autoExtEnabled: true, autoExtTurns: 5, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 5, cooldownTurns: 8, loreBudgetChars: 400, loreBudgetMax: 700, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 10, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: true, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } }
+          advanced: { name: '정밀 (리랭커)', desc: '자동 추출 5턴 + 재정렬 + 의미 기반 교정까지. 장문 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.4, autoExtEnabled: true, autoExtTurns: 5, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 5, cooldownTurns: 8, loreBudgetChars: 400, loreBudgetMax: 700, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 10, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: true, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true, refinerEnabled: true, refinerLoreMode: 'semantic' } }
         };
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -967,12 +967,82 @@
     })
     .createSubMenu('도움말', (m) => {
       m.replaceContentPanel((panel) => {
-        const addHelp = (t, desc) => { panel.addBoxedField('','',{onInit:(nd)=>{C.setFullWidth(nd); const tt=document.createElement('div');tt.textContent=t;tt.style.cssText='font-size:13px;color:#4a9;font-weight:bold;margin-bottom:4px;';nd.appendChild(tt);desc.forEach(l=>{const dd=document.createElement('div');dd.innerHTML=l;dd.style.cssText='font-size:12px;color:#aaa;line-height:1.5;margin-bottom:2px;';nd.appendChild(dd);});}}); };
-        addHelp('로어 주입 (Lore Injection)', ['대화 중 관련 단어가 나오면 캐릭터나 세계관 설정을 AI에게 몰래 전달함.', '예: 유저가 "사과" 언급 → "Alice가 싫어하는 과일은 사과" 설정 주입.']);
-        addHelp('응답 교정 (Refiner)', ['AI가 로어 설정과 모순되는 대답을 하면 즉시 수정하거나 경고함.', '예: 죽은 캐릭터가 멀쩡히 대답하면 교정기가 개입해 잘라냄.']);
-        addHelp('대화 자동 DB화 (Auto Extract)', ['N턴마다 지난 대화를 분석해 새로운 약속이나 설정을 로어DB에 자동 저장함.', '예: 대화 중 "나이 20세"라고 정하면 알아서 추출하여 기억함.']);
-        addHelp('임베딩 기반 의미 검색', ['단어가 똑같지 않아도 뜻이 비슷하면 설정을 찾아냄. (API 필요)', '예: "강아지"라고 말해도 "개" 관련 설정을 검색해옴.']);
-        addHelp('시간 감쇠 (Decay)', ['오래된 설정을 AI가 잊을 때쯤(기본 4턴 후) 다시 주입하여 기억력을 유지함.']);
+        const addHelp = (title, sections) => {
+          panel.addBoxedField('', '', { onInit: (nd) => {
+            C.setFullWidth(nd);
+            const head = document.createElement('div');
+            head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:2px 0;';
+            const arrow = document.createElement('span'); arrow.textContent = '▶'; arrow.style.cssText = 'font-size:11px;color:#888;width:10px;';
+            const tt = document.createElement('div'); tt.textContent = title; tt.style.cssText = 'font-size:13px;color:#4a9;font-weight:bold;flex:1;';
+            head.appendChild(arrow); head.appendChild(tt);
+            const body = document.createElement('div'); body.style.cssText = 'display:none;padding:6px 0 4px 18px;border-left:1px dashed #333;margin-top:4px;';
+            sections.forEach(s => {
+              const lbl = document.createElement('div'); lbl.textContent = s.label; lbl.style.cssText = 'font-size:11px;color:#888;font-weight:bold;margin-top:6px;margin-bottom:2px;';
+              const txt = document.createElement('div'); txt.textContent = s.text; txt.style.cssText = 'font-size:12px;color:#bbb;line-height:1.6;';
+              body.appendChild(lbl); body.appendChild(txt);
+            });
+            head.onclick = () => { const open = body.style.display !== 'none'; body.style.display = open ? 'none' : 'block'; arrow.textContent = open ? '▶' : '▼'; };
+            nd.appendChild(head); nd.appendChild(body);
+          }});
+        };
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const t = document.createElement('div'); t.textContent = '빠른 시작';
+          t.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:6px;';
+          const d = document.createElement('div');
+          d.innerHTML = '1. API 설정 메뉴에서 Gemini 키 입력<br>2. 메인 설정 상단의 빠른 설정에서 프리셋 선택<br>3. 로어 관리(파일)에서 팩 가져오기 또는 대화 추출 실행<br>4. 필요 시 응답 교정 활성화';
+          d.style.cssText = 'font-size:12px;color:#bbb;line-height:1.7;';
+          nd.appendChild(t); nd.appendChild(d);
+        }});
+
+        addHelp('로어 주입', [
+          { label: '기능', text: '대화 중 관련 키워드가 감지되면 저장된 설정을 AI 컨텍스트에 자동 삽입한다.' },
+          { label: '예시', text: '"사과" 언급 시 "Alice는 사과를 싫어함" 설정이 프롬프트에 포함된다.' },
+          { label: '설정', text: '메인 설정 > 로어 인젝션 활성화. 주입 위치와 압축 모드도 같은 화면에서 조정한다.' }
+        ]);
+
+        addHelp('응답 교정 (Refiner)', [
+          { label: '기능', text: 'AI 응답이 끝나면 로어와 요약을 기준으로 모순을 점검하고 수정안을 제시한다.' },
+          { label: '예시', text: '죽은 캐릭터가 말하면 해당 문장을 감지해 대체한다.' },
+          { label: '설정', text: 'AI 응답 교정 메뉴에서 활성화. 자동 반영을 켜면 팝업 없이 즉시 적용된다.' }
+        ]);
+
+        addHelp('자동 대화 추출', [
+          { label: '기능', text: '일정 턴마다 최근 대화를 분석해 새 설정과 약속을 로어 DB에 저장한다.' },
+          { label: '예시', text: '"나이 20세" 같은 대화가 등장하면 해당 캐릭터 항목에 자동 반영된다.' },
+          { label: '설정', text: '대화 추출 및 변환 메뉴에서 주기와 범위를 조정한다. 수동 추출 버튼도 같은 화면에 있다.' }
+        ]);
+
+        addHelp('의미 검색과 재정렬', [
+          { label: '기능', text: '키워드가 정확히 일치하지 않아도 뜻이 비슷하면 로어를 찾는다. 재정렬은 최종 후보를 LLM이 맥락 순으로 다시 정렬한다.' },
+          { label: '예시', text: '"강아지" 입력으로 "개" 설정이 검색되고, 재정렬은 현재 장면에 맞는 항목을 상위로 올린다.' },
+          { label: '설정', text: '메인 설정 > 검색 & 감지에서 임베딩 검색과 LLM 재정렬을 각각 토글한다. API 키가 필요하다.' }
+        ]);
+
+        addHelp('시간 감쇠와 쿨다운', [
+          { label: '기능', text: '오래 전 주입된 로어의 재주입 우선도를 점차 올려 AI가 잊을 무렵 다시 상기시킨다. 쿨다운은 같은 항목의 과도한 반복을 막는다.' },
+          { label: '예시', text: '캐릭터 설정이 10턴 동안 등장하지 않으면 재주입 점수가 올라 다음 주입 후보가 된다.' },
+          { label: '설정', text: '메인 설정 > 검색 & 감지 > 시간 감쇠. 현재 점수는 세션 상태 관리에서 확인하고 초기화할 수 있다.' }
+        ]);
+
+        addHelp('호칭과 서사 연속성', [
+          { label: '기능', text: '캐릭터 간 호칭 변화와 첫 만남/재회 상태를 별도 관리해 AI의 일관성을 유지한다.' },
+          { label: '예시', text: '이미 만난 캐릭터가 재등장할 때 "처음 뵙겠습니다" 같은 표현을 쓰지 않도록 재회 태그를 붙인다.' },
+          { label: '설정', text: '메인 설정 > 추가 정보 주입에서 두 토글 모두 기본 켜짐 상태다.' }
+        ]);
+
+        addHelp('파일과 스냅샷', [
+          { label: '기능', text: 'JSON으로 로어 팩을 가져오거나 내보낸다. 스냅샷은 자동 백업된 시점으로 롤백할 수 있다.' },
+          { label: '예시', text: '공유받은 팩을 가져오거나, 자동 추출이 잘못 기록한 시점 이전으로 복원한다.' },
+          { label: '설정', text: '가져오기/내보내기는 로어 관리(파일) 메뉴. 복원은 로어 스냅샷 메뉴.' }
+        ]);
+
+        addHelp('빠른 설정 프리셋', [
+          { label: '기능', text: '자주 쓰는 설정 묶음을 한 번에 적용한다. 기존 설정은 기본값으로 초기화된 뒤 프리셋 값으로 덮인다.' },
+          { label: '예시', text: '정밀(리랭커)은 자동 추출, LLM 재정렬, 의미 기반 응답 교정까지 한꺼번에 켠다.' },
+          { label: '설정', text: '메인 설정 최상단의 빠른 설정 카드에서 선택. 적용 후 새로고침이 필요하다.' }
+        ]);
       }, '기능 안내');
     });
   }
