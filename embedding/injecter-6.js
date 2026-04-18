@@ -24,9 +24,23 @@
 
   const VER = _w.__LoreInj.VER;
 
+  // ModalManager 해결: userscript 스코프 → unsafeWindow → window 순으로 시도
+  const MM = (typeof ModalManager !== 'undefined') ? ModalManager
+          : (_w.ModalManager || (typeof window !== 'undefined' && window.ModalManager) || null);
+  if (!MM) {
+    console.error('[LoreInj:6] ModalManager 미로드 — decentralized-modal @require 확인 필요. _w 키:', Object.keys(_w).filter(k => /modal/i.test(k)));
+    return;
+  }
+  console.log('[LoreInj:6] ModalManager 획득. getOrCreateManager 타입:', typeof MM.getOrCreateManager);
+
   // UI 렌더링
   function setupUI() {
-    const modal = ModalManager.getOrCreateManager('c2');
+    const modal = MM.getOrCreateManager('c2');
+    console.log('[LoreInj:6] modal 인스턴스:', modal, '| createMenu 타입:', typeof modal?.createMenu);
+    if (!modal || typeof modal.createMenu !== 'function') {
+      console.error('[LoreInj:6] modal.createMenu 없음. ModalManager API가 예상과 다름. modal 객체:', modal);
+      return;
+    }
 
     modal.createMenu('로어 설정', (m) => {
       m.replaceContentPanel(async (panel) => {
