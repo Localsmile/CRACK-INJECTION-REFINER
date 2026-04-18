@@ -227,7 +227,11 @@
               const editBtn = document.createElement('button'); editBtn.textContent = '수정'; editBtn.style.cssText = B + 'color:#88c;border-color:#446;';
               const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
               const histBtn = document.createElement('button'); histBtn.textContent = '이력'; histBtn.style.cssText = B + 'color:#da8;border-color:#642;';
-              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(histBtn); right.appendChild(editBtn); right.appendChild(delBtn);
+              const anchorBtn = document.createElement('button');
+              const _renderAnchor = () => { const on = !!e.anchor; anchorBtn.textContent = on ? '⚓앵커' : '앵커'; anchorBtn.title = on ? '앵커 해제 — 자동 추출 병합 시 보호 해제됨' : '앵커 지정 — summary/state/detail/call/inject 자동 덮어쓰기 차단, 재주입 우선도 최대'; anchorBtn.style.cssText = B + (on ? 'color:#fc4;border-color:#963;background:#2a1a00;' : 'color:#777;border-color:#444;'); };
+              _renderAnchor();
+              anchorBtn.onclick = async (ev) => { ev.stopPropagation(); e.anchor = !e.anchor; try { await db.entries.put(e); _renderAnchor(); } catch(err) { alert('앵커 토글 실패: ' + err.message); e.anchor = !e.anchor; _renderAnchor(); } };
+              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(histBtn); right.appendChild(anchorBtn); right.appendChild(editBtn); right.appendChild(delBtn);
               header.appendChild(left); header.appendChild(right); row.appendChild(header);
 
               // 버전 이력 패널 (append-only 백업 조회/복원)
@@ -732,6 +736,13 @@
             if(s.honor) parts.push(`호칭 ${s.honor}`);
             if(s.lore) parts.push(`로어 ${s.lore}`);
             if(parts.length) h += `<br><span style="font-size:10px;color:#69b;">내역: ${parts.join(' / ')}</span>`;
+          }
+          // 최적화 카운터 (Stage B에서 도입된 Bundling/Delta Skip)
+          {
+            const optParts = [];
+            if(i.bundled) optParts.push(`<span style="color:#9a6;">번들 ${i.bundled}</span>`);
+            if(i.deltaSkipped) optParts.push(`<span style="color:#da8;">스킵 ${i.deltaSkipped}</span>`);
+            if(optParts.length) h += `<br><span style="font-size:10px;color:#888;">최적화: ${optParts.join(' / ')}</span>`;
           }
           if(i.budget) h += `<br><span style="font-size:10px;color:#888;">로어예산 ${i.used||0}/${i.budget}${i.level?' ('+i.level+')':''}</span>`;
           h += `<br><span style="font-size:11px;color:#888;">${i.count>0?i.count+'개: '+i.matched.join(', '):i.note||'매치없음'}</span>`;
