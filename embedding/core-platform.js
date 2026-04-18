@@ -28,16 +28,17 @@
     const headers = { 'Authorization': 'Bearer ' + token };
     const result = { goal: [], shortTerm: [], relationship: [], longTerm: [] };
     const endpoints = {
-      goal: { url: `{{https://contents-api.wrtn.ai/character-chat/v3/chats/${chatRoomId}}}/summaries?limit=10`, creds: true, hasTitle: false },
-      shortTerm: { url: `{{https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatRoomId}}}/summaries?limit=20&type=shortTerm&orderBy=newest`, hasTitle: true },
-      relationship: { url: `{{https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatRoomId}}}/summaries?limit=20&type=relationship&orderBy=newest`, hasTitle: true },
-      longTerm: { url: `{{https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatRoomId}}}/summaries?limit=20&type=longTerm&orderBy=newest&filter=all`, hasTitle: true }
+      goal: { url: `https://contents-api.wrtn.ai/character-chat/v3/chats/${chatRoomId}/summaries?limit=10`, creds: true, hasTitle: false },
+      shortTerm: { url: `https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatRoomId}/summaries?limit=20&type=shortTerm&orderBy=newest`, hasTitle: true },
+      relationship: { url: `https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatRoomId}/summaries?limit=20&type=relationship&orderBy=newest`, hasTitle: true },
+      longTerm: { url: `https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatRoomId}/summaries?limit=20&type=longTerm&orderBy=newest&filter=all`, hasTitle: true }
     };
     for (const [key, cfg] of Object.entries(endpoints)) {
       try {
         const opts = { method: 'GET', headers };
         if (cfg.creds) opts.credentials = 'include';
-        const res = await fetch(cfg.url, opts);
+        const cleanUrl = cfg.url.replace(/\{\{|\}\}/g, '');
+        const res = await fetch(cleanUrl, opts);
         const json = await res.json();
         if (json.result === 'SUCCESS' && json.data?.summaries) {
           result[key] = json.data.summaries.map(s => cfg.hasTitle ? `${s.title}: ${s.summary}` : s.summary);
