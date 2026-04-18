@@ -1,0 +1,897 @@
+// == 인젝터 모듈 6/6 — UI ==
+// setupUI + 5개 서브메뉴 (메인설정/로어관리/스냅샷/파일/대화추출)
+(async function(){
+  'use strict';
+  if(document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+  const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+
+  const deadline = Date.now() + 15000;
+  while (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
+  if (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded)) { console.error('[LoreInj:6] inject 미로드'); return; }
+  if (_w.__LoreInj.__uiLoaded) return;
+
+  const {
+    C, R, db, _ls, settings, defaultSettings, OOC_FORMATS, CHANGELOG,
+    getChatKey,
+    getAutoExtPackForUrl, setAutoExtPackForUrl,
+    getExtLog, addExtLog, clearExtLog,
+    getInjLog, addInjLog, clearInjLog,
+    isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
+    createSnapshot, restoreSnapshot,
+    runAutoExtract,
+    getTurnCounter, getCooldownMap // 누락된 유틸리티 함수 추가
+  } = _w.__LoreInj;
+
+  const VER = _w.__LoreInj.VER;
+
+  // UI 렌더링
+  function setupUI() {
+    const modal = ModalManager.getOrCreateManager('c2');
+
+    modal.createMenu('로어 설정', (m) => {
+      m.replaceContentPanel(async (panel) => {
+        const PRESETS = {
+          beginner: { name: '기본 추천', desc: '임베딩 검색 + 8턴 주기 자동 추출. 일반 RP.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: false, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } },
+          minimal: { name: '수동 검색', desc: '자동 추출 OFF. 수동 추출만 사용. API 호출 최소.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: false, autoEmbedOnExtract: true, scanOffset: 2, maxEntries: 3, cooldownTurns: 6, loreBudgetChars: 250, loreBudgetMax: 400, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: false, importanceGating: true, importanceThreshold: 12, rerankEnabled: false, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } },
+          advanced: { name: '정밀 (리랭커)', desc: '5턴 주기 자동 추출 + LLM 재정렬 + 로어 많이 주입. 장문 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.4, autoExtEnabled: true, autoExtTurns: 5, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 5, cooldownTurns: 8, loreBudgetChars: 400, loreBudgetMax: 700, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 10, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: true, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } }
+        };
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const t = document.createElement('div'); t.textContent = '빠른 설정'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
+          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+          for (const [key, preset] of Object.entries(PRESETS)) {
+            const btn = document.createElement('button'); btn.style.cssText = 'padding:10px 14px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid #333;background:#1a1a1a;color:#ccc;display:flex;flex-direction:column;gap:4px;text-align:left;flex:1;min-width:110px;';
+            const nm = document.createElement('div'); nm.textContent = preset.name; nm.style.cssText = 'font-weight:bold;color:#4a9;font-size:13px;';
+            const ds = document.createElement('div'); ds.textContent = preset.desc; ds.style.cssText = 'font-size:10px;color:#888;';
+            btn.appendChild(nm); btn.appendChild(ds);
+            btn.onclick = () => {
+              if (!confirm('[' + preset.name + '] 프리셋 적용?')) return;
+              settings.config = JSON.parse(JSON.stringify(defaultSettings)); Object.assign(settings.config, preset.config); settings.save();
+              m.replaceContentPanel((p) => p.addText('새로고침 필요함.'), '설정 갱신 필요');
+            };
+            row.appendChild(btn);
+          }
+          nd.appendChild(row);
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          nd.appendChild(C.createToggleRow('로어 인젝션 활성화', '대화에 설정 정보를 자동 삽입함.', settings.config.enabled, (v) => { settings.config.enabled = v; settings.save(); }));
+
+          nd.appendChild(C.createToggleRow('적응형 로어 압축', '주입 공간 부족 시 텍스트를 자동으로 짧게 줄임.', settings.config.useCompressedFormat !== false, (v) => { settings.config.useCompressedFormat = v; settings.save(); }));
+          const cmpWrap = document.createElement('div'); cmpWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-left:10px;';
+          const cmpLbl = document.createElement('div'); cmpLbl.textContent = '압축 모드'; cmpLbl.style.cssText = 'font-size:12px;color:#aaa;';
+          const cmpSel = document.createElement('select'); cmpSel.style.cssText = 'width:120px;padding:4px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;';
+          [{v:'auto', l:'자동 (예산 맞춤)'}, {v:'full', l:'전체 표시 (Full)'}, {v:'compact', l:'요약 (Compact)'}, {v:'micro', l:'최소 (Micro)'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; cmpSel.appendChild(opt); });
+          cmpSel.value = settings.config.compressionMode || 'auto';
+          cmpSel.onchange = () => { settings.config.compressionMode = cmpSel.value; settings.save(); };
+          cmpWrap.appendChild(cmpLbl); cmpWrap.appendChild(cmpSel); nd.appendChild(cmpWrap);
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const t = document.createElement('div'); t.textContent = '검색 & 감지'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(t);
+          nd.appendChild(C.createToggleRow('임베딩 검색', '의미 기반 검색. API 필요.', settings.config.embeddingEnabled, (v) => { settings.config.embeddingEnabled = v; settings.save(); }));
+          const emRow = document.createElement('div'); emRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
+          const emL = document.createElement('div'); emL.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+          const eml1 = document.createElement('div'); eml1.textContent = '임베딩 모델'; eml1.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
+          emL.appendChild(eml1);
+          const emSel = document.createElement('select'); emSel.style.cssText = 'width:200px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+          [{v:'gemini-embedding-001',l:'gemini-embedding-001'},{v:'gemini-embedding-2-preview',l:'gemini-embedding-2-preview'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; emSel.appendChild(opt); });
+          emSel.value = settings.config.embeddingModel || 'gemini-embedding-001';
+          emSel.onchange = () => { settings.config.embeddingModel = emSel.value; settings.save(); alert('모델 변경됨. 기존 임베딩 재생성 필요.'); };
+          emRow.appendChild(emL); emRow.appendChild(emSel); nd.appendChild(emRow);
+
+          nd.appendChild(C.createToggleRow('자동 임베딩 생성', '대화 추출 후 임베딩 갱신.', settings.config.autoEmbedOnExtract !== false, (v) => { settings.config.autoEmbedOnExtract = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('시간 감쇠', '오래된 로어 재주입. 쿨다운 무시.', settings.config.decayEnabled, (v) => { settings.config.decayEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('LLM 재정렬 (Reranker)', 'Gemini로 검색 결과 재정렬.', settings.config.rerankEnabled || false, (v) => { settings.config.rerankEnabled = v; settings.save(); }));
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;';
+          const left = document.createElement('div'); left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+          const t = document.createElement('div'); t.textContent = '주입 위치'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
+          const d = document.createElement('div'); d.textContent = '메시지 기준 로어 삽입 위치.'; d.style.cssText = 'font-size:11px;color:#888;';
+          left.appendChild(t); left.appendChild(d);
+          const right = document.createElement('div'); right.style.cssText = 'display:flex;gap:6px;';
+          const b1 = document.createElement('button'), b2 = document.createElement('button');
+          const updateBtns = () => { const isB = settings.config.position === 'before'; b1.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${isB ? '#285' : '#444'};background:${isB ? '#285' : 'transparent'};color:${isB ? '#fff' : '#ccc'};`; b2.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${!isB ? '#285' : '#444'};background:${!isB ? '#285' : 'transparent'};color:${!isB ? '#fff' : '#ccc'};`; };
+          b1.textContent = '메시지 앞'; b1.onclick = () => { settings.config.position = 'before'; settings.save(); updateBtns(); };
+          b2.textContent = '메시지 뒤'; b2.onclick = () => { settings.config.position = 'after'; settings.save(); updateBtns(); };
+          updateBtns(); right.appendChild(b1); right.appendChild(b2); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const tr = document.createElement('div'); tr.textContent = '추가 정보 주입'; tr.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(tr);
+          nd.appendChild(C.createToggleRow('호칭 매트릭스', '캐릭터 간 호칭 정보를 압축하여 전달.', settings.config.honorificMatrixEnabled !== false, (v) => { settings.config.honorificMatrixEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('서사 연속성 기능', '첫 만남 블록/재회 태그/호칭 변화 힌트/lastSeen 갱신 등을 일괄 관리.', settings.config.firstEncounterWarning !== false, (v) => { settings.config.firstEncounterWarning = v; settings.save(); }));
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const t1 = document.createElement('div'); t1.textContent = '출력 포맷'; t1.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(t1);
+          const oocSel = document.createElement('select'); oocSel.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
+          for (const [k, v] of Object.entries(OOC_FORMATS)) { const opt = document.createElement('option'); opt.value = k; opt.textContent = v.name + ' — ' + v.desc; oocSel.appendChild(opt); }
+          oocSel.value = settings.config.oocFormat || 'custom';
+          const pInp = document.createElement('input'); pInp.value = settings.config.prefix || ''; pInp.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
+          pInp.onchange = () => { settings.config.prefix = pInp.value; settings.save(); };
+          const sInp = document.createElement('input'); sInp.value = settings.config.suffix || ''; sInp.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:20px;';
+          sInp.onchange = () => { settings.config.suffix = sInp.value; settings.save(); };
+          oocSel.onchange = () => {
+            const fmt = OOC_FORMATS[oocSel.value];
+            if (fmt && oocSel.value !== 'custom') { pInp.value = fmt.prefix; sInp.value = fmt.suffix; settings.config.prefix = fmt.prefix; settings.config.suffix = fmt.suffix; }
+            settings.config.oocFormat = oocSel.value; settings.save();
+            pInp.disabled = oocSel.value !== 'custom'; sInp.disabled = oocSel.value !== 'custom';
+            pInp.style.opacity = oocSel.value !== 'custom' ? '0.6' : '1'; sInp.style.opacity = oocSel.value !== 'custom' ? '0.6' : '1';
+          };
+          nd.appendChild(oocSel); nd.appendChild(pInp); nd.appendChild(sInp);
+          const isCustom = (settings.config.oocFormat || 'custom') === 'custom';
+          pInp.disabled = !isCustom; sInp.disabled = !isCustom; pInp.style.opacity = isCustom ? '1' : '0.6'; sInp.style.opacity = isCustom ? '1' : '0.6';
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const resetBtn = document.createElement('button'); resetBtn.textContent = '모든 설정 초기화 (DB 유지)'; resetBtn.style.cssText = 'width:100%;padding:10px;margin-top:20px;background:#833;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;';
+          resetBtn.onclick = () => { if (confirm('설정 초기화?')) { _ls.removeItem('lore-injector-v5'); location.reload(); } }; nd.appendChild(resetBtn);
+        }});
+      }, '메인 설정');
+    })
+    .createSubMenu('로어 관리 (목록)', (m) => {
+      const renderPanel = async (panel) => {
+        const _url = C.getCurUrl(); const activePacks = settings.config.urlPacks?.[_url] || [];
+        if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 파일 탭에서 활성화하세요.'); return; }
+        const entries = await db.entries.toArray();
+        const filtered = entries.filter(e => activePacks.includes(e.packName));
+        if (!filtered.length) { panel.addText('활성 항목 없음.'); return; }
+        const byPack = {}; filtered.forEach(e => { (byPack[e.packName] = byPack[e.packName] || []).push(e); });
+
+        for (const [pk, items] of Object.entries(byPack)) {
+          panel.addBoxedField('', '', { onInit: (nd) => {
+            C.setFullWidth(nd); nd.style.cssText += 'background:#1a1a1a;border:1px solid #333;border-radius:4px;margin-bottom:12px;';
+            const headerRow = document.createElement('div'); headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #333;padding-bottom:6px;cursor:pointer;';
+
+            const curUrl = C.getCurUrl();
+            const disabledEntries = settings.config.urlDisabledEntries?.[curUrl] || [];
+            const allItemsEnabled = items.every(e => !disabledEntries.includes(e.id));
+
+            const pkSw = document.createElement('div'); pkSw.style.cssText = 'width:28px;height:14px;border-radius:7px;background:' + (allItemsEnabled ? '#285' : '#444') + ';position:relative;cursor:pointer;flex-shrink:0;margin-right:8px;';
+            const pkDot = document.createElement('div'); pkDot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#fff;position:absolute;top:2px;left:' + (allItemsEnabled ? '16px' : '2px') + ';transition:left .2s;';
+            pkSw.appendChild(pkDot);
+
+            pkSw.onclick = async (ev) => {
+                ev.stopPropagation();
+                const newState = !allItemsEnabled;
+                const ud = JSON.parse(JSON.stringify(settings.config.urlDisabledEntries || {}));
+                ud[curUrl] = ud[curUrl] || [];
+                const itemIds = items.map(e => e.id);
+                if (newState) {
+                    ud[curUrl] = ud[curUrl].filter(id => !itemIds.includes(id));
+                } else {
+                    for (const id of itemIds) {
+                        if (!ud[curUrl].includes(id)) ud[curUrl].push(id);
+                    }
+                }
+                settings.config.urlDisabledEntries = ud;
+                settings.save();
+                m.replaceContentPanel(renderPanel, '로어 관리');
+            };
+
+            const title = document.createElement('div'); title.style.cssText = 'font-size:14px;font-weight:bold;color:#ccc;flex:1;'; title.textContent = pk + ' (' + items.length + '개)';
+            const arrow = document.createElement('span'); arrow.textContent = '▼'; arrow.style.cssText = 'font-size:12px;color:#888;';
+            headerRow.appendChild(pkSw); headerRow.appendChild(title); headerRow.appendChild(arrow); nd.appendChild(headerRow);
+
+            items.sort((a,b) => (a.type||'').localeCompare(b.type||''));
+            const listContainer = document.createElement('div'); listContainer.style.cssText = 'display:none;flex-direction:column;gap:0;';
+            let isExpanded = false;
+            headerRow.onclick = () => { isExpanded = !isExpanded; listContainer.style.display = isExpanded ? 'flex' : 'none'; arrow.textContent = isExpanded ? '▲' : '▼'; };
+
+            for (const e of items) {
+              const row = document.createElement('div'); row.style.cssText = 'padding:8px 0;border-bottom:1px solid #222;display:flex;flex-direction:column;';
+              const header = document.createElement('div'); header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+              const left = document.createElement('div'); left.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+              const isEnabled = isEntryEnabledForUrl(e);
+              const swWrap = document.createElement('div'); swWrap.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;background:#111;padding:2px 8px;border-radius:12px;border:1px solid #333;flex-shrink:0;';
+              const swLabel = document.createElement('span'); swLabel.textContent = isEnabled ? 'ON' : 'OFF'; swLabel.style.cssText = 'font-size:10px;font-weight:bold;width:20px;text-align:center;color:' + (isEnabled ? '#4a7' : '#777') + ';';
+              const sw = document.createElement('div'); sw.style.cssText = 'width:24px;height:12px;border-radius:6px;background:' + (isEnabled ? '#285' : '#444') + ';position:relative;';
+              const dot = document.createElement('div'); dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#fff;position:absolute;top:2px;left:' + (isEnabled ? '14px' : '2px') + ';transition:left .2s;';
+              sw.appendChild(dot); swWrap.appendChild(swLabel); swWrap.appendChild(sw);
+              swWrap.onclick = (ev) => { ev.stopPropagation(); const ns = !isEntryEnabledForUrl(e); setEntryEnabled(e, ns); swLabel.textContent = ns ? 'ON' : 'OFF'; swLabel.style.color = ns ? '#4a7' : '#777'; sw.style.background = ns ? '#285' : '#444'; dot.style.left = ns ? '14px' : '2px'; };
+              const nameSpan = document.createElement('span'); nameSpan.textContent = '[' + e.type + '] ' + e.name; nameSpan.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;cursor:pointer;flex:1;';
+
+              const embStatusSpan = document.createElement('span'); embStatusSpan.style.cssText = 'margin-left:6px;font-size:10px;padding:1px 4px;border-radius:3px;';
+              const updateEmbStatus = async () => { try { const emb = await db.embeddings.where({entryId: e.id, field: 'summary'}).first() || await db.embeddings.where('entryId').equals(e.id).first(); if (emb) { let h=0; const s = e.embed_text ? (e.name+' '+e.embed_text) : (e.name+': '+(e.summary||'')); for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0; const ch=h.toString(36); const targetModel = settings.config.embeddingModel || 'gemini-embedding-001'; if(emb.hash===ch){ const needsRegen=(emb.model && emb.model !== targetModel) || (emb.taskType!=='RETRIEVAL_DOCUMENT'&&targetModel.includes('embedding-001')); if(needsRegen){embStatusSpan.textContent='⚠️재생성';embStatusSpan.style.background='#3a3a1a';embStatusSpan.style.color='#d96';}else{embStatusSpan.textContent='⚡임베딩';embStatusSpan.style.background='#1a3a2a';embStatusSpan.style.color='#4a9';} }else{embStatusSpan.textContent='⚠️변경됨';embStatusSpan.style.background='#3a3a1a';embStatusSpan.style.color='#d96';} }else{embStatusSpan.textContent='⭕미임베딩';embStatusSpan.style.background='#2a2a2a';embStatusSpan.style.color='#888';} }catch(ex){} };
+              updateEmbStatus();
+              nameSpan.appendChild(embStatusSpan); left.appendChild(swWrap); left.appendChild(nameSpan);
+
+              const right = document.createElement('div'); right.style.cssText = 'display:flex;gap:6px;';
+              const B = 'font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
+              const embGenBtn = document.createElement('button'); embGenBtn.textContent = '임베딩'; embGenBtn.style.cssText = B + 'color:#4a9;border-color:#264;';
+              embGenBtn.onclick = async (ev) => { ev.stopPropagation(); embGenBtn.disabled = true; embGenBtn.textContent = '...'; try { await C.ensureEmbedding(e, { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.embeddingModel || 'gemini-embedding-001' }); embGenBtn.textContent = '✅'; updateEmbStatus(); } catch (err) { embGenBtn.textContent = '❌'; alert('실패:' + err.message); } setTimeout(() => { embGenBtn.textContent = '임베딩'; embGenBtn.disabled = false; }, 1500); };
+              const copyBtn = document.createElement('button'); copyBtn.textContent = '복사'; copyBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; copyBtn.onclick = (ev) => { ev.stopPropagation(); const clean = {...e}; delete clean.id; delete clean.packName; delete clean.project; delete clean.enabled; navigator.clipboard.writeText(JSON.stringify(clean, null, 2)).then(() => alert('복사됨.')).catch(() => alert('실패')); };
+              const editBtn = document.createElement('button'); editBtn.textContent = '수정'; editBtn.style.cssText = B + 'color:#88c;border-color:#446;';
+              const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
+              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(editBtn); right.appendChild(delBtn);
+              header.appendChild(left); header.appendChild(right); row.appendChild(header);
+
+              const editContainer = document.createElement('div'); editContainer.style.cssText = 'display:none;margin-top:8px;flex-direction:column;gap:8px;';
+              const ta = document.createElement('textarea'); ta.style.cssText = 'width:100%;height:200px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;';
+              const editableObj = {...e}; delete editableObj.id; delete editableObj.packName; delete editableObj.project; delete editableObj.enabled; ta.value = JSON.stringify(editableObj, null, 2);
+              const btnRow = document.createElement('div'); btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;';
+              const saveBtn = document.createElement('button'); saveBtn.textContent = '저장'; saveBtn.style.cssText = B + 'background:#285;border-color:#285;color:#fff;';
+              const cancelBtn = document.createElement('button'); cancelBtn.textContent = '닫기'; cancelBtn.style.cssText = B;
+              btnRow.appendChild(cancelBtn); btnRow.appendChild(saveBtn); editContainer.appendChild(ta); editContainer.appendChild(btnRow); row.appendChild(editContainer);
+
+              const toggleEdit = () => { editContainer.style.display = editContainer.style.display === 'none' ? 'flex' : 'none'; };
+              nameSpan.onclick = toggleEdit; editBtn.onclick = toggleEdit; cancelBtn.onclick = toggleEdit;
+              saveBtn.onclick = async () => { try { const parsed = JSON.parse(ta.value); const updated = {...e, ...parsed}; await db.entries.put(updated); alert('수정됨.'); Object.assign(e, updated); nameSpan.textContent = '[' + updated.type + '] ' + updated.name; nameSpan.appendChild(embStatusSpan); updateEmbStatus(); toggleEdit(); } catch (err) { alert('JSON 오류: ' + err.message); } };
+              delBtn.onclick = async () => { if (confirm('[' + e.name + '] 삭제?')) { await db.entries.delete(e.id); try { await db.embeddings.where('entryId').equals(e.id).delete(); } catch(ex){} const count = await db.entries.where('packName').equals(e.packName).count(); await db.packs.update(e.packName, { entryCount: count }); row.remove(); title.textContent = pk + ' (' + count + '개)'; } };
+              listContainer.appendChild(row);
+            }
+            nd.appendChild(listContainer);
+          }});
+        }
+      };
+      m.replaceContentPanel(renderPanel, '로어 목록 관리');
+    })
+    .createSubMenu('로어 스냅샷 (백업)', (m) => {
+      const renderSnapshotUI = async (panel) => {
+        panel.addBoxedField('', '', { onInit: async (nd) => {
+          C.setFullWidth(nd);
+          const t = document.createElement('div'); t.textContent = '스냅샷 복원'; t.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
+          const snaps = await db.snapshots.orderBy('timestamp').reverse().toArray();
+          if (!snaps.length) { nd.appendChild(Object.assign(document.createElement('div'), { textContent: '저장된 스냅샷이 없습니다.', style: 'color:#888;font-size:12px;' })); return; }
+          const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;';
+          for (const s of snaps) {
+            const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;';
+            const info = document.createElement('div'); info.style.cssText = 'display:flex;flex-direction:column;';
+            const sTitle = document.createElement('span'); sTitle.textContent = `[${s.packName}] ${s.label} (${s.data.length}개)`; sTitle.style.cssText = 'font-size:12px;color:#4a9;font-weight:bold;';
+            const sTime = document.createElement('span'); sTime.textContent = new Date(s.timestamp).toLocaleString(); sTime.style.cssText = 'font-size:10px;color:#888;';
+            info.appendChild(sTitle); info.appendChild(sTime);
+            const btnWrap = document.createElement('div'); btnWrap.style.cssText = 'display:flex;gap:4px;';
+            const rBtn = document.createElement('button'); rBtn.textContent = '복원'; rBtn.style.cssText = 'padding:4px 8px;font-size:11px;border-radius:3px;background:#258;color:#fff;border:none;cursor:pointer;';
+            rBtn.onclick = async () => { if (confirm(`[${s.packName}] 팩을 이 시점으로 복원할 것?\\n기존 데이터는 덮어씌워집니다.`)) { await restoreSnapshot(s.id); alert('복원 완료.'); m.replaceContentPanel(renderSnapshotUI, '스냅샷 관리'); } };
+            const dBtn = document.createElement('button'); dBtn.textContent = '삭제'; dBtn.style.cssText = 'padding:4px 8px;font-size:11px;border-radius:3px;background:transparent;color:#d66;border:1px solid #d66;cursor:pointer;';
+            dBtn.onclick = async () => { if (confirm('삭제?')) { await db.snapshots.delete(s.id); m.replaceContentPanel(renderSnapshotUI, '스냅샷 관리'); } };
+            btnWrap.appendChild(rBtn); btnWrap.appendChild(dBtn);
+            row.appendChild(info); row.appendChild(btnWrap); list.appendChild(row);
+          }
+          nd.appendChild(list);
+        }});
+      };
+      m.replaceContentPanel(renderSnapshotUI, '스냅샷 관리');
+    })
+    .createSubMenu('로어 관리 (파일)', (m) => {
+      const renderPackUI = async (panel) => {
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const title = document.createElement('div'); title.textContent = '로어 가져오기'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
+          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
+          const nameInput = document.createElement('input'); nameInput.placeholder = '로어 이름'; nameInput.style.cssText = 'flex:1;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;'; row.appendChild(nameInput);
+          const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
+          const importBtn = document.createElement('button'); importBtn.textContent = '📥 JSON 파일 가져오기'; importBtn.style.cssText = 'padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;white-space:nowrap;'; importBtn.onclick = () => fileInput.click();
+          fileInput.onchange = async (ev) => {
+            const file = ev.target.files[0]; if (!file) return;
+            const packName = nameInput.value.trim() || file.name.replace('.json', '');
+            try {
+              const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : [data]; let count = 0;
+              for (const e of arr) { if (!e.name) continue; if (!e.triggers) e.triggers = [e.name]; e.packName = packName; e.project = settings.config.activeProject || ''; const existing = await db.entries.where('name').equals(e.name).first(); if (existing) { await db.entries.update(existing.id, e); } else { await db.entries.add(e); count++; } }
+              const totalCount = await db.entries.where('packName').equals(packName).count(); let pack = await db.packs.get(packName); if (pack) await db.packs.update(packName, { entryCount: totalCount }); else await db.packs.put({ name: packName, entryCount: totalCount, project: settings.config.activeProject || '' });
+              await setPackEnabled(packName, true); alert(arr.length + '개 항목 처리 완료 (신규 ' + count + '개)'); m.replaceContentPanel(renderPackUI, '파일 관리');
+            } catch (err) { alert('가져오기 실패: ' + err.message); } fileInput.value = '';
+          };
+          row.appendChild(fileInput); row.appendChild(importBtn); nd.appendChild(row);
+
+          const manualLbl = document.createElement('div'); manualLbl.textContent = '또는 직접 JSON 입력'; manualLbl.style.cssText = 'font-size:12px;color:#888;margin:12px 0 4px;'; nd.appendChild(manualLbl);
+          const manualTa = document.createElement('textarea'); manualTa.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":"설명","detail":{}}]'; manualTa.style.cssText = 'width:100%;height:100px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;'; nd.appendChild(manualTa);
+          const manualBtnRow = document.createElement('div'); manualBtnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+          const manualBtn = document.createElement('button'); manualBtn.textContent = '📋 수동 추가'; manualBtn.style.cssText = 'padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:1px solid #285;font-weight:bold;';
+          manualBtn.onclick = async () => {
+            const pn = nameInput.value.trim() || '수동추가';
+            try {
+              const txt = manualTa.value.trim(); if (!txt) { alert('JSON을 입력할 것.'); return; }
+              const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : [data]; let cnt = 0;
+              for (const e of arr) { if (!e.name) continue; if (!e.triggers) e.triggers = [e.name]; e.packName = pn; e.project = settings.config.activeProject || ''; const ex = await db.entries.where('name').equals(e.name).first(); if (ex) { await db.entries.update(ex.id, e); } else { await db.entries.add(e); cnt++; } }
+              const tc = await db.entries.where('packName').equals(pn).count(); let pk = await db.packs.get(pn); if (pk) await db.packs.update(pn, { entryCount: tc }); else await db.packs.put({ name: pn, entryCount: tc, project: settings.config.activeProject || '' });
+              await setPackEnabled(pn, true); alert(arr.length + '개 처리 (신규 ' + cnt + '개)'); manualTa.value = ''; m.replaceContentPanel(renderPackUI, '파일 관리');
+            } catch (err) { alert('JSON 파싱 실패: ' + err.message); }
+          };
+          manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
+        }});
+
+        panel.addBoxedField('', '', { onInit: async (nd) => {
+          C.setFullWidth(nd);
+          const packs = await db.packs.toArray();
+          if (!packs.length) { const empty = document.createElement('div'); empty.textContent = '등록된 팩이 없습니다.'; empty.style.cssText = 'color:#666;text-align:center;padding:20px;font-size:12px;'; nd.appendChild(empty); return; }
+          const curUrl = C.getCurUrl(); const enabledPacks = settings.config.urlPacks?.[curUrl] || [];
+          for (const pack of packs) {
+            const packDiv = document.createElement('div'); packDiv.style.cssText = 'margin-bottom:8px;border:1px solid #333;border-radius:4px;overflow:hidden;';
+            const header = document.createElement('div'); header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#111;';
+            const leftSide = document.createElement('div'); leftSide.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+            const isEnabled = enabledPacks.includes(pack.name);
+            const swWrap = document.createElement('div'); swWrap.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+            const swLabel = document.createElement('span'); swLabel.textContent = isEnabled ? 'ON' : 'OFF'; swLabel.style.cssText = 'font-size:10px;font-weight:bold;width:20px;text-align:center;color:' + (isEnabled ? '#4a7' : '#777') + ';';
+            const sw = document.createElement('div'); sw.style.cssText = 'width:24px;height:12px;border-radius:6px;background:' + (isEnabled ? '#285' : '#444') + ';position:relative;';
+            const dot = document.createElement('div'); dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#fff;position:absolute;top:2px;left:' + (isEnabled ? '14px' : '2px') + ';transition:left .2s;';
+            sw.appendChild(dot); swWrap.appendChild(swLabel); swWrap.appendChild(sw);
+            swWrap.onclick = async () => { const curEnabled = (settings.config.urlPacks?.[C.getCurUrl()] || []).includes(pack.name); await setPackEnabled(pack.name, !curEnabled); const nowEnabled = (settings.config.urlPacks?.[C.getCurUrl()] || []).includes(pack.name); swLabel.textContent = nowEnabled ? 'ON' : 'OFF'; swLabel.style.color = nowEnabled ? '#4a7' : '#777'; sw.style.background = nowEnabled ? '#285' : '#444'; dot.style.left = nowEnabled ? '14px' : '2px'; };
+            leftSide.appendChild(swWrap);
+            const nameEl = document.createElement('span'); nameEl.textContent = pack.name + ' (' + (pack.entryCount || 0) + '개)'; nameEl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;'; leftSide.appendChild(nameEl);
+            header.appendChild(leftSide);
+            const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;';
+            const B = 'font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
+            const exportBtn = document.createElement('button'); exportBtn.textContent = '내보내기'; exportBtn.style.cssText = B;
+            exportBtn.onclick = async () => { const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert('항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
+            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; embBtn.onclick = async () => { const apiType = settings.config.autoExtApiType || 'key'; if (apiType === 'vertex' ? !settings.config.autoExtVertexJson : !settings.config.autoExtKey) { alert('API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const cnt = await C.embedPack(pack.name, { apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.embeddingModel || 'gemini-embedding-001' }, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = '✅' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = '❌'; embBtn.disabled = false; alert('실패:' + e.message); } };
+            const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
+            delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
+            actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
+          }
+        }});
+      };
+      m.replaceContentPanel(renderPackUI, '파일 관리');
+    })
+    .createSubMenu('대화 추출 및 변환', (m) => {
+      const renderAutoUI = (panel) => {
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          nd.appendChild(C.createToggleRow('자동 대화 추출', '대화를 주기적으로 DB에 추가.', settings.config.autoExtEnabled, (v) => { settings.config.autoExtEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('기존 로어 전송', '전체 JSON 데이터를 함께 보내 중복 방지.', settings.config.autoExtIncludeDb, (v) => { settings.config.autoExtIncludeDb = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('페르소나 정보 전송', '추출 시 페르소나 이름을 같이 보내 정확도 올림.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
+
+          const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
+          const makeInput = (label, key, defaultVal) => {
+            const f = document.createElement('div'); f.style.flex = '1';
+            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+            const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal;
+            i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+            i.onchange = () => { settings.config[key] = parseInt(i.value) || defaultVal; settings.save(); };
+            f.appendChild(l); f.appendChild(i); return f;
+          };
+          row1.appendChild(makeInput('주기(턴)', 'autoExtTurns', 8)); row1.appendChild(makeInput('범위(턴)', 'autoExtScanRange', 6)); row1.appendChild(makeInput('오프셋', 'autoExtOffset', 5));
+          nd.appendChild(row1);
+
+          const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
+          const f3 = document.createElement('div'); f3.style.flex = '1';
+          const l3 = document.createElement('div'); l3.textContent = '저장될 로어명'; l3.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+          const inputWrap = document.createElement('div'); inputWrap.style.cssText = 'display:flex;gap:6px;';
+          const i3 = document.createElement('input'); i3.type = 'text';
+          getAutoExtPackForUrl(C.getCurUrl()).then(name => i3.value = name);
+          i3.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+          i3.onchange = () => { const val = i3.value || '자동추출'; settings.config.autoExtPack = val; setAutoExtPackForUrl(C.getCurUrl(), val); };
+          const s3 = document.createElement('select'); s3.style.cssText = 'width:100px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+          db.packs.toArray().then(packs => { const opt = document.createElement('option'); opt.value = ''; opt.textContent = '기존 선택'; s3.appendChild(opt); packs.forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; s3.appendChild(o); }); });
+          s3.onchange = () => { if (s3.value) { i3.value = s3.value; settings.config.autoExtPack = s3.value; setAutoExtPackForUrl(C.getCurUrl(), s3.value); s3.value = ''; } };
+          inputWrap.appendChild(i3); inputWrap.appendChild(s3); f3.appendChild(l3); f3.appendChild(inputWrap);
+          row2.appendChild(f3); nd.appendChild(row2);
+
+          const btnRun = document.createElement('button'); btnRun.textContent = '수동 추출 실행';
+          btnRun.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;width:100%;margin-top:10px;';
+          const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.4;'; btnStatus.textContent = '';
+          btnRun.onclick = async () => {
+            if (!confirm('수동 추출 시작?')) return;
+            btnRun.disabled = true;
+            const origText = btnRun.textContent;
+            const startMs = Date.now();
+            btnRun.textContent = '에리가 추출 중...';
+            btnStatus.textContent = '에리가 대화 분석 중';
+            btnStatus.style.color = '#4a9';
+            const tick = setInterval(() => {
+              const sec = Math.floor((Date.now() - startMs) / 1000);
+              btnStatus.textContent = `에리가 대화 분석 중 (${sec}초)`;
+            }, 1000);
+            try {
+              await runAutoExtract(true);
+              clearInterval(tick);
+              const sec = Math.floor((Date.now() - startMs) / 1000);
+              btnStatus.textContent = `에리: 완료 (${sec}초)`;
+              btnStatus.style.color = '#4a9';
+              setTimeout(() => { btnStatus.textContent = ''; }, 4000);
+            } catch(e) {
+              clearInterval(tick);
+              btnStatus.textContent = '에리: 실패 — ' + (e.message || e).slice(0, 50);
+              btnStatus.style.color = '#d66';
+            } finally {
+              btnRun.textContent = origText;
+              btnRun.disabled = false;
+            }
+          };
+          nd.appendChild(btnRun);
+          nd.appendChild(btnStatus);
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const tplHeader = document.createElement('div'); tplHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+          const tplTitle = document.createElement('div'); tplTitle.textContent = '프롬프트 템플릿 관리'; tplTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;';
+          const newTplBtn = document.createElement('button'); newTplBtn.textContent = '+ 새 템플릿'; newTplBtn.style.cssText = 'font-size:11px;padding:3px 8px;border-radius:3px;background:#258;border:none;color:#fff;cursor:pointer;';
+          tplHeader.appendChild(tplTitle); tplHeader.appendChild(newTplBtn); nd.appendChild(tplHeader);
+
+          const tplSelectWrap = document.createElement('div'); tplSelectWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;align-items:center;';
+          const tplSelect = document.createElement('select'); tplSelect.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+          const tplRenameBtn = document.createElement('button'); tplRenameBtn.textContent = '이름 변경'; tplRenameBtn.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
+          const tplDelBtn = document.createElement('button'); tplDelBtn.textContent = '삭제'; tplDelBtn.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #d66;color:#d66;cursor:pointer;';
+          const tplResetBtn = document.createElement('button'); tplResetBtn.textContent = '초기화'; tplResetBtn.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #285;color:#4a9;cursor:pointer;margin-left:auto;';
+
+          const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;font-family:monospace;resize:vertical;';
+          const lblSchema = document.createElement('div'); lblSchema.textContent = '스키마 (JSON)'; lblSchema.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;'; nd.appendChild(lblSchema);
+          const taSchema = document.createElement('textarea'); taSchema.style.cssText = S + 'height:150px;'; nd.appendChild(taSchema);
+          const lbl1 = document.createElement('div'); lbl1.textContent = '프롬프트 (DB 미포함)'; lbl1.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;'; nd.appendChild(lbl1);
+          const ta1 = document.createElement('textarea'); ta1.style.cssText = S + 'height:150px;'; nd.appendChild(ta1);
+          const lbl2 = document.createElement('div'); lbl2.textContent = '프롬프트 (DB 포함)'; lbl2.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;'; nd.appendChild(lbl2);
+          const ta2 = document.createElement('textarea'); ta2.style.cssText = S + 'height:150px;'; nd.appendChild(ta2);
+
+          const renderTplOptions = () => {
+            tplSelect.innerHTML = '';
+            (settings.config.templates || []).forEach(t => { const opt = document.createElement('option'); opt.value = t.id; opt.textContent = t.name + (t.isDefault ? ' (기본)' : ''); tplSelect.appendChild(opt); });
+            tplSelect.value = settings.config.activeTemplateId || 'default';
+            const activeTpl = settings.getActiveTemplate();
+            tplRenameBtn.style.display = activeTpl.isDefault ? 'none' : 'block'; tplDelBtn.style.display = activeTpl.isDefault ? 'none' : 'block';
+            taSchema.value = activeTpl.schema; taSchema.disabled = activeTpl.isDefault;
+            ta1.value = activeTpl.promptWithoutDb; ta1.disabled = activeTpl.isDefault;
+            ta2.value = activeTpl.promptWithDb; ta2.disabled = activeTpl.isDefault;
+          };
+          tplSelectWrap.appendChild(tplSelect); tplSelectWrap.appendChild(tplRenameBtn); tplSelectWrap.appendChild(tplDelBtn); tplSelectWrap.appendChild(tplResetBtn); nd.insertBefore(tplSelectWrap, lblSchema);
+
+          newTplBtn.onclick = () => { const name = prompt('새 템플릿 이름:'); if (!name) return; const newId = 'tpl_' + Date.now(); const active = settings.getActiveTemplate(); settings.config.templates.push({ id: newId, name, isDefault: false, schema: active.schema, promptWithoutDb: active.promptWithoutDb, promptWithDb: active.promptWithDb }); settings.config.activeTemplateId = newId; settings.save(); renderTplOptions(); };
+          tplResetBtn.onclick = () => {
+            const activeTpl = settings.getActiveTemplate();
+            if (activeTpl.isDefault) { alert('기본 템플릿은 수정 불가 — 초기화 불필요.'); return; }
+            if (confirm(`[${activeTpl.name}] 템플릿을 기본 템플릿의 내용으로 덮어씌워 초기화할 것?`)) {
+              const defaultTpl = (settings.config.templates || []).find(t => t.isDefault);
+              if (defaultTpl) {
+                const idx = settings.config.templates.findIndex(t => t.id === activeTpl.id);
+                if (idx !== -1) {
+                  settings.config.templates[idx].schema = defaultTpl.schema;
+                  settings.config.templates[idx].promptWithoutDb = defaultTpl.promptWithoutDb;
+                  settings.config.templates[idx].promptWithDb = defaultTpl.promptWithDb;
+                  settings.save();
+                  renderTplOptions();
+                  alert('초기화 완료.');
+                }
+              }
+            }
+          };
+          tplSelect.onchange = () => { settings.config.activeTemplateId = tplSelect.value; settings.save(); renderTplOptions(); };
+          tplRenameBtn.onclick = () => { const activeTpl = settings.getActiveTemplate(); if (activeTpl.isDefault) return; const newName = prompt('템플릿 이름:', activeTpl.name); if (newName) { const idx = settings.config.templates.findIndex(t => t.id === activeTpl.id); if (idx !== -1) { settings.config.templates[idx].name = newName.trim(); settings.save(); renderTplOptions(); } } };
+          tplDelBtn.onclick = () => { const activeId = settings.config.activeTemplateId; const activeTpl = settings.getActiveTemplate(); if (activeTpl.isDefault) return; if (confirm('[' + activeTpl.name + '] 템플릿 삭제?')) { settings.config.templates = settings.config.templates.filter(t => t.id !== activeId); settings.config.activeTemplateId = 'default'; settings.save(); renderTplOptions(); } };
+
+          const saveTpl = (key, val) => { const id = settings.config.activeTemplateId; const idx = (settings.config.templates || []).findIndex(t => t.id === id); if (idx !== -1 && !settings.config.templates[idx].isDefault) { settings.config.templates[idx][key] = val; settings.save(); } };
+          taSchema.onchange = () => saveTpl('schema', taSchema.value); ta1.onchange = () => saveTpl('promptWithoutDb', ta1.value); ta2.onchange = () => saveTpl('promptWithDb', ta2.value);
+          renderTplOptions();
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:8px;';
+          nd.innerHTML = '<div style="font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;">지식 변환 (URL/텍스트 → 로어)</div>';
+          const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S; nd.appendChild(urlInp);
+          const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S; nd.appendChild(nameInp);
+          const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
+          const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
+          urlBtn.onclick = async () => { if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; } urlBtn.disabled = true; urlBtn.textContent = '변환중...'; try { const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel }); rDiv.textContent = '✅ ' + cnt + '개 생성'; await setPackEnabled(nameInp.value.trim(), true); } catch (e) { rDiv.textContent = '❌ ' + e.message; } urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false; };
+          nd.appendChild(urlBtn); nd.appendChild(rDiv);
+          const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:#ccc;font-weight:bold;margin-top:16px;margin-bottom:8px;">텍스트 → 로어 팩</div>'; nd.appendChild(t2);
+          const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + 'height:100px;resize:vertical;'; nd.appendChild(ta);
+          const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S; nd.appendChild(nameInp2);
+          const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
+          const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
+          tBtn.onclick = async () => { if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; } tBtn.disabled = true; tBtn.textContent = '변환중...'; try { const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel }); rDiv2.textContent = '✅ ' + cnt + '개 생성'; await setPackEnabled(nameInp2.value.trim(), true); } catch (e) { rDiv2.textContent = '❌ ' + e.message; } tBtn.textContent = '텍스트 변환'; tBtn.disabled = false; };
+          nd.appendChild(tBtn); nd.appendChild(rDiv2);
+        }});
+      };
+      m.replaceContentPanel(renderAutoUI, '추출/변환 설정');
+    })
+    .createSubMenu('AI 응답 교정 (Refiner)', (m) => {
+      m.replaceContentPanel(async (panel) => {
+        if (!R) { panel.addText('Refiner 라이브러리 없음.'); return; }
+        // 수동 검수 버튼: 마지막 AI 응답 즉시 재검수 (fingerprint/refinerEnabled 무시)
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const t = document.createElement('div'); t.textContent = '수동 검수'; t.style.cssText = 'font-size:13px;color:#4a9;font-weight:bold;margin-bottom:4px;'; nd.appendChild(t);
+          const d = document.createElement('div'); d.textContent = '마지막 AI 응답을 지금 즉시 재검수. 이미 처리된 응답도 다시 돌릴 수 있음.'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;'; nd.appendChild(d);
+          // 동적 폄태 표시 법 (퍼스 + 단계 텍스트)
+          const btnBox = document.createElement('div'); btnBox.style.cssText = 'position:relative;';
+          const btn = document.createElement('button'); btn.textContent = '최근 AI 응답 재검수'; btn.style.cssText = 'width:100%;padding:10px;background:#258;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;';
+          const statusLine = document.createElement('div'); statusLine.style.cssText = 'font-size:11px;margin-top:6px;text-align:center;line-height:1.4;min-height:16px;display:flex;align-items:center;justify-content:center;gap:6px;color:#888;';
+          btnBox.appendChild(btn); btnBox.appendChild(statusLine); nd.appendChild(btnBox);
+          // 퍼스 주입 (행정 전용)
+          if (!_w.__loreRefinerPulseCss) {
+            _w.__loreRefinerPulseCss = true;
+            const st = document.createElement('style');
+            st.textContent = '@keyframes lore-refiner-pulse{0%,100%{opacity:1}50%{opacity:.3}}';
+            document.head.appendChild(st);
+          }
+          const makeDot = () => { const d = document.createElement('span'); d.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-refiner-pulse 1s infinite;'; return d; };
+          btn.onclick = async () => {
+            if (!R.manualRefine) { alert('Refiner 버전 낮음. Tampermonkey에서 스크립트 수동 업데이트 필요.'); return; }
+            const cid = C.getCurrentChatId();
+            if (!cid) { alert('채팅방 감지 실패.'); return; }
+            btn.disabled = true;
+            const orig = btn.textContent;
+            btn.textContent = '검수 실행 중';
+            statusLine.innerHTML = '';
+            statusLine.appendChild(makeDot());
+            const txt = document.createElement('span'); txt.textContent = '대상 탐색'; statusLine.appendChild(txt);
+            statusLine.style.color = '#4a9';
+            const start = Date.now();
+            const phases = ['대상 탐색', '로어 수집', '메모리 수집', 'AI 호출 중', '반영 중'];
+            let phaseIdx = 0;
+            const tick = setInterval(() => {
+              if (phaseIdx < phases.length - 1) phaseIdx++;
+              const sec = Math.floor((Date.now() - start) / 1000);
+              txt.textContent = `${phases[phaseIdx]} (${sec}초)`;
+            }, 1500);
+            try {
+              const lastBot = await CrackUtil.chatRoom().findLastBotMessage(cid);
+              if (!lastBot || lastBot instanceof Error || !lastBot.content) throw new Error('마지막 AI 응답 없음');
+              await R.manualRefine(lastBot.content, lastBot.id);
+              clearInterval(tick);
+              const sec = Math.floor((Date.now() - start) / 1000);
+              statusLine.innerHTML = ''; statusLine.textContent = `완료 (${sec}초)`; statusLine.style.color = '#4a9';
+              setTimeout(() => { statusLine.textContent = ''; statusLine.style.color = '#888'; }, 3000);
+            } catch(e) {
+              clearInterval(tick);
+              statusLine.innerHTML = ''; statusLine.textContent = '실패: ' + String(e.message || e).slice(0, 50);
+              statusLine.style.color = '#d66';
+            } finally {
+              btn.textContent = orig;
+              btn.disabled = false;
+            }
+          };
+        }});
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          nd.appendChild(C.createToggleRow('응답 교정 켜기', 'AI 응답 시 로어 기반 자동 검수.', settings.config.refinerEnabled, (v) => { settings.config.refinerEnabled = v; settings.save(); if(v && R.setNeedsWarmup) R.setNeedsWarmup(); }));
+          nd.appendChild(C.createToggleRow('자동 반영 (팝업 없음)', '검수 결과를 팝업 없이 즉시 적용.', settings.config.refinerAutoMode, (v) => { settings.config.refinerAutoMode = v; settings.save(); }));
+
+          const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:8px;';
+
+          const modeWrap = document.createElement('div'); modeWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+          const modeLbl = document.createElement('div'); modeLbl.textContent = '로어 검색 모드'; modeLbl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
+          const modeSel = document.createElement('select'); modeSel.style.cssText = 'width:160px;padding:4px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+          [{v:'matchedOnly', l:'키워드 매칭만'}, {v:'semantic', l:'임베딩 (의미 검색)'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; modeSel.appendChild(opt); });
+          modeSel.value = settings.config.refinerLoreMode || 'matchedOnly';
+          modeSel.onchange = () => { settings.config.refinerLoreMode = modeSel.value; settings.save(); };
+          modeWrap.appendChild(modeLbl); modeWrap.appendChild(modeSel); nd.appendChild(modeWrap);
+
+          const tplWrap = document.createElement('div'); tplWrap.style.cssText = 'margin-bottom:8px;padding-top:8px;border-top:1px dashed #333;';
+          const tplLbl = document.createElement('div'); tplLbl.textContent = '검수 템플릿 선택'; tplLbl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:4px;';
+          const tplSel = document.createElement('select'); tplSel.style.cssText = S;
+          const tplDesc = document.createElement('div'); tplDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
+
+          const customOpt = document.createElement('option'); customOpt.value = 'custom'; customOpt.textContent = '직접 입력 (커스텀)'; tplSel.appendChild(customOpt);
+          if (R.TEMPLATES) {
+            Object.entries(R.TEMPLATES).forEach(([k, t]) => { const opt = document.createElement('option'); opt.value = k; opt.textContent = t.name; tplSel.appendChild(opt); });
+          }
+          tplWrap.appendChild(tplLbl); tplWrap.appendChild(tplSel); tplWrap.appendChild(tplDesc); nd.appendChild(tplWrap);
+
+          const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:12px;';
+          const left = document.createElement('div'); left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+          const t = document.createElement('div'); t.textContent = '참조 대화 턴 수'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;'; left.appendChild(t);
+          const right = document.createElement('div');
+          const inp = document.createElement('input'); inp.type = 'number'; inp.value = settings.config.refinerContextTurns !== undefined ? settings.config.refinerContextTurns : 1; inp.min = 0; inp.max = 20;
+          inp.style.cssText = 'width:60px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;text-align:center;';
+          inp.onchange = () => { settings.config.refinerContextTurns = parseInt(inp.value) || 0; settings.save(); };
+          right.appendChild(inp); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
+
+          const tLbl2 = document.createElement('div'); tLbl2.textContent = '프롬프트 ({lore}, {memory}, {context}, {message}, {passWord})'; tLbl2.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; nd.appendChild(tLbl2);
+          const ta = document.createElement('textarea'); ta.value = settings.config.refinerCustomPrompt; ta.style.cssText = S + 'height:200px;font-family:monospace;resize:vertical;';
+          ta.onchange = () => { settings.config.refinerCustomPrompt = ta.value; settings.save(); tplSel.value = 'custom'; tplDesc.textContent = ''; }; nd.appendChild(ta);
+
+          if (R.TEMPLATES) {
+            tplSel.onchange = () => {
+              const val = tplSel.value;
+              if (val !== 'custom' && R.TEMPLATES[val]) {
+                const tpl = R.TEMPLATES[val];
+                ta.value = tpl.prompt; settings.config.refinerCustomPrompt = tpl.prompt;
+                inp.value = tpl.turnHint; settings.config.refinerContextTurns = tpl.turnHint;
+                tplDesc.textContent = tpl.desc;
+                settings.save();
+              } else {
+                tplDesc.textContent = '직접 작성한 프롬프트를 사용합니다.';
+              }
+            };
+            const normalize = (s) => (s||'').trim().replace(/\s+/g, ' ');
+            let matched = 'custom';
+            const curNorm = normalize(settings.config.refinerCustomPrompt);
+            Object.entries(R.TEMPLATES).forEach(([k, t]) => { if (normalize(t.prompt) === curNorm) matched = k; });
+
+            if (matched === 'custom' && !settings.config.refinerCustomPrompt) {
+              matched = 'full';
+              settings.config.refinerCustomPrompt = R.TEMPLATES.full.prompt;
+              settings.config.refinerContextTurns = R.TEMPLATES.full.turnHint;
+              ta.value = R.TEMPLATES.full.prompt;
+              inp.value = R.TEMPLATES.full.turnHint;
+              settings.save();
+            }
+
+            tplSel.value = matched;
+            if (matched !== 'custom') tplDesc.textContent = R.TEMPLATES[matched].desc;
+            else tplDesc.textContent = '직접 작성한 프롬프트를 사용합니다.';
+          }
+
+          const clearFpBtn = document.createElement('button'); clearFpBtn.textContent = '처리 기록 큐 초기화'; clearFpBtn.style.cssText = 'width:100%;padding:8px;margin-top:12px;background:#654;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;';
+          clearFpBtn.onclick = () => { R.clearProcessed(); alert('기록 삭제됨'); }; nd.appendChild(clearFpBtn);
+        }});
+      }, '응답 교정 설정');
+    })
+    .createSubMenu('실행 로그', (m) => {
+      const renderLogs = (panel) => {
+        const chatKey = getChatKey();
+        const iLog = getInjLog(chatKey); const eLog = getExtLog(chatKey); const cLog = JSON.parse(_ls.getItem('lore-contradictions') || '[]'); const rLog = settings.config.urlRefinerLogs?.[chatKey] || [];
+
+        const makeLogBox = (title, color, items, renderer) => {
+          panel.addBoxedField('', '', { onInit: (nd) => {
+            C.setFullWidth(nd);
+            const hRow = document.createElement('div'); hRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid #333;margin-bottom:8px;cursor:pointer;';
+            const leftWrap = document.createElement('div'); leftWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+            const arrow = document.createElement('span'); arrow.textContent = '▶'; arrow.style.cssText = 'font-size:11px;color:#888;transition:transform .15s;';
+            const t = document.createElement('div'); t.textContent = `${title} (${items.length})`; t.style.cssText = `font-size:14px;color:${color};font-weight:bold;`;
+            leftWrap.appendChild(arrow); leftWrap.appendChild(t);
+            hRow.appendChild(leftWrap);
+            if (items.length > 0) {
+              const btn = document.createElement('button');
+              btn.textContent = '초기화';
+              btn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:transparent;color:#d66;border:1px solid #d66;';
+              btn.onclick = (ev) => {
+                ev.stopPropagation();
+                if(confirm('삭제?')) { renderer(true); m.replaceContentPanel(renderLogs, '로그'); }
+              };
+              hRow.appendChild(btn);
+            }
+            nd.appendChild(hRow);
+            const listCon = document.createElement('div');
+            // 기본 접힌 상태: 모든 카테고리 동시 노출 시 스왔 발생 방지
+            listCon.style.display = 'none';
+            if (!items.length) {
+              listCon.appendChild(Object.assign(document.createElement('div'), { textContent: '기록 없음.', style: 'font-size:12px;color:#888;' }));
+            } else {
+              items.slice(0, 20).forEach(i => renderer(false, i, listCon));
+            }
+            nd.appendChild(listCon);
+            hRow.onclick = () => {
+              const isOpen = listCon.style.display !== 'none';
+              listCon.style.display = isOpen ? 'none' : 'block';
+              arrow.textContent = isOpen ? '▶' : '▼';
+            };
+          }});
+        };
+
+        makeLogBox('주입 기록', '#4a9', iLog, (clear, i, nd) => { if(clear) clearInjLog(chatKey); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;'; let h = `<span style="color:#ccc;font-size:12px;">${i.turn}턴 (${i.time})</span>`; if(i.budget) h += `<br><span style="font-size:10px;color:#69b;">예산: ${i.used}/${i.budget} (${Math.round((i.used||0)/i.budget*100)}%)</span>`; h += `<br><span style="font-size:11px;color:#888;">${i.count>0?i.count+'개: '+i.matched.join(', '):i.note||'매치없음'}</span>`; r.innerHTML = h; nd.appendChild(r); } });
+        makeLogBox('추출 기록', '#da8', eLog, (clear, i, nd) => { if(clear) clearExtLog(chatKey); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:${i.status==='실패'?'#d66':i.status==='성공'?'#4a9':'#ccc'}">[${i.time}] ${i.isManual?'수동':'자동'} - ${i.status} (${i.count||0}개)</span>${i.api?`<br><span style="font-size:10px;color:#69b;">API: ${i.api.status}${i.api.error?' | '+i.api.error:''}</span>`:''}`; nd.appendChild(r); } });
+        makeLogBox('교정 기록', '#ea5', rLog, (clear, i, nd) => { if(clear){ settings.config.urlRefinerLogs[chatKey]=[]; settings.save(); } else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:${i.isPass?'#4a9':i.isError?'#d66':'#ea5'};">[${i.time}] ${i.isPass?'✅ 통과':i.isError?'❌ 에러':'✏️ 교정됨'}</span>${i.reason?`<br><span style="font-size:11px;color:#da7;">💡 ${i.reason}</span>`:''}`; nd.appendChild(r); } });
+        makeLogBox('모순 기록', '#d96', cLog, (clear, i, nd) => { if(clear) _ls.removeItem('lore-contradictions'); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:#d96;font-weight:bold;">${i.name}</span><br><span style="color:#a55;">"${i.oldStatus}" → "${i.newStatus}"</span><br><span style="font-size:10px;color:#888;">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`; nd.appendChild(r); } });
+      };
+      m.replaceContentPanel(renderLogs, '로그 조회');
+    })
+    .createSubMenu('세션 상태 관리', (m) => {
+      const renderSessionStatus = async (panel) => {
+        const chatKey = getChatKey();
+        const turnCounter = getTurnCounter(chatKey);
+        const cMap = getCooldownMap(chatKey);
+        const urlPacks = settings.config.urlPacks?.[C.getCurUrl()] || [];
+
+        let allEntries = [];
+        if (urlPacks.length > 0) {
+          const all = await db.entries.toArray();
+          allEntries = all.filter(e => urlPacks.includes(e.packName) && isEntryEnabledForUrl(e));
+        }
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+
+          const headerRow = document.createElement('div');
+          headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:8px;';
+          const title = document.createElement('div');
+          title.textContent = `현재 세션 상태 (턴: ${turnCounter})`;
+          title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;';
+
+          const clearAllBtn = document.createElement('button');
+          clearAllBtn.textContent = '세션 전체 초기화';
+          clearAllBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;cursor:pointer;background:#833;color:#fff;border:none;font-weight:bold;';
+          clearAllBtn.onclick = () => {
+            if(confirm('이 채팅방의 모든 쿨다운, 시간감쇠(망각) 점수 및 턴 수를 초기화할 것?')) {
+              if(settings.config.urlCooldownMaps) delete settings.config.urlCooldownMaps[chatKey];
+              const lastMentionStr = _ls.getItem('lore-last-mention');
+              if (lastMentionStr) {
+                const lastMention = JSON.parse(lastMentionStr);
+                if(lastMention[chatKey]) delete lastMention[chatKey];
+                _ls.setItem('lore-last-mention', JSON.stringify(lastMention));
+              }
+              const turnCountersStr = _ls.getItem('lore-turn-counters');
+              if (turnCountersStr) {
+                const turnCounters = JSON.parse(turnCountersStr);
+                if(turnCounters[chatKey]) delete turnCounters[chatKey];
+                _ls.setItem('lore-turn-counters', JSON.stringify(turnCounters));
+              }
+              settings.save();
+              m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+            }
+          };
+          headerRow.appendChild(title);
+          headerRow.appendChild(clearAllBtn);
+          nd.appendChild(headerRow);
+
+          if (!allEntries.length) {
+            const empty = document.createElement('div');
+            empty.textContent = '현재 활성화된 로어가 없습니다.';
+            empty.style.cssText = 'color:#888;font-size:12px;text-align:center;padding:10px;';
+            nd.appendChild(empty);
+            return;
+          }
+
+          const lastMentionMap = JSON.parse(_ls.getItem('lore-last-mention') || '{}')[chatKey] || {};
+          const statusList = [];
+
+          for (const e of allEntries) {
+            let cooldownRem = 0;
+            const lastInj = cMap[e.id];
+            if (lastInj !== undefined) {
+              const elap = turnCounter - lastInj;
+              cooldownRem = Math.max(0, settings.config.cooldownTurns - elap);
+            }
+
+            const lastMent = lastMentionMap[e.id] || 0;
+            const turnsSince = turnCounter - lastMent;
+            let reinjScore = 0;
+            if (settings.config.decayEnabled) {
+               reinjScore = C.calcReinjectionScore(turnsSince, e.type, settings.config);
+            }
+
+            if (cooldownRem > 0 || reinjScore > 0.1 || turnsSince > 0) {
+              statusList.push({
+                id: e.id, name: e.name, type: e.type, pack: e.packName,
+                cooldownRem, turnsSince, reinjScore
+              });
+            }
+          }
+
+          statusList.sort((a,b) => b.reinjScore - a.reinjScore);
+
+          if (statusList.length === 0) {
+            const empty2 = document.createElement('div');
+            empty2.textContent = '표시할 상태(쿨다운/점수)가 없습니다.';
+            empty2.style.cssText = 'color:#888;font-size:12px;text-align:center;padding:10px;';
+            nd.appendChild(empty2);
+            return;
+          }
+
+          const listContainer = document.createElement('div');
+          listContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;';
+
+          for (const st of statusList) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:8px 12px;';
+
+            const info = document.createElement('div');
+            info.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+            const nameEl = document.createElement('div');
+            nameEl.textContent = `[${st.type}] ${st.name}`;
+            nameEl.style.cssText = 'font-size:13px;font-weight:bold;color:#ccc;';
+
+            const statText = document.createElement('div');
+            statText.style.cssText = 'font-size:11px;color:#888;display:flex;gap:12px;';
+
+            let cdStr = st.cooldownRem > 0 ? `<span style="color:#d66;">⏳ 쿨다운 ${st.cooldownRem}턴 남음</span>` : `<span style="color:#4a9;">✅ 쿨다운 완료</span>`;
+            let decayStr = '';
+            if (settings.config.decayEnabled) {
+              const p = Math.round(st.reinjScore * 100);
+              const pColor = p > 70 ? '#d66' : (p > 40 ? '#da8' : '#888');
+              decayStr = `<span>망각: ${st.turnsSince}턴 경과 (재주입 점수: <span style="color:${pColor}">${p}%</span>)</span>`;
+            }
+            statText.innerHTML = cdStr + decayStr;
+
+            info.appendChild(nameEl);
+            info.appendChild(statText);
+
+            const resetBtn = document.createElement('button');
+            resetBtn.textContent = '리셋';
+            resetBtn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:transparent;border:1px solid #555;color:#ccc;';
+            resetBtn.onclick = () => {
+              if (settings.config.urlCooldownMaps?.[chatKey]) {
+                delete settings.config.urlCooldownMaps[chatKey][st.id];
+              }
+              const allMentions = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
+              if (allMentions[chatKey] && allMentions[chatKey][st.id]) {
+                delete allMentions[chatKey][st.id];
+                _ls.setItem('lore-last-mention', JSON.stringify(allMentions));
+              }
+              settings.save();
+              m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+            };
+
+            row.appendChild(info);
+            row.appendChild(resetBtn);
+            listContainer.appendChild(row);
+          }
+          nd.appendChild(listContainer);
+        }});
+      };
+      m.replaceContentPanel(renderSessionStatus, '세션 상태 조회');
+    })
+    .createSubMenu('API 설정', (m) => {
+      m.replaceContentPanel((panel) => {
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const t = document.createElement('div'); t.textContent = 'Gemini / Vertex AI API'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
+          C.createApiInput(settings.config, 'autoExt', nd, () => settings.save());
+
+          // Test Button
+          const testRow = document.createElement('div'); testRow.style.cssText = 'margin:12px 0 16px;display:flex;gap:8px;align-items:center;';
+          const testBtn = document.createElement('button'); testBtn.textContent = 'API 키 테스트';
+          testBtn.style.cssText = 'padding:6px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;';
+          const testResult = document.createElement('span'); testResult.style.cssText = 'font-size:12px;color:#888;word-break:break-all;';
+          testBtn.onclick = async () => {
+            const isVertex = (settings.config.autoExtApiType || 'key') === 'vertex';
+            if (isVertex ? !settings.config.autoExtVertexJson : !settings.config.autoExtKey) { alert('API 키/JSON 필요.'); return; }
+            testBtn.disabled = true; testResult.textContent = '테스트 중...';
+            try {
+              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel, maxRetries: 0 });
+              testResult.textContent = r.text ? '✅ 성공: ' + r.text.trim().slice(0, 50) : '❌ 실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
+            } catch(e) { testResult.textContent = '❌ 오류: ' + e.message; testResult.style.color = '#d66'; }
+            testBtn.disabled = false;
+          };
+          testRow.appendChild(testBtn); testRow.appendChild(testResult); nd.appendChild(testRow);
+
+          const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+
+          const ml = document.createElement('div'); ml.textContent = '기본 LLM 모델'; ml.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(ml);
+          const ms = document.createElement('select'); ms.style.cssText = S;
+          [['Gemini 3.x', [['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]], ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]].forEach(([g, opts]) => { const og = document.createElement('optgroup'); og.label = g; opts.forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; og.appendChild(o); }); ms.appendChild(og); });
+          ms.value = settings.config.autoExtModel || 'gemini-3-flash-preview';
+          const ci = document.createElement('input'); ci.value = settings.config.autoExtCustomModel || ''; ci.style.cssText = S + 'margin-top:6px;' + (ms.value === '_custom' ? '' : 'display:none;');
+          ci.onchange = () => { settings.config.autoExtCustomModel = ci.value; settings.save(); };
+          ms.onchange = () => { settings.config.autoExtModel = ms.value; settings.save(); ci.style.display = ms.value === '_custom' ? '' : 'none'; };
+          nd.appendChild(ms); nd.appendChild(ci);
+
+          // Reranker Model
+          const rml = document.createElement('div'); rml.textContent = '재정렬(Reranker) 모델'; rml.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(rml);
+          const rms = document.createElement('select'); rms.style.cssText = S;
+          [['Gemini', [['3.1 Flash Lite (추천)', 'gemini-3.1-flash-lite-preview'], ['3.0 Flash', 'gemini-3-flash-preview'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite']]]].forEach(([g, opts]) => { const og = document.createElement('optgroup'); og.label = g; opts.forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; og.appendChild(o); }); rms.appendChild(og); });
+          rms.value = settings.config.rerankModel || 'gemini-3-flash-preview';
+          rms.onchange = () => { settings.config.rerankModel = rms.value; settings.save(); };
+          nd.appendChild(rms);
+
+          // Rerank Prompt
+          const rplWrap = document.createElement('div'); rplWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px;';
+          const rpl = document.createElement('div'); rpl.textContent = '재정렬(Reranker) 프롬프트'; rpl.style.cssText = 'font-size:11px;color:#999;';
+          const rplBtn = document.createElement('button'); rplBtn.textContent = '기본값 복구'; rplBtn.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:3px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
+          rplWrap.appendChild(rpl); rplWrap.appendChild(rplBtn); nd.appendChild(rplWrap);
+
+          const rpta = document.createElement('textarea'); rpta.value = settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt; rpta.style.cssText = S + 'height:100px;font-family:monospace;resize:vertical;';
+          rpta.onchange = () => { settings.config.rerankPrompt = rpta.value; settings.save(); }; nd.appendChild(rpta);
+          rplBtn.onclick = () => { if(confirm('Reranker 프롬프트를 기본값으로 되돌리시겠습니까?')) { settings.config.rerankPrompt = C.DEFAULTS.rerankPrompt; settings.save(); rpta.value = C.DEFAULTS.rerankPrompt; } };
+
+          // Thinking Settings
+          const rl = document.createElement('div'); rl.textContent = '추론(Reasoning) 레벨'; rl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(rl);
+          const rs = document.createElement('select'); rs.style.cssText = S;
+          [['Off', 'off'], ['Minimal (256)', 'minimal'], ['Low (1024)', 'low'], ['Medium (2048)', 'medium'], ['High (4096)', 'high'], ['Budget (사용자 지정)', 'budget']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; rs.appendChild(o); });
+          rs.value = settings.config.autoExtReasoning || 'medium'; nd.appendChild(rs);
+          const bl = document.createElement('div'); bl.textContent = '추론 예산 설정'; bl.style.cssText = 'font-size:11px;color:#666;margin-bottom:4px;margin-top:8px;' + (rs.value === 'budget' ? '' : 'display:none;');
+          const bi = document.createElement('input'); bi.type = 'number'; bi.value = settings.config.autoExtBudget || 2048; bi.style.cssText = S + (rs.value === 'budget' ? '' : 'display:none;');
+          bi.onchange = () => { settings.config.autoExtBudget = parseInt(bi.value) || 2048; settings.save(); };
+          rs.onchange = () => { settings.config.autoExtReasoning = rs.value; settings.save(); const isB = rs.value === 'budget'; bl.style.display = isB ? '' : 'none'; bi.style.display = isB ? '' : 'none'; };
+          nd.appendChild(bl); nd.appendChild(bi);
+        }});
+      }, 'API 설정');
+    })
+    .createSubMenu('도움말', (m) => {
+      m.replaceContentPanel((panel) => {
+        const addHelp = (t, desc) => { panel.addBoxedField('','',{onInit:(nd)=>{C.setFullWidth(nd); const tt=document.createElement('div');tt.textContent=t;tt.style.cssText='font-size:13px;color:#4a9;font-weight:bold;margin-bottom:4px;';nd.appendChild(tt);desc.forEach(l=>{const dd=document.createElement('div');dd.innerHTML=l;dd.style.cssText='font-size:12px;color:#aaa;line-height:1.5;margin-bottom:2px;';nd.appendChild(dd);});}}); };
+        addHelp('로어 주입 (Lore Injection)', ['대화 중 관련 단어가 나오면 캐릭터나 세계관 설정을 AI에게 몰래 전달함.', '예: 유저가 "사과" 언급 → "Alice가 싫어하는 과일은 사과" 설정 주입.']);
+        addHelp('응답 교정 (Refiner)', ['AI가 로어 설정과 모순되는 대답을 하면 즉시 수정하거나 경고함.', '예: 죽은 캐릭터가 멀쩡히 대답하면 교정기가 개입해 잘라냄.']);
+        addHelp('대화 자동 DB화 (Auto Extract)', ['N턴마다 지난 대화를 분석해 새로운 약속이나 설정을 로어DB에 자동 저장함.', '예: 대화 중 "나이 20세"라고 정하면 알아서 추출하여 기억함.']);
+        addHelp('임베딩 기반 의미 검색', ['단어가 똑같지 않아도 뜻이 비슷하면 설정을 찾아냄. (API 필요)', '예: "강아지"라고 말해도 "개" 관련 설정을 검색해옴.']);
+        addHelp('시간 감쇠 (Decay)', ['오래된 설정을 AI가 잊을 때쯤(기본 4턴 후) 다시 주입하여 기억력을 유지함.']);
+      }, '기능 안내');
+    });
+  }
+
+  // [마지막에 setupUI() 호출]
+  setupUI();
+
+  Object.assign(_w.__LoreInj, { __uiLoaded: true });
+  console.log('[LoreInj:6] UI loaded');
+})();
