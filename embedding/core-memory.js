@@ -219,12 +219,57 @@
     return out;
   }
 
+  // Append-only 엔트리 버전 백업 (서사 무결성)
+  // 기존 entry가 덮어써지기 직전 스냅샷을 entryVersions 테이블에 저장.
+  // 엔트리당 최대 20개 유지.
+  async function saveEntryVersion(entry, reason) {
+    if (!entry || !entry.id) return;
+    try {
+      const db = getDB();
+      if (!db.entryVersions) return; // v7 미만 fallback
+      const snap = JSON.parse(JSON.stringify(entry));
+      delete snap.id;
+      await db.entryVersions.put({
+        entryId: entry.id,
+        ts: Date.now(),
+        turn: 0,
+        reason: reason || 'auto',
+        snapshot: snap
+      });
+      const all = await db.entryVersions.where('entryId').equals(entry.id).sortBy('ts');
+      if (all.length > 20) {
+        const delIds = all.slice(0, all.length - 20).map(v => v.id);
+        await db.entryVersions.bulkDelete(delIds);
+      }
+    } catch(e) { console.warn('[LoreCore:memory] saveEntryVersion 실패:', e.message); }
+  }
+
+  async function getEntryVersions(entryId) {
+    try {
+      const db = getDB();
+      if (!db.entryVersions) return [];
+      return await db.entryVersions.where('entryId').equals(entryId).reverse().sortBy('ts');
+    } catch(e) { return []; }
+  }
+
+  async function restoreEntryVersion(versionId) {
+    const db = getDB();
+    const v = await db.entryVersions.get(versionId);
+    if (!v || !v.snapshot) throw new Error('버전 없음');
+    const cur = await db.entries.get(v.entryId);
+    if (cur) await saveEntryVersion(cur, 'pre_restore');
+    const restored = { ...v.snapshot, id: v.entryId };
+    await db.entries.put(restored);
+    return restored;
+  }
+
   Object.assign(C, {
     calcForgottenScore, calcReinjectionScore, getHalfLife,
     detectActiveCharacters, isRelatedToActive,
     checkFirstEncounter, recordFirstEncounter, findUnmetPairs, findReunionPairs,
     getWorkingMemory, updateWorkingMemory, extractSceneKeywords, formatSceneTag,
     buildHonorificMatrix, formatHonorificMatrix,
+    saveEntryVersion, getEntryVersions, restoreEntryVersion,
     __memoryLoaded: true
   });
   console.log('[LoreCore:memory] loaded');
