@@ -115,8 +115,9 @@
           vertexProjectId: config.autoExtVertexProjectId,
           model: config.rerankModel || config.autoExtModel || 'gemini-3-flash-preview'
         });
-        C.hideStatusBadge();
-      } catch(e) { C.hideStatusBadge(); }
+      } catch(e) {}
+      // 리랭크 직후 hide 대신 "응답 기다리는 중"으로 전환 — Refiner가 실제 응답 감지 시 다음 상태로 교체/hide 담당
+      C.showStatusBadge('에리가 응답 기다리는 중');
     }
 
     if (config.cooldownEnabled) {
