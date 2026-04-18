@@ -8,7 +8,7 @@
   if (_w.__LoreCore && _w.__LoreCore.__kernelLoaded) return;
 
   // 버전
-  const VER = '1.3.1';
+  const VER = '1.3.4';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
 
