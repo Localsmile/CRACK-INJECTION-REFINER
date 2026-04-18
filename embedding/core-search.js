@@ -1,4 +1,4 @@
-// crack-lore-core / search 모듈 (v1.3.6)
+// crack-lore-core / search 모듈 (v1.3.7)
 // 역할: 트리거 스캔, 하이브리드 검색, LLM 리랭커
 // 의존: kernel (callGeminiApi, cosineSimilarity, getDB, simpleHash, DEFAULTS, embedText),
 //       memory (calcReinjectionScore, detectActiveCharacters, isRelatedToActive)
@@ -94,6 +94,16 @@
     const inactivePenalty = cfg.inactiveCharPenalty != null ? cfg.inactiveCharPenalty : 1.0;
     const decayEnabled = cfg.decayEnabled !== false;
 
+    // decay fallback: entry.lastMentionedTurn 없으면 localStorage 'lore-last-mention' 맵 조회
+    let lastMentionMap = null;
+    if (decayEnabled && cfg.chatKey) {
+      try {
+        const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
+        const all = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
+        lastMentionMap = all[cfg.chatKey] || null;
+      } catch (e) {}
+    }
+
     const enabled = (entries || []).filter(e => e && e.enabled !== false);
 
     // 1) 트리거
@@ -146,14 +156,18 @@
       let score = trigWeight * tScore + embWeight * eScore;
       const matched = tHit ? tHit.matched : '';
 
+      // 언급 시점 해석: entry 프로퍼티 우선, 없으면 localStorage 맵 fallback
+      const lmt = e.lastMentionedTurn != null
+        ? e.lastMentionedTurn
+        : (lastMentionMap && lastMentionMap[e.id] != null ? lastMentionMap[e.id] : null);
       // 재주입 필요도 (최근 언급된 엔트리에 약한 가산)
-      if (decayEnabled && turnCounter != null && e.lastMentionedTurn != null) {
-        const turnsSince = turnCounter - e.lastMentionedTurn;
+      if (decayEnabled && turnCounter != null && lmt != null) {
+        const turnsSince = turnCounter - lmt;
         const reScore = calcReinjectionScore(turnsSince, e.type, cfg, e);
         score = score * (1 + reScore * 0.5);
       }
       // 신규(미언급) 엔트리 최초 등장 기회 — 소폭 가점
-      if (decayEnabled && e.lastMentionedTurn == null && (tScore > 0 || eScore > 0)) {
+      if (decayEnabled && lmt == null && (tScore > 0 || eScore > 0)) {
         score = score * 1.15;
       }
 
@@ -229,5 +243,5 @@
     bigramSimilarity, buildScanPool, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });
-  console.log('[LoreCore:search] loaded v1.3.6');
+  console.log('[LoreCore:search] loaded v1.3.7');
 })();
