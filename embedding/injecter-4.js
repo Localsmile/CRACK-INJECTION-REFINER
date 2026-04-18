@@ -39,6 +39,8 @@
       processedCount++;
       let existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name).first();
       if (existing) {
+        // 서사 무결성: 덮어쓰기 전 현재 상태 백업 (append-only)
+        try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge'); } catch(ex) {}
         if (['relationship', 'promise', 'rel', 'prom'].includes(e.type)) {
           const oldS = existing.state || existing.detail?.current_status || existing.detail?.status || null;
           const newS = e.state || e.detail?.current_status || e.detail?.status || null;
