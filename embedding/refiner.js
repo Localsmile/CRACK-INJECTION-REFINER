@@ -651,6 +651,13 @@ Contradictions found (no markdown code fences):
     workerStartTime = Date.now();
 
     const item = refineQueue.shift();
+    if (processedFingerprints.has(item.fingerprint)) {
+      workerBusy = false;
+      if (refineQueue.length > 0) processQueue();
+      return;
+    }
+    processedFingerprints.add(item.fingerprint);
+    saveProcessedFingerprints();
     try {
       await Promise.race([
         refineMessage(item.text),
