@@ -87,27 +87,38 @@
     const jsonKey = prefix + 'VertexJson';
     const locKey = prefix + 'VertexLocation';
     const projKey = prefix + 'VertexProjectId';
+    const fbKeyKey = prefix + 'FirebaseKey';
+    const fbProjKey = prefix + 'FirebaseProjectId';
+    const fbLocKey = prefix + 'FirebaseLocation';
     const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
     const typeRow = document.createElement('div');
-    typeRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;';
+    typeRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;';
     const btnKey = document.createElement('button');
     const btnVertex = document.createElement('button');
+    const btnFirebase = document.createElement('button');
     const keyArea = document.createElement('div');
     const vertexArea = document.createElement('div');
-    const isVertex = () => (config[apiTypeKey] || 'key') === 'vertex';
+    const firebaseArea = document.createElement('div');
+    const curMode = () => config[apiTypeKey] || 'key';
+    const sty = (on) => `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${on ? '#285' : '#444'};background:${on ? '#285' : 'transparent'};color:${on ? '#fff' : '#ccc'};`;
     const updateBtns = () => {
-      const v = isVertex();
-      btnKey.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${!v ? '#285' : '#444'};background:${!v ? '#285' : 'transparent'};color:${!v ? '#fff' : '#ccc'};`;
-      btnVertex.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${v ? '#285' : '#444'};background:${v ? '#285' : 'transparent'};color:${v ? '#fff' : '#ccc'};`;
-      keyArea.style.display = v ? 'none' : '';
-      vertexArea.style.display = v ? '' : 'none';
+      const m = curMode();
+      btnKey.style.cssText = sty(m === 'key');
+      btnVertex.style.cssText = sty(m === 'vertex');
+      btnFirebase.style.cssText = sty(m === 'firebase');
+      keyArea.style.display = m === 'key' ? '' : 'none';
+      vertexArea.style.display = m === 'vertex' ? '' : 'none';
+      firebaseArea.style.display = m === 'firebase' ? '' : 'none';
     };
     btnKey.textContent = 'API Key';
     btnVertex.textContent = 'Vertex AI (JSON)';
+    btnFirebase.textContent = 'Firebase';
     btnKey.onclick = () => { config[apiTypeKey] = 'key'; updateBtns(); triggerSave(); };
     btnVertex.onclick = () => { config[apiTypeKey] = 'vertex'; updateBtns(); triggerSave(); };
-    typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex);
+    btnFirebase.onclick = () => { config[apiTypeKey] = 'firebase'; updateBtns(); triggerSave(); };
+    typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex); typeRow.appendChild(btnFirebase);
     nd.appendChild(typeRow);
+    // key 모드
     const ki = document.createElement('input'); ki.type = 'text';
     ki.value = config[keyKey] || ''; ki.placeholder = 'AIzaSy...';
     ki.setAttribute('autocomplete', 'off');
@@ -122,6 +133,7 @@
       triggerSave();
     };
     keyArea.appendChild(ki); nd.appendChild(keyArea);
+    // vertex 모드
     const jta = document.createElement('textarea');
     jta.value = config[jsonKey] || '';
     jta.placeholder = '{ "type": "service_account", ... }';
@@ -142,6 +154,32 @@
     const pd = document.createElement('div'); pd.style.flex = '1'; pd.appendChild(projInput);
     locRow.appendChild(ld); locRow.appendChild(pd);
     vertexArea.appendChild(locRow); nd.appendChild(vertexArea);
+    // firebase 모드
+    const fbNote = document.createElement('div');
+    fbNote.textContent = 'Firebase AI Logic REST. 3.x 모델은 location=global 필수. App Check 강제 프로젝트는 동작 불가.';
+    fbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:6px;line-height:1.4;';
+    firebaseArea.appendChild(fbNote);
+    const fbKi = document.createElement('input'); fbKi.type = 'text';
+    fbKi.value = config[fbKeyKey] || ''; fbKi.placeholder = 'Firebase Web API Key (AIzaSy...)';
+    fbKi.setAttribute('autocomplete', 'off');
+    fbKi.style.cssText = S + '-webkit-text-security:disc;margin-bottom:8px;';
+    fbKi.onchange = () => { config[fbKeyKey] = fbKi.value.trim(); triggerSave(); };
+    firebaseArea.appendChild(fbKi);
+    const fbRow = document.createElement('div');
+    fbRow.style.cssText = 'display:flex;gap:12px;';
+    const fbProjInput = document.createElement('input');
+    fbProjInput.value = config[fbProjKey] || '';
+    fbProjInput.placeholder = 'Project ID'; fbProjInput.style.cssText = S;
+    fbProjInput.onchange = () => { config[fbProjKey] = fbProjInput.value.trim(); triggerSave(); };
+    const fbLocInput = document.createElement('input');
+    fbLocInput.value = config[fbLocKey] || 'global';
+    fbLocInput.placeholder = 'Location (global 권장)'; fbLocInput.style.cssText = S;
+    fbLocInput.onchange = () => { config[fbLocKey] = fbLocInput.value.trim() || 'global'; triggerSave(); };
+    const fpd = document.createElement('div'); fpd.style.flex = '1'; fpd.appendChild(fbProjInput);
+    const fld = document.createElement('div'); fld.style.flex = '1'; fld.appendChild(fbLocInput);
+    fbRow.appendChild(fpd); fbRow.appendChild(fld);
+    firebaseArea.appendChild(fbRow);
+    nd.appendChild(firebaseArea);
     updateBtns();
   }
 
