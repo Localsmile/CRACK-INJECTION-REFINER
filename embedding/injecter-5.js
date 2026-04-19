@@ -38,6 +38,7 @@
     const apiOpts = {
       apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
       vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+      firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
       model: config.embeddingModel || 'gemini-embedding-001'
     };
     const searchConfig = {
@@ -113,6 +114,7 @@
           apiType: config.autoExtApiType || 'key', key: config.autoExtKey,
           vertexJson: config.autoExtVertexJson, vertexLocation: config.autoExtVertexLocation || 'global',
           vertexProjectId: config.autoExtVertexProjectId,
+          firebaseScript: config.autoExtFirebaseScript,
           model: config.rerankModel || config.autoExtModel || 'gemini-3-flash-preview'
         });
       } catch(e) {}
