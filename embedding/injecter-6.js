@@ -461,6 +461,61 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
+          const bTitle = document.createElement('div'); bTitle.textContent = '전체 로그 일괄 추출'; bTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(bTitle);
+          const bDesc = document.createElement('div'); bDesc.textContent = '긴 기존 대화를 배치로 나눠 한 번에 정리. API 비용 큼 — 초기 마이그레이션용.'; bDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(bDesc);
+
+          const bRow = document.createElement('div'); bRow.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
+          const mkNum = (label, getter, setter, defaultVal) => {
+            const f = document.createElement('div'); f.style.flex = '1';
+            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+            const i = document.createElement('input'); i.type = 'number'; const cur = getter(); i.value = (cur !== undefined && cur !== null) ? cur : defaultVal;
+            i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+            const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { setter(v); settings.save(); } };
+            i.oninput = save; i.onchange = save;
+            f.appendChild(l); f.appendChild(i); return f;
+          };
+          bRow.appendChild(mkNum('배치 크기(턴)', () => settings.config.batchExtTurnsPerBatch, v => settings.config.batchExtTurnsPerBatch = v, 50));
+          bRow.appendChild(mkNum('오버랩(턴)', () => settings.config.batchExtOverlap, v => settings.config.batchExtOverlap = v, 5));
+          bRow.appendChild(mkNum('재시도', () => settings.config.batchExtMaxAttempts, v => settings.config.batchExtMaxAttempts = v, 3));
+          nd.appendChild(bRow);
+
+          const bBtn = document.createElement('button'); bBtn.textContent = '전체 일괄 추출 실행';
+          bBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:none;font-weight:bold;width:100%;margin-top:6px;';
+          const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.5;';
+          bBtn.onclick = async () => {
+            if (!confirm('전체 로그를 배치로 나눠 분석합니다. API 비용 큼. 계속?')) return;
+            settings.save();
+            bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 중...';
+            bStatus.textContent = '전체 로그 가져오는 중'; bStatus.style.color = '#4a9';
+            const start = Date.now();
+            try {
+              const report = await _w.__LoreInj.runBatchExtract({
+                turnsPerBatch: settings.config.batchExtTurnsPerBatch || 50,
+                overlap: settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5,
+                maxAttempts: settings.config.batchExtMaxAttempts || 3,
+                onProgress: (ev) => {
+                  const sec = Math.floor((Date.now() - start) / 1000);
+                  if (ev.phase === 'batch') bStatus.textContent = '배치 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                }
+              });
+              const sec = Math.floor((Date.now() - start) / 1000);
+              let msg = '완료 (' + sec + '초) — ' + report.totalBatches + '개 배치 / 성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / 병합 ' + report.entriesAdded + '건';
+              if (report.failed > 0) { msg += ' ⚠️ 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
+              else { bStatus.style.color = '#4a9'; }
+              bStatus.textContent = msg;
+            } catch(e) {
+              bStatus.textContent = '실패 — ' + (e.message || String(e)).slice(0, 80);
+              bStatus.style.color = '#d66';
+            } finally {
+              bBtn.textContent = orig; bBtn.disabled = false;
+            }
+          };
+          nd.appendChild(bBtn);
+          nd.appendChild(bStatus);
+        }});
+
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
           const tplHeader = document.createElement('div'); tplHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
           const tplTitle = document.createElement('div'); tplTitle.textContent = '프롬프트 템플릿 관리'; tplTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;';
           const newTplBtn = document.createElement('button'); newTplBtn.textContent = '+ 새 템플릿'; newTplBtn.style.cssText = 'font-size:11px;padding:3px 8px;border-radius:3px;background:#258;border:none;color:#fff;cursor:pointer;';
@@ -528,14 +583,14 @@
           const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S; nd.appendChild(nameInp);
           const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
           const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
-          urlBtn.onclick = async () => { if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; } urlBtn.disabled = true; urlBtn.textContent = '변환중...'; try { const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel }); rDiv.textContent = '✅ ' + cnt + '개 생성'; await setPackEnabled(nameInp.value.trim(), true); } catch (e) { rDiv.textContent = '❌ ' + e.message; } urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false; };
+          urlBtn.onclick = async () => { if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; } urlBtn.disabled = true; urlBtn.textContent = '변환중...'; try { const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel }); const rpt = C.__lastImportReport; let msg = '✅ ' + cnt + '개 생성'; if (rpt) { if (rpt.failed > 0) { const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || ''; msg += ' ⚠️ 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80); } else if (cnt === 0 && rpt.empty === rpt.chunks) { msg = '⚠️ 0개 — 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단'; } } rDiv.textContent = msg; if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true); } catch (e) { rDiv.textContent = '❌ ' + e.message; } urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false; };
           nd.appendChild(urlBtn); nd.appendChild(rDiv);
           const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:#ccc;font-weight:bold;margin-top:16px;margin-bottom:8px;">텍스트 → 로어 팩</div>'; nd.appendChild(t2);
           const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + 'height:100px;resize:vertical;'; nd.appendChild(ta);
           const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S; nd.appendChild(nameInp2);
           const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
           const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
-          tBtn.onclick = async () => { if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; } tBtn.disabled = true; tBtn.textContent = '변환중...'; try { const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel }); rDiv2.textContent = '✅ ' + cnt + '개 생성'; await setPackEnabled(nameInp2.value.trim(), true); } catch (e) { rDiv2.textContent = '❌ ' + e.message; } tBtn.textContent = '텍스트 변환'; tBtn.disabled = false; };
+          tBtn.onclick = async () => { if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; } tBtn.disabled = true; tBtn.textContent = '변환중...'; try { const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, model: settings.config.autoExtModel }); const rpt = C.__lastImportReport; let msg = '✅ ' + cnt + '개 생성'; if (rpt) { if (rpt.failed > 0) { const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || ''; msg += ' ⚠️ 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80); } else if (cnt === 0 && rpt.empty === rpt.chunks) { msg = '⚠️ 0개 — 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단'; } } rDiv2.textContent = msg; if (cnt > 0) await setPackEnabled(nameInp2.value.trim(), true); } catch (e) { rDiv2.textContent = '❌ ' + e.message; } tBtn.textContent = '텍스트 변환'; tBtn.disabled = false; };
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
       };
