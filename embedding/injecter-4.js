@@ -287,9 +287,11 @@
 
   async function _doExtract(isManual) {
     const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const apiType = settings.config.autoExtApiType || 'key'; const isVertex = apiType === 'vertex';
-    const hasKey = settings.config.autoExtKey; const hasJson = settings.config.autoExtVertexJson;
-    if (isVertex ? !hasJson : !hasKey) { if (isManual) alert('API 설정 미완료.'); return; }
+    const apiType = settings.config.autoExtApiType || 'key';
+    const missing = apiType === 'vertex' ? !settings.config.autoExtVertexJson
+                  : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript
+                  : !settings.config.autoExtKey;
+    if (missing) { if (isManual) alert('API 설정 미완료.'); return; }
     const scanR = settings.config.autoExtScanRange || 6; const extraTurns = _extQ.pendingTurns || 0;
     const effectiveRange = scanR + extraTurns; const fetchCount = (effectiveRange + settings.config.autoExtOffset) * 2;
     let recentMsgs = await C.fetchLogs(fetchCount > 0 ? fetchCount : 20);
@@ -345,6 +347,7 @@
       const apiOpts = {
         apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
         vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+        firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
         model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json'
       };
