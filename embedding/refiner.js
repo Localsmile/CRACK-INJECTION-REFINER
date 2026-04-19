@@ -126,12 +126,12 @@ Contradictions found (no markdown code fences):
   const TOPICS = {
     factual:       { label: '1. 명시적 사실 모순',  desc: '[Lore]·[Summaries]와 정면 충돌',              group: 'logic' },
     presence:      { label: '2. 존재/부재 모순',    desc: '없어야 할 캐릭터가 등장하거나 반대',           group: 'logic' },
-    nickname:      { label: '3. 호칭/직함 불일치',  desc: '저장된 호칭·직함과 다른 부름',                 group: 'logic' },
+    nickname:      { label: '3. 호칭 불일치',       desc: '저장된 호칭·직함과 다른 부름',                 group: 'logic' },
     state:         { label: '4. 상태 모순',         desc: '사망/부상/실종 등 상태 모순',                  group: 'logic' },
-    promise:       { label: '5. 약속/서사 모순',    desc: '확정된 약속이나 서사 아크 위반',               group: 'logic' },
+    promise:       { label: '5. 약속 모순',         desc: '확정된 약속이나 서사 흐름 위반',               group: 'logic' },
     reunion:       { label: '6. 재회 위반',         desc: '이미 아는 사이가 처음 보는 것처럼 행동',       group: 'logic' },
     honorific:     { label: '7. 호칭 퇴행',         desc: '트리거 없이 이전 호칭으로 회귀',               group: 'logic' },
-    impersonation: { label: '8. 유저 대역',         desc: 'AI가 유저 캐릭터의 행동/생각을 서술',          group: 'logic' },
+    impersonation: { label: '8. 유저 사칭',         desc: 'AI가 유저 캐릭터의 행동/생각을 서술',          group: 'logic' },
     truncSentence:    { label: 'A. 문장 끊김 복구', desc: '잘린 마지막 문장 완성',                        group: 'repair' },
     truncStatusBlock: { label: 'B. 상태창 복구',    desc: '코드블록 상태창 끊김/누락 복구',               group: 'repair' },
   };
