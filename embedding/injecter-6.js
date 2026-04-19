@@ -623,7 +623,55 @@
           if (R.TEMPLATES) {
             Object.entries(R.TEMPLATES).forEach(([k, t]) => { const opt = document.createElement('option'); opt.value = k; opt.textContent = t.name; tplSel.appendChild(opt); });
           }
+          if (R.TOPICS) {
+            const dynOpt = document.createElement('option'); dynOpt.value = 'dynamic'; dynOpt.textContent = '주제별 선택 (체크박스)'; tplSel.appendChild(dynOpt);
+          }
           tplWrap.appendChild(tplLbl); tplWrap.appendChild(tplSel); tplWrap.appendChild(tplDesc); nd.appendChild(tplWrap);
+
+          // 주제별 체크박스 UI (dynamic 모드에서만 표시)
+          const topicsWrap = document.createElement('div');
+          topicsWrap.style.cssText = 'display:none;margin-bottom:12px;padding:10px;background:#111;border:1px solid #333;border-radius:4px;';
+          const topicsHdr = document.createElement('div'); topicsHdr.textContent = '검수 주제 선택 — 체크된 항목만 AI에게 검수 요청함'; topicsHdr.style.cssText = 'font-size:12px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed #333;';
+          topicsWrap.appendChild(topicsHdr);
+          const topicsBody = document.createElement('div'); topicsWrap.appendChild(topicsBody);
+          nd.appendChild(topicsWrap);
+          const rebuildDynamicPrompt = () => {
+            const built = R.buildDynamicPrompt(settings.config.refinerTopics || {});
+            settings.config.refinerCustomPrompt = built;
+            ta.value = built;
+            settings.save();
+          };
+          const renderTopics = () => {
+            if (!settings.config.refinerTopics) {
+              const def = {}; Object.keys(R.TOPICS || {}).forEach(k => def[k] = true);
+              settings.config.refinerTopics = def;
+            }
+            topicsBody.innerHTML = '';
+            let curGroup = null;
+            Object.entries(R.TOPICS || {}).forEach(([k, meta]) => {
+              if (meta.group !== curGroup) {
+                curGroup = meta.group;
+                const gh = document.createElement('div');
+                gh.textContent = curGroup === 'logic' ? '— 모순 검수 —' : '— 끊김 복구 —';
+                gh.style.cssText = 'font-size:10px;color:#888;margin:6px 0 4px;font-weight:bold;';
+                topicsBody.appendChild(gh);
+              }
+              const row = document.createElement('label');
+              row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;';
+              const cb = document.createElement('input'); cb.type = 'checkbox';
+              cb.checked = !!settings.config.refinerTopics[k];
+              cb.style.cssText = 'margin-top:3px;flex-shrink:0;accent-color:#4a9;';
+              const txt = document.createElement('div'); txt.style.flex = '1';
+              const lbl = document.createElement('div'); lbl.textContent = meta.label; lbl.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;';
+              const dsc = document.createElement('div'); dsc.textContent = meta.desc; dsc.style.cssText = 'font-size:10px;color:#888;line-height:1.4;';
+              txt.appendChild(lbl); txt.appendChild(dsc);
+              cb.onchange = () => {
+                settings.config.refinerTopics[k] = cb.checked;
+                rebuildDynamicPrompt();
+              };
+              row.appendChild(cb); row.appendChild(txt); topicsBody.appendChild(row);
+            });
+          };
 
           const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:12px;';
           const left = document.createElement('div'); left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
@@ -641,14 +689,25 @@
           if (R.TEMPLATES) {
             tplSel.onchange = () => {
               const val = tplSel.value;
-              if (val !== 'custom' && R.TEMPLATES[val]) {
+              if (val === 'dynamic') {
+                settings.config.refinerUseDynamic = true;
+                topicsWrap.style.display = 'block';
+                renderTopics();
+                rebuildDynamicPrompt();
+                tplDesc.textContent = '아래 체크박스로 검수 주제를 on/off. 체크된 항목만 AI 프롬프트에 들어감.';
+              } else if (val !== 'custom' && R.TEMPLATES[val]) {
+                settings.config.refinerUseDynamic = false;
+                topicsWrap.style.display = 'none';
                 const tpl = R.TEMPLATES[val];
                 ta.value = tpl.prompt; settings.config.refinerCustomPrompt = tpl.prompt;
                 inp.value = tpl.turnHint; settings.config.refinerContextTurns = tpl.turnHint;
                 tplDesc.textContent = tpl.desc;
                 settings.save();
               } else {
+                settings.config.refinerUseDynamic = false;
+                topicsWrap.style.display = 'none';
                 tplDesc.textContent = '직접 작성한 프롬프트를 사용합니다.';
+                settings.save();
               }
             };
             const normalize = (s) => (s||'').trim().replace(/\s+/g, ' ');
@@ -665,8 +724,13 @@
               settings.save();
             }
 
+            if (settings.config.refinerUseDynamic && R.TOPICS) matched = 'dynamic';
             tplSel.value = matched;
-            if (matched !== 'custom') tplDesc.textContent = R.TEMPLATES[matched].desc;
+            if (matched === 'dynamic') {
+              topicsWrap.style.display = 'block';
+              renderTopics();
+              tplDesc.textContent = '아래 체크박스로 검수 주제를 on/off. 체크된 항목만 AI 프롬프트에 들어감.';
+            } else if (matched !== 'custom') tplDesc.textContent = R.TEMPLATES[matched].desc;
             else tplDesc.textContent = '직접 작성한 프롬프트를 사용합니다.';
           }
 
@@ -952,6 +1016,16 @@
           const rpta = document.createElement('textarea'); rpta.value = settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt; rpta.style.cssText = S + 'height:100px;font-family:monospace;resize:vertical;';
           rpta.onchange = () => { settings.config.rerankPrompt = rpta.value; settings.save(); }; nd.appendChild(rpta);
           rplBtn.onclick = () => { if(confirm('Reranker 프롬프트를 기본값으로 되돌리시겠습니까?')) { settings.config.rerankPrompt = C.DEFAULTS.rerankPrompt; settings.save(); rpta.value = C.DEFAULTS.rerankPrompt; } };
+
+          // Refiner Model — 비워두면 기본 LLM 모델을 따라감
+          const rfl = document.createElement('div'); rfl.textContent = '교정(Refiner) 모델'; rfl.style.cssText = 'font-size:11px;color:#999;margin:14px 0 4px;'; nd.appendChild(rfl);
+          const rfs = document.createElement('select'); rfs.style.cssText = S;
+          [['기본 LLM과 동일', [['(기본 LLM 사용)', '']]], ['Gemini 3.x', [['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Flash Lite', 'gemini-3.1-flash-lite-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]], ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]].forEach(([g, opts]) => { const og = document.createElement('optgroup'); og.label = g; opts.forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; og.appendChild(o); }); rfs.appendChild(og); });
+          rfs.value = settings.config.refinerModel !== undefined ? settings.config.refinerModel : '';
+          const rfci = document.createElement('input'); rfci.value = settings.config.refinerCustomModel || ''; rfci.placeholder = '모델명 직접 입력'; rfci.style.cssText = S + 'margin-top:6px;' + (rfs.value === '_custom' ? '' : 'display:none;');
+          rfci.onchange = () => { settings.config.refinerCustomModel = rfci.value; settings.save(); };
+          rfs.onchange = () => { settings.config.refinerModel = rfs.value; settings.save(); rfci.style.display = rfs.value === '_custom' ? '' : 'none'; };
+          nd.appendChild(rfs); nd.appendChild(rfci);
 
           // Thinking Settings
           const rl = document.createElement('div'); rl.textContent = '추론(Reasoning) 레벨'; rl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(rl);
