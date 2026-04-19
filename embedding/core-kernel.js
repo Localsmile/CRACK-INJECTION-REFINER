@@ -8,7 +8,7 @@
   if (_w.__LoreCore && _w.__LoreCore.__kernelLoaded) return;
 
   // 버전
-  const VER = '1.3.5';
+  const VER = '1.3.7';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
 
@@ -192,16 +192,69 @@ Entries:
     return cache.token;
   }
 
+  // Firebase SDK 로더 (페이지 컨텍스트에 <script type="module"> 주입)
+  let _fbSdkPromise = null;
+  function loadFirebaseSdk() {
+    if (_w.__crackExtFirebaseSdk) return Promise.resolve(_w.__crackExtFirebaseSdk);
+    if (_fbSdkPromise) return _fbSdkPromise;
+    _fbSdkPromise = new Promise((resolve, reject) => {
+      const to = setTimeout(() => { _fbSdkPromise = null; reject(new Error('Firebase SDK 로드 타임아웃')); }, 20000);
+      _w.addEventListener('crack-ext-fbsdk-ready', () => { clearTimeout(to); resolve(_w.__crackExtFirebaseSdk); }, { once: true });
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.textContent = 'import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";\nimport { getAI, getGenerativeModel, VertexAIBackend, HarmBlockThreshold, HarmCategory } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-ai.js";\nwindow.__crackExtFirebaseSdk = { initializeApp, getAI, getGenerativeModel, VertexAIBackend, HarmBlockThreshold, HarmCategory };\nwindow.dispatchEvent(new CustomEvent("crack-ext-fbsdk-ready"));';
+      script.onerror = () => { clearTimeout(to); _fbSdkPromise = null; reject(new Error('Firebase SDK 스크립트 로드 실패')); };
+      (document.head || document.documentElement).appendChild(script);
+    });
+    return _fbSdkPromise;
+  }
+
+  function parseFirebaseConfig(scriptStr) {
+    if (!scriptStr) return null;
+    try {
+      const m = scriptStr.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\});?/);
+      if (m) return new Function('return ' + m[1])();
+      const t = scriptStr.trim();
+      if (t.startsWith('{')) return new Function('return ' + t)();
+    } catch (e) {}
+    return null;
+  }
+
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
-      firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
+      firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate' } = opts;
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
     let url, headers;
     if (isFirebase) {
-      // Firebase AI Logic REST — Web API Key + projectId. 3.x는 global 고정.
+      // Firebase SDK (페이지 컨텍스트 주입). 3.x=global, 2.x=us-central1 자동.
+      const cfg = parseFirebaseConfig(firebaseScript);
+      if (!cfg || !cfg.apiKey || !cfg.projectId) return { text: null, status: 0, error: 'Firebase 스크립트 형식 오류 (firebaseConfig = {...} 형태 붙여넣기 필요)', retries: 0 };
+      try {
+        const sdk = await loadFirebaseSdk();
+        const fb_is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
+        const fb_loc = fb_is3x ? 'global' : 'us-central1';
+        const fbGenConfig = {};
+        if (Object.keys(thinkingConfig).length > 0) fbGenConfig.thinkingConfig = thinkingConfig;
+        if (responseMimeType) fbGenConfig.responseMimeType = responseMimeType;
+        const app = sdk.initializeApp(cfg, 'crack-ext-' + Math.random().toString(36).slice(2, 10));
+        const ai = sdk.getAI(app, { backend: new sdk.VertexAIBackend(fb_loc) });
+        const fbSafety = [
+          { category: sdk.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: sdk.HarmBlockThreshold.OFF },
+          { category: sdk.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: sdk.HarmBlockThreshold.OFF },
+          { category: sdk.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: sdk.HarmBlockThreshold.OFF },
+          { category: sdk.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: sdk.HarmBlockThreshold.OFF }
+        ];
+        const gm = sdk.getGenerativeModel(ai, { model, safetySettings: fbSafety, generationConfig: fbGenConfig });
+        const result = await gm.generateContent(prompt);
+        const fbText = result.response.text();
+        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: 0 };
+      } catch (fbErr) {
+        return { text: null, status: 0, error: 'Firebase: ' + (fbErr.message || String(fbErr)), retries: 0 };
+      }
+      // 아래 REST 라인은 사띌문자 (return으로 도달 불가). 구파서 파싱 호환용 유지.
       const fbKey = firebaseKey || key;
       if (!fbKey) return { text: null, status: 0, error: 'Firebase Web API Key 누락', retries: 0 };
       if (!firebaseProjectId) return { text: null, status: 0, error: 'Firebase projectId 누락', retries: 0 };
@@ -278,13 +331,16 @@ Entries:
 
   async function embedTexts(texts, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
-      firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
+      firebaseEmbedKey = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       model = DEFAULTS.embeddingModel, dimensions = DEFAULTS.embeddingDimensions, taskType = DEFAULTS.embeddingTaskType, cacheKey = 'embed' } = opts;
     const arr = Array.isArray(texts) ? texts : [texts];
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
     if (isFirebase) {
-      // Firebase 임베딩 — :predict. global 미지원 가능 → us-central1 폴백.
+      // Firebase SDK는 임베딩 미지원 → 별도 Gemini API Key 로 REST 우회 (embedding-001 한정, 무료 티어 OK)
+      if (!firebaseEmbedKey) throw new Error('Firebase 모드 임베딩: 별도 Gemini API Key 필요 (embedding-001 한정)');
+      return embedTexts(arr, { ...opts, apiType: 'key', key: firebaseEmbedKey, model: 'gemini-embedding-001' });
+      // 아래 REST 라인은 사띌문자 (return으로 도달 불가). 구파서 파싱 호환용 유지.
       const fbKey = firebaseKey || key;
       if (!fbKey) throw new Error('Firebase Web API Key 누락');
       if (!firebaseProjectId) throw new Error('Firebase projectId 누락');
