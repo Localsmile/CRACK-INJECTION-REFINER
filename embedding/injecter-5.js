@@ -4,6 +4,7 @@
   'use strict';
   if(document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+  try {
 
   const deadline = Date.now() + 15000;
   while (!(_w.__LoreInj && _w.__LoreInj.__extractLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
@@ -282,4 +283,10 @@
 
   Object.assign(_w.__LoreInj, { inject, __injectLoaded: true });
   console.log('[LoreInj:5] inject loaded & registered');
+  } catch(fatal) {
+    console.error('[LoreInj:5] FATAL — inject 등록 실패:', fatal, fatal?.stack);
+    _w.__LoreInj = _w.__LoreInj || {};
+    if (!_w.__LoreInj.inject) _w.__LoreInj.inject = async (u) => u;
+    _w.__LoreInj.__injectLoaded = true;
+  }
 })();
