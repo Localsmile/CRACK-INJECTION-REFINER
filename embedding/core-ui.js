@@ -155,7 +155,7 @@
     vertexArea.appendChild(locRow); nd.appendChild(vertexArea);
     // firebase 모드 — firebaseConfig 덩어리 붙여넣기 + 임베딩용 Gemini 키
     const fbNote = document.createElement('div');
-    fbNote.textContent = 'Firebase SDK. Firebase 콘솔 > 프로젝트 설정 > 웹 앱의 firebaseConfig = {...} 덩어리를 그대로 붙여넣으면 됨. 리전은 3.x=global, 2.x=us-central1 자동.';
+    fbNote.textContent = 'Firebase SDK. Firebase 콘솔 > 프로젝트 설정 > 웹 앱의 firebaseConfig = {...} 덩어리를 그대로 붙여넣으면 됨';
     fbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:6px;line-height:1.4;';
     firebaseArea.appendChild(fbNote);
     const fbTa = document.createElement('textarea');
@@ -165,7 +165,7 @@
     fbTa.onchange = () => { config[fbScriptKey] = fbTa.value; triggerSave(); };
     firebaseArea.appendChild(fbTa);
     const fbEmbNote = document.createElement('div');
-    fbEmbNote.textContent = '임베딩용 Gemini API Key — Firebase SDK는 임베딩 미지원이라 별도 키로 우회. embedding-001 한정, 무료 티어 OK.';
+    fbEmbNote.textContent = '임베딩용 Gemini API Key(구글 AI 스튜디오에서 발급. 매우 쉬움) — Firebase SDK는 임베딩 미지원이라 별도 키로 우회. embedding-001만 쓸 것';
     fbEmbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;line-height:1.4;';
     firebaseArea.appendChild(fbEmbNote);
     const fbEmbInput = document.createElement('input'); fbEmbInput.type = 'text';
