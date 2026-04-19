@@ -5,7 +5,7 @@
 // @description 모듈화된 로어 인젝터 로더
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
-// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject_1.3.16.user.js
+// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject_1.3.16.user.js
 // @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject_1.3.16.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-toastify-injection@v1.0.0/crack/libraries/toastify-injection.js
