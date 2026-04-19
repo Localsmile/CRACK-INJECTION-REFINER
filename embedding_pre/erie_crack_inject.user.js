@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Loader)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.3.16
+// @version     1.3.17
 // @description 모듈화된 로어 인젝터 로더
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
@@ -12,26 +12,27 @@
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@chasm-shared-core@v1.0.0/libraries/chasm-shared-core.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@decentralized-pre-1.0.15/decentralized-modal.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-ui.js?v=1.3.6
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-kernel.js?v=1.3.5
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-ui.js?v=1.3.7
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-kernel.js?v=1.3.6
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-platform.js?v=1.3.5
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-memory.js?v=1.3.5
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-format.js?v=1.3.5
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-search.js?v=1.3.9
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-embedding.js?v=1.3.5
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/core-importer.js?v=1.3.5
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/refiner.js?v=1.3.5
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/refiner.js?v=1.3.6
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-1.js?v=1.0.8
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-2.js?v=1.0.8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-3.js?v=1.0.8
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-3.js?v=1.0.9
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-4.js?v=1.0.8
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-5.js?v=1.0.10
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-6.js?v=1.0.9
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/main/embedding/injecter-6.js?v=1.0.10
 // @grant       GM_addStyle
 // @grant       GM_xmlhttpRequest
 // @connect     generativelanguage.googleapis.com
 // @connect     googleapis.com
 // @connect     oauth2.googleapis.com
+// @connect     firebasevertexai.googleapis.com
 // @connect     contents-api.wrtn.ai
 // @connect     crack-api.wrtn.ai
 // @run-at      document-start
