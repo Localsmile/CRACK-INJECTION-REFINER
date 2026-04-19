@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Loader)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.3.18
+// @version     1.3.19
 // @description 모듈화된 로어 인젝터 로더
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
