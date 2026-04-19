@@ -421,6 +421,8 @@ Contradictions found (no markdown code fences):
         const apiOpts = {
           apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
           vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+          firebaseKey: config.autoExtFirebaseKey, firebaseProjectId: config.autoExtFirebaseProjectId,
+          firebaseLocation: config.autoExtFirebaseLocation || 'global',
           model: config.embeddingModel || 'gemini-embedding-001'
         };
         const searchConfig = { scanRange: matchTurns, strictMatch: true, similarityMatch: true, embeddingEnabled: true, embeddingWeight: 0.5 };
@@ -509,6 +511,9 @@ Contradictions found (no markdown code fences):
         vertexJson: config.autoExtVertexJson,
         vertexLocation: config.autoExtVertexLocation || 'global',
         vertexProjectId: config.autoExtVertexProjectId,
+        firebaseKey: config.autoExtFirebaseKey,
+        firebaseProjectId: config.autoExtFirebaseProjectId,
+        firebaseLocation: config.autoExtFirebaseLocation || 'global',
         model: config.autoExtModel === '_custom' ? config.autoExtCustomModel : (config.autoExtModel || 'gemini-3-flash-preview'),
         maxRetries: 1
       };
