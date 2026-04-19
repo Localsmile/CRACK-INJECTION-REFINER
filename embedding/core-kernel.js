@@ -8,7 +8,7 @@
   if (_w.__LoreCore && _w.__LoreCore.__kernelLoaded) return;
 
   // 버전
-  const VER = '1.3.4';
+  const VER = '1.3.5';
   const _gHost = 'generativelanguage.googleapis.com';
   const _gBase = 'https://' + _gHost + '/v1beta/models/';
 
@@ -194,10 +194,22 @@ Entries:
 
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
-    const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '', model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate' } = opts;
+    const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
+      firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
+      model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate' } = opts;
     const isVertex = apiType === 'vertex';
+    const isFirebase = apiType === 'firebase';
     let url, headers;
-    if (isVertex) {
+    if (isFirebase) {
+      // Firebase AI Logic REST — Web API Key + projectId. 3.x는 global 고정.
+      const fbKey = firebaseKey || key;
+      if (!fbKey) return { text: null, status: 0, error: 'Firebase Web API Key 누락', retries: 0 };
+      if (!firebaseProjectId) return { text: null, status: 0, error: 'Firebase projectId 누락', retries: 0 };
+      const is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
+      const loc = is3x ? 'global' : (firebaseLocation || 'global');
+      url = `https://firebasevertexai.googleapis.com/v1beta/projects/${firebaseProjectId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
+      headers = { 'Content-Type': 'application/json', 'x-goog-api-key': fbKey };
+    } else if (isVertex) {
       const sa = parseServiceAccountJson(vertexJson);
       if (!sa.ok) return { text: null, status: 0, error: sa.error, retries: 0 };
       const projId = vertexProjectId || sa.projectId;
@@ -224,7 +236,7 @@ Entries:
     let lastStatus = 0, lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const r = isVertex ? await gmFetch(url, { method: 'POST', headers, body }) : await fetch(url, { method: 'POST', headers, body }).then(resp => ({ ok: resp.ok, status: resp.status, text: () => resp.text(), json: () => resp.json() }));
+        const r = (isVertex || isFirebase) ? await gmFetch(url, { method: 'POST', headers, body }) : await fetch(url, { method: 'POST', headers, body }).then(resp => ({ ok: resp.ok, status: resp.status, text: () => resp.text(), json: () => resp.json() }));
         lastStatus = r.status;
 
         // 401 토큰 갱신
@@ -265,10 +277,25 @@ Entries:
   }
 
   async function embedTexts(texts, opts = {}) {
-    const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '', model = DEFAULTS.embeddingModel, dimensions = DEFAULTS.embeddingDimensions, taskType = DEFAULTS.embeddingTaskType, cacheKey = 'embed' } = opts;
+    const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
+      firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
+      model = DEFAULTS.embeddingModel, dimensions = DEFAULTS.embeddingDimensions, taskType = DEFAULTS.embeddingTaskType, cacheKey = 'embed' } = opts;
     const arr = Array.isArray(texts) ? texts : [texts];
     const isVertex = apiType === 'vertex';
-    if (isVertex) {
+    const isFirebase = apiType === 'firebase';
+    if (isFirebase) {
+      // Firebase 임베딩 — :predict. global 미지원 가능 → us-central1 폴백.
+      const fbKey = firebaseKey || key;
+      if (!fbKey) throw new Error('Firebase Web API Key 누락');
+      if (!firebaseProjectId) throw new Error('Firebase projectId 누락');
+      const embLoc = (!firebaseLocation || firebaseLocation === 'global') ? 'us-central1' : firebaseLocation;
+      const url = `https://firebasevertexai.googleapis.com/v1beta/projects/${firebaseProjectId}/locations/${embLoc}/publishers/google/models/${model}:predict`;
+      const body = JSON.stringify({ instances: arr.map(t => ({ content: t })), parameters: { outputDimensionality: dimensions } });
+      const r = await gmFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': fbKey }, body });
+      if (!r.ok) throw new Error('Firebase 임베딩 실패: ' + r.status);
+      const json = await r.json();
+      return json.predictions.map(p => normalizeVector(p.embeddings.values));
+    } else if (isVertex) {
       const sa = parseServiceAccountJson(vertexJson);
       if (!sa.ok) throw new Error(sa.error);
       const projId = vertexProjectId || sa.projectId;
