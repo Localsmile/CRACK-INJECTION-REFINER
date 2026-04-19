@@ -24,7 +24,7 @@
 
   const VER = _w.__LoreInj.VER;
 
-  // ModalManager 해결: userscript 스코프 → unsafeWindow → window 순으로 시도, 안되면 에리 때림
+  // ModalManager 해결: userscript 스코프 → unsafeWindow → window 순으로 시도
   const MM = (typeof ModalManager !== 'undefined') ? ModalManager
           : (_w.ModalManager || (typeof window !== 'undefined' && window.ModalManager) || null);
   if (!MM) {
