@@ -380,8 +380,124 @@
     }
   }
 
+  async function runBatchExtract(opts = {}) {
+    const turnsPerBatch = opts.turnsPerBatch || 50;
+    const overlap = opts.overlap !== undefined ? opts.overlap : 5;
+    const maxAttempts = opts.maxAttempts || 3;
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const _url = C.getCurUrl(); const chatKey = getChatKey();
+    const apiType = settings.config.autoExtApiType || 'key';
+    const missing = apiType === 'vertex' ? !settings.config.autoExtVertexJson
+                  : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript
+                  : !settings.config.autoExtKey;
+    if (missing) throw new Error('API 설정 미완료');
+
+    extBadgeShow('에리가 전체 로그 가져오는 중');
+    const allMsgs = await C.fetchLogs(99999);
+    if (!allMsgs || !allMsgs.length) { extBadgeHide(); throw new Error('대화 기록 없음'); }
+    const totalMsgs = allMsgs.length;
+    const batchMsgSize = Math.max(2, turnsPerBatch * 2);
+    const overlapMsgs = Math.max(0, overlap * 2);
+    const step = Math.max(1, batchMsgSize - overlapMsgs);
+    const batches = [];
+    for (let i = 0; i < totalMsgs; i += step) {
+      const slice = allMsgs.slice(i, i + batchMsgSize);
+      if (slice.length < 2) break;
+      batches.push(slice);
+      if (i + batchMsgSize >= totalMsgs) break;
+    }
+
+    const report = { totalBatches: batches.length, totalMsgs, ok: 0, failed: 0, empty: 0, entriesAdded: 0, batchResults: [] };
+
+    let personaPrefix = '';
+    if (settings.config.autoExtIncludePersona) {
+      try {
+        const pName = await C.fetchPersonaName();
+        if (pName) personaPrefix = '[User Persona: "' + pName + '"] All "user" role messages are from this character. Use "' + pName + '" as the character name, NOT "user".\n\n';
+      } catch(e) {}
+    }
+    const tpl = settings.getActiveTemplate();
+    const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
+
+    for (let bi = 0; bi < batches.length; bi++) {
+      const msgs = batches[bi];
+      extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 분석 중');
+      if (onProgress) { try { onProgress({ phase: 'batch', index: bi + 1, total: batches.length }); } catch(_){} }
+
+      const context = msgs.map(m => m.role + ': ' + m.message).join('\n');
+      let entriesText = '[]';
+      if (settings.config.autoExtIncludeDb) {
+        const packName = await getAutoExtPackForUrl(_url);
+        const existing = await db.entries.where('packName').equals(packName).toArray();
+        if (existing.length > 0) {
+          const filtered = existing.length > 40 ? existing.slice(-40) : existing;
+          const clean = filtered.map(({ id, packName, project, enabled, ...rest }) => rest);
+          entriesText = JSON.stringify(clean, null, 2);
+        }
+      }
+      const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', tpl.schema);
+
+      let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0;
+      for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
+        attempts++;
+        try {
+          const apiOpts = {
+            apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
+            vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+            firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+            model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
+            maxRetries: 0, responseMimeType: 'application/json'
+          };
+          const res = await C.callGeminiApi(prompt, apiOpts);
+          if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
+          rawSnippet = String(res.text).slice(0, 200);
+          const parsed = parseJsonLoose(res.text);
+          if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            mergedCount = await mergeExtractedData(parsed, _url);
+            report.entriesAdded += mergedCount;
+            status = 'ok'; ok = true;
+          } else {
+            status = 'empty'; ok = true;
+          }
+        } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
+      }
+      if (ok) {
+        if (status === 'empty') report.empty++; else report.ok++;
+        report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount });
+      } else {
+        report.failed++;
+        report.batchResults.push({ batch: bi + 1, status: 'failed', attempts, error: lastErr, rawSnippet });
+        console.warn('[Lore:batch] 배치 ' + (bi + 1) + '/' + batches.length + ' 실패 (' + attempts + '회): ' + lastErr);
+        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: msgs.length, isManual: true, status: '배치 ' + (bi + 1) + '/' + batches.length + ' 실패', error: lastErr });
+      }
+    }
+
+    addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: report.entriesAdded, msgs: totalMsgs, isManual: true, status: '전체 추출 완료 (성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / ' + report.totalBatches + '개 배치, 병합 ' + report.entriesAdded + '건)' });
+
+    if (settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false && report.entriesAdded > 0) {
+      try {
+        const epName = await getAutoExtPackForUrl(_url);
+        extBadgeShow('에리가 임베딩 갱신 중');
+        const embedOpts = {
+          apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
+          vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+          firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+          model: settings.config.embeddingModel || 'gemini-embedding-001'
+        };
+        await C.embedPack(epName, embedOpts);
+        report.embedded = true;
+      } catch(embErr) {
+        console.warn('[Lore:batch] 임베딩 실패:', embErr.message);
+        report.embedError = embErr.message;
+      }
+    }
+    extBadgeHide();
+    return report;
+  }
+
   Object.assign(_w.__LoreInj, {
-    mergeExtractedData, runAutoExtract,
+    mergeExtractedData, runAutoExtract, runBatchExtract,
     extBadgeShow, extBadgeHide,
     __extractLoaded: true
   });
