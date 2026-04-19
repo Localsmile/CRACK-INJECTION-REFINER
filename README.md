@@ -3,8 +3,8 @@
 [비공식] `crystallized-chasm` 기반 연동 확장 스크립트
 [crack.wrtn.ai](https://crack.wrtn.ai) 전용 RP 로어 자동 주입 · AI 응답 교정 · 대화 기반 DB 자동 구축
 
-WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣고,
-Gemini / Vertex AI 연동으로 대화 로그에서 로어를 추출해 IndexedDB에 누적함.
+WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣고, Gemini / Vertex AI 연동으로 대화 로그에서 로어를 추출해 IndexedDB에 누적함.
+
 컨텍스트 관리 로직/기술을 크랙 유저 채팅을 수정/삽입하는 방식으로 구현.
 
 ---
