@@ -194,9 +194,6 @@ Gemini / Vertex AI 연동으로 대화 로그에서 로어를 추출해 IndexedD
 2. 아래 링크로 유저스크립트 설치
 https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject.user.js
 
-
-설치 후 [crack.wrtn.ai](https://crack.wrtn.ai) 접속, chasm 텍스트 진입점에서 설정 패널 호출.
-
 ---
 
 ## 의존성
