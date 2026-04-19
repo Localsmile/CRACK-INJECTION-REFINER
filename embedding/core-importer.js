@@ -16,18 +16,47 @@
   async function importFromText(text, packName, apiOpts, opts = {}) {
     const maxEntries = opts.maxEntries || DEFAULTS.importMaxEntries;
     const chunkSize = opts.chunkSize || DEFAULTS.importChunkSize;
+    const maxAttempts = opts.maxAttempts !== undefined ? opts.maxAttempts : 3;
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const allEntries = [];
     const chunks = [];
     for (let i = 0; i < text.length; i += chunkSize) chunks.push(text.slice(i, i + chunkSize));
-    for (const chunk of chunks) {
+    const chunkResults = [];
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
       const prompt = IMPORT_PROMPT_TEMPLATE.replace('{source}', chunk).replace('{schema}', IMPORT_SCHEMA).replace('{maxEntries}', String(maxEntries));
-      const res = await callGeminiApi(prompt, { ...apiOpts, responseMimeType: 'application/json', maxRetries: 1 });
-      if (res.text) {
+      let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let gotEntries = 0;
+      for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
+        attempts++;
+        if (onProgress) { try { onProgress({ phase: 'chunk', chunk: ci + 1, total: chunks.length, attempt: attempts, maxAttempts }); } catch(_){} }
         try {
-          const parsed = JSON.parse(res.text);
-          if (Array.isArray(parsed)) allEntries.push(...parsed);
-        } catch (e) { console.warn('[LoreCore] 변환 JSON 파싱 실패:', e.message); }
+          const res = await callGeminiApi(prompt, { ...apiOpts, responseMimeType: 'application/json', maxRetries: 0 });
+          if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
+          rawSnippet = String(res.text).slice(0, 200);
+          // Markdown fence 제거 + 선두/후미 잡텍스트 제거
+          let raw = String(res.text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+          const fb = raw.indexOf('['); const fc = raw.indexOf('{');
+          const first = fb === -1 ? fc : (fc === -1 ? fb : Math.min(fb, fc));
+          if (first > 0) raw = raw.slice(first);
+          const lastB = Math.max(raw.lastIndexOf(']'), raw.lastIndexOf('}'));
+          if (lastB !== -1 && lastB < raw.length - 1) raw = raw.slice(0, lastB + 1);
+          let parsed;
+          try { parsed = JSON.parse(raw); }
+          catch (pe) { lastErr = 'JSON 파싱 실패: ' + pe.message; continue; }
+          if (parsed && !Array.isArray(parsed) && Array.isArray(parsed.entries)) parsed = parsed.entries;
+          if (!Array.isArray(parsed)) { lastErr = '응답이 배열 아님 (type=' + typeof parsed + ')'; continue; }
+          gotEntries = parsed.length;
+          if (parsed.length === 0) { status = 'empty'; ok = true; break; }
+          allEntries.push(...parsed);
+          status = 'ok'; ok = true;
+        } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
       }
+      const row = { index: ci, status, attempts, entries: gotEntries };
+      if (!ok) {
+        row.error = lastErr; row.rawSnippet = rawSnippet;
+        console.warn('[LoreCore:importer] chunk ' + (ci + 1) + '/' + chunks.length + ' 실패 (' + attempts + '회 시도): ' + lastErr + (rawSnippet ? ' | 응답 스니핏: ' + rawSnippet : ''));
+      }
+      chunkResults.push(row);
     }
     if (allEntries.length > 0) {
       const db = getDB();
@@ -44,6 +73,10 @@
       const count = await db.entries.where('packName').equals(packName).count();
       await db.packs.update(packName, { entryCount: count });
     }
+    const okCount = chunkResults.filter(r => r.status === 'ok').length;
+    const emptyCount = chunkResults.filter(r => r.status === 'empty').length;
+    const failedCount = chunkResults.filter(r => r.status === 'failed').length;
+    C.__lastImportReport = { added: allEntries.length, chunks: chunks.length, ok: okCount, empty: emptyCount, failed: failedCount, chunkResults };
     return allEntries.length;
   }
 
