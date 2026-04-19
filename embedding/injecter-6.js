@@ -24,7 +24,7 @@
 
   const VER = _w.__LoreInj.VER;
 
-  // ModalManager 해결: userscript 스코프 → unsafeWindow → window 순으로 시도
+  // ModalManager 해결: userscript 스코프 → unsafeWindow → window 순으로 시도, 안되면 에리 때림
   const MM = (typeof ModalManager !== 'undefined') ? ModalManager
           : (_w.ModalManager || (typeof window !== 'undefined' && window.ModalManager) || null);
   if (!MM) {
@@ -715,12 +715,16 @@
             const curNorm = normalize(settings.config.refinerCustomPrompt);
             Object.entries(R.TEMPLATES).forEach(([k, t]) => { if (normalize(t.prompt) === curNorm) matched = k; });
 
-            if (matched === 'custom' && !settings.config.refinerCustomPrompt) {
-              matched = 'full';
-              settings.config.refinerCustomPrompt = R.TEMPLATES.full.prompt;
-              settings.config.refinerContextTurns = R.TEMPLATES.full.turnHint;
-              ta.value = R.TEMPLATES.full.prompt;
-              inp.value = R.TEMPLATES.full.turnHint;
+            if (matched === 'custom' && !settings.config.refinerCustomPrompt && R.TOPICS && R.buildDynamicPrompt) {
+              // 기본값: 주제별 선택 (모든 주제 on)
+              matched = 'dynamic';
+              settings.config.refinerUseDynamic = true;
+              const def = {}; Object.keys(R.TOPICS).forEach(k => def[k] = true);
+              settings.config.refinerTopics = def;
+              settings.config.refinerCustomPrompt = R.buildDynamicPrompt(def);
+              settings.config.refinerContextTurns = 1;
+              ta.value = settings.config.refinerCustomPrompt;
+              inp.value = 1;
               settings.save();
             }
 
