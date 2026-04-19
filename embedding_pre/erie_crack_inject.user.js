@@ -6,7 +6,7 @@
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
 // @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject.user.js
-// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject.user.js
+// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-toastify-injection@v1.0.0/crack/libraries/toastify-injection.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
