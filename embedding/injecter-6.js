@@ -296,7 +296,7 @@
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           const t = document.createElement('div'); t.textContent = '중복 로어 병합'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:4px;'; nd.appendChild(t);
-          const d = document.createElement('div'); d.textContent = '임베딩 유사도로 중복 후보를 찾아 그룹별 수동 승인. 핵심 정보 보존과 비대화 방지를 위해 글자수 상한·타입 경고 적용.'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
+          const d = document.createElement('div'); d.innerHTML = '임베딩 유사도로 중복 후보를 찾아 그룹별 수동 승인. 핵심 정보 보존과 비대화 방지를 위해 글자수 상한·타입 경고 적용.<br><span style="color:#da8;">※ 현재 페이지에서 활성화(ON)된 팩의 엔트리만 대상 — 다른 페이지나 비활성 팩의 로어는 건드리지 않음.</span>'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
 
           const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const mk = (label, getter, setter, min, max, step) => {
@@ -349,6 +349,14 @@
           };
           nd.appendChild(runBtn); nd.appendChild(runStatus);
 
+          // 일괄 모드 변경 (모든 그룹 select에 동시 적용)
+          const bulkRow = document.createElement('div'); bulkRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:10px;padding:8px;background:#111;border:1px solid #333;border-radius:4px;';
+          const bulkLbl = document.createElement('div'); bulkLbl.textContent = '일괄 모드 변경'; bulkLbl.style.cssText = 'font-size:11px;color:#888;white-space:nowrap;';
+          const bulkSel = document.createElement('select'); bulkSel.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;';
+          [['', '-- 선택하여 모든 그룹에 일괄 적용 --'], ['keep-longest', '가장 긴 항목 유지 + 키워드 합집합 (안전)'], ['llm-summarize', 'LLM 요약 병합 (API 호출, 품질↑)']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; bulkSel.appendChild(o); });
+          bulkSel.onchange = () => { if (!bulkSel.value) return; const sels = document.querySelectorAll('select.lore-merge-mode-sel'); sels.forEach(s => { s.value = bulkSel.value; }); bulkSel.value = ''; };
+          bulkRow.appendChild(bulkLbl); bulkRow.appendChild(bulkSel); nd.appendChild(bulkRow);
+
           if (C.__lastMergeUndo && C.__lastMergeUndo.originals && C.__lastMergeUndo.originals.length) {
             const undoBtn = document.createElement('button'); undoBtn.textContent = '↩️ 직전 병합 취소 (' + C.__lastMergeUndo.originals.length + '개 엔트리 복원)';
             undoBtn.style.cssText = 'width:100%;padding:8px;margin-top:10px;background:transparent;color:#da8;border:1px solid #642;border-radius:4px;cursor:pointer;font-size:12px;';
@@ -387,6 +395,13 @@
             const warn = document.createElement('div'); warn.textContent = typeWarn; warn.style.cssText = 'font-size:10px;color:' + (types.length > 1 ? '#d96' : '#888') + ';';
             hdr.appendChild(title); hdr.appendChild(warn); nd.appendChild(hdr);
 
+            if (types.length > 1) {
+              const typeNote = document.createElement('div');
+              typeNote.style.cssText = 'margin-bottom:8px;padding:6px 8px;background:#2a1a0a;border:1px solid #642;border-radius:4px;font-size:10px;color:#da8;line-height:1.5;';
+              typeNote.innerHTML = '<b>타입이 다를 때의 영향</b><br>• 주입 시 주제별 분류(캐릭터/장소/사건 등)가 무너져 관련 없는 맥락에서 소환될 수 있음<br>• 트리거 키워드가 뒤섞여 오탐 증가 (예: 장소 로어가 인물 대화에서 발동)<br>• 병합 후에는 한쪽 타입으로 고정되므로 나머지 주제성은 손실<br>• 유사도가 높아도 의도적으로 분리된 엔트리일 가능성 있음 — 꼭 필요한 경우에만 진행';
+              nd.appendChild(typeNote);
+            }
+
             for (const e of grp.entries) {
               const row = document.createElement('div'); row.style.cssText = 'padding:6px 0;border-bottom:1px dashed #222;font-size:11px;color:#aaa;';
               const safeSum = String(e.summary || '(요약 없음)').slice(0, 150).replace(/</g, '&lt;');
@@ -395,7 +410,7 @@
             }
 
             const ctrl = document.createElement('div'); ctrl.style.cssText = 'margin-top:10px;display:flex;gap:8px;align-items:center;';
-            const modeSel = document.createElement('select'); modeSel.style.cssText = 'padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;flex:1;';
+            const modeSel = document.createElement('select'); modeSel.className = 'lore-merge-mode-sel'; modeSel.style.cssText = 'padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;flex:1;';
             [['keep-longest', '가장 긴 항목 유지 + 키워드 합집합 (안전)'], ['llm-summarize', 'LLM 요약 병합 (API 호출, 품질↑)']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; modeSel.appendChild(o); });
             const previewBtn = document.createElement('button'); previewBtn.textContent = '프리뷰'; previewBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
             const execBtn = document.createElement('button'); execBtn.textContent = '병합 실행'; execBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;background:#285;border:none;color:#fff;cursor:pointer;font-weight:bold;';
@@ -494,7 +509,23 @@
                 for (const pk of packs) { const cnt = await db.entries.where('packName').equals(pk).count(); await db.packs.update(pk, { entryCount: cnt }); }
                 C.__lastMergeUndo = { mergedId: target.id, originals };
                 state.groups = state.groups.filter((_, i) => i !== gi);
-                alert('병합 완료. 병합된 항목은 임베딩이 삭제됨 — 파일 탭의 "임베딩" 버튼으로 재생성 권장.');
+
+                // 병합된 엔트리 임베딩 자동 재생성
+                let embedMsg = '';
+                try {
+                  const apiType = settings.config.autoExtApiType || 'key';
+                  const apiOpts = { apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+                  const hasApi = apiType === 'vertex' ? !!settings.config.autoExtVertexJson : apiType === 'firebase' ? !!settings.config.autoExtFirebaseEmbedKey : !!settings.config.autoExtKey;
+                  if (hasApi) {
+                    await C.ensureEmbedding(finalEntry, apiOpts);
+                    embedMsg = '임베딩 재생성 완료.';
+                  } else {
+                    embedMsg = '⚠️ API 미설정 — 파일 탭에서 수동 임베딩 필요.';
+                  }
+                } catch(embErr) {
+                  embedMsg = '⚠️ 임베딩 재생성 실패: ' + (embErr.message || embErr) + ' — 파일 탭에서 재시도 가능.';
+                }
+                alert('병합 완료. ' + embedMsg);
                 m.replaceContentPanel(renderMerge, '로어 병합');
               } catch(e) { alert('실패: ' + e.message); }
             };
