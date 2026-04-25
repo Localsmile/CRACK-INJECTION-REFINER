@@ -282,7 +282,7 @@
   if (_w.__loreRegister) _w.__loreRegister(inject);
 
   Object.assign(_w.__LoreInj, { inject, __injectLoaded: true });
-  console.log('[LoreInj:5] inject loaded & registered');
+
   } catch(fatal) {
     console.error('[LoreInj:5] FATAL — inject 등록 실패:', fatal, fatal?.stack);
     _w.__LoreInj = _w.__LoreInj || {};
