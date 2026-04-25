@@ -78,10 +78,12 @@
     if (!el || el.nodeType !== 1) return false;
     const text = (el.textContent || '').trim();
     const href = (el.getAttribute && (el.getAttribute('href') || '')) || '';
+    const tag = (el.tagName || '').toLowerCase();
+    const role = (el.getAttribute && (el.getAttribute('role') || '')) || '';
+    const clickable = tag === 'a' || tag === 'button' || role === 'menuitem' || role === 'button';
+    if (!clickable) return false;
     return /\/settings?(?:[/?#]|$)/i.test(href)
-      || /^(설정|Settings|환경설정)$/i.test(text)
-      || /설정/.test(text)
-      || /Settings/i.test(text);
+      || /^(설정|Settings|환경설정)$/i.test(text);
   }
 
   function getMenuCandidates() {
@@ -138,6 +140,97 @@
     return entry;
   }
 
+  function removeBrokenEntry() {
+    const ex = document.getElementById(ENTRY_ID);
+    if (!ex) return;
+    const parent = ex.parentElement;
+    const looksLikeMenuItem = parent && (
+      ex.tagName === 'A'
+      || ex.tagName === 'BUTTON'
+      || ex.getAttribute('role') === 'menuitem'
+      || parent.querySelector('a, button, [role="menuitem"]')
+    );
+    if (!looksLikeMenuItem || ex.textContent.length > 80) ex.remove();
+  }
+
+  function insertLegacyWebModalEntry() {
+    const modal = document.getElementById('web-modal');
+    if (!modal) return false;
+    if (document.getElementById(ENTRY_ID)) return true;
+
+    const anchors = Array.from(modal.getElementsByTagName('a'));
+    const src = anchors.find(a => {
+      const href = a.getAttribute('href') || '';
+      const text = (a.textContent || '').trim();
+      return href === '/setting' || href === '/settings' || /^설정$|^Settings$/i.test(text);
+    });
+    if (!src || !src.parentElement) return false;
+
+    const cloned = src.cloneNode(true);
+    cloned.id = ENTRY_ID;
+    cloned.setAttribute(ENTRY_ATTR, 'true');
+    cloned.setAttribute('href', 'javascript: void(0)');
+    cloned.removeAttribute('target');
+    cloned.removeAttribute('rel');
+
+    const span = cloned.getElementsByTagName('span')[0];
+    if (span) span.innerText = '로어 설정';
+    else cloned.textContent = '로어 설정';
+
+    cloned.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openLoreInjectorUI();
+    };
+
+    src.parentElement.append(cloned);
+    return true;
+  }
+
+  async function injectTopMenuButton() {
+    if (document.getElementById('lore-injector-top-menu-entry')) return true;
+    try {
+      const isChatRoute = /\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname)
+        || /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname)
+        || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+      if (!isChatRoute) return false;
+
+      const legacyPanels = document.getElementsByClassName(/\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) ? 'css-1c5w7et' : 'css-l8r172');
+      let top = null;
+      if (legacyPanels && legacyPanels.length > 0) {
+        const topContainer = legacyPanels[0].childNodes[legacyPanels.length - 1]?.getElementsByTagName('div');
+        if (topContainer && topContainer.length > 0) {
+          const topList = topContainer[0].children[0]?.children;
+          if (topList && topList.length) top = topList[topList.length - 1];
+        }
+      }
+
+      if (!top) {
+        const candidates = Array.from(document.querySelectorAll('header, nav, main [class*="chat"], main'));
+        top = candidates.find(el => el && el.getBoundingClientRect && el.getBoundingClientRect().width > 200);
+      }
+      if (!top) return false;
+
+      const btn = document.createElement('button');
+      btn.id = 'lore-injector-top-menu-entry';
+      btn.type = 'button';
+      btn.textContent = '로어 설정';
+      btn.style.cssText = 'margin-right:10px;padding:6px 10px;border-radius:8px;border:1px solid #285;background:#1a1a1a;color:#9fd;font-size:12px;font-weight:bold;cursor:pointer;white-space:nowrap;';
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openLoreInjectorUI();
+      }, true);
+
+      if (top.childNodes && top.childNodes.length) top.insertBefore(btn, top.childNodes[0]);
+      else top.appendChild(btn);
+      return true;
+    } catch (err) {
+      getEntrypointDiagnostics().lastError = err && err.message ? err.message : String(err);
+      return false;
+    }
+  }
+
   function scanAndInsertMenuEntry(reason) {
     const diag = getEntrypointDiagnostics();
     diag.attempts += 1;
@@ -146,6 +239,12 @@
     diag.lastError = '';
 
     try {
+      removeBrokenEntry();
+      if (insertLegacyWebModalEntry()) {
+        diag.inserted = true;
+        diag.insertCount += 1;
+        return true;
+      }
       if (document.getElementById(ENTRY_ID)) {
         diag.inserted = true;
         return true;
@@ -156,7 +255,7 @@
 
       let settingsItems = [];
       candidates.forEach(root => {
-        const nodes = [root].concat(Array.from(root.querySelectorAll('a, button, [role="menuitem"], [role="button"], div, li')));
+        const nodes = Array.from(root.querySelectorAll('a, button, [role="menuitem"], [role="button"]'));
         nodes.forEach(node => {
           if (node.id === ENTRY_ID || node.getAttribute?.(ENTRY_ATTR) === 'true') return;
           if (isSettingsLike(node) && !settingsItems.includes(node)) settingsItems.push(node);
@@ -192,13 +291,17 @@
 
     const delayed = [0, 80, 200, 500, 1000, 1500];
     const schedule = (reason) => delayed.forEach(ms => setTimeout(() => scanAndInsertMenuEntry(reason), ms));
+    const scheduleTop = () => delayed.forEach(ms => setTimeout(() => injectTopMenuButton(), ms));
 
     schedule('install');
-    document.addEventListener('click', () => schedule('document-click'), true);
-    document.addEventListener('pointerdown', () => schedule('document-pointerdown'), true);
+    scheduleTop();
+    document.addEventListener('click', () => { schedule('document-click'); scheduleTop(); }, true);
+    document.addEventListener('pointerdown', () => { schedule('document-pointerdown'); scheduleTop(); }, true);
+    window.addEventListener('popstate', () => { schedule('route-popstate'); scheduleTop(); });
+    window.addEventListener('hashchange', () => { schedule('route-hashchange'); scheduleTop(); });
 
     try {
-      const mo = new MutationObserver(() => scanAndInsertMenuEntry('mutation'));
+      const mo = new MutationObserver(() => { scanAndInsertMenuEntry('mutation'); injectTopMenuButton(); });
       mo.observe(document.documentElement, { childList: true, subtree: true });
       diag.observer = true;
     } catch (err) {
