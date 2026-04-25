@@ -111,5 +111,5 @@
 
   _w.__loreRegister = function(fn) { _injectFn = fn; };
   _w.__LoreInj.__interceptorLoaded = true;
-  console.log('[LoreInj:1] interceptor loaded');
+
 })();
