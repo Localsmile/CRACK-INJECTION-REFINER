@@ -25,13 +25,188 @@
   const VER = _w.__LoreInj.VER;
 
   // ModalManager 해결: userscript 스코프 → unsafeWindow → window 순으로 시도
-  const MM = (typeof ModalManager !== 'undefined') ? ModalManager
+  let MM = (typeof ModalManager !== 'undefined') ? ModalManager
           : (_w.ModalManager || (typeof window !== 'undefined' && window.ModalManager) || null);
+
+  // 외부 ModalManager가 없으면 인젝터 자체 폴백 메뉴를 사용
   if (!MM) {
-    console.error('[LoreInj:6] ModalManager 미로드 — decentralized-modal @require 확인 필요. _w 키:', Object.keys(_w).filter(k => /modal/i.test(k)));
-    return;
+    console.warn('[LoreInj:6] ModalManager 미로드 — 내장 폴백 메뉴로 전환. _w 키:', Object.keys(_w).filter(k => /modal/i.test(k)));
+
+    MM = (function createLoreFallbackModalManager(){
+      const managers = {};
+
+      function makePanel(contentEl) {
+        return {
+          addText(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            div.style.cssText = 'padding:12px 14px;color:#ccc;font-size:13px;line-height:1.5;';
+            contentEl.appendChild(div);
+            return div;
+          },
+          addBoxedField(label, desc, opts) {
+            const box = document.createElement('div');
+            box.style.cssText = 'margin:10px 0;padding:12px 14px;border:1px solid #333;border-radius:8px;background:#111;color:#ccc;';
+            if (label) {
+              const l = document.createElement('div');
+              l.textContent = label;
+              l.style.cssText = 'font-size:13px;font-weight:bold;margin-bottom:4px;color:#ddd;';
+              box.appendChild(l);
+            }
+            if (desc) {
+              const d = document.createElement('div');
+              d.textContent = desc;
+              d.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
+              box.appendChild(d);
+            }
+            const nd = document.createElement('div');
+            box.appendChild(nd);
+            contentEl.appendChild(box);
+            if (opts && typeof opts.onInit === 'function') {
+              try { opts.onInit(nd); } catch (e) { console.error('[LoreInj:6] fallback panel onInit 실패:', e); }
+            }
+            return nd;
+          }
+        };
+      }
+
+      function createManager(id) {
+        const state = { menus: [], active: 0, built: false, opened: false };
+        const api = {
+          createMenu(title, cb) {
+            addMenu(title, cb);
+            return chain;
+          }
+        };
+
+        const chain = {
+          createSubMenu(title, cb) {
+            addMenu(title, cb);
+            return chain;
+          },
+          replaceContentPanel(fn, heading) {
+            renderContent(fn, heading);
+            return chain;
+          }
+        };
+
+        let root, sidebar, content, openBtn;
+
+        function addMenu(title, cb) {
+          state.menus.push({ title, cb });
+          if (state.built) renderSidebar();
+        }
+
+        function ensureDom() {
+          if (state.built) return;
+          state.built = true;
+
+          openBtn = document.createElement('button');
+          openBtn.textContent = '로어';
+          openBtn.style.cssText = 'position:fixed;right:16px;bottom:88px;z-index:2147483646;padding:9px 12px;border-radius:999px;border:1px solid #285;background:#173;color:#fff;font-size:12px;font-weight:bold;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;';
+          document.body.appendChild(openBtn);
+
+          root = document.createElement('div');
+          root.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:none;background:rgba(0,0,0,.55);font-family:inherit;';
+          const shell = document.createElement('div');
+          shell.style.cssText = 'position:absolute;right:16px;bottom:16px;width:min(760px,calc(100vw - 32px));height:min(720px,calc(100vh - 32px));display:flex;background:#080808;border:1px solid #333;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.55);overflow:hidden;';
+          sidebar = document.createElement('div');
+          sidebar.style.cssText = 'width:170px;flex:0 0 170px;background:#111;border-right:1px solid #333;padding:10px;box-sizing:border-box;overflow:auto;';
+          const main = document.createElement('div');
+          main.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
+          const top = document.createElement('div');
+          top.style.cssText = 'height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #333;color:#ddd;font-size:13px;font-weight:bold;box-sizing:border-box;';
+          const titleEl = document.createElement('div');
+          titleEl.textContent = '로어 설정';
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = '닫기';
+          closeBtn.style.cssText = 'padding:5px 9px;border-radius:5px;border:1px solid #444;background:#181818;color:#ccc;font-size:11px;cursor:pointer;';
+          closeBtn.onclick = () => { root.style.display = 'none'; state.opened = false; };
+          top.appendChild(titleEl);
+          top.appendChild(closeBtn);
+          content = document.createElement('div');
+          content.style.cssText = 'flex:1;overflow:auto;padding:12px;box-sizing:border-box;color:#ccc;';
+          main.appendChild(top);
+          main.appendChild(content);
+          shell.appendChild(sidebar);
+          shell.appendChild(main);
+          root.appendChild(shell);
+          document.body.appendChild(root);
+
+          openBtn.onclick = () => {
+            root.style.display = 'block';
+            state.opened = true;
+            if (!content.childNodes.length && state.menus[0]) activateMenu(0);
+          };
+          root.addEventListener('click', (ev) => { if (ev.target === root) closeBtn.onclick(); });
+          renderSidebar();
+        }
+
+        function renderSidebar() {
+          ensureDom();
+          sidebar.innerHTML = '';
+          state.menus.forEach((menu, idx) => {
+            const btn = document.createElement('button');
+            btn.textContent = menu.title;
+            btn.style.cssText = 'width:100%;display:block;text-align:left;margin:0 0 6px;padding:8px 9px;border-radius:6px;border:1px solid ' + (idx === state.active ? '#285' : '#333') + ';background:' + (idx === state.active ? '#173' : '#181818') + ';color:' + (idx === state.active ? '#fff' : '#ccc') + ';font-size:12px;cursor:pointer;';
+            btn.onclick = () => activateMenu(idx);
+            sidebar.appendChild(btn);
+          });
+        }
+
+        function renderContent(fn, heading) {
+          ensureDom();
+          content.innerHTML = '';
+          if (heading) {
+            const h = document.createElement('div');
+            h.textContent = heading;
+            h.style.cssText = 'font-size:15px;font-weight:bold;color:#4a9;margin:0 0 10px;';
+            content.appendChild(h);
+          }
+          const panel = makePanel(content);
+          if (typeof fn === 'function') {
+            try { fn(panel); } catch (e) {
+              console.error('[LoreInj:6] fallback content 렌더 실패:', e);
+              panel.addText('렌더링 실패: ' + e.message);
+            }
+          }
+        }
+
+        function activateMenu(idx) {
+          ensureDom();
+          state.active = idx;
+          renderSidebar();
+          const menu = state.menus[idx];
+          if (!menu) return;
+          const ctx = {
+            replaceContentPanel(fn, heading) {
+              renderContent(fn, heading || menu.title);
+              return ctx;
+            },
+            createSubMenu(title, cb) {
+              addMenu(title, cb);
+              return ctx;
+            }
+          };
+          try { menu.cb(ctx); } catch (e) {
+            console.error('[LoreInj:6] fallback menu 실행 실패:', e);
+            renderContent((p) => p.addText('메뉴 실행 실패: ' + e.message), menu.title);
+          }
+        }
+
+        setTimeout(ensureDom, 0);
+        return api;
+      }
+
+      return {
+        getOrCreateManager(id) {
+          if (!managers[id]) managers[id] = createManager(id);
+          return managers[id];
+        }
+      };
+    })();
   }
-  console.log('[LoreInj:6] ModalManager 획득. getOrCreateManager 타입:', typeof MM.getOrCreateManager);
+  console.log('[LoreInj:6] ModalManager 준비. getOrCreateManager 타입:', typeof MM.getOrCreateManager);
 
   // UI 렌더링
   function setupUI() {
