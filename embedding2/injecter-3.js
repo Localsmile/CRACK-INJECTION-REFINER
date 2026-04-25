@@ -323,4 +323,6 @@
     __settingsLoaded: true
   });
 
+  console.log('[LoreInj:3] settings+utils loaded');
+
 })();
