@@ -1572,5 +1572,5 @@
   window.addEventListener('resize', () => { /* gear FAB 비활성화 — chasm 텍스트 진입점만 사용 */ });
 
   Object.assign(_w.__LoreInj, { __uiLoaded: true });
-  console.log('[LoreInj:6] UI loaded (Chasm Tools banner + gear fallback attached)');
+
 })();
