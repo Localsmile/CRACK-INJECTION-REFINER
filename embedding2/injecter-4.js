@@ -501,5 +501,5 @@
     extBadgeShow, extBadgeHide,
     __extractLoaded: true
   });
-  console.log('[LoreInj:4] extract loaded');
+
 })();
