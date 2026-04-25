@@ -1,14 +1,35 @@
 // ==UserScript==
 // @name        crack-lore-core
 // @namespace   로어-코어
-// @version     1.2.0
-// @description 로어 인젝터/교정기/메모리엔진 공용 코어 (v1.2.0)
+// @version     1.2.1
+// @description 로어 인젝터/교정기/메모리엔진 공용 코어 + embedding2 모듈 로더
 // @author      로컬AI
 // @license     Apache-2.0
 // @match       https://crack.wrtn.ai/*
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@crack-shared-core@v1.0.0/crack/libraries/crack-shared-core.js
 // @require     https://cdn.jsdelivr.net/gh/milkyway0308/crystallized-chasm@chasm-shared-core@v1.0.0/libraries/chasm-shared-core.js
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-kernel.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-memory.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-format.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-embedding.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-search.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-importer.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-theme.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-components.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-help.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-layout.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-list-controls.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-settings-layout.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui-navigation.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/core-ui.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/refiner.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/injecter-1.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/injecter-2.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/injecter-3.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/injecter-4.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/injecter-5.js?v=20260425-step3
+// @require     https://raw.githubusercontent.com/milkyway0308/crystallized-chasm/main/embedding2/injecter-6.js?v=20260425-step3
 // @grant       GM_addStyle
 // @grant       GM_xmlhttpRequest
 // @connect     generativelanguage.googleapis.com
