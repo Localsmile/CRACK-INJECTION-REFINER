@@ -6,8 +6,9 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.10-test';
+  const VER = '1.4.11-test';
   const CHANGELOG = [
+    'UI 진입점 복구: 설정 메뉴 삽입을 전용 entrypoints 모듈로 분리, 메뉴 열림 감지/진단 기록/콘솔 진입 함수를 정리',
     'UI 표시 핫픽스: 레거시와 같은 ModalManager 메뉴 방식 유지, 설정 메뉴에 로어 설정 항목을 더 견고하게 삽입, 플로팅 버튼 없음',
     '배포 후보 정리: 모듈형 로더, 전체 패널 로딩, 런타임 자가진단, 모바일 UI 대응, fetch 주입 범위 축소를 포함한 1.4.9-test 후보',
     '빠른 설정 프리셋 정리: 기본 추천·수동 검색·정밀(리랭커) 중 골라 한 번에 적용 가능. 정밀을 고르면 의미 기반 응답 교정까지 함께 켜짐',
