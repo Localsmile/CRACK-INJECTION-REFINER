@@ -139,7 +139,7 @@
       return;
     }
 
-    let chain = modal.createMenu('설정 정보', (m) => {
+    let chain = modal.createMenu('로어 설정', (m) => {
       UI.openPanel(m, firstPanel.render, firstPanel.title || firstPanel.label, firstPanel.id);
     });
 
@@ -154,38 +154,80 @@
   }
 
   function installSettingsMenuEntry() {
-    const ENTRY_ID = 'chasm-decentral-menu';
+    const ENTRY_ID = 'lore-injector-settings-menu-entry';
+
+    function openLoreInjectorUI() {
+      const mgr = MM.getOrCreateManager('c2');
+      if (!mgr) {
+        console.error('[LoreInj:6] c2 modal manager unavailable');
+        return;
+      }
+      if (typeof mgr.display === 'function') {
+        mgr.display(document.body.getAttribute('data-theme') !== 'light');
+        return;
+      }
+      console.error('[LoreInj:6] modal.display unavailable:', mgr);
+    }
+
+    function findSettingsAnchor(root) {
+      const links = Array.from(root.querySelectorAll ? root.querySelectorAll('a[href],button,[role="menuitem"]') : []);
+      return links.find(function(item) {
+        const href = item.getAttribute && item.getAttribute('href');
+        if (href) {
+          try {
+            const u = new URL(href, location.href);
+            if (u.pathname === '/setting' || u.pathname === '/settings') return true;
+          } catch (_) {
+            if (href === '/setting' || href === '/settings') return true;
+          }
+        }
+        const text = (item.textContent || '').trim();
+        return text === '설정' || text === 'Settings';
+      }) || null;
+    }
 
     function updateModalMenu() {
-      const modal = document.getElementById('web-modal');
-      if (!modal || document.getElementById(ENTRY_ID)) return;
+      if (document.getElementById(ENTRY_ID)) return;
 
-      const links = modal.getElementsByTagName('a');
-      for (const item of links) {
-        if (item.getAttribute('href') === '/setting') {
-          const cloned = item.cloneNode(true);
-          cloned.id = ENTRY_ID;
-          const textElement = cloned.getElementsByTagName('span')[0];
-          if (textElement) textElement.innerText = '결정화 캐즘';
-          cloned.setAttribute('href', 'javascript:void(0)');
-          cloned.onclick = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
-          };
-          item.parentElement && item.parentElement.append(cloned);
-          break;
-        }
+      const roots = [
+        document.getElementById('web-modal'),
+        document.querySelector('[role="menu"]'),
+        document.body
+      ].filter(Boolean);
+
+      for (const root of roots) {
+        const item = findSettingsAnchor(root);
+        if (!item || !item.parentElement) continue;
+
+        const cloned = item.cloneNode(true);
+        cloned.id = ENTRY_ID;
+        cloned.removeAttribute('href');
+        cloned.setAttribute('role', cloned.getAttribute('role') || 'menuitem');
+        cloned.style.cursor = 'pointer';
+
+        const textElement = cloned.querySelector && (cloned.querySelector('span') || cloned);
+        if (textElement) textElement.textContent = '로어 설정';
+        else cloned.textContent = '로어 설정';
+
+        cloned.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openLoreInjectorUI();
+        };
+
+        item.parentElement.appendChild(cloned);
+        break;
       }
     }
 
+    L.openLoreInjectorUI = openLoreInjectorUI;
     updateModalMenu();
 
     if (L.__uiMenuObserver && typeof L.__uiMenuObserver.disconnect === 'function') {
       try { L.__uiMenuObserver.disconnect(); } catch (_) {}
     }
     const observer = new MutationObserver(updateModalMenu);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
     L.__uiMenuObserver = observer;
   }
 
@@ -194,6 +236,7 @@
   Object.assign(L, {
     setupUI,
     getRuntimeSmokeReport,
+    openLoreInjectorUI: L.openLoreInjectorUI,
     __uiLoaded: true
   });
 
