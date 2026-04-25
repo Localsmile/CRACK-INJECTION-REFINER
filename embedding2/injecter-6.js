@@ -42,8 +42,44 @@
       return;
     }
 
+    function reportPanelError(panel, tag, err) {
+      const msg = (err && err.message) ? err.message : String(err || 'unknown');
+      console.error('[LoreInj:6] ' + tag + ' 렌더 실패:', err);
+      try {
+        if (panel && typeof panel.addText === 'function') {
+          panel.addText(tag + ' 열기 실패: ' + msg);
+          return;
+        }
+      } catch (_) {}
+      try {
+        const box = document.createElement('div');
+        box.textContent = tag + ' 열기 실패: ' + msg;
+        box.style.cssText = 'padding:10px;border:1px solid #633;border-radius:6px;background:#1a0f0f;color:#d99;font-size:12px;line-height:1.5;white-space:pre-wrap;';
+        if (panel && panel.appendChild) panel.appendChild(box);
+      } catch (_) {}
+    }
+
+    function safePanel(tag, renderer) {
+      return function (panel) {
+        try {
+          const result = renderer(panel);
+          if (result && typeof result.then === 'function') {
+            result.catch(function (err) { reportPanelError(panel, tag, err); });
+          }
+        } catch (err) {
+          reportPanelError(panel, tag, err);
+        }
+      };
+    }
+
+    function openPanel(m, renderer, title, tag) {
+      const name = tag || title || '패널';
+      const replaceContentPanel = m.replaceContentPanel.bind(m);
+      return replaceContentPanel(safePanel(name, renderer), title);
+    }
+
     modal.createMenu(LBL.menuTitle || '설정 정보', (m) => {
-      m.replaceContentPanel(async (panel) => {
+      openPanel(m, async (panel) => {
         const PRESETS = {
           beginner: { name: PRESET_COPY.beginner?.name || '기본 추천', desc: PRESET_COPY.beginner?.desc || '의미 기반 검색과 자동 정리 함께 사용.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: false, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } },
           minimal: { name: PRESET_COPY.minimal?.name || '가볍게 사용', desc: PRESET_COPY.minimal?.desc || '자동 정리는 끄고 필요할 때만 직접 실행.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: false, autoEmbedOnExtract: true, scanOffset: 2, maxEntries: 3, cooldownTurns: 6, loreBudgetChars: 250, loreBudgetMax: 400, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: false, importanceGating: true, importanceThreshold: 12, rerankEnabled: false, useCompressedFormat: false, compressionMode: 'full', strictMatch: true, similarityMatch: true } },
@@ -61,7 +97,7 @@
             btn.onclick = () => {
               if (!confirm('[' + preset.name + '] ' + (LBL.presetApplyConfirm || '프리셋 적용?'))) return;
               settings.config = JSON.parse(JSON.stringify(defaultSettings)); Object.assign(settings.config, preset.config); settings.save();
-              m.replaceContentPanel((p) => p.addText(LBL.settingsRefreshNeeded || '새로고침 필요함.'), LBL.settingsRefreshTitle || '설정 갱신 필요');
+              openPanel(m, (p) => p.addText(LBL.settingsRefreshNeeded || '새로고침 필요함.'), LBL.settingsRefreshTitle || '설정 갱신 필요');
             };
             row.appendChild(btn);
           }
@@ -189,7 +225,7 @@
                 }
                 settings.config.urlDisabledEntries = ud;
                 settings.save();
-                m.replaceContentPanel(renderPanel, LBL.loreListPanelTitle || '설정 목록 관리');
+                openPanel(m, renderPanel, LBL.loreListPanelTitle || '설정 목록 관리');
             };
 
             const title = document.createElement('div'); title.style.cssText = 'font-size:14px;font-weight:bold;color:#ccc;flex:1;'; title.textContent = pk + ' (' + items.length + '개)';
@@ -287,7 +323,7 @@
           }});
         }
       };
-      m.replaceContentPanel(renderPanel, LBL.loreListPanelTitle || '설정 목록 관리');
+      openPanel(m, renderPanel, LBL.loreListPanelTitle || '설정 목록 관리');
     })
     .createSubMenu(LBL.loreMergeMenu || '중복 설정 정리', (m) => {
       const renderMerge = async (panel) => {
@@ -343,7 +379,7 @@
               state.groups = groups;
               runStatus.textContent = groups.length > 0 ? '후보 ' + groups.length + '개 ' + (LBL.mergeGroupsFound || '그룹 발견.') : (LBL.mergeNoCandidates || '기준 이상 후보 없음.');
               runStatus.style.color = groups.length > 0 ? '#4a9' : '#888';
-              m.replaceContentPanel(renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
+              openPanel(m, renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
             } catch(e) { runStatus.textContent = (LBL.failedText || '실패') + ': ' + e.message; runStatus.style.color = '#d66'; }
             runBtn.textContent = LBL.mergeFindCandidates || '병합 후보 찾기'; runBtn.disabled = false;
           };
@@ -373,7 +409,7 @@
                 for (const pk of packs) { const cnt = await db.entries.where('packName').equals(pk).count(); await db.packs.update(pk, { entryCount: cnt }); }
                 C.__lastMergeUndo = null;
                 alert(LBL.mergeRestored || '복원 완료.');
-                m.replaceContentPanel(renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
+                openPanel(m, renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
               } catch(e) { alert((LBL.failedText || '실패') + ': ' + e.message); }
             };
             nd.appendChild(undoBtn);
@@ -526,13 +562,13 @@
                   embedMsg = (LBL.mergeEmbeddingFailed || '검색 데이터 재생성 실패.') + ': ' + (embErr.message || embErr) + ' — 파일 관리에서 재시도 가능.';
                 }
                 alert((LBL.mergeComplete || '병합 완료.') + ' ' + embedMsg);
-                m.replaceContentPanel(renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
+                openPanel(m, renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
               } catch(e) { alert((LBL.failedText || '실패') + ': ' + e.message); }
             };
           }});
         }
       };
-      m.replaceContentPanel(renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
+      openPanel(m, renderMerge, LBL.loreMergePanelTitle || '중복 설정 정리');
     })
     .createSubMenu(LBL.snapshotMenu || '백업 관리', (m) => {
       const renderSnapshotUI = async (panel) => {
@@ -550,16 +586,16 @@
             info.appendChild(sTitle); info.appendChild(sTime);
             const btnWrap = document.createElement('div'); btnWrap.style.cssText = 'display:flex;gap:4px;';
             const rBtn = document.createElement('button'); rBtn.textContent = LBL.restoreAction || '복원'; rBtn.style.cssText = 'padding:4px 8px;font-size:11px;border-radius:3px;background:#258;color:#fff;border:none;cursor:pointer;';
-            rBtn.onclick = async () => { if (confirm(`[${s.packName}] ` + (LBL.snapshotRestoreConfirm || '이 시점으로 복원? 기존 데이터 덮어씀.'))) { await restoreSnapshot(s.id); alert(LBL.snapshotRestoreDone || '복원 완료.'); m.replaceContentPanel(renderSnapshotUI, LBL.snapshotPanelTitle || '백업 관리'); } };
+            rBtn.onclick = async () => { if (confirm(`[${s.packName}] ` + (LBL.snapshotRestoreConfirm || '이 시점으로 복원? 기존 데이터 덮어씀.'))) { await restoreSnapshot(s.id); alert(LBL.snapshotRestoreDone || '복원 완료.'); openPanel(m, renderSnapshotUI, LBL.snapshotPanelTitle || '백업 관리'); } };
             const dBtn = document.createElement('button'); dBtn.textContent = LBL.deleteAction || '삭제'; dBtn.style.cssText = 'padding:4px 8px;font-size:11px;border-radius:3px;background:transparent;color:#d66;border:1px solid #d66;cursor:pointer;';
-            dBtn.onclick = async () => { if (confirm(LBL.snapshotDeleteConfirm || '백업 삭제?')) { await db.snapshots.delete(s.id); m.replaceContentPanel(renderSnapshotUI, LBL.snapshotPanelTitle || '백업 관리'); } };
+            dBtn.onclick = async () => { if (confirm(LBL.snapshotDeleteConfirm || '백업 삭제?')) { await db.snapshots.delete(s.id); openPanel(m, renderSnapshotUI, LBL.snapshotPanelTitle || '백업 관리'); } };
             btnWrap.appendChild(rBtn); btnWrap.appendChild(dBtn);
             row.appendChild(info); row.appendChild(btnWrap); list.appendChild(row);
           }
           nd.appendChild(list);
         }});
       };
-      m.replaceContentPanel(renderSnapshotUI, LBL.snapshotPanelTitle || '백업 관리');
+      openPanel(m, renderSnapshotUI, LBL.snapshotPanelTitle || '백업 관리');
     })
     .createSubMenu(LBL.fileMenu || '파일 관리', (m) => {
       const renderPackUI = async (panel) => {
@@ -577,7 +613,7 @@
               const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : [data]; let count = 0;
               for (const e of arr) { if (!e.name) continue; if (!e.triggers) e.triggers = [e.name]; e.packName = packName; e.project = settings.config.activeProject || ''; const existing = await db.entries.where('name').equals(e.name).first(); if (existing) { await db.entries.update(existing.id, e); } else { await db.entries.add(e); count++; } }
               const totalCount = await db.entries.where('packName').equals(packName).count(); let pack = await db.packs.get(packName); if (pack) await db.packs.update(packName, { entryCount: totalCount }); else await db.packs.put({ name: packName, entryCount: totalCount, project: settings.config.activeProject || '' });
-              await setPackEnabled(packName, true); alert(arr.length + '개 ' + (LBL.importDone || '항목 처리 완료') + ' (' + (LBL.newItemCount || '새 항목') + ' ' + count + '개)'); m.replaceContentPanel(renderPackUI, LBL.fileMenu || '파일 관리');
+              await setPackEnabled(packName, true); alert(arr.length + '개 ' + (LBL.importDone || '항목 처리 완료') + ' (' + (LBL.newItemCount || '새 항목') + ' ' + count + '개)'); openPanel(m, renderPackUI, LBL.fileMenu || '파일 관리');
             } catch (err) { alert((LBL.importFailed || '가져오기 실패.') + ': ' + err.message); } fileInput.value = '';
           };
           row.appendChild(fileInput); row.appendChild(importBtn); nd.appendChild(row);
@@ -593,7 +629,7 @@
               const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : [data]; let cnt = 0;
               for (const e of arr) { if (!e.name) continue; if (!e.triggers) e.triggers = [e.name]; e.packName = pn; e.project = settings.config.activeProject || ''; const ex = await db.entries.where('name').equals(e.name).first(); if (ex) { await db.entries.update(ex.id, e); } else { await db.entries.add(e); cnt++; } }
               const tc = await db.entries.where('packName').equals(pn).count(); let pk = await db.packs.get(pn); if (pk) await db.packs.update(pn, { entryCount: tc }); else await db.packs.put({ name: pn, entryCount: tc, project: settings.config.activeProject || '' });
-              await setPackEnabled(pn, true); alert(arr.length + '개 ' + (LBL.importDone || '항목 처리 완료') + ' (' + (LBL.newItemCount || '새 항목') + ' ' + cnt + '개)'); manualTa.value = ''; m.replaceContentPanel(renderPackUI, LBL.fileMenu || '파일 관리');
+              await setPackEnabled(pn, true); alert(arr.length + '개 ' + (LBL.importDone || '항목 처리 완료') + ' (' + (LBL.newItemCount || '새 항목') + ' ' + cnt + '개)'); manualTa.value = ''; openPanel(m, renderPackUI, LBL.fileMenu || '파일 관리');
             } catch (err) { alert((LBL.jsonParseFailed || 'JSON 확인 필요.') + ': ' + err.message); }
           };
           manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
@@ -624,12 +660,12 @@
             exportBtn.onclick = async () => { const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert(LBL.itemEmpty || '항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
             const embBtn = document.createElement('button'); embBtn.textContent = LBL.embeddingAction || '검색 데이터'; embBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; embBtn.onclick = async () => { const apiType = settings.config.autoExtApiType || 'key'; const miss = apiType === 'vertex' ? !settings.config.autoExtVertexJson : apiType === 'firebase' ? !settings.config.autoExtFirebaseEmbedKey : !settings.config.autoExtKey; if (miss) { alert(apiType === 'firebase' ? (LBL.embeddingApiKeyRequired || '검색 데이터 생성용 API 키 필요.') : (LBL.apiSettingRequired || 'API 설정 필요.')); return; } if (!confirm('[' + pack.name + '] ' + (LBL.packEmbeddingConfirm || '검색 데이터 생성?'))) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const cnt = await C.embedPack(pack.name, { apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = (LBL.doneText || '완료') + ' ' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = LBL.failedText || '실패'; embBtn.disabled = false; alert((LBL.failedText || '실패') + ': ' + e.message); } };
             const delBtn = document.createElement('button'); delBtn.textContent = LBL.deleteAction || '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
-            delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] ' + (LBL.deleteAction || '삭제') + '?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); m.replaceContentPanel(renderPackUI, LBL.fileMenu || '파일 관리'); };
+            delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] ' + (LBL.deleteAction || '삭제') + '?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); openPanel(m, renderPackUI, LBL.fileMenu || '파일 관리'); };
             actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
           }
         }});
       };
-      m.replaceContentPanel(renderPackUI, LBL.fileMenu || '파일 관리');
+      openPanel(m, renderPackUI, LBL.fileMenu || '파일 관리');
     })
     .createSubMenu(LBL.extractMenu || '대화 정리', (m) => {
       const renderAutoUI = (panel) => {
@@ -839,10 +875,10 @@
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
       };
-      m.replaceContentPanel(renderAutoUI, LBL.extractPanelTitle || '대화 정리 설정');
+      openPanel(m, renderAutoUI, LBL.extractPanelTitle || '대화 정리 설정');
     })
     .createSubMenu(LBL.refinerTitle || '응답 교정', (m) => {
-      m.replaceContentPanel(async (panel) => {
+      openPanel(m, async (panel) => {
         if (!R) { panel.addText(LBL.refinerMissing || '응답 교정 모듈 없음.'); return; }
         // 수동 검수 버튼: 마지막 AI 응답 즉시 재검수 (fingerprint/refinerEnabled 무시)
         panel.addBoxedField('', '', { onInit: (nd) => {
@@ -1066,7 +1102,7 @@
               btn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:transparent;color:#d66;border:1px solid #d66;';
               btn.onclick = (ev) => {
                 ev.stopPropagation();
-                if(confirm(LBL.logDeleteConfirm || '기록 삭제?')) { renderer(true); m.replaceContentPanel(renderLogs, LBL.logPanelTitle || '실행 기록'); }
+                if(confirm(LBL.logDeleteConfirm || '기록 삭제?')) { renderer(true); openPanel(m, renderLogs, LBL.logPanelTitle || '실행 기록'); }
               };
               hRow.appendChild(btn);
             }
@@ -1123,7 +1159,7 @@
         makeLogBox(LBL.logRefinerTitle || '교정 기록', '#ea5', rLog, (clear, i, nd) => { if(clear){ settings.config.urlRefinerLogs[chatKey]=[]; settings.save(); } else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:${i.isPass?'#4a9':i.isError?'#d66':'#ea5'};">[${i.time}] ${i.isPass?'통과':i.isError?'오류':'교정됨'}</span>${i.reason?`<br><span style="font-size:11px;color:#da7;">이유: ${i.reason}</span>`:''}`; nd.appendChild(r); } });
         makeLogBox(LBL.logContradictionTitle || '모순 기록', '#d96', cLog, (clear, i, nd) => { if(clear) _ls.removeItem('lore-contradictions'); else { const r = document.createElement('div'); r.style.cssText = 'margin-bottom:6px;border-bottom:1px dashed #222;padding-bottom:4px;font-size:12px;'; r.innerHTML = `<span style="color:#d96;font-weight:bold;">${i.name}</span><br><span style="color:#a55;">"${i.oldStatus}" → "${i.newStatus}"</span><br><span style="font-size:10px;color:#888;">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`; nd.appendChild(r); } });
       };
-      m.replaceContentPanel(renderLogs, LBL.logPanelTitle || '실행 기록');
+      openPanel(m, renderLogs, LBL.logPanelTitle || '실행 기록');
     })
     .createSubMenu(LBL.sessionMenu || '세션 상태', (m) => {
       const renderSessionStatus = async (panel) => {
@@ -1166,7 +1202,7 @@
                 _ls.setItem('lore-turn-counters', JSON.stringify(turnCounters));
               }
               settings.save();
-              m.replaceContentPanel(renderSessionStatus, LBL.sessionPanelTitle || '세션 상태 관리');
+              openPanel(m, renderSessionStatus, LBL.sessionPanelTitle || '세션 상태 관리');
             }
           };
           headerRow.appendChild(title);
@@ -1258,7 +1294,7 @@
                 _ls.setItem('lore-last-mention', JSON.stringify(allMentions));
               }
               settings.save();
-              m.replaceContentPanel(renderSessionStatus, LBL.sessionPanelTitle || '세션 상태 관리');
+              openPanel(m, renderSessionStatus, LBL.sessionPanelTitle || '세션 상태 관리');
             };
 
             row.appendChild(info);
@@ -1268,10 +1304,10 @@
           nd.appendChild(listContainer);
         }});
       };
-      m.replaceContentPanel(renderSessionStatus, '세션 상태 조회');
+      openPanel(m, renderSessionStatus, '세션 상태 조회');
     })
     .createSubMenu('API 설정', (m) => {
-      m.replaceContentPanel((panel) => {
+      openPanel(m, (panel) => {
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           const t = document.createElement('div'); t.textContent = 'Gemini / Vertex AI API'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
@@ -1348,7 +1384,7 @@
       }, 'API 설정');
     })
     .createSubMenu('도움말', (m) => {
-      m.replaceContentPanel((panel) => {
+      openPanel(m, (panel) => {
         const addHelp = (title, sections) => {
           panel.addBoxedField('', '', { onInit: (nd) => {
             C.setFullWidth(nd);
