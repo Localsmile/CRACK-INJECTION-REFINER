@@ -223,5 +223,5 @@ Conversation Log:
     DEFAULT_AUTO_EXTRACT_SCHEMA,
     __constLoaded: true
   });
-  console.log('[LoreInj:2] constants loaded');
+
 })();
