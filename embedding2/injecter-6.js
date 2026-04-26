@@ -277,6 +277,73 @@
     }
   }
 
+  function installModalCloseAffordance() {
+    if (document.getElementById('lore-injector-modal-affordance-style')) return;
+
+    const style = document.createElement('style');
+    style.id = 'lore-injector-modal-affordance-style';
+    style.textContent = [
+      '#web-modal button[aria-label*="close" i],',
+      '#web-modal button[aria-label*="닫"],',
+      '#web-modal [role="button"][aria-label*="close" i],',
+      '#web-modal [role="button"][aria-label*="닫"]{',
+      '  cursor:pointer!important;',
+      '  transition:background-color .12s ease, opacity .12s ease, transform .08s ease!important;',
+      '}',
+      '#web-modal button[aria-label*="close" i]:hover,',
+      '#web-modal button[aria-label*="닫"]:hover,',
+      '#web-modal [role="button"][aria-label*="close" i]:hover,',
+      '#web-modal [role="button"][aria-label*="닫"]:hover{',
+      '  opacity:.9!important;',
+      '  background:rgba(255,255,255,.08)!important;',
+      '}',
+      '#web-modal button[aria-label*="close" i]:active,',
+      '#web-modal button[aria-label*="닫"]:active,',
+      '#web-modal [role="button"][aria-label*="close" i]:active,',
+      '#web-modal [role="button"][aria-label*="닫"]:active{',
+      '  transform:scale(.94)!important;',
+      '}',
+      '.lore-modal-close-affordance{',
+      '  cursor:pointer!important;',
+      '  transition:background-color .12s ease, opacity .12s ease, transform .08s ease!important;',
+      '}',
+      '.lore-modal-close-affordance:hover{',
+      '  opacity:.9!important;',
+      '  background:rgba(255,255,255,.08)!important;',
+      '}',
+      '.lore-modal-close-affordance:active{',
+      '  transform:scale(.94)!important;',
+      '}'
+    ].join('');
+    document.head.appendChild(style);
+
+    const markCloseButtons = () => {
+      const root = document.getElementById('web-modal') || document.body;
+      const nodes = Array.from(root.querySelectorAll('button, [role="button"]'));
+      nodes.forEach(node => {
+        const label = (node.getAttribute('aria-label') || node.getAttribute('title') || '').trim();
+        const text = (node.textContent || '').trim();
+        const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+        const looksClose = /close|닫기|닫음/i.test(label)
+          || text === '×'
+          || text === '✕'
+          || text === 'X'
+          || (text.length <= 2 && /[×✕x]/i.test(text) && rect && rect.width <= 64 && rect.height <= 64);
+        if (!looksClose) return;
+        node.classList.add('lore-modal-close-affordance');
+        if (!node.getAttribute('title')) node.setAttribute('title', '닫기');
+        node.style.cursor = 'pointer';
+      });
+    };
+
+    markCloseButtons();
+    document.addEventListener('pointerover', markCloseButtons, true);
+    try {
+      const mo = new MutationObserver(markCloseButtons);
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    } catch (_) {}
+  }
+
   function installSettingsMenuEntry() {
     const diag = getEntrypointDiagnostics();
     if (diag.installed) return;
@@ -416,6 +483,7 @@
   function setupUI() {
     const ok = setupModalMenu();
     installSettingsMenuEntry();
+    installModalCloseAffordance();
 
     return ok;
   }
