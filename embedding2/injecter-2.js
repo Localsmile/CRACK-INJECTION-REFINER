@@ -6,8 +6,9 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.13-test';
+  const VER = '1.4.14-test';
   const CHANGELOG = [
+    'UI 보정: 모달 닫기 X 버튼의 커서/호버/클릭 피드백을 보강하고, 추출 패널에 프롬프트 템플릿 편집 공간을 복구',
     'UI 표시 핫픽스 3: 설정 모달의 /setting 링크를 레거시 방식으로 직접 복제하고, 컨테이너 오탐으로 잘못 삽입된 항목을 제거하며, 채팅 상단 로어 설정 진입점을 추가',
     'UI 표시 핫픽스 2: 외부 entrypoints @require를 제거하고 injecter-6 내부에 설정 메뉴 진입점을 내장해 미업로드 파일로 인한 로더 중단을 방지',
     'UI 진입점 복구: 설정 메뉴 삽입을 전용 entrypoints 모듈로 분리, 메뉴 열림 감지/진단 기록/콘솔 진입 함수를 정리',
