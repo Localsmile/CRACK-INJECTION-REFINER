@@ -28,8 +28,17 @@
             const file = ev.target.files[0]; if (!file) return;
             const packName = nameInput.value.trim() || file.name.replace('.json', '');
             try {
-              const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : [data]; let count = 0;
-              for (const e of arr) { if (!e.name) continue; if (!e.triggers) e.triggers = [e.name]; e.packName = packName; e.project = settings.config.activeProject || ''; const existing = await db.entries.where('name').equals(e.name).first(); if (existing) { await db.entries.update(existing.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch(_){} } else { await db.entries.add(e); count++; } }
+              const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let count = 0;
+              for (let e of arr) {
+                if (!e || !e.name) continue;
+                if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
+                if (!e.triggers) e.triggers = [e.name];
+                e.packName = packName; e.project = settings.config.activeProject || ''; e.enabled = true;
+                e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
+                const existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name).first();
+                if (existing) { await db.entries.update(existing.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch(_){} }
+                else { await db.entries.add(e); count++; }
+              }
               const totalCount = await db.entries.where('packName').equals(packName).count(); let pack = await db.packs.get(packName); if (pack) await db.packs.update(packName, { entryCount: totalCount }); else await db.packs.put({ name: packName, entryCount: totalCount, project: settings.config.activeProject || '' });
               await setPackEnabled(packName, true); alert(arr.length + '개 항목 처리 완료 (신규 ' + count + '개)'); m.replaceContentPanel(renderPackUI, '파일 관리');
             } catch (err) { alert('가져오기 실패: ' + err.message); } fileInput.value = '';
@@ -44,8 +53,17 @@
             const pn = nameInput.value.trim() || '수동추가';
             try {
               const txt = manualTa.value.trim(); if (!txt) { alert('JSON을 입력할 것.'); return; }
-              const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : [data]; let cnt = 0;
-              for (const e of arr) { if (!e.name) continue; if (!e.triggers) e.triggers = [e.name]; e.packName = pn; e.project = settings.config.activeProject || ''; const ex = await db.entries.where('name').equals(e.name).first(); if (ex) { await db.entries.update(ex.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch(_){} } else { await db.entries.add(e); cnt++; } }
+              const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let cnt = 0;
+              for (let e of arr) {
+                if (!e || !e.name) continue;
+                if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
+                if (!e.triggers) e.triggers = [e.name];
+                e.packName = pn; e.project = settings.config.activeProject || ''; e.enabled = true;
+                e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
+                const ex = await db.entries.where('packName').equals(pn).and(x => x.name === e.name).first();
+                if (ex) { await db.entries.update(ex.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch(_){} }
+                else { await db.entries.add(e); cnt++; }
+              }
               const tc = await db.entries.where('packName').equals(pn).count(); let pk = await db.packs.get(pn); if (pk) await db.packs.update(pn, { entryCount: tc }); else await db.packs.put({ name: pn, entryCount: tc, project: settings.config.activeProject || '' });
               await setPackEnabled(pn, true); alert(arr.length + '개 처리 (신규 ' + cnt + '개)'); manualTa.value = ''; m.replaceContentPanel(renderPackUI, '파일 관리');
             } catch (err) { alert('JSON 파싱 실패: ' + err.message); }
