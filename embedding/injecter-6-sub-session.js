@@ -35,23 +35,37 @@
           const clearAllBtn = document.createElement('button');
           clearAllBtn.textContent = '세션 전체 초기화';
           clearAllBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;cursor:pointer;background:#833;color:#fff;border:none;font-weight:bold;';
-          clearAllBtn.onclick = () => {
-            if(confirm('이 채팅방의 모든 쿨다운, 시간감쇠(망각) 점수 및 턴 수를 초기화할 것?')) {
+          clearAllBtn.onclick = async () => {
+            if(!confirm('이 채팅방의 모든 쿨다운, 시간감쇠(망각) 점수 및 턴 수를 초기화할 것?')) return;
+            try {
+              const curUrl = C.getCurUrl();
               if(settings.config.urlCooldownMaps) delete settings.config.urlCooldownMaps[chatKey];
-              const lastMentionStr = _ls.getItem('lore-last-mention');
-              if (lastMentionStr) {
-                const lastMention = JSON.parse(lastMentionStr);
-                if(lastMention[chatKey]) delete lastMention[chatKey];
-                _ls.setItem('lore-last-mention', JSON.stringify(lastMention));
+
+              const lastMention = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
+              delete lastMention[chatKey];
+              _ls.setItem('lore-last-mention', JSON.stringify(lastMention));
+
+              const turnCounters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
+              delete turnCounters[chatKey];
+              _ls.setItem('lore-turn-counters', JSON.stringify(turnCounters));
+
+              _ls.removeItem('lore-recent-injections:' + chatKey);
+              _ls.removeItem('lore-fe-recent-' + chatKey);
+
+              const packs = settings.config.urlPacks?.[curUrl] || [];
+              if (packs.length) {
+                const entries = await db.entries.where('packName').anyOf(packs).toArray();
+                for (const e of entries) {
+                  try { await db.entries.update(e.id, { lastMentionedTurn: 0 }); } catch(_) {}
+                }
               }
-              const turnCountersStr = _ls.getItem('lore-turn-counters');
-              if (turnCountersStr) {
-                const turnCounters = JSON.parse(turnCountersStr);
-                if(turnCounters[chatKey]) delete turnCounters[chatKey];
-                _ls.setItem('lore-turn-counters', JSON.stringify(turnCounters));
-              }
+
+              try { if (db.workingMemory) await db.workingMemory.delete(curUrl); } catch(_) {}
               settings.save();
               m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+            } catch (e) {
+              console.error('[LoreInj:session] 전체 초기화 실패:', e);
+              alert('세션 초기화 실패: ' + (e.message || e));
             }
           };
           headerRow.appendChild(title);
