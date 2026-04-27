@@ -1,74 +1,190 @@
-// ==UserScript==
-// @name        에리의 크랙 로어 인젝터 (Loader)
-// @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0-test
-// @description 모듈화된 로어 인젝터 로더
-// @author      로컬AI
-// @match       https://crack.wrtn.ai/*
-// @updateURL   https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/260427/embedding_pre/erie_crack_inject.user.js
-// @downloadURL https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/260427/embedding_pre/erie_crack_inject.user.js
-// @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/vendor/toastify-injection.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/vendor/crack-shared-core.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/vendor/chasm-shared-core.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/vendor/decentralized-modal.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-ui.js?v=1.3.8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-kernel.js?v=1.4.0-test-8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-platform.js?v=1.3.5
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-memory.js?v=1.4.0-test-6
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-format.js?v=1.4.0-test-6
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-search.js?v=1.4.0-test-6
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-embedding.js?v=1.4.0-test-8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/core-importer.js?v=1.4.0-test-3
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/refiner-prompts.js?v=1.4.0-test-2
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/refiner-dom.js?v=1.4.0-test-7
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/refiner-core.js?v=1.4.0-test-7
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/refiner-queue.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/refiner-observer.js?v=1.4.0-test-7
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/refiner.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-1.js?v=1.0.8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-2.js?v=1.4.0-test-8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-3.js?v=1.4.0-test-8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-4.js?v=1.4.0-test-6
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-5.js?v=1.4.0-test-6
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-main.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-lore.js?v=1.4.0-test-5
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-merge.js?v=1.4.0-test-5
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-snapshot.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-file.js?v=1.4.0-test-5
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-extract.js?v=1.4.0-test-3
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-refiner.js?v=1.4.0-test-2
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-log.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-session.js?v=1.4.0-test-8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-api.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-sub-help.js?v=1.4.0-test-8
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/refs/heads/260427/embedding/injecter-6-ui.js
-// @grant       GM_addStyle
-// @grant       GM_xmlhttpRequest
-// @connect     generativelanguage.googleapis.com
-// @connect     googleapis.com
-// @connect     oauth2.googleapis.com
-// @connect     firebasevertexai.googleapis.com
-// @connect     www.gstatic.com
-// @connect     contents-api.wrtn.ai
-// @connect     crack-api.wrtn.ai
-// @run-at      document-start
-// ==/UserScript==
-
-// 로더 검증용, 인젝터 6개 모듈 로드 확인용
-(function () {
-  'use strict';
+// injecter-6-sub-session.js: 세션 상태 관리
+(async function(){
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const deadline = Date.now() + 20000;
-  const required = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded', '__uiLoaded'];
-  const check = () => {
-    const L = _w.__LoreInj;
-    if (!L) { if (Date.now() < deadline) return setTimeout(check, 200); console.error('[LoreInj] __LoreInj 없음'); return; }
-    const missing = required.filter(k => !L[k]);
-    if (missing.length === 0) { console.log('[LoreInj v' + (L.VER || '?') + '] 전체 6개 모듈 로드 완료 (interceptor/const/settings/extract/inject/ui)'); return; }
-    if (Date.now() < deadline) return setTimeout(check, 200);
-    console.error('[LoreInj] 미로드 모듈:', missing);
-  };
-  check();
+  const _ls = _w.localStorage;
+  const deadline = Date.now() + 15000;
+  while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
+  if (_w.__LoreInj.__subSessionLoaded) return;
+  
+  const { C, db, settings, getChatKey, getTurnCounter, getCooldownMap, isEntryEnabledForUrl } = _w.__LoreInj;
+  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
+  
+  _w.__LoreInj.registerSubMenu('session', function(modal) {
+    modal.createSubMenu('세션 상태 관리', (m) => {
+      const renderSessionStatus = async (panel) => {
+        const chatKey = getChatKey();
+        const turnCounter = getTurnCounter(chatKey);
+        const cMap = getCooldownMap(chatKey);
+        const urlPacks = settings.config.urlPacks?.[C.getCurUrl()] || [];
+  
+        let allEntries = [];
+        if (urlPacks.length > 0) {
+          const all = await db.entries.toArray();
+          allEntries = all.filter(e => urlPacks.includes(e.packName) && isEntryEnabledForUrl(e));
+        }
+  
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+  
+          const headerRow = document.createElement('div');
+          headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:8px;';
+          const title = document.createElement('div');
+          title.textContent = `현재 세션 상태 (턴: ${turnCounter})`;
+          title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;';
+  
+          const clearAllBtn = document.createElement('button');
+          clearAllBtn.textContent = '세션 전체 초기화';
+          clearAllBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;cursor:pointer;background:#833;color:#fff;border:none;font-weight:bold;';
+          clearAllBtn.onclick = async () => {
+            if(!confirm('이 채팅방의 모든 쿨다운, 시간감쇠(망각) 점수 및 턴 수를 초기화할 것?')) return;
+            try {
+              const curUrl = C.getCurUrl();
+              if(settings.config.urlCooldownMaps) delete settings.config.urlCooldownMaps[chatKey];
+
+              const lastMention = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
+              delete lastMention[chatKey];
+              _ls.setItem('lore-last-mention', JSON.stringify(lastMention));
+
+              const turnCounters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
+              delete turnCounters[chatKey];
+              _ls.setItem('lore-turn-counters', JSON.stringify(turnCounters));
+
+              _ls.removeItem('lore-recent-injections:' + chatKey);
+              _ls.removeItem('lore-fe-recent-' + chatKey);
+
+              const packs = settings.config.urlPacks?.[curUrl] || [];
+              if (packs.length) {
+                const entries = await db.entries.where('packName').anyOf(packs).toArray();
+                for (const e of entries) {
+                  try { await db.entries.update(e.id, { lastMentionedTurn: 0 }); } catch(_) {}
+                }
+              }
+
+              try { if (db.workingMemory) await db.workingMemory.delete(curUrl); } catch(_) {}
+              settings.save();
+              m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+            } catch (e) {
+              console.error('[LoreInj:session] 전체 초기화 실패:', e);
+              alert('세션 초기화 실패: ' + (e.message || e));
+            }
+          };
+          headerRow.appendChild(title);
+          headerRow.appendChild(clearAllBtn);
+          nd.appendChild(headerRow);
+
+          const mig = settings.config.migrationStatus;
+          if (mig && mig.message) {
+            const migBox = document.createElement('div');
+            const ok = !/failed/i.test(mig.message);
+            migBox.style.cssText = `margin-bottom:10px;padding:8px;border-radius:6px;border:1px solid ${ok ? '#285' : '#833'};background:#111;color:#ccc;font-size:11px;line-height:1.5;`;
+            migBox.textContent = `마이그레이션: ${mig.message} / 엔트리 ${mig.migratedEntries || 0}개 정리 / stale embedding ${mig.staleEmbeddingsRemoved || 0}개 삭제`;
+            nd.appendChild(migBox);
+          }
+  
+          if (!allEntries.length) {
+            const empty = document.createElement('div');
+            empty.textContent = '현재 활성화된 로어가 없습니다.';
+            empty.style.cssText = 'color:#888;font-size:12px;text-align:center;padding:10px;';
+            nd.appendChild(empty);
+            return;
+          }
+  
+          const lastMentionMap = JSON.parse(_ls.getItem('lore-last-mention') || '{}')[chatKey] || {};
+          const statusList = [];
+  
+          for (const e of allEntries) {
+            let cooldownRem = 0;
+            const lastInj = cMap[e.id];
+            if (lastInj !== undefined) {
+              const elap = turnCounter - lastInj;
+              cooldownRem = Math.max(0, settings.config.cooldownTurns - elap);
+            }
+  
+            const lastMent = lastMentionMap[e.id] || 0;
+            const turnsSince = turnCounter - lastMent;
+            let reinjScore = 0;
+            if (settings.config.decayEnabled) {
+               reinjScore = C.calcReinjectionScore(turnsSince, e.type, settings.config);
+            }
+  
+            if (cooldownRem > 0 || reinjScore > 0.1 || turnsSince > 0) {
+              const evTurn = e.eventTurn || e.timeline?.eventTurn || e.createdTurn || 0;
+              const gap = evTurn ? Math.max(0, turnCounter - evTurn) : null;
+              statusList.push({
+                id: e.id, name: e.name, type: e.type, pack: e.packName,
+                cooldownRem, turnsSince, reinjScore,
+                eventTurn: evTurn, gap,
+                entities: (C.inferEntryEntities ? C.inferEntryEntities(e) : (e.entities || [])).slice(0, 4)
+              });
+            }
+          }
+  
+          statusList.sort((a,b) => b.reinjScore - a.reinjScore);
+  
+          if (statusList.length === 0) {
+            const empty2 = document.createElement('div');
+            empty2.textContent = '표시할 상태(쿨다운/점수)가 없습니다.';
+            empty2.style.cssText = 'color:#888;font-size:12px;text-align:center;padding:10px;';
+            nd.appendChild(empty2);
+            return;
+          }
+  
+          const listContainer = document.createElement('div');
+          listContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;';
+  
+          for (const st of statusList) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:8px 12px;';
+  
+            const info = document.createElement('div');
+            info.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+            const nameEl = document.createElement('div');
+            nameEl.textContent = `[${st.type}] ${st.name}`;
+            nameEl.style.cssText = 'font-size:13px;font-weight:bold;color:#ccc;';
+  
+            const statText = document.createElement('div');
+            statText.style.cssText = 'font-size:11px;color:#888;display:flex;gap:12px;';
+  
+            let cdStr = st.cooldownRem > 0 ? `<span style="color:#d66;">⏳ 쿨다운 ${st.cooldownRem}턴 남음</span>` : `<span style="color:#4a9;">✅ 쿨다운 완료</span>`;
+            let decayStr = '';
+            if (settings.config.decayEnabled) {
+              const p = Math.round(st.reinjScore * 100);
+              const pColor = p > 70 ? '#d66' : (p > 40 ? '#da8' : '#888');
+              decayStr = `<span>망각: ${st.turnsSince}턴 경과 (재주입 점수: <span style="color:${pColor}">${p}%</span>)</span>`;
+            }
+            const timeStr = st.eventTurn ? `<span>사건:t${st.eventTurn}${st.gap != null ? ' / gap ' + st.gap + '턴' : ''}</span>` : '';
+            const entStr = st.entities && st.entities.length ? `<span>엔티티:${st.entities.join(',')}</span>` : '';
+            statText.innerHTML = [cdStr, decayStr, timeStr, entStr].filter(Boolean).join('');
+  
+            info.appendChild(nameEl);
+            info.appendChild(statText);
+  
+            const resetBtn = document.createElement('button');
+            resetBtn.textContent = '리셋';
+            resetBtn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:transparent;border:1px solid #555;color:#ccc;';
+            resetBtn.onclick = () => {
+              if (settings.config.urlCooldownMaps?.[chatKey]) {
+                delete settings.config.urlCooldownMaps[chatKey][st.id];
+              }
+              const allMentions = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
+              if (allMentions[chatKey] && allMentions[chatKey][st.id]) {
+                delete allMentions[chatKey][st.id];
+                _ls.setItem('lore-last-mention', JSON.stringify(allMentions));
+              }
+              settings.save();
+              m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+            };
+  
+            row.appendChild(info);
+            row.appendChild(resetBtn);
+            listContainer.appendChild(row);
+          }
+          nd.appendChild(listContainer);
+        }});
+      };
+      m.replaceContentPanel(renderSessionStatus, '세션 상태 조회');
+    });
+  });
+  
+  _w.__LoreInj.__subSessionLoaded = true;
 })();
