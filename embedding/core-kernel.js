@@ -202,7 +202,7 @@ Entries:
       _w.addEventListener('crack-ext-fbsdk-ready', () => { clearTimeout(to); resolve(_w.__crackExtFirebaseSdk); }, { once: true });
       const script = document.createElement('script');
       script.type = 'module';
-      script.textContent = 'import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";\nimport { getAI, getGenerativeModel, VertexAIBackend, HarmBlockThreshold, HarmCategory } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-ai.js";\nwindow.__crackExtFirebaseSdk = { initializeApp, getAI, getGenerativeModel, VertexAIBackend, HarmBlockThreshold, HarmCategory };\nwindow.dispatchEvent(new CustomEvent("crack-ext-fbsdk-ready"));';
+      script.textContent = 'import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";\nimport { getAI, getGenerativeModel, GoogleAIBackend, VertexAIBackend, HarmBlockThreshold, HarmCategory } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-ai.js";\nwindow.__crackExtFirebaseSdk = { initializeApp, getAI, getGenerativeModel, GoogleAIBackend, VertexAIBackend, HarmBlockThreshold, HarmCategory };\nwindow.dispatchEvent(new CustomEvent("crack-ext-fbsdk-ready"));';
       script.onerror = () => { clearTimeout(to); _fbSdkPromise = null; reject(new Error('Firebase SDK 스크립트 로드 실패')); };
       (document.head || document.documentElement).appendChild(script);
     });
@@ -240,7 +240,7 @@ Entries:
         if (Object.keys(thinkingConfig).length > 0) fbGenConfig.thinkingConfig = thinkingConfig;
         if (responseMimeType) fbGenConfig.responseMimeType = responseMimeType;
         const app = sdk.initializeApp(cfg, 'crack-ext-' + Math.random().toString(36).slice(2, 10));
-        const ai = sdk.getAI(app, { backend: new sdk.VertexAIBackend(fb_loc) });
+        const ai = sdk.getAI(app, { backend: sdk.GoogleAIBackend ? new sdk.GoogleAIBackend() : new sdk.VertexAIBackend(fb_loc) });
         const fbSafety = [
           { category: sdk.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: sdk.HarmBlockThreshold.OFF },
           { category: sdk.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: sdk.HarmBlockThreshold.OFF },
@@ -277,8 +277,8 @@ Entries:
       } catch (e) { return { text: null, status: 0, error: e.message, retries: 0 }; }
     } else {
       if (!key) return { text: null, status: 0, error: 'API 키 누락', retries: 0 };
-      url = _gBase + model + ':generateContent?key=' + key;
-      headers = { 'Content-Type': 'application/json' };
+      url = _gBase + model + ':generateContent';
+      headers = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
     }
 
     const genConfig = {};
@@ -289,7 +289,7 @@ Entries:
     let lastStatus = 0, lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const r = (isVertex || isFirebase) ? await gmFetch(url, { method: 'POST', headers, body }) : await fetch(url, { method: 'POST', headers, body }).then(resp => ({ ok: resp.ok, status: resp.status, text: () => resp.text(), json: () => resp.json() }));
+        const r = await gmFetch(url, { method: 'POST', headers, body });
         lastStatus = r.status;
 
         // 401 토큰 갱신
@@ -365,23 +365,24 @@ Entries:
       return json.predictions.map(p => normalizeVector(p.embeddings.values));
     } else {
       if (!key) throw new Error('API 키 누락');
+      const embHeaders = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
       if (arr.length === 1) {
-        const url = _gBase + model + ':embedContent?key=' + key;
+        const url = _gBase + model + ':embedContent';
         const bodyObj = { content: { parts: [{ text: arr[0] }] }, output_dimensionality: dimensions };
         if (model.includes('embedding-001')) bodyObj.taskType = taskType;
-        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyObj) });
+        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) });
         if (!r.ok) throw new Error('임베딩 API 실패: ' + r.status);
         const json = await r.json();
         const embs = json.embeddings || [json.embedding];
         return embs.map(e => normalizeVector(e.values));
       } else {
-        const url = _gBase + model + ':batchEmbedContents?key=' + key;
+        const url = _gBase + model + ':batchEmbedContents';
         const requests = arr.map(t => {
           const req = { model: 'models/' + model, content: { parts: [{ text: t }] }, outputDimensionality: dimensions };
           if (model.includes('embedding-001')) req.taskType = taskType;
           return req;
         });
-        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests }) });
+        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }) });
         if (!r.ok) throw new Error('배치 임베딩 API 실패: ' + r.status);
         const json = await r.json();
         if (!json.embeddings) throw new Error('임베딩 결과가 없습니다.');
