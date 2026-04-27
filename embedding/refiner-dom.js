@@ -1,0 +1,342 @@
+// refiner / dom 모듈
+// 역할: DOM 조작, React Fiber 패치, SWR 재검증, 교정 확인 UI
+// 의존: 없음 (순수 DOM 유틸)
+(function () {
+  'use strict';
+  const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+  const R = _w.__LoreRefiner = _w.__LoreRefiner || {};
+  if (R.__domLoaded) return;
+
+  function escapeHTML(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function normalizeText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // DOM
+  function stripMarkdown(text) {
+    return String(text || '')
+      .replace(/`{3}\w*\n?/g, '')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/~~([^~]+)~~/g, '$1')
+      .replace(/^#+\s+/gm, '')
+      .replace(/^[-*+]\s+/gm, '')
+      .replace(/^\d+\.\s+/gm, '')
+      .replace(/^>\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+      .replace(/\n{2,}/g, '\n')
+      .trim();
+  }
+
+  function getMessageContainer(el) {
+    if (!el) return null;
+    return el.closest?.('[data-message-id], [data-id], [data-testid*="message"], [class*="message"], article, section, li')
+        || el.closest?.('div')
+        || el;
+  }
+
+  function findMessageContainerById(messageId) {
+    if (!messageId) return null;
+    const id = String(messageId);
+    const candidates = document.querySelectorAll('[data-message-id], [data-id], [id], [href], [data-testid]');
+    for (const el of candidates) {
+      const vals = [
+        el.getAttribute('data-message-id'),
+        el.getAttribute('data-id'),
+        el.getAttribute('id'),
+        el.getAttribute('href'),
+        el.getAttribute('data-testid')
+      ].filter(Boolean);
+      if (vals.some(v => String(v).includes(id))) return getMessageContainer(el);
+    }
+    const marked = document.querySelector(`[data-lore-refiner-message-id="${id.replace(/"/g, '\\"')}"]`);
+    return marked ? getMessageContainer(marked) : null;
+  }
+
+  function findDeepestMatchingElement(searchPlainText, root) {
+    const plain = normalizeText(searchPlainText);
+    const snippet = (plain.length > 36 ? plain.slice(-36) : plain).trim();
+    if (!snippet || snippet.length < 5) return null;
+
+    let best = null;
+    let bestScore = Infinity;
+    const scope = root || document;
+    const all = scope.querySelectorAll ? scope.querySelectorAll('div, p, article, section, span, li') : [];
+    for (const el of all) {
+      const text = normalizeText(el.textContent);
+      if (!text || !text.includes(snippet)) continue;
+      if (el.tagName === 'BODY' || el.tagName === 'HTML') continue;
+      if (el.id === '__next' || el.id === 'root') continue;
+
+      const childCount = el.querySelectorAll('*').length;
+      const score = text.length + childCount * 50;
+      if (score < bestScore) {
+        best = el;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  function patchPropsObject(obj, originalText, newText, renderedHTML, seen, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 4 || seen.has(obj)) return false;
+    seen.add(obj);
+    let changed = false;
+    const oldPlain = stripMarkdown(originalText);
+    const oldSnippet = oldPlain.slice(0, 48);
+    for (const key of Object.keys(obj)) {
+      try {
+        const val = obj[key];
+        if (typeof val === 'string') {
+          if ((oldSnippet && val.includes(oldSnippet)) || val === originalText) {
+            obj[key] = key === '__html' ? renderedHTML : newText;
+            changed = true;
+          }
+        } else if (val && typeof val === 'object') {
+          changed = patchPropsObject(val, originalText, newText, renderedHTML, seen, depth + 1) || changed;
+        }
+      } catch (_) {}
+    }
+    return changed;
+  }
+
+  function tryPatchReactFiber(element, originalText, newText, renderedHTML) {
+    try {
+      let el = element;
+      while (el && el !== document.body) {
+        const fiberKey = Object.keys(el).find(k =>
+          k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$') || k.startsWith('__reactProps$')
+        );
+        if (fiberKey) {
+          let fiber = el[fiberKey];
+          let depth = 0;
+          while (fiber && depth < 30) {
+            patchPropsObject(fiber.memoizedProps, originalText, newText, renderedHTML, new WeakSet(), 0);
+            patchPropsObject(fiber.pendingProps, originalText, newText, renderedHTML, new WeakSet(), 0);
+            fiber = fiber.return;
+            depth++;
+          }
+        }
+        el = el.parentElement;
+      }
+    } catch (e) {}
+  }
+
+  function renderMarkdownHTML(mdText) {
+    let html = escapeHTML(mdText);
+    html = html
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/~~(.+?)~~/g, '<del>$1</del>')
+      .replace(/\n/g, '<br>');
+    return html;
+  }
+
+  function triggerSWRRevalidation() {
+    try {
+      const origDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')
+                    || Object.getOwnPropertyDescriptor(document, 'visibilityState');
+
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      setTimeout(() => {
+        Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new Event('online'));
+        window.dispatchEvent(new Event('popstate'));
+
+        setTimeout(() => {
+          try {
+            if (origDesc) Object.defineProperty(Document.prototype, 'visibilityState', origDesc);
+            else delete document.visibilityState;
+          } catch (_) {}
+        }, 200);
+      }, 100);
+    } catch (e) {}
+  }
+
+  function isTextVisible(text, messageId) {
+    const plain = stripMarkdown(text);
+    const snippet = normalizeText(plain.length > 36 ? plain.slice(-36) : plain);
+    if (!snippet) return false;
+    const container = findMessageContainerById(messageId);
+    if (container && normalizeText(container.textContent).includes(snippet)) return true;
+    return !!findDeepestMatchingElement(plain);
+  }
+
+  function waitForVisibleText(text, messageId, timeoutMs) {
+    const timeout = timeoutMs || 3500;
+    const started = Date.now();
+    return new Promise(resolve => {
+      const tick = () => {
+        if (isTextVisible(text, messageId)) return resolve(true);
+        if (Date.now() - started >= timeout) return resolve(false);
+        setTimeout(tick, 250);
+      };
+      tick();
+    });
+  }
+
+  function rememberAssistantMessage(messageId, text) {
+    const el = findDeepestMatchingElement(stripMarkdown(text));
+    const container = getMessageContainer(el);
+    if (container && messageId) {
+      try { container.setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+    }
+    return container;
+  }
+
+  function refreshMessageInDOM(originalText, newText, messageId) {
+    const oldPlain = stripMarkdown(originalText);
+    const newPlain = stripMarkdown(newText);
+    const oldSnippet = normalizeText(oldPlain.length > 36 ? oldPlain.slice(-36) : oldPlain);
+    const newSnippet = normalizeText(newPlain.length > 36 ? newPlain.slice(-36) : newPlain);
+    const renderedHTML = renderMarkdownHTML(newText);
+    let targetEl = null;
+
+    function tryApply() {
+      const idContainer = findMessageContainerById(messageId);
+      if (idContainer) targetEl = findDeepestMatchingElement(oldPlain, idContainer) || idContainer;
+
+      if (targetEl && document.contains(targetEl)) {
+        const cur = normalizeText(targetEl.textContent);
+        if (newSnippet && cur.includes(newSnippet) && (!oldSnippet || !cur.includes(oldSnippet))) return 'done';
+        if (!oldSnippet || cur.includes(oldSnippet) || targetEl === idContainer) {
+          targetEl.innerHTML = renderedHTML;
+          try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+          tryPatchReactFiber(targetEl, originalText, newText, renderedHTML);
+          return 'applied';
+        }
+      }
+
+      targetEl = findDeepestMatchingElement(oldPlain);
+      if (targetEl) {
+        targetEl.innerHTML = renderedHTML;
+        try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+        tryPatchReactFiber(targetEl, originalText, newText, renderedHTML);
+        return 'applied';
+      }
+
+      const checkEl = findDeepestMatchingElement(newPlain);
+      if (checkEl) {
+        try { if (messageId) getMessageContainer(checkEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+        return 'done';
+      }
+      return 'not_found';
+    }
+
+    const firstResult = tryApply();
+    const result = { applied: firstResult === 'applied', visible: firstResult === 'done', status: firstResult, messageId: messageId || null };
+    let pollCount = 0;
+    const timer = setInterval(() => {
+      pollCount++;
+      const state = tryApply();
+      if (state === 'done' || pollCount >= 20) clearInterval(timer);
+    }, 500);
+
+    triggerSWRRevalidation();
+    return result;
+  }
+
+  function showReloadAction(message) {
+    const old = document.querySelector('#refiner-reload-action');
+    if (old) old.remove();
+
+    const box = document.createElement('div');
+    box.id = 'refiner-reload-action';
+    box.style.cssText = 'position:fixed;right:18px;bottom:90px;z-index:999999;background:#1a1a1a;color:#ddd;border:1px solid #444;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);padding:12px;max-width:320px;font-size:12px;line-height:1.45;';
+    const text = document.createElement('div');
+    text.textContent = message || '서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.';
+    text.style.cssText = 'margin-bottom:10px;color:#ddd;';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+    const close = document.createElement('button');
+    close.textContent = '닫기';
+    close.style.cssText = 'padding:7px 10px;border:0;border-radius:5px;background:#444;color:#ddd;cursor:pointer;';
+    close.onclick = () => box.remove();
+    const reload = document.createElement('button');
+    reload.textContent = '새로고침';
+    reload.style.cssText = 'padding:7px 10px;border:0;border-radius:5px;background:#285;color:white;font-weight:bold;cursor:pointer;';
+    reload.onclick = () => location.reload();
+    row.appendChild(close); row.appendChild(reload);
+    box.appendChild(text); box.appendChild(row);
+    document.body.appendChild(box);
+    setTimeout(() => { if (document.body.contains(box)) box.remove(); }, 20000);
+  }
+
+  // UI
+  function showRefineConfirm(reason, refinedText, onConfirm, onCancel) {
+    const overlay = document.createElement('div');
+    overlay.id = 'refiner-confirm-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:999999;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:8px;width:100%;max-width:400px;padding:20px;box-shadow:0 10px 25px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:12px;';
+
+    const title = document.createElement('div');
+    title.textContent = 'AI 응답 교정 제안';
+    title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;margin-bottom:4px;';
+
+    const reasonTitle = document.createElement('div');
+    reasonTitle.textContent = '교정 이유:';
+    reasonTitle.style.cssText = 'font-size:12px;color:#aaa;font-weight:bold;';
+    const reasonText = document.createElement('div');
+    reasonText.textContent = reason;
+    reasonText.style.cssText = 'font-size:13px;color:#ccc;background:#222;padding:8px;border-radius:4px;';
+
+    const refTitle = document.createElement('div');
+    refTitle.textContent = '수정된 응답:';
+    refTitle.style.cssText = 'font-size:12px;color:#aaa;font-weight:bold;margin-top:8px;';
+
+    const refTa = document.createElement('textarea');
+    refTa.value = refinedText;
+    refTa.style.cssText = 'width:100%;height:100px;background:#0a0a0a;color:#fff;border:1px solid #444;border-radius:4px;padding:8px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:12px;';
+
+    const btnCancel = document.createElement('button');
+    btnCancel.textContent = '원본 유지';
+    btnCancel.style.cssText = 'padding:10px 16px;border-radius:6px;border:none;background:#444;color:#ccc;cursor:pointer;font-weight:bold;';
+    btnCancel.onclick = () => { document.body.removeChild(overlay); onCancel(); };
+
+    const btnConfirm = document.createElement('button');
+    btnConfirm.textContent = '교정본 변경';
+    btnConfirm.style.cssText = 'padding:10px 16px;border-radius:6px;border:none;background:#285;color:#fff;cursor:pointer;font-weight:bold;';
+    btnConfirm.onclick = () => { document.body.removeChild(overlay); onConfirm(refTa.value); };
+
+    btnRow.appendChild(btnCancel); btnRow.appendChild(btnConfirm);
+    box.appendChild(title); box.appendChild(reasonTitle); box.appendChild(reasonText);
+    box.appendChild(refTitle); box.appendChild(refTa); box.appendChild(btnRow);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  R.escapeHTML = escapeHTML;
+  R.stripMarkdown = stripMarkdown;
+  R.findMessageContainerById = findMessageContainerById;
+  R.findDeepestMatchingElement = findDeepestMatchingElement;
+  R.tryPatchReactFiber = tryPatchReactFiber;
+  R.renderMarkdownHTML = renderMarkdownHTML;
+  R.triggerSWRRevalidation = triggerSWRRevalidation;
+  R.isTextVisible = isTextVisible;
+  R.waitForVisibleText = waitForVisibleText;
+  R.rememberAssistantMessage = rememberAssistantMessage;
+  R.refreshMessageInDOM = refreshMessageInDOM;
+  R.showReloadAction = showReloadAction;
+  R.showRefineConfirm = showRefineConfirm;
+  R.__domLoaded = true;
+
+})();
