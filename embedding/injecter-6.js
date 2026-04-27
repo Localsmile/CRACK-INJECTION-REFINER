@@ -18,8 +18,34 @@
 
   // UI 모듈에서 호출: 모든 등록된 서브메뉴를 modal에 연결
   _w.__LoreInj.setupSubMenus = function(modal) {
+    if (!modal) {
+      console.error('[LoreInj:6] modal 없음');
+      return;
+    }
+
+    let host = modal;
+    if (typeof host.createSubMenu !== 'function') {
+      if (typeof modal.createMenu !== 'function') {
+        console.error('[LoreInj:6] modal.createMenu 없음');
+        return;
+      }
+      host = modal.createMenu('Lore Injector', (m) => {
+        if (m && typeof m.replaceContentPanel === 'function') {
+          m.replaceContentPanel((panel) => {
+            panel.addTitleText('Lore Injector');
+            panel.addText('왼쪽의 하위 메뉴를 선택하세요.');
+          }, 'Lore Injector');
+        }
+      });
+    }
+
+    if (!host || typeof host.createSubMenu !== 'function') {
+      console.error('[LoreInj:6] createSubMenu 호스트 생성 실패');
+      return;
+    }
+
     _subMenuCbs.forEach(({ cb }) => {
-      try { cb(modal); } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패:`, e); }
+      try { cb(host); } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패:`, e); }
     });
   };
 
