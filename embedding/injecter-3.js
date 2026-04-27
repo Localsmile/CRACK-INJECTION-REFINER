@@ -123,7 +123,7 @@
 
     embeddingEnabled: true, activeCharDetection: true, decayEnabled: true,
     loreBudgetChars: 300, loreBudgetMax: 500,
-    compressionMode: 'full', embeddingWeight: 0.35, useCompressedFormat: false,
+    compressionMode: 'auto', embeddingWeight: 0.35, useCompressedFormat: true,
     honorificMatrixEnabled: true, firstEncounterWarning: true, activeCharBoostEnabled: true,
     decayHalfLife: C.DEFAULTS.decayHalfLife,
     embeddingModel: 'gemini-embedding-001', autoEmbedOnExtract: true,
