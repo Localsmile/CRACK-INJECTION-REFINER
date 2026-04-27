@@ -37,6 +37,33 @@
     return;
   }
 
+  // 호환성 보강: 일부 injecter-6 캐시/구버전은 서브모듈 콜백에
+  // ModalManager를 그대로 넘긴다. decentralized-modal v1.0.15에서는
+  // createSubMenu가 ModalManager가 아니라 createMenu()가 반환하는
+  // ModalMenu에 있으므로, UI 쪽에서도 안전하게 shim을 제공한다.
+  if (typeof modal.createSubMenu !== 'function') {
+    try {
+      const rootMenu = modal.createMenu('Lore Injector', (m) => {
+        if (m && typeof m.replaceContentPanel === 'function') {
+          m.replaceContentPanel((panel) => {
+            panel.addTitleText('Lore Injector');
+            panel.addText('왼쪽의 하위 메뉴를 선택하세요.');
+          }, 'Lore Injector');
+        }
+      });
+      if (rootMenu && typeof rootMenu.createSubMenu === 'function') {
+        modal.createSubMenu = rootMenu.createSubMenu.bind(rootMenu);
+      }
+    } catch (e) {
+      console.error('[LoreInj:6-ui] createSubMenu shim 실패:', e);
+    }
+  }
+
+  if (typeof modal.createSubMenu !== 'function') {
+    console.error('[LoreInj:6-ui] modal.createSubMenu 준비 실패');
+    return;
+  }
+
   // 서브메뉴 등록 함수 호출
   if (_w.__LoreInj.setupSubMenus) {
     _w.__LoreInj.setupSubMenus(modal);
