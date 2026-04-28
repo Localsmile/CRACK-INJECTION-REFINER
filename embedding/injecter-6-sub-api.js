@@ -7,6 +7,11 @@
   
   const { C, settings } = _w.__LoreInj;
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
+
+  // Firebase 사전 워밍업 — 첨 실호출의 SDK import + initializeApp 비용을 백그라운드로 분리. 실패해도 조용히 넘김.
+  if (settings.config.autoExtApiType === 'firebase' && settings.config.autoExtFirebaseScript && C.warmupFirebase) {
+    C.warmupFirebase(settings.config.autoExtFirebaseScript, settings.config.autoExtModel || 'gemini-3-flash-preview').catch(() => {});
+  }
   
   _w.__LoreInj.registerSubMenu('api', function(modal) {
     modal.createSubMenu('API 설정', (m) => {
