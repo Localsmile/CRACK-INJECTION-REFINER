@@ -284,7 +284,9 @@ Entries:
         if (Object.keys(thinkingConfig).length > 0) fbGenConfig.thinkingConfig = thinkingConfig;
         if (responseMimeType) fbGenConfig.responseMimeType = responseMimeType;
         const app = sdk.initializeApp(cfg, 'crack-ext-' + Math.random().toString(36).slice(2, 10));
-        const ai = sdk.getAI(app, { backend: sdk.GoogleAIBackend ? new sdk.GoogleAIBackend() : new sdk.VertexAIBackend(fb_loc) });
+        // GoogleAIBackend는 Firebase 콘솔에서 Gemini Developer API를 별도로 활성화해야 동작 → SDK JSON만 붙여넣은 경우 GEN_AI_CONFIG_NOT_FOUND 404.
+        // 3.x preview는 어차피 Vertex global만 지원이라 Vertex 강제 (auto-memory.user.js 패턴과 동일).
+        const ai = sdk.getAI(app, { backend: new sdk.VertexAIBackend(fb_loc) });
         const fbSafety = [
           { category: sdk.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: sdk.HarmBlockThreshold.OFF },
           { category: sdk.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: sdk.HarmBlockThreshold.OFF },
