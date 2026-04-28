@@ -238,6 +238,11 @@ Entries:
 
   // Firebase SDK 로더 (페이지 컨텍스트에 <script type="module"> 주입)
   let _fbSdkPromise = null;
+  // Firebase 인스턴스 캐시 — cold init 비용을 1회로 분할상환.
+  // 키: app=cfg(apiKey+projectId), ai=app+location, model=ai+model+genConfigHash.
+  const _fbAppCache = Object.create(null);
+  const _fbAiCache = Object.create(null);
+  const _fbModelCache = Object.create(null);
   function loadFirebaseSdk() {
     if (_w.__crackExtFirebaseSdk) return Promise.resolve(_w.__crackExtFirebaseSdk);
     if (_fbSdkPromise) return _fbSdkPromise;
@@ -264,6 +269,23 @@ Entries:
     return null;
   }
 
+  // Firebase 사전 워밍업 — 설정 로드 직후 호출하면 첫 실호출의 cold init 비용을 제거.
+  // SDK dynamic import + initializeApp + getAI 까지 미리 끝내고 캐시 적재. 실패해도 throw 안 함.
+  async function warmupFirebase(firebaseScript, model = 'gemini-3-flash-preview') {
+    try {
+      const cfg = parseFirebaseConfig(firebaseScript);
+      if (!cfg || !cfg.apiKey || !cfg.projectId) return false;
+      const sdk = await loadFirebaseSdk();
+      const fb_is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
+      const fb_loc = fb_is3x ? 'global' : 'us-central1';
+      const appName = 'crack-ext-' + simpleHash(cfg.apiKey + ':' + cfg.projectId);
+      if (!_fbAppCache[appName]) _fbAppCache[appName] = sdk.initializeApp(cfg, appName);
+      const aiKey = appName + '|' + fb_loc;
+      if (!_fbAiCache[aiKey]) _fbAiCache[aiKey] = sdk.getAI(_fbAppCache[appName], { backend: new sdk.VertexAIBackend(fb_loc) });
+      return true;
+    } catch (e) { return false; }
+  }
+
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
@@ -283,17 +305,24 @@ Entries:
         const fbGenConfig = {};
         if (Object.keys(thinkingConfig).length > 0) fbGenConfig.thinkingConfig = thinkingConfig;
         if (responseMimeType) fbGenConfig.responseMimeType = responseMimeType;
-        const app = sdk.initializeApp(cfg, 'crack-ext-' + Math.random().toString(36).slice(2, 10));
         // GoogleAIBackend는 Firebase 콘솔에서 Gemini Developer API를 별도로 활성화해야 동작 → SDK JSON만 붙여넣은 경우 GEN_AI_CONFIG_NOT_FOUND 404.
         // 3.x preview는 어차피 Vertex global만 지원이라 Vertex 강제 (auto-memory.user.js 패턴과 동일).
-        const ai = sdk.getAI(app, { backend: new sdk.VertexAIBackend(fb_loc) });
+        // 인스턴스 캐시 — 매 호출마다 initializeApp/getAI/getGenerativeModel 재생성하면 cold init 비용이 누적됨.
+        const appName = 'crack-ext-' + simpleHash(cfg.apiKey + ':' + cfg.projectId);
+        let app = _fbAppCache[appName];
+        if (!app) { app = sdk.initializeApp(cfg, appName); _fbAppCache[appName] = app; }
+        const aiKey = appName + '|' + fb_loc;
+        let ai = _fbAiCache[aiKey];
+        if (!ai) { ai = sdk.getAI(app, { backend: new sdk.VertexAIBackend(fb_loc) }); _fbAiCache[aiKey] = ai; }
         const fbSafety = [
           { category: sdk.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: sdk.HarmBlockThreshold.OFF },
           { category: sdk.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: sdk.HarmBlockThreshold.OFF },
           { category: sdk.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: sdk.HarmBlockThreshold.OFF },
           { category: sdk.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: sdk.HarmBlockThreshold.OFF }
         ];
-        const gm = sdk.getGenerativeModel(ai, { model, safetySettings: fbSafety, generationConfig: fbGenConfig });
+        const modelKey = aiKey + '|' + model + '|' + simpleHash(JSON.stringify(fbGenConfig));
+        let gm = _fbModelCache[modelKey];
+        if (!gm) { gm = sdk.getGenerativeModel(ai, { model, safetySettings: fbSafety, generationConfig: fbGenConfig }); _fbModelCache[modelKey] = gm; }
         const result = await gm.generateContent(prompt);
         const fbText = result.response.text();
         return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: 0 };
@@ -500,7 +529,7 @@ Entries:
   Object.assign(ns, {
     VER, DB_SCHEMA_VERSION, LOCAL_MIGRATION_VERSION, TIMELINE_EVENT_TYPE, TIMELINE_SCHEMA_VERSION, TIMELINE_COMPRESSION_LEVELS, SAFETY, PLATFORM, DEFAULTS,
     getDB, gmFetch, parseServiceAccountJson, getVertexAccessToken,
-    callGeminiApi, embedText, embedTexts,
+    callGeminiApi, embedText, embedTexts, warmupFirebase,
     normalizeVector, cosineSim, simpleHash,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true
