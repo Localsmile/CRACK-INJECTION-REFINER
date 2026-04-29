@@ -312,7 +312,7 @@
     // path A
     let rerenderHits = 0;
     const ancestorDiag = [];
-    const opBudget = { count: 0, max: 80000 };
+    const opBudget = { count: 0, max: 200000 };
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -561,6 +561,73 @@
         }
         _w.__LR_LAST_STORE_B_HITS = storeBHits;
 
+        // path C (v14): walk the whole fiber tree and dispatch on every hook whose
+        // memoizedState transitively contains the msg. path 0 proved 360 isMsgEncounters
+        // in the fiber tree, so msg-bearing useState/useReducer hooks exist; path A only
+        // walked ancestors and missed them, path B only matched store wrappers (zustand /
+        // QueryClient) but wrtn uses plain useState. This is the ancestor-free hook
+        // dispatch path. Capped at 3 successful dispatches to avoid v6/v7-era over-dispatch
+        // breaking child reconciliation. replacementMsg is reset per dispatch so each hook
+        // gets a fresh new ref (different store branches don't share a stale cached msg).
+        let pathCHits = 0;
+        if (rerenderHits === 0) {
+          const collectRootsC = () => {
+            const out = [];
+            const add = (el) => {
+              if (!el) return;
+              try {
+                const k = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+                if (k && el[k] && el[k].stateNode) out.push(el[k].stateNode.current);
+              } catch (_) {}
+              try {
+                if (el._reactRootContainer && el._reactRootContainer._internalRoot) out.push(el._reactRootContainer._internalRoot.current);
+              } catch (_) {}
+            };
+            add(document.getElementById('__next'));
+            add(document.getElementById('root'));
+            document.querySelectorAll('body > div, body > main').forEach(add);
+            return out;
+          };
+          const seenFibersC = new WeakSet();
+          const seenHooksC = new WeakSet();
+          const rootsC = collectRootsC();
+          outer2: for (const root of rootsC) {
+            const stack = [root];
+            while (stack.length && opBudget.count < opBudget.max) {
+              const f = stack.pop();
+              if (!f || seenFibersC.has(f)) continue;
+              seenFibersC.add(f);
+              opBudget.count++;
+              let h = f.memoizedState; let hd = 0;
+              while (h && hd < 60) {
+                if (!seenHooksC.has(h) && h.queue && typeof h.queue.dispatch === 'function') {
+                  seenHooksC.add(h);
+                  const cur = h.memoizedState;
+                  if (cur && typeof cur === 'object') {
+                    try {
+                      if (containsMsgDeep(cur, 0, new WeakSet())) {
+                        replacementMsg = null;
+                        const next = cloneWithMsgReplaced(cur, 0, new WeakMap());
+                        if (next !== cur) {
+                          h.queue.dispatch(next);
+                          pathCHits++;
+                          rerenderHits++;
+                          updated = true;
+                          if (pathCHits >= 3) break outer2;
+                        }
+                      }
+                    } catch (_) {}
+                  }
+                }
+                h = h.next; hd++;
+              }
+              if (f.child) stack.push(f.child);
+              if (f.sibling) stack.push(f.sibling);
+            }
+          }
+        }
+        _w.__LR_LAST_PATH_C_HITS = pathCHits;
+
         // diagnostic when nothing fired
         if (rerenderHits === 0) {
           for (let i = 0; i < Math.min(ancestors.length, 30); i++) {
@@ -793,7 +860,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v13';
+  R.__version = 'v14';
   R.__domLoaded = true;
 
 })();
