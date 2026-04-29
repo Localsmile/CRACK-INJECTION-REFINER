@@ -319,6 +319,7 @@
     let pathCSameRef = 0;
     let pathEHits = 0;
     let pathFHits = 0;
+    let pathFTargets = 0;
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -639,17 +640,21 @@
           }
         } } catch (_) {}
 
-        // path F (v18): E proved a force-render can be dispatched, but React.memo often
-        // keeps the bubble stale because previous/next props still point at the same msg
-        // ref. Before dispatching E, replace msg refs inside the target bubble ancestor
-        // fibers' memoizedProps/pendingProps. This turns the next shallow compare into
-        // "changed" and lets the bubble render with corrected content instead of waiting
-        // for a random site click.
+        // path F (v19): v18 swapped ancestor props and hit 8 slots, but the visible
+        // bubble still often stayed stale until edit-mode remount. The actual msg props
+        // are the fibers path0 already encountered while scanning memoized/pending props.
+        // So path0 now records those exact fibers non-enumerably, and F swaps them first;
+        // ancestors are only fallback targets.
         if (rerenderHits === 0 && result.hits > 0) {
           try {
             const seenFibersF = new WeakSet();
+            const hitFibers = (result && result._propsHitFibers) || [];
+            const targets = [];
+            for (let i = 0; i < hitFibers.length && i < 80; i++) targets.push(hitFibers[i]);
+            for (let i = 0; i < ancestors.length && i < 30; i++) targets.push(ancestors[i]);
+            pathFTargets = targets.length;
             const touchProps = (f) => {
-              if (!f || seenFibersF.has(f) || pathFHits >= 12) return;
+              if (!f || seenFibersF.has(f) || pathFHits >= 24) return;
               seenFibersF.add(f);
               for (const pk of ['memoizedProps', 'pendingProps']) {
                 try {
@@ -666,7 +671,7 @@
                 } catch (_) {}
               }
             };
-            for (let i = 0; i < ancestors.length && i < 30 && pathFHits < 12; i++) touchProps(ancestors[i]);
+            for (let i = 0; i < targets.length && pathFHits < 24; i++) touchProps(targets[i]);
           } catch (_) {}
         }
 
@@ -735,6 +740,7 @@
     _w.__LR_LAST_PATH_C_SAME_REF = pathCSameRef;
     _w.__LR_LAST_PATH_E_HITS = pathEHits;
     _w.__LR_LAST_PATH_F_HITS = pathFHits;
+    _w.__LR_LAST_PATH_F_TARGETS = pathFTargets;
     if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
@@ -744,7 +750,10 @@
   // Defensive against Proxy/getter throws and per-hook seen-set isolation: a throw on
   // one branch never poisons sibling branches or other hooks.
   function runPath0Mutation(messageId, newText) {
-    const summary = { roots: 0, fibersVisited: 0, hooksScanned: 0, propsScanned: 0, isMsgEncounters: 0, hits: 0, errors: 0, mutationErrors: 0 };
+    const summary = { roots: 0, fibersVisited: 0, hooksScanned: 0, propsScanned: 0, isMsgEncounters: 0, hits: 0, errors: 0, mutationErrors: 0, propsHitFibers: 0 };
+    const propsHitFibers = [];
+    const propsHitSeen = new WeakSet();
+    try { Object.defineProperty(summary, '_propsHitFibers', { value: propsHitFibers, enumerable: false }); } catch (_) {}
     if (!messageId) return summary;
 
     const isMsg = (v) => {
@@ -768,7 +777,7 @@
     let totalObjs = 0;
     const OBJ_BUDGET = 200000;
 
-    const mutate = (val, depth, localSeen) => {
+    const mutate = (val, depth, localSeen, ctx) => {
       if (!val || depth > 14 || typeof val !== 'object') return;
       if (totalObjs++ > OBJ_BUDGET) return;
       if (localSeen.has(val)) return;
@@ -780,6 +789,13 @@
       try { isM = isMsg(val); } catch (_) { summary.errors++; }
       if (isM) {
         summary.isMsgEncounters++;
+        try {
+          if (ctx && ctx.fiber && !propsHitSeen.has(ctx.fiber)) {
+            propsHitSeen.add(ctx.fiber);
+            propsHitFibers.push(ctx.fiber);
+            summary.propsHitFibers = propsHitFibers.length;
+          }
+        } catch (_) {}
         const fk = fieldKeyOf(val);
         if (fk) {
           let cur;
@@ -797,7 +813,7 @@
         for (let i = 0; i < val.length; i++) {
           let child;
           try { child = val[i]; } catch (_) { summary.errors++; continue; }
-          try { mutate(child, depth + 1, localSeen); } catch (_) { summary.errors++; }
+          try { mutate(child, depth + 1, localSeen, ctx); } catch (_) { summary.errors++; }
         }
         return;
       }
@@ -809,7 +825,7 @@
       for (const k of keys) {
         let child;
         try { child = val[k]; } catch (_) { summary.errors++; continue; }
-        try { mutate(child, depth + 1, localSeen); } catch (_) { summary.errors++; }
+        try { mutate(child, depth + 1, localSeen, ctx); } catch (_) { summary.errors++; }
       }
     };
 
@@ -843,11 +859,13 @@
         let h = f.memoizedState; let i = 0;
         while (h && i < 60) {
           summary.hooksScanned++;
-          try { mutate(h.memoizedState, 0, new WeakSet()); } catch (_) { summary.errors++; }
+          try { mutate(h.memoizedState, 0, new WeakSet(), null); } catch (_) { summary.errors++; }
           i++; h = h.next;
         }
-        // memoizedProps with its own fresh seen
-        try { mutate(f.memoizedProps, 0, new WeakSet()); summary.propsScanned++; } catch (_) { summary.errors++; }
+        // memoizedProps/pendingProps with their own fresh seen; record exact fibers
+        // whose props contain the msg so path F can swap those props before forcing render.
+        try { mutate(f.memoizedProps, 0, new WeakSet(), { fiber: f, slot: 'memoizedProps' }); summary.propsScanned++; } catch (_) { summary.errors++; }
+        try { mutate(f.pendingProps, 0, new WeakSet(), { fiber: f, slot: 'pendingProps' }); summary.propsScanned++; } catch (_) { summary.errors++; }
         if (f.child) stack.push(f.child);
         if (f.sibling) stack.push(f.sibling);
       }
@@ -944,7 +962,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v18';
+  R.__version = 'v19';
   R.__domLoaded = true;
 
 })();
