@@ -287,14 +287,17 @@
     return { applied: true, visible: true, status: 'applied', messageId: messageId || null };
   }
 
-  // store update strategy:
-  // path 0 — best-effort in-place mutation of msg.content. wrtn freezes some refs (Immer),
-  //          so this only succeeds on unfrozen ones; throws are silently counted.
-  // path A — find the bubble's React fiber and walk UP via fiber.return only (no sibling tree),
-  //          deep-scanning each useState/useReducer hook for any descendant carrying this msg.
-  //          When found, dispatch a top-level shallow clone — React sees a new state ref and
-  //          re-renders THAT subtree only. Scoping to ancestors avoids the cross-tree dispatch
-  //          that broke wrtn's child reconciliation in v6/v7.
+  // store update strategy (v10):
+  // path 0 — best-effort in-place mutation of msg.content (frozen refs throw silently).
+  // path A — ancestor-scoped re-render. Walk UP via fiber.return only. For each ancestor
+  //          fiber, scan THREE locations for state holding this msg, dispatch shallow clone:
+  //          (a) memoizedState hooks (useState/useReducer) — h.queue.dispatch
+  //          (b) memoizedProps.value of Context Provider fibers — store API or fallback
+  //          (c) memoizedProps.{store,client,queryClient} props — Redux/zustand/QueryClient
+  //          Also scans f.alternate (work-in-progress fiber) for same.
+  //          Deep walk capped at depth 12 with 50k op budget.
+  //          When 0 dispatches succeed, captures ancestor type names + hook counts to
+  //          __LR_LAST_ANCESTORS for next-iteration diagnosis.
   function tryStoreUpdate(rootEl, messageId, newText) {
     if (!messageId) return false;
     let updated = false;
@@ -304,14 +307,43 @@
     const result = runPath0Mutation(messageId, newText);
     if (result.hits > 0) updated = true;
     _w.__LR_LAST_PATH0 = result;
-    if (DBG) console.log('[Refiner v9] path0', result);
+    if (DBG) console.log('[Refiner v10] path0', result);
 
-    // path A — ancestor-only deep scan
+    // path A
     let rerenderHits = 0;
+    const ancestorDiag = [];
+    const opBudget = { count: 0, max: 50000 };
+
+    const isMsgRef = (v) => {
+      if (!v || typeof v !== 'object') return false;
+      try { return v._id === messageId || v.id === messageId || v.messageId === messageId || v.msgId === messageId; } catch (_) { return false; }
+    };
+    const containsMsgDeep = (val, depth, seen) => {
+      if (++opBudget.count > opBudget.max) return false;
+      if (!val || typeof val !== 'object' || depth > 12) return false;
+      if (seen.has(val)) return false;
+      seen.add(val);
+      if (isMsgRef(val)) return true;
+      try {
+        if (Array.isArray(val)) {
+          for (let i = 0; i < val.length && i < 500; i++) if (containsMsgDeep(val[i], depth + 1, seen)) return true;
+          return false;
+        }
+        if (val instanceof Map) {
+          for (const v of val.values()) if (containsMsgDeep(v, depth + 1, seen)) return true;
+          return false;
+        }
+        const proto = Object.getPrototypeOf(val);
+        if (proto !== Object.prototype && proto !== null) return false;
+        for (const k of Object.keys(val)) if (containsMsgDeep(val[k], depth + 1, seen)) return true;
+      } catch (_) {}
+      return false;
+    };
+
     try {
       const targetEl = rootEl || (R.findMessageContainerById && R.findMessageContainerById(messageId));
       if (targetEl) {
-        // collect ancestor fibers via fiber.return only
+        // collect ancestors via fiber.return + their .alternate twins
         const ancestors = [];
         let el = targetEl;
         while (el && el !== document.body) {
@@ -321,6 +353,7 @@
             let depth = 0;
             while (f && depth < 80) {
               ancestors.push(f);
+              if (f.alternate) ancestors.push(f.alternate);
               f = f.return; depth++;
             }
             break;
@@ -328,34 +361,45 @@
           el = el.parentElement;
         }
 
-        // deep check: does this state hold the msg anywhere within depth 8?
-        const isMsgRef = (v) => {
-          if (!v || typeof v !== 'object') return false;
-          try { return v._id === messageId || v.id === messageId || v.messageId === messageId || v.msgId === messageId; } catch (_) { return false; }
-        };
-        const containsMsgDeep = (val, depth, seen) => {
-          if (!val || typeof val !== 'object' || depth > 8) return false;
-          if (seen.has(val)) return false;
-          seen.add(val);
-          if (isMsgRef(val)) return true;
+        const seenHooks = new WeakSet();
+        const seenStore = new WeakSet();
+        const seenProps = new WeakSet();
+
+        const tryStoreLikeDispatch = (v) => {
+          if (!v || typeof v !== 'object' || seenStore.has(v)) return false;
+          seenStore.add(v);
+          let did = false;
+          // zustand-like
           try {
-            if (Array.isArray(val)) {
-              for (let i = 0; i < val.length && i < 500; i++) {
-                if (containsMsgDeep(val[i], depth + 1, seen)) return true;
+            if (typeof v.getState === 'function' && typeof v.setState === 'function' && typeof v.subscribe === 'function') {
+              const state = v.getState();
+              if (containsMsgDeep(state, 0, new WeakSet())) {
+                const next = Array.isArray(state) ? state.slice() : Object.assign({}, state);
+                v.setState(next, true);
+                did = true;
               }
-              return false;
-            }
-            const proto = Object.getPrototypeOf(val);
-            if (proto !== Object.prototype && proto !== null) return false;
-            for (const k of Object.keys(val)) {
-              if (containsMsgDeep(val[k], depth + 1, seen)) return true;
             }
           } catch (_) {}
-          return false;
+          // QueryClient
+          try {
+            if (v.constructor && v.constructor.name === 'QueryClient' && typeof v.getQueryCache === 'function') {
+              const cache = v.getQueryCache();
+              const queries = (cache && cache.getAll && cache.getAll()) || [];
+              for (const q of queries) {
+                const data = q.state && q.state.data;
+                if (data && containsMsgDeep(data, 0, new WeakSet())) {
+                  const next = Array.isArray(data) ? data.slice() : Object.assign({}, data);
+                  v.setQueryData(q.queryKey, next);
+                  did = true;
+                }
+              }
+            }
+          } catch (_) {}
+          return did;
         };
 
-        const seenHooks = new WeakSet();
         for (const f of ancestors) {
+          // (a) hooks
           let h = f.memoizedState; let hd = 0;
           while (h && hd < 60) {
             if (!seenHooks.has(h) && h.queue && typeof h.queue.dispatch === 'function') {
@@ -367,17 +411,62 @@
                   h.queue.dispatch(next);
                   rerenderHits++;
                   updated = true;
-                } catch (e) { if (DBG) console.warn('[Refiner v9] dispatch threw', e); }
+                } catch (_) {}
               }
             }
             h = h.next; hd++;
           }
+
+          // (b) Context Provider value
+          try {
+            const t = f.type;
+            const isProvider = t && typeof t === 'object' && (t.$$typeof === Symbol.for('react.provider') || t._context);
+            if (isProvider && f.memoizedProps) {
+              const v = f.memoizedProps.value;
+              if (v && typeof v === 'object') {
+                if (tryStoreLikeDispatch(v)) { rerenderHits++; updated = true; }
+              }
+            }
+          } catch (_) {}
+
+          // (c) memoizedProps store/client scan
+          try {
+            const mp = f.memoizedProps;
+            if (mp && typeof mp === 'object' && !seenProps.has(mp)) {
+              seenProps.add(mp);
+              for (const k of ['store', 'client', 'queryClient']) {
+                if (tryStoreLikeDispatch(mp[k])) { rerenderHits++; updated = true; }
+              }
+            }
+          } catch (_) {}
+
           if (rerenderHits >= 5) break;
         }
+
+        // diagnostic when nothing fired
+        if (rerenderHits === 0) {
+          for (let i = 0; i < Math.min(ancestors.length, 30); i++) {
+            const f = ancestors[i];
+            let dn = '?';
+            try {
+              dn = (f.type && (f.type.displayName || f.type.name)) || (typeof f.type === 'string' ? f.type : (typeof f.type === 'object' && f.type ? '<obj>' : '?'));
+            } catch (_) {}
+            let hookCount = 0; let hookWithMsg = 0; let h = f.memoizedState;
+            while (h && hookCount < 60) {
+              hookCount++;
+              try { if (h.memoizedState && typeof h.memoizedState === 'object' && containsMsgDeep(h.memoizedState, 0, new WeakSet())) hookWithMsg++; } catch (_) {}
+              h = h.next;
+            }
+            ancestorDiag.push({ d: i, name: String(dn).slice(0, 30), hooks: hookCount, hooksWithMsg: hookWithMsg, hasProps: !!f.memoizedProps, hasAlt: !!f.alternate });
+          }
+        }
       }
-    } catch (e) { if (DBG) console.warn('[Refiner v9] pathA threw', e); }
+    } catch (e) { if (DBG) console.warn('[Refiner v10] pathA threw', e); }
+
     _w.__LR_LAST_RERENDER_HITS = rerenderHits;
-    if (DBG) console.log('[Refiner v9] pathA hits=', rerenderHits);
+    _w.__LR_LAST_ANCESTORS = ancestorDiag;
+    _w.__LR_LAST_OPS = opBudget.count;
+    if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
   }
@@ -586,7 +675,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v9';
+  R.__version = 'v10';
   R.__domLoaded = true;
 
 })();
