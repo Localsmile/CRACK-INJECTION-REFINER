@@ -874,6 +874,64 @@
     return summary;
   }
 
+  function nudgeMessageNativeRender(messageId) {
+    try {
+      const container = findMessageContainerById(messageId);
+      if (!container || !document.contains(container)) return false;
+      const host = container.closest?.('article, section, li, [data-message-id], [data-testid*="message"], [class*="message"]') || container;
+
+      try {
+        ['mouseenter', 'mouseover', 'mousemove'].forEach(t => {
+          host.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+        });
+      } catch (_) {}
+
+      const labelOf = (el) => {
+        if (!el) return '';
+        const parts = [
+          el.textContent,
+          el.getAttribute && el.getAttribute('aria-label'),
+          el.getAttribute && el.getAttribute('title'),
+          el.getAttribute && el.getAttribute('data-testid')
+        ].filter(Boolean);
+        return parts.join(' ').trim();
+      };
+      const findButton = (root, re) => {
+        if (!root || !root.querySelectorAll) return null;
+        const buttons = root.querySelectorAll('button, [role="button"], [aria-label], [title]');
+        for (const b of buttons) {
+          try {
+            if (re.test(labelOf(b))) return b;
+          } catch (_) {}
+        }
+        return null;
+      };
+
+      const editBtn = findButton(host, /(수정|편집|edit)/i)
+                   || findButton(host.parentElement, /(수정|편집|edit)/i);
+      if (!editBtn) return false;
+
+      try { editBtn.click(); } catch (_) { return false; }
+
+      setTimeout(() => {
+        try {
+          const cancelBtn = findButton(host, /(취소|cancel|닫기|close)/i)
+                         || findButton(document, /(취소|cancel)/i);
+          if (cancelBtn) {
+            try { cancelBtn.click(); return; } catch (_) {}
+          }
+          const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
+          try { (document.activeElement || document.body).dispatchEvent(esc); } catch (_) {}
+          try { document.dispatchEvent(esc); } catch (_) {}
+        } catch (_) {}
+      }, 180);
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function showReloadAction(message) {
     const old = document.querySelector('#refiner-reload-action');
     if (old) old.remove();
@@ -960,9 +1018,10 @@
   R.refreshMessageInDOM = refreshMessageInDOM;
   R.tryStoreUpdate = tryStoreUpdate;
   R.runPath0Mutation = runPath0Mutation;
+  R.nudgeMessageNativeRender = nudgeMessageNativeRender;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v19';
+  R.__version = 'v20';
   R.__domLoaded = true;
 
 })();
