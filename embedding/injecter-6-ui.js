@@ -1,13 +1,32 @@
 // injecter-6-ui.js: UI 진입점 (모달 생성 + DOM 주입 + 변경로그 + 기어 버튼)
 (async function(){
   'use strict';
-  if(document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   const _ls = _w.localStorage;
 
-  const deadline = Date.now() + 15000;
-  while (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
-  if (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded)) { console.error('[LoreInj:6-ui] inject 미로드'); return; }
+  // 1) 로더가 노출한 ready 게이트를 먼저 기다린다 (코어 5 + 서브 11 전원 로드 확인).
+  //    게이트가 없으면(구버전 로더) 기존 폴링 로직으로 폴백.
+  if (_w.__LoreInjReady && typeof _w.__LoreInjReady.then === 'function') {
+    const gate = await _w.__LoreInjReady;
+    if (!gate || gate.ok !== true) {
+      console.error('[LoreInj:6-ui] ready 게이트 실패, UI 마운트 중단:', gate);
+      return;
+    }
+  } else {
+    const _deadline = Date.now() + 15000;
+    const _subs = ['__interceptorLoaded','__constLoaded','__settingsLoaded','__extractLoaded','__injectLoaded','__subMainLoaded','__subLoreLoaded','__subMergeLoaded','__subSnapshotLoaded','__subFileLoaded','__subExtractLoaded','__subRefinerLoaded','__subLogLoaded','__subSessionLoaded','__subApiLoaded','__subHelpLoaded'];
+    while (Date.now() < _deadline) {
+      const L = _w.__LoreInj;
+      if (L && _subs.every(k => L[k])) break;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    const L = _w.__LoreInj;
+    if (!L || !_subs.every(k => L[k])) { console.error('[LoreInj:6-ui] 폴백 대기 타임아웃, UI 마운트 중단'); return; }
+  }
+
+  // 2) 게이트 통과 후 DOM 준비 대기.
+  if (document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+
   if (_w.__LoreInj.__uiLoaded) return;
 
   const { C, R, settings, CHANGELOG } = _w.__LoreInj;
@@ -21,15 +40,7 @@
     return;
   }
 
-  // 서브모듈 등록 대기 (최대 15초)
-  const subDeadline = Date.now() + 15000;
-  const requiredSubs = ['main', 'lore', 'merge', 'snapshot', 'file', 'extract', 'refiner', 'log', 'session', 'api', 'help'];
-  const subFlags = { main: '__subMainLoaded', lore: '__subLoreLoaded', merge: '__subMergeLoaded', snapshot: '__subSnapshotLoaded', file: '__subFileLoaded', extract: '__subExtractLoaded', refiner: '__subRefinerLoaded', log: '__subLogLoaded', session: '__subSessionLoaded', api: '__subApiLoaded', help: '__subHelpLoaded' };
-  while (Date.now() < subDeadline) {
-    const loaded = requiredSubs.every(s => _w.__LoreInj[subFlags[s]]);
-    if (loaded) break;
-    await new Promise(r => setTimeout(r, 100));
-  }
+  // 서브모듈 등록은 ready 게이트에서 이미 보장됨 (이중 폴링 제거).
 
   const modal = MM.getOrCreateManager('c2');
   if (!modal || typeof modal.createMenu !== 'function') {
