@@ -134,13 +134,29 @@
 
   function renderMarkdownHTML(mdText) {
     let html = escapeHTML(mdText);
-    // fenced code blocks first; stash into placeholders so the inline-code regex can't shave a backtick
+    // fenced code blocks first; stash into placeholders so the inline regex can't shave a backtick
     const fences = [];
     html = html.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, function (_m, lang, code) {
       const idx = fences.length;
       fences.push('<pre><code' + (lang ? ' class="language-' + lang + '"' : '') + '>' + code + '</code></pre>');
       return '@@LRFENCE' + idx + '@@';
     });
+    // images first (must run before links since both use [...])
+    html = html.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, function (_m, alt, src) {
+      return '<img alt="' + alt + '" src="' + src + '" style="max-width:100%;height:auto;">';
+    });
+    // links
+    html = html.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    // headings (line-anchored, before <br> conversion)
+    html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
+    html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
+    html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+    // blockquote (single line)
+    html = html.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+    // inline emphasis & code
     html = html
       .replace(/`([^`\n]+)`/g, '<code>$1</code>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -285,8 +301,44 @@
         handleSet.add(v); out.push({ kind: 'swr', handle: v });
       }
     };
-    let cur = rootEl;
+    const visitFiber = (f) => {
+      // hook chain memoizedState + queue.lastRenderedState
+      let h = f.memoizedState;
+      let hd = 0;
+      while (h && hd < 60) {
+        addIfStore(h.memoizedState);
+        try { if (h.queue && h.queue.lastRenderedState) addIfStore(h.queue.lastRenderedState); } catch (_) {}
+        h = h.next; hd++;
+      }
+      // context provider value
+      try {
+        const t = f.type;
+        const isProvider = t && typeof t === 'object' && (t.$$typeof === Symbol.for('react.provider') || t._context);
+        if (isProvider && f.memoizedProps) addIfStore(f.memoizedProps.value);
+      } catch (_) {}
+      // class instance props commonly carrying client/store
+      try {
+        if (f.stateNode && typeof f.stateNode === 'object' && f.stateNode.props) {
+          addIfStore(f.stateNode.props.client);
+          addIfStore(f.stateNode.props.store);
+          addIfStore(f.stateNode.props.value);
+        }
+      } catch (_) {}
+      // memoizedProps shallow scan -- some apps pass stores as props
+      try {
+        const mp = f.memoizedProps;
+        if (mp && typeof mp === 'object') {
+          for (const k of Object.keys(mp)) {
+            try { addIfStore(mp[k]); } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    };
+
     const seenFibers = new WeakSet();
+
+    // Pass 1: walk up from rootEl spine
+    let cur = rootEl;
     while (cur && cur !== document.body) {
       const fiberKey = Object.keys(cur).find(k => k.startsWith('__reactFiber$'));
       if (fiberKey) {
@@ -295,32 +347,44 @@
         while (f && depth < 80) {
           if (seenFibers.has(f)) break;
           seenFibers.add(f);
-          // hook chain memoizedState
-          let h = f.memoizedState;
-          let hd = 0;
-          while (h && hd < 40) {
-            addIfStore(h.memoizedState);
-            h = h.next; hd++;
-          }
-          // context provider value (zustand/react-query/SWR providers)
-          try {
-            const t = f.type;
-            const isProvider = t && typeof t === 'object' && (t.$$typeof === Symbol.for('react.provider') || t._context);
-            if (isProvider && f.memoizedProps) addIfStore(f.memoizedProps.value);
-          } catch (_) {}
-          // class instance props commonly carrying client/store
-          try {
-            if (f.stateNode && f.stateNode.props) {
-              addIfStore(f.stateNode.props.client);
-              addIfStore(f.stateNode.props.store);
-              addIfStore(f.stateNode.props.value);
-            }
-          } catch (_) {}
+          visitFiber(f);
           f = f.return; depth++;
         }
       }
       cur = cur.parentElement;
     }
+
+    // Pass 2: walk entire fiber tree from React root(s)
+    const roots = [];
+    const tryAddRoot = (el) => {
+      if (!el) return;
+      try {
+        const containerKey = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+        if (containerKey && el[containerKey] && el[containerKey].stateNode) roots.push(el[containerKey].stateNode.current);
+      } catch (_) {}
+      try {
+        if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
+      } catch (_) {}
+    };
+    tryAddRoot(document.getElementById('__next'));
+    tryAddRoot(document.getElementById('root'));
+    document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
+
+    let visited = 0;
+    const VISIT_CAP = 50000;
+    for (const root of roots) {
+      const stack = [root];
+      while (stack.length && visited < VISIT_CAP) {
+        const f = stack.pop();
+        if (!f || seenFibers.has(f)) continue;
+        seenFibers.add(f);
+        visited++;
+        visitFiber(f);
+        if (f.child) stack.push(f.child);
+        if (f.sibling) stack.push(f.sibling);
+      }
+    }
+
     return out;
   }
 
@@ -329,12 +393,21 @@
     const d = depth || 0;
     if (!state || d > 6) return null;
     if (++b.count > b.max) return null;
+    const isMsg = (v) => v && typeof v === 'object' &&
+      (v.id === messageId || v._id === messageId || v.messageId === messageId || v.msgId === messageId);
+    const fieldKeyOf = (v) => {
+      if ('content' in v) return 'content';
+      if ('message' in v) return 'message';
+      if ('text' in v) return 'text';
+      if ('body' in v) return 'body';
+      return null;
+    };
     if (Array.isArray(state)) {
       let changed = false;
       const next = state.map(item => {
-        if (item && typeof item === 'object' && (item.id === messageId || item._id === messageId)) {
-          const fieldKey = ('content' in item) ? 'content' : ('message' in item) ? 'message' : null;
-          if (fieldKey) { changed = true; return Object.assign({}, item, { [fieldKey]: newText }); }
+        if (isMsg(item)) {
+          const fk = fieldKeyOf(item);
+          if (fk) { changed = true; return Object.assign({}, item, { [fk]: newText }); }
         }
         const sub = patchMessageInState(item, messageId, newText, d + 1, b);
         if (sub) { changed = true; return sub; }
@@ -346,6 +419,11 @@
       // skip non-plain objects (Map, Set, Date, class instances) to avoid clone corruption
       const proto = Object.getPrototypeOf(state);
       if (proto !== Object.prototype && proto !== null) return null;
+      // plain object that itself is the message (e.g. state.messages[id] = { id, content })
+      if (isMsg(state)) {
+        const fk = fieldKeyOf(state);
+        if (fk) return Object.assign({}, state, { [fk]: newText });
+      }
       let changed = false;
       const next = Object.assign({}, state);
       for (const k of Object.keys(state)) {
