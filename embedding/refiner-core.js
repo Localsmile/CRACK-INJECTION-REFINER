@@ -344,10 +344,17 @@
                           || null;
                 } catch (_) {}
                 const storeOk = !!(targetEl && R.tryStoreUpdate && R.tryStoreUpdate(targetEl, lastBot.id, newText));
-                const domResult = R.refreshMessageInDOM ? R.refreshMessageInDOM(assistantText, newText, lastBot.id) : false;
-                const domUpdated = !!(domResult === true || (domResult && (domResult.applied || domResult.visible)));
-                if (!storeOk && targetEl && R.lockMessageHTML && R.renderMarkdownHTML) {
-                  try { R.lockMessageHTML(targetEl, R.renderMarkdownHTML(newText), oldPlain, newPlain, 8000); } catch (_) {}
+                // v11: gate innerHTML stomp behind path A failure.
+                // When path A fired (RERENDER_HITS > 0), wrtn re-renders the bubble with its
+                // own native markdown pipeline, which handles wrtn-specific code-block boxes,
+                // editing-textarea seeds, etc. Our generic innerHTML stomp was racing with
+                // that commit and producing the code-block-wrapping / stale-textarea artifacts.
+                const rerenderOk = (_w.__LR_LAST_RERENDER_HITS || 0) > 0;
+                let domResult = null;
+                let domUpdated = false;
+                if (!rerenderOk) {
+                  domResult = R.refreshMessageInDOM ? R.refreshMessageInDOM(assistantText, newText, lastBot.id) : false;
+                  domUpdated = !!(domResult === true || (domResult && (domResult.applied || domResult.visible)));
                 }
                 setTimeout(async () => {
                   let visible = storeOk || domUpdated;
@@ -361,7 +368,7 @@
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
                 if (newFingerprint) processedFingerprints.add(newFingerprint), saveProcessedFingerprints();
                 if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
-                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'storeOk=', storeOk, 'domResult=', domResult);
+                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
               } else {
                 let errText = '';
                 try { errText = editResult.text ? await editResult.text() : ''; } catch(ex) {}
