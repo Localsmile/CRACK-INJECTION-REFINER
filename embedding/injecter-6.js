@@ -10,17 +10,19 @@
   if (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded)) { console.error('[LoreInj:6] inject 미로드'); return; }
   if (_w.__LoreInj.__inject6Loaded) return;
 
-  // 메뉴 등록 콜백 수집
-  const _menuCbs = [];
-  const _subMenuCbs = [];
-  _w.__LoreInj.registerMenu = function(key, cb) {
-    _menuCbs.push({ key, cb });
-  };
-  _w.__LoreInj.registerSubMenu = function(key, cb) {
-    _subMenuCbs.push({ key, cb });
-  };
+  // 메뉴 등록 큐는 로더가 document-start 시점에 이미 만들어둔다.
+  // 여기서 register* 를 재정의하면 그 이전에 들어온 등록이 사라지므로 절대 덮어쓰지 않는다.
+  // 구버전 로더 호환용으로만 fallback 설치.
+  if (!_w.__LoreInj.__menuQueue) _w.__LoreInj.__menuQueue = [];
+  if (!_w.__LoreInj.__subMenuQueue) _w.__LoreInj.__subMenuQueue = [];
+  if (typeof _w.__LoreInj.registerMenu !== 'function') {
+    _w.__LoreInj.registerMenu = (key, cb) => _w.__LoreInj.__menuQueue.push({ key, cb });
+  }
+  if (typeof _w.__LoreInj.registerSubMenu !== 'function') {
+    _w.__LoreInj.registerSubMenu = (key, cb) => _w.__LoreInj.__subMenuQueue.push({ key, cb });
+  }
 
-  // UI 모듈에서 호출: 모든 등록된 메뉴를 ModalManager에 연결
+  // UI 모듈에서 호출: 로더 큐에 누적된 모든 등록을 ModalManager에 연결
   _w.__LoreInj.setupSubMenus = function(modal) {
     if (!modal || typeof modal.createMenu !== 'function') {
       console.error('[LoreInj:6] modal.createMenu 없음');
@@ -28,18 +30,19 @@
     }
 
     // decentralized-modal v1.0.15는 createSubMenu를 ModalManager에 직접 제공하지 않는다.
-    // 기존 서브모듈들이 modal.createSubMenu(...)를 호출하므로, 이를 최상위 createMenu로
-    // 매핑하는 adapter를 넘긴다. 이렇게 해야 빈 root 메뉴만 뜨지 않고 실제 패널들이 표시된다.
     const flatMenuAdapter = {
       createSubMenu: (menuName, menuAction) => modal.createMenu(menuName, menuAction),
       createMenu: (menuName, menuAction) => modal.createMenu(menuName, menuAction)
     };
 
-    _menuCbs.forEach(({ cb }) => {
-      try { cb(modal); } catch(e) { console.error(`[LoreInj:6] 메뉴 등록 실패:`, e); }
+    const menuQ = _w.__LoreInj.__menuQueue || [];
+    const subQ = _w.__LoreInj.__subMenuQueue || [];
+    console.log(`[LoreInj:6] setupSubMenus: menu=${menuQ.length}, subMenu=${subQ.length}`);
+    menuQ.forEach(({ key, cb }) => {
+      try { cb(modal); } catch(e) { console.error(`[LoreInj:6] 메뉴 등록 실패 (${key}):`, e); }
     });
-    _subMenuCbs.forEach(({ cb }) => {
-      try { cb(flatMenuAdapter); } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패:`, e); }
+    subQ.forEach(({ key, cb }) => {
+      try { cb(flatMenuAdapter); } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패 (${key}):`, e); }
     });
   };
 
