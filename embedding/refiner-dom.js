@@ -88,6 +88,50 @@
     return best;
   }
 
+  function patchPropsObject(obj, originalText, newText, renderedHTML, seen, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 4 || seen.has(obj)) return false;
+    seen.add(obj);
+    let changed = false;
+    const oldPlain = stripMarkdown(originalText);
+    const oldSnippet = oldPlain.slice(0, 48);
+    for (const key of Object.keys(obj)) {
+      try {
+        const val = obj[key];
+        if (typeof val === 'string') {
+          if ((oldSnippet && val.includes(oldSnippet)) || val === originalText) {
+            obj[key] = key === '__html' ? renderedHTML : newText;
+            changed = true;
+          }
+        } else if (val && typeof val === 'object') {
+          changed = patchPropsObject(val, originalText, newText, renderedHTML, seen, depth + 1) || changed;
+        }
+      } catch (_) {}
+    }
+    return changed;
+  }
+
+  function tryPatchReactFiber(element, originalText, newText, renderedHTML) {
+    try {
+      let el = element;
+      while (el && el !== document.body) {
+        const fiberKey = Object.keys(el).find(k =>
+          k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$') || k.startsWith('__reactProps$')
+        );
+        if (fiberKey) {
+          let fiber = el[fiberKey];
+          let depth = 0;
+          while (fiber && depth < 30) {
+            patchPropsObject(fiber.memoizedProps, originalText, newText, renderedHTML, new WeakSet(), 0);
+            patchPropsObject(fiber.pendingProps, originalText, newText, renderedHTML, new WeakSet(), 0);
+            fiber = fiber.return;
+            depth++;
+          }
+        }
+        el = el.parentElement;
+      }
+    } catch (e) {}
+  }
+
   function renderMarkdownHTML(mdText) {
     let html = escapeHTML(mdText);
     // fenced code blocks first; stash into placeholders so the inline regex can't shave a backtick
@@ -121,6 +165,31 @@
       .replace(/\n/g, '<br>');
     html = html.replace(/@@LRFENCE(\d+)@@(<br>)?/g, function (_m, idx) { return fences[+idx]; });
     return html;
+  }
+
+  function triggerSWRRevalidation() {
+    try {
+      const origDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState')
+                    || Object.getOwnPropertyDescriptor(document, 'visibilityState');
+
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      setTimeout(() => {
+        Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new Event('online'));
+        window.dispatchEvent(new Event('popstate'));
+
+        setTimeout(() => {
+          try {
+            if (origDesc) Object.defineProperty(Document.prototype, 'visibilityState', origDesc);
+            else delete document.visibilityState;
+          } catch (_) {}
+        }, 200);
+      }, 100);
+    } catch (e) {}
   }
 
   function isTextVisible(text, messageId) {
@@ -218,15 +287,31 @@
     return { applied: true, visible: true, status: 'applied', messageId: messageId || null };
   }
 
+  // store update strategy (v10):
+  // path 0 — best-effort in-place mutation of msg.content (frozen refs throw silently).
+  // path A — ancestor-scoped re-render. Walk UP via fiber.return only. For each ancestor
+  //          fiber, scan THREE locations for state holding this msg, dispatch shallow clone:
+  //          (a) memoizedState hooks (useState/useReducer) — h.queue.dispatch
+  //          (b) memoizedProps.value of Context Provider fibers — store API or fallback
+  //          (c) memoizedProps.{store,client,queryClient} props — Redux/zustand/QueryClient
+  //          Also scans f.alternate (work-in-progress fiber) for same.
+  //          Deep walk capped at depth 12 with 50k op budget.
+  //          When 0 dispatches succeed, captures ancestor type names + hook counts to
+  //          __LR_LAST_ANCESTORS for next-iteration diagnosis.
   function tryStoreUpdate(rootEl, messageId, newText) {
     if (!messageId) return false;
     let updated = false;
+    const DBG = !!_w.__LR_DEBUG;
 
+    // path 0
     const result = runPath0Mutation(messageId, newText);
     if (result.hits > 0) updated = true;
     _w.__LR_LAST_PATH0 = result;
+    if (DBG) console.log('[Refiner v10] path0', result);
 
+    // path A
     let rerenderHits = 0;
+    const ancestorDiag = [];
     const opBudget = { count: 0, max: 200000 };
     let storeBHits = 0;
     let pathCHits = 0;
@@ -626,11 +711,37 @@
           } catch (_) {}
         }
 
+        // diagnostic when nothing fired
+        if (rerenderHits === 0) {
+          for (let i = 0; i < Math.min(ancestors.length, 30); i++) {
+            const f = ancestors[i];
+            let dn = '?';
+            try {
+              dn = (f.type && (f.type.displayName || f.type.name)) || (typeof f.type === 'string' ? f.type : (typeof f.type === 'object' && f.type ? '<obj>' : '?'));
+            } catch (_) {}
+            let hookCount = 0; let hookWithMsg = 0; let h = f.memoizedState;
+            while (h && hookCount < 60) {
+              hookCount++;
+              try { if (h.memoizedState && typeof h.memoizedState === 'object' && containsMsgDeep(h.memoizedState, 0, new WeakSet())) hookWithMsg++; } catch (_) {}
+              h = h.next;
+            }
+            ancestorDiag.push({ d: i, name: String(dn).slice(0, 30), hooks: hookCount, hooksWithMsg: hookWithMsg, hasProps: !!f.memoizedProps, hasAlt: !!f.alternate });
+          }
+        }
       }
-    } catch (e) {}
+    } catch (e) { if (DBG) console.warn('[Refiner v10] pathA threw', e); }
 
     _w.__LR_LAST_RERENDER_HITS = rerenderHits;
+    _w.__LR_LAST_ANCESTORS = ancestorDiag;
     _w.__LR_LAST_OPS = opBudget.count;
+    _w.__LR_LAST_STORE_B_HITS = storeBHits;
+    _w.__LR_LAST_PATH_C_HITS = pathCHits;
+    _w.__LR_LAST_PATH_C_MATCHES = pathCMatches;
+    _w.__LR_LAST_PATH_C_SAME_REF = pathCSameRef;
+    _w.__LR_LAST_PATH_E_HITS = pathEHits;
+    _w.__LR_LAST_PATH_F_HITS = pathFHits;
+    _w.__LR_LAST_PATH_F_TARGETS = pathFTargets;
+    if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
   }
@@ -661,6 +772,8 @@
       return null;
     };
 
+    // single per-root WeakSet that survives across hooks (msg ref is shared)
+    const globallySeen = new WeakSet();
     let totalObjs = 0;
     const OBJ_BUDGET = 200000;
 
@@ -670,6 +783,8 @@
       if (localSeen.has(val)) return;
       localSeen.add(val);
 
+      // try mutate first, BEFORE adding to globallySeen, so a throw later doesn't block re-entry
+      let didMutate = false;
       let isM = false;
       try { isM = isMsg(val); } catch (_) { summary.errors++; }
       if (isM) {
@@ -686,7 +801,7 @@
           let cur;
           try { cur = val[fk]; } catch (_) { cur = undefined; summary.errors++; }
           if (cur !== newText) {
-            try { val[fk] = newText; summary.hits++; } catch (_) { summary.mutationErrors++; }
+            try { val[fk] = newText; summary.hits++; didMutate = true; } catch (_) { summary.mutationErrors++; }
           }
         }
       }
@@ -894,7 +1009,9 @@
   R.stripMarkdown = stripMarkdown;
   R.findMessageContainerById = findMessageContainerById;
   R.findDeepestMatchingElement = findDeepestMatchingElement;
+  R.tryPatchReactFiber = tryPatchReactFiber;
   R.renderMarkdownHTML = renderMarkdownHTML;
+  R.triggerSWRRevalidation = triggerSWRRevalidation;
   R.isTextVisible = isTextVisible;
   R.waitForVisibleText = waitForVisibleText;
   R.rememberAssistantMessage = rememberAssistantMessage;
