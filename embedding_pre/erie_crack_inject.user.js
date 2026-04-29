@@ -1,49 +1,49 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Loader)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0-test.31
-// @description 모듈화된 로어 인젝터 로더
+// @version     1.4.0-test.32
+// @description 모듈화된 로어 인젝터 로더 (ready-gate)
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
-// @updateURL   https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding_pre/erie_crack_inject.user.js
-// @downloadURL https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding_pre/erie_crack_inject.user.js
+// @updateURL   https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding_pre/erie_crack_inject.user.js
+// @downloadURL https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding_pre/erie_crack_inject.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/vendor/toastify-injection.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/vendor/crack-shared-core.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/vendor/chasm-shared-core.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/vendor/decentralized-modal.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-ui.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-kernel.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-platform.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-memory.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-format.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-search.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-embedding.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/core-importer.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/refiner-prompts.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/refiner-dom.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/refiner-core.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/refiner-queue.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/refiner-observer.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/refiner.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-1.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-2.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-3.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-4.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-5.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-main.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-lore.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-merge.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-snapshot.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-file.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-extract.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-refiner.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-log.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-session.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-api.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-sub-help.js
-// @require     https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260427_plus/embedding/injecter-6-ui.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/vendor/toastify-injection.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/vendor/crack-shared-core.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/vendor/chasm-shared-core.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/vendor/decentralized-modal.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-ui.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-kernel.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-platform.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-memory.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-format.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-search.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-embedding.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/core-importer.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/refiner-prompts.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/refiner-dom.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/refiner-core.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/refiner-queue.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/refiner-observer.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/refiner.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-1.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-2.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-3.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-4.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-5.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-main.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-lore.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-merge.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-snapshot.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-file.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-extract.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-refiner.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-log.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-session.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-api.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-sub-help.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding/injecter-6-ui.js
 // @grant       GM_addStyle
 // @grant       GM_xmlhttpRequest
 // @connect     generativelanguage.googleapis.com
@@ -59,15 +59,59 @@
 (function () {
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const deadline = Date.now() + 20000;
-  const required = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded', '__uiLoaded'];
+
+  // 전역 ready 게이트: UI 부트스트랩(injecter-6-ui)이 이걸 await 한 뒤에만 마운트한다.
+  // document-start 시점에 노출해야 다른 모듈이 안전하게 참조 가능.
+  if (!_w.__LoreInjReady) {
+    let _resolve;
+    const p = new Promise(r => { _resolve = r; });
+    p.__resolve = _resolve;
+    _w.__LoreInjReady = p;
+  }
+
+  const TIMEOUT_MS = 30000;
+  const POLL_MS = 50;
+  const deadline = Date.now() + TIMEOUT_MS;
+
+  // 게이트 충족에 필요한 플래그 (UI 자체 플래그 __uiLoaded 는 UI 가 게이트 통과 후 켜므로 제외)
+  const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded'];
+  const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
+  const requiredAll = requiredCore.concat(requiredSubs);
+
+  let _settled = false;
+  const _settle = (payload) => {
+    if (_settled) return;
+    _settled = true;
+    try { _w.__LoreInjReady.__resolve(payload); } catch (_) {}
+    try { _w.dispatchEvent(new CustomEvent('LoreInj:ready', { detail: payload })); } catch (_) {}
+  };
+
   const check = () => {
     const L = _w.__LoreInj;
-    if (!L) { if (Date.now() < deadline) return setTimeout(check, 200); console.error('[LoreInj] __LoreInj 없음'); return; }
-    const missing = required.filter(k => !L[k]);
-    if (missing.length === 0) { console.log('[LoreInj v' + (L.VER || '?') + '] 전체 6개 모듈 로드 완료 (interceptor/const/settings/extract/inject/ui)'); return; }
-    if (Date.now() < deadline) return setTimeout(check, 200);
-    console.error('[LoreInj] 미로드 모듈:', missing);
+    if (!L) {
+      if (Date.now() < deadline) return setTimeout(check, POLL_MS);
+      console.error('[LoreInj] __LoreInj 없음 (코어 미로드)');
+      _settle({ ok: false, reason: 'no-core', missing: ['__LoreInj'] });
+      return;
+    }
+    const missing = requiredAll.filter(k => !L[k]);
+    if (missing.length === 0) {
+      L.allReady = true;
+      console.log('[LoreInj v' + (L.VER || '?') + '] 게이트 통과: 코어 5 + 서브 11 전부 로드됨 → UI 부트스트랩 허용');
+      _settle({ ok: true, ver: L.VER });
+      // UI 마운트 사후 점검 (실패시 콘솔 경고만)
+      const tail = Date.now() + 5000;
+      const tailCheck = () => {
+        if (L.__uiLoaded) { console.log('[LoreInj v' + (L.VER || '?') + '] UI 마운트 완료'); return; }
+        if (Date.now() < tail) return setTimeout(tailCheck, 100);
+        console.warn('[LoreInj] __uiLoaded 미설정 — UI 마운트가 도중에 죽었을 수 있음');
+      };
+      tailCheck();
+      return;
+    }
+    if (Date.now() < deadline) return setTimeout(check, POLL_MS);
+    console.error('[LoreInj] 게이트 타임아웃, 미로드 플래그:', missing);
+    _settle({ ok: false, reason: 'timeout', missing });
   };
   check();
 })();
