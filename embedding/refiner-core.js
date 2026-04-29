@@ -360,9 +360,30 @@
                   let visible = storeOk || domUpdated;
                   try {
                     visible = R.waitForVisibleText
-                      ? await R.waitForVisibleText(newText, lastBot.id, 3500)
+                      ? await R.waitForVisibleText(newText, lastBot.id, 1800)
                       : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : visible);
                   } catch (_) {}
+
+                  if (!visible && R.nudgeMessageNativeRender) {
+                    let nudged = false;
+                    try { nudged = !!R.nudgeMessageNativeRender(lastBot.id); } catch (_) {}
+                    _w.__LR_LAST_NATIVE_NUDGE = nudged;
+                    if (nudged) {
+                      try {
+                        visible = R.waitForVisibleText
+                          ? await R.waitForVisibleText(newText, lastBot.id, 1800)
+                          : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : visible);
+                      } catch (_) {}
+                    }
+                  }
+
+                  if (!visible && R.refreshMessageInDOM) {
+                    let fallbackResult = null;
+                    try { fallbackResult = R.refreshMessageInDOM(assistantText, newText, lastBot.id); } catch (_) {}
+                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
+                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
+                  }
+
                   if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.');
                 }, 1200);
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
