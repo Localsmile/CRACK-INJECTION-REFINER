@@ -334,23 +334,34 @@
               saveProcessedFingerprints();
 
               if (editResult.ok) {
+                // store update -> DOM apply -> lock fallback -> verify -> reload toast last resort
+                const oldPlain = R.stripMarkdown ? R.stripMarkdown(assistantText) : assistantText;
+                const newPlain = R.stripMarkdown ? R.stripMarkdown(newText) : newText;
+                let targetEl = null;
+                try {
+                  targetEl = (R.findMessageContainerById && R.findMessageContainerById(lastBot.id))
+                          || (R.findDeepestMatchingElement && R.findDeepestMatchingElement(oldPlain))
+                          || null;
+                } catch (_) {}
+                const storeOk = !!(targetEl && R.tryStoreUpdate && R.tryStoreUpdate(targetEl, lastBot.id, newText));
                 const domResult = R.refreshMessageInDOM ? R.refreshMessageInDOM(assistantText, newText, lastBot.id) : false;
                 const domUpdated = !!(domResult === true || (domResult && (domResult.applied || domResult.visible)));
-                if (R.triggerSWRRevalidation) {
-                  R.triggerSWRRevalidation();
-                  setTimeout(R.triggerSWRRevalidation, 1200);
+                if (!storeOk && targetEl && R.lockMessageHTML && R.renderMarkdownHTML) {
+                  try { R.lockMessageHTML(targetEl, R.renderMarkdownHTML(newText), oldPlain, newPlain, 8000); } catch (_) {}
                 }
                 setTimeout(async () => {
-                  let visible = domUpdated;
+                  let visible = storeOk || domUpdated;
                   try {
                     visible = R.waitForVisibleText
                       ? await R.waitForVisibleText(newText, lastBot.id, 3500)
-                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : domUpdated);
+                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : visible);
                   } catch (_) {}
-                  if (!visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.');
-                }, 300);
-                if (ToastCallback) ToastCallback(domUpdated ? `에리가 고침 — ${parsed.reason}` : `에리가 고침(서버 반영, 화면 확인 중) — ${parsed.reason}`, '#285');
-                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'domResult=', domResult);
+                  if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.');
+                }, 1200);
+                const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
+                if (newFingerprint) processedFingerprints.add(newFingerprint), saveProcessedFingerprints();
+                if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
+                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'storeOk=', storeOk, 'domResult=', domResult);
               } else {
                 let errText = '';
                 try { errText = editResult.text ? await editResult.text() : ''; } catch(ex) {}
