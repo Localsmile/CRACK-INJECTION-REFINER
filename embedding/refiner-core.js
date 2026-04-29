@@ -356,9 +356,6 @@
                   domResult = R.refreshMessageInDOM ? R.refreshMessageInDOM(assistantText, newText, lastBot.id) : false;
                   domUpdated = !!(domResult === true || (domResult && (domResult.applied || domResult.visible)));
                 }
-                _w.__LR_LAST_NATIVE_NUDGE = false;
-                _w.__LR_LAST_DOM_FALLBACK = null;
-                _w.__LR_LAST_VISIBLE_AFTER_VERIFY = null;
                 setTimeout(async () => {
                   let visible = storeOk || domUpdated;
                   try {
@@ -380,18 +377,13 @@
                     }
                   }
 
-                  // Generic DOM fallback breaks wrtn's native code-block renderer. Only use it
-                  // as an absolute last resort when the client ref update failed too. If storeOk
-                  // is true, edit/native remount can read the corrected text, so preserve native
-                  // rendering and avoid stomping .wrtn-markdown.
-                  if (!visible && !storeOk && R.refreshMessageInDOM) {
+                  if (!visible && R.refreshMessageInDOM) {
                     let fallbackResult = null;
                     try { fallbackResult = R.refreshMessageInDOM(assistantText, newText, lastBot.id); } catch (_) {}
                     _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
                     visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
                   }
 
-                  _w.__LR_LAST_VISIBLE_AFTER_VERIFY = !!visible;
                   if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.');
                 }, 1200);
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
