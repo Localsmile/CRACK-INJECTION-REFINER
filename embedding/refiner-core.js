@@ -380,7 +380,11 @@
                     }
                   }
 
-                  if (!visible && R.refreshMessageInDOM) {
+                  // Generic DOM fallback breaks wrtn's native code-block renderer. Only use it
+                  // as an absolute last resort when the client ref update failed too. If storeOk
+                  // is true, edit/native remount can read the corrected text, so preserve native
+                  // rendering and avoid stomping .wrtn-markdown.
+                  if (!visible && !storeOk && R.refreshMessageInDOM) {
                     let fallbackResult = null;
                     try { fallbackResult = R.refreshMessageInDOM(assistantText, newText, lastBot.id); } catch (_) {}
                     _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
