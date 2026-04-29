@@ -334,23 +334,62 @@
               saveProcessedFingerprints();
 
               if (editResult.ok) {
-                const domResult = R.refreshMessageInDOM ? R.refreshMessageInDOM(assistantText, newText, lastBot.id) : false;
-                const domUpdated = !!(domResult === true || (domResult && (domResult.applied || domResult.visible)));
-                if (R.triggerSWRRevalidation) {
-                  R.triggerSWRRevalidation();
-                  setTimeout(R.triggerSWRRevalidation, 1200);
-                }
+                // store update -> DOM apply -> lock fallback -> verify -> reload toast last resort
+                const oldPlain = R.stripMarkdown ? R.stripMarkdown(assistantText) : assistantText;
+                const newPlain = R.stripMarkdown ? R.stripMarkdown(newText) : newText;
+                let targetEl = null;
+                try {
+                  targetEl = (R.findMessageContainerById && R.findMessageContainerById(lastBot.id))
+                          || (R.findDeepestMatchingElement && R.findDeepestMatchingElement(oldPlain))
+                          || null;
+                } catch (_) {}
+                const storeOk = !!(targetEl && R.tryStoreUpdate && R.tryStoreUpdate(targetEl, lastBot.id, newText));
+                // v11: gate innerHTML stomp behind path A failure.
+                // When path A fired (RERENDER_HITS > 0), wrtn re-renders the bubble with its
+                // own native markdown pipeline, which handles wrtn-specific code-block boxes,
+                // editing-textarea seeds, etc. Our generic innerHTML stomp was racing with
+                // that commit and producing the code-block-wrapping / stale-textarea artifacts.
+                const hasCodeFence = /```/.test(newText || '');
+                const rerenderOk = (_w.__LR_LAST_RERENDER_HITS || 0) > 0;
+                let domResult = null;
+                let domUpdated = false;
+
                 setTimeout(async () => {
-                  let visible = domUpdated;
+                  let visible = false;
                   try {
                     visible = R.waitForVisibleText
-                      ? await R.waitForVisibleText(newText, lastBot.id, 3500)
-                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : domUpdated);
-                  } catch (_) {}
-                  if (!visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.');
-                }, 300);
-                if (ToastCallback) ToastCallback(domUpdated ? `에리가 고침 — ${parsed.reason}` : `에리가 고침(서버 반영, 화면 확인 중) — ${parsed.reason}`, '#285');
-                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'domResult=', domResult);
+                      ? await R.waitForVisibleText(newText, lastBot.id, 1800)
+                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : storeOk);
+                  } catch (_) { visible = !!storeOk; }
+
+                  if (!visible && R.nudgeMessageNativeRender) {
+                    let nudged = false;
+                    try { nudged = !!R.nudgeMessageNativeRender(lastBot.id); } catch (_) {}
+                    _w.__LR_LAST_NATIVE_NUDGE = nudged;
+                    if (nudged) {
+                      try {
+                        visible = R.waitForVisibleText
+                          ? await R.waitForVisibleText(newText, lastBot.id, 1800)
+                          : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : visible);
+                      } catch (_) {}
+                    }
+                  }
+
+                  if (!visible && R.refreshMessageInDOM && !hasCodeFence) {
+                    let fallbackResult = null;
+                    try { fallbackResult = R.refreshMessageInDOM(assistantText, newText, lastBot.id); } catch (_) {}
+                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
+                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
+                  } else if (!visible && hasCodeFence) {
+                    _w.__LR_LAST_DOM_FALLBACK = { skipped: true, status: 'skipped_codeblock', messageId: lastBot.id };
+                  }
+
+                  if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 코드블록 보호를 위해 강제 DOM 치환은 건너뜀. 화면이 예전 응답이면 새로고침으로 반영하세요.');
+                }, 1200);
+                const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
+                if (newFingerprint) processedFingerprints.add(newFingerprint), saveProcessedFingerprints();
+                if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
+                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
               } else {
                 let errText = '';
                 try { errText = editResult.text ? await editResult.text() : ''; } catch(ex) {}
