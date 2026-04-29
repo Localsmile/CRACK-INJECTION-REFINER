@@ -316,6 +316,7 @@
     let storeBHits = 0;
     let pathCHits = 0;
     let pathCMatches = 0;
+    let pathCSameRef = 0;
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -323,7 +324,7 @@
     };
     const containsMsgDeep = (val, depth, seen) => {
       if (++opBudget.count > opBudget.max) return false;
-      if (!val || typeof val !== 'object' || depth > 16) return false;
+      if (!val || typeof val !== 'object' || depth > 20) return false;
       if (seen.has(val)) return false;
       seen.add(val);
       if (isMsgRef(val)) return true;
@@ -336,8 +337,9 @@
           for (const v of val.values()) if (containsMsgDeep(v, depth + 1, seen)) return true;
           return false;
         }
-        const proto = Object.getPrototypeOf(val);
-        if (proto !== Object.prototype && proto !== null) return false;
+        // v16: proto guard removed. wrtn state may use class instances / Immer drafts /
+        // proxies whose proto rejects plain-Object check. Just try Object.keys; the seen
+        // set + depth limit + outer try/catch handle weird protos safely.
         for (const k of Object.keys(val)) if (containsMsgDeep(val[k], depth + 1, seen)) return true;
       } catch (_) {}
       return false;
@@ -352,7 +354,7 @@
     let replacementMsg = null;
     const cloneWithMsgReplaced = (val, depth, seen) => {
       if (++opBudget.count > opBudget.max) return val;
-      if (!val || typeof val !== 'object' || depth > 16) return val;
+      if (!val || typeof val !== 'object' || depth > 20) return val;
       if (seen.has(val)) return seen.get(val);
       if (isMsgRef(val)) {
         if (!replacementMsg) {
@@ -377,10 +379,12 @@
           return changed ? out : val;
         }
         if (val instanceof Map) return val;
-        const proto = Object.getPrototypeOf(val);
-        if (proto !== Object.prototype && proto !== null) return val;
+        // v16: preserve original proto via Object.create when cloning. Prevents method
+        // chain loss for class-instance state and Immer-produced drafts.
+        let proto = null;
+        try { proto = Object.getPrototypeOf(val); } catch (_) {}
         seen.set(val, val);
-        const out = {};
+        const out = (proto && proto !== Object.prototype) ? Object.create(proto) : {};
         let changed = false;
         for (const k of Object.keys(val)) {
           out[k] = cloneWithMsgReplaced(val[k], depth + 1, seen);
@@ -616,6 +620,8 @@
                           rerenderHits++;
                           updated = true;
                           if (pathCHits >= 3) break outer2;
+                        } else {
+                          pathCSameRef++;
                         }
                       }
                     } catch (_) {}
@@ -655,6 +661,7 @@
     _w.__LR_LAST_STORE_B_HITS = storeBHits;
     _w.__LR_LAST_PATH_C_HITS = pathCHits;
     _w.__LR_LAST_PATH_C_MATCHES = pathCMatches;
+    _w.__LR_LAST_PATH_C_SAME_REF = pathCSameRef;
     if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
@@ -864,7 +871,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v15';
+  R.__version = 'v16';
   R.__domLoaded = true;
 
 })();
