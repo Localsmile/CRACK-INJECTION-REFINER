@@ -436,38 +436,157 @@
   }
 
   function tryStoreUpdate(rootEl, messageId, newText) {
-    if (!rootEl || !messageId) return false;
-    const stores = collectFiberStores(rootEl);
+    if (!messageId) return false;
     let updated = false;
-    for (const s of stores) {
-      try {
-        if (s.kind === 'zustand') {
-          const state = s.handle.getState();
-          const patched = patchMessageInState(state, messageId, newText);
-          if (patched) { s.handle.setState(patched, true); updated = true; }
-        } else if (s.kind === 'react-query') {
-          const cache = s.handle.getQueryCache && s.handle.getQueryCache();
-          const queries = (cache && cache.getAll && cache.getAll()) || [];
-          for (const q of queries) {
-            const data = q.state && q.state.data;
-            if (!data) continue;
-            const next = patchMessageInState(data, messageId, newText);
-            if (next) { s.handle.setQueryData(q.queryKey, next); updated = true; }
-          }
-        } else if (s.kind === 'swr') {
-          const cache = s.handle.cache;
-          if (cache && typeof cache[Symbol.iterator] === 'function') {
-            for (const [key, val] of cache) {
-              const data = val && val.data;
+
+    // path 1: known store types collected from fiber spine + tree
+    if (rootEl) {
+      const stores = collectFiberStores(rootEl);
+      for (const s of stores) {
+        try {
+          if (s.kind === 'zustand') {
+            const state = s.handle.getState();
+            const patched = patchMessageInState(state, messageId, newText);
+            if (patched) { s.handle.setState(patched, true); updated = true; }
+          } else if (s.kind === 'react-query') {
+            const cache = s.handle.getQueryCache && s.handle.getQueryCache();
+            const queries = (cache && cache.getAll && cache.getAll()) || [];
+            for (const q of queries) {
+              const data = q.state && q.state.data;
               if (!data) continue;
               const next = patchMessageInState(data, messageId, newText);
-              if (next) { s.handle.mutate(key, next, false); updated = true; }
+              if (next) { s.handle.setQueryData(q.queryKey, next); updated = true; }
+            }
+          } else if (s.kind === 'swr') {
+            const cache = s.handle.cache;
+            if (cache && typeof cache[Symbol.iterator] === 'function') {
+              for (const [key, val] of cache) {
+                const data = val && val.data;
+                if (!data) continue;
+                const next = patchMessageInState(data, messageId, newText);
+                if (next) { s.handle.mutate(key, next, false); updated = true; }
+              }
             }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     }
+
+    // path 2: useState / useReducer hooks across the entire fiber tree
+    try {
+      const roots = [];
+      const tryAddRoot = (el) => {
+        if (!el) return;
+        try {
+          const containerKey = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+          if (containerKey && el[containerKey] && el[containerKey].stateNode) roots.push(el[containerKey].stateNode.current);
+        } catch (_) {}
+        try {
+          if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
+        } catch (_) {}
+      };
+      tryAddRoot(document.getElementById('__next'));
+      tryAddRoot(document.getElementById('root'));
+      document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
+
+      const seenFibers = new WeakSet();
+      let visited = 0;
+      const VISIT_CAP = 50000;
+      for (const root of roots) {
+        const stack = [root];
+        while (stack.length && visited < VISIT_CAP) {
+          const f = stack.pop();
+          if (!f || seenFibers.has(f)) continue;
+          seenFibers.add(f);
+          visited++;
+          let h = f.memoizedState;
+          let hd = 0;
+          while (h && hd < 60) {
+            try {
+              if (h.queue && typeof h.queue.dispatch === 'function') {
+                const cur = h.memoizedState;
+                if (cur && typeof cur === 'object') {
+                  const next = patchMessageInState(cur, messageId, newText);
+                  if (next) {
+                    try { h.queue.dispatch(next); updated = true; } catch (_) {}
+                  }
+                }
+              }
+            } catch (_) {}
+            h = h.next; hd++;
+          }
+          if (f.child) stack.push(f.child);
+          if (f.sibling) stack.push(f.sibling);
+        }
+      }
+    } catch (_) {}
+
     return updated;
+  }
+
+  // Diagnostic helper: scan all fibers and report where messageId is found.
+  // Usage from console: __LoreRefiner.debugFindMessage('69f04...')
+  function debugFindMessage(messageId) {
+    const findings = [];
+    const seenObjs = new WeakSet();
+    const walk = (val, path, depth) => {
+      if (val == null || depth > 8) return;
+      if (typeof val === 'string') {
+        if (val === messageId) findings.push({ path: path.join('.') || '<root>', kind: 'id-string', sample: val });
+        return;
+      }
+      if (typeof val !== 'object') return;
+      if (seenObjs.has(val)) return;
+      seenObjs.add(val);
+      if (val.id === messageId || val._id === messageId || val.messageId === messageId || val.msgId === messageId) {
+        findings.push({ path: path.join('.') || '<root>', kind: 'message-object', keys: Object.keys(val).slice(0, 30) });
+      }
+      if (Array.isArray(val)) {
+        const lim = Math.min(val.length, 200);
+        for (let i = 0; i < lim; i++) walk(val[i], path.concat('[' + i + ']'), depth + 1);
+        return;
+      }
+      const proto = Object.getPrototypeOf(val);
+      if (proto !== Object.prototype && proto !== null) return;
+      for (const k of Object.keys(val)) walk(val[k], path.concat(k), depth + 1);
+    };
+    const roots = [];
+    const tryAddRoot = (el) => {
+      if (!el) return;
+      try {
+        const containerKey = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+        if (containerKey && el[containerKey] && el[containerKey].stateNode) roots.push(el[containerKey].stateNode.current);
+      } catch (_) {}
+      try {
+        if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
+      } catch (_) {}
+    };
+    tryAddRoot(document.getElementById('__next'));
+    tryAddRoot(document.getElementById('root'));
+    document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
+    const seenFibers = new WeakSet();
+    let visited = 0;
+    for (const root of roots) {
+      const stack = [root];
+      while (stack.length && visited < 50000) {
+        const f = stack.pop();
+        if (!f || seenFibers.has(f)) continue;
+        seenFibers.add(f);
+        visited++;
+        const dn = (f.type && (f.type.displayName || f.type.name)) || (typeof f.type === 'string' ? f.type : '?');
+        // hooks
+        let h = f.memoizedState; let hd = 0;
+        while (h && hd < 60) {
+          try { walk(h.memoizedState, ['fiber<' + dn + '>', 'hook[' + hd + ']', 'state'], 0); } catch (_) {}
+          h = h.next; hd++;
+        }
+        // memoizedProps
+        try { walk(f.memoizedProps, ['fiber<' + dn + '>', 'props'], 0); } catch (_) {}
+        if (f.child) stack.push(f.child);
+        if (f.sibling) stack.push(f.sibling);
+      }
+    }
+    return findings;
   }
 
   // one-shot apply only — prior MutationObserver loop caused a React reconciliation feedback freeze
@@ -563,6 +682,7 @@
   R.collectFiberStores = collectFiberStores;
   R.patchMessageInState = patchMessageInState;
   R.tryStoreUpdate = tryStoreUpdate;
+  R.debugFindMessage = debugFindMessage;
   R.lockMessageHTML = lockMessageHTML;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
