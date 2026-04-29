@@ -318,6 +318,7 @@
     let pathCMatches = 0;
     let pathCSameRef = 0;
     let pathEHits = 0;
+    let pathFHits = 0;
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -638,13 +639,42 @@
           }
         } } catch (_) {}
 
-        // path E (v17): path A/B/C all yielded 0 + path 0 hits>0 → msg owner is
+        // path F (v18): E proved a force-render can be dispatched, but React.memo often
+        // keeps the bubble stale because previous/next props still point at the same msg
+        // ref. Before dispatching E, replace msg refs inside the target bubble ancestor
+        // fibers' memoizedProps/pendingProps. This turns the next shallow compare into
+        // "changed" and lets the bubble render with corrected content instead of waiting
+        // for a random site click.
+        if (rerenderHits === 0 && result.hits > 0) {
+          try {
+            const seenFibersF = new WeakSet();
+            const touchProps = (f) => {
+              if (!f || seenFibersF.has(f) || pathFHits >= 12) return;
+              seenFibersF.add(f);
+              for (const pk of ['memoizedProps', 'pendingProps']) {
+                try {
+                  const cur = f[pk];
+                  if (cur && typeof cur === 'object' && containsMsgDeep(cur, 0, new WeakSet())) {
+                    replacementMsg = null;
+                    const next = cloneWithMsgReplaced(cur, 0, new WeakMap());
+                    if (next !== cur) {
+                      f[pk] = next;
+                      pathFHits++;
+                      updated = true;
+                    }
+                  }
+                } catch (_) {}
+              }
+            };
+            for (let i = 0; i < ancestors.length && i < 30 && pathFHits < 12; i++) touchProps(ancestors[i]);
+          } catch (_) {}
+        }
+
+        // path E (v18): path A/B/C all yielded 0 + path 0 hits>0 → msg owner is
         // outside React state (closure/useRef/external store). path 0 already mutated
-        // the msg ref in place; we just need React to re-render the bubble so the new
-        // content paints. dispatch shallow-cloned state on bubble ancestor useState
-        // hooks (5 hop, max 2 hits) — same-component re-render only, narrow blast radius.
-        // React.memo on the bubble may still skip if props.msg ref is unchanged; in that
-        // case v18 will swap the msg ref via props mutation.
+        // the msg ref in place; path F swaps memoized/pending props where possible; E
+        // then dispatches a local shallow-clone state update to force the bubble path to
+        // render immediately. Max 2 hits — narrow blast radius.
         if (rerenderHits === 0 && result.hits > 0) {
           try {
             let f = ancestors[0];
@@ -704,6 +734,7 @@
     _w.__LR_LAST_PATH_C_MATCHES = pathCMatches;
     _w.__LR_LAST_PATH_C_SAME_REF = pathCSameRef;
     _w.__LR_LAST_PATH_E_HITS = pathEHits;
+    _w.__LR_LAST_PATH_F_HITS = pathFHits;
     if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
@@ -913,7 +944,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v17';
+  R.__version = 'v18';
   R.__domLoaded = true;
 
 })();
