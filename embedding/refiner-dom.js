@@ -340,6 +340,55 @@
       return false;
     };
 
+    // v12: deep-clone the state with msg ref REPLACED by a new unfrozen object
+    // carrying the new content. shallow-cloning (v10) only re-rendered the bubble
+    // with the SAME frozen msg ref, so wrtn re-painted with stale content. Replacing
+    // the msg ref end-to-end forces wrtn's native renderer to see new props and
+    // produce a clean repaint (status code-blocks, edit textarea seed, images).
+    // Cached single replacement object so all msg occurrences map to the same new ref.
+    let replacementMsg = null;
+    const cloneWithMsgReplaced = (val, depth, seen) => {
+      if (++opBudget.count > opBudget.max) return val;
+      if (!val || typeof val !== 'object' || depth > 12) return val;
+      if (seen.has(val)) return seen.get(val);
+      if (isMsgRef(val)) {
+        if (!replacementMsg) {
+          try { replacementMsg = Object.assign({}, val, { content: newText }); }
+          catch (_) { replacementMsg = val; }
+        }
+        seen.set(val, replacementMsg);
+        return replacementMsg;
+      }
+      try {
+        if (Array.isArray(val)) {
+          seen.set(val, val); // cycle placeholder
+          let changed = false;
+          const out = new Array(val.length);
+          const cap = Math.min(val.length, 500);
+          for (let i = 0; i < cap; i++) {
+            out[i] = cloneWithMsgReplaced(val[i], depth + 1, seen);
+            if (out[i] !== val[i]) changed = true;
+          }
+          for (let i = cap; i < val.length; i++) out[i] = val[i];
+          if (changed) seen.set(val, out);
+          return changed ? out : val;
+        }
+        if (val instanceof Map) return val;
+        const proto = Object.getPrototypeOf(val);
+        if (proto !== Object.prototype && proto !== null) return val;
+        seen.set(val, val);
+        const out = {};
+        let changed = false;
+        for (const k of Object.keys(val)) {
+          out[k] = cloneWithMsgReplaced(val[k], depth + 1, seen);
+          if (out[k] !== val[k]) changed = true;
+        }
+        if (changed) seen.set(val, out);
+        return changed ? out : val;
+      } catch (_) {}
+      return val;
+    };
+
     try {
       const targetEl = rootEl || (R.findMessageContainerById && R.findMessageContainerById(messageId));
       if (targetEl) {
@@ -373,10 +422,9 @@
           try {
             if (typeof v.getState === 'function' && typeof v.setState === 'function' && typeof v.subscribe === 'function') {
               const state = v.getState();
-              if (containsMsgDeep(state, 0, new WeakSet())) {
-                const next = Array.isArray(state) ? state.slice() : Object.assign({}, state);
-                v.setState(next, true);
-                did = true;
+              if (state && typeof state === 'object') {
+                const next = cloneWithMsgReplaced(state, 0, new WeakMap());
+                if (next !== state) { v.setState(next, true); did = true; }
               }
             }
           } catch (_) {}
@@ -387,10 +435,9 @@
               const queries = (cache && cache.getAll && cache.getAll()) || [];
               for (const q of queries) {
                 const data = q.state && q.state.data;
-                if (data && containsMsgDeep(data, 0, new WeakSet())) {
-                  const next = Array.isArray(data) ? data.slice() : Object.assign({}, data);
-                  v.setQueryData(q.queryKey, next);
-                  did = true;
+                if (data && typeof data === 'object') {
+                  const next = cloneWithMsgReplaced(data, 0, new WeakMap());
+                  if (next !== data) { v.setQueryData(q.queryKey, next); did = true; }
                 }
               }
             }
@@ -405,12 +452,14 @@
             if (!seenHooks.has(h) && h.queue && typeof h.queue.dispatch === 'function') {
               seenHooks.add(h);
               const cur = h.memoizedState;
-              if (cur && typeof cur === 'object' && containsMsgDeep(cur, 0, new WeakSet())) {
+              if (cur && typeof cur === 'object') {
                 try {
-                  const next = Array.isArray(cur) ? cur.slice() : Object.assign({}, cur);
-                  h.queue.dispatch(next);
-                  rerenderHits++;
-                  updated = true;
+                  const next = cloneWithMsgReplaced(cur, 0, new WeakMap());
+                  if (next !== cur) {
+                    h.queue.dispatch(next);
+                    rerenderHits++;
+                    updated = true;
+                  }
                 } catch (_) {}
               }
             }
@@ -675,7 +724,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v10';
+  R.__version = 'v12';
   R.__domLoaded = true;
 
 })();
