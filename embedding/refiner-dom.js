@@ -7,14 +7,6 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   const R = _w.__LoreRefiner = _w.__LoreRefiner || {};
 
-  // Diagnostics are initialized before the load guard so console probes never ReferenceError.
-  _w.__LR_LAST_NATIVE_NUDGE = false;
-  _w.__LR_LAST_DOM_FALLBACK = null;
-  _w.__LR_LAST_VISIBLE_AFTER_VERIFY = null;
-  _w.__LR_LAST_RERENDER_HITS = _w.__LR_LAST_RERENDER_HITS || 0;
-  _w.__LR_LAST_OPS = _w.__LR_LAST_OPS || 0;
-  _w.__LR_LAST_PATH0 = _w.__LR_LAST_PATH0 || null;
-
   if (R.__domLoaded) return;
 
   function escapeHTML(value) {
@@ -319,11 +311,11 @@
     _w.__LR_LAST_PATH0 = result;
     _w.__LR_LAST_OPS = result.objects || 0;
 
-    // v20.2 rollback: keep the working behavior from v20. Do not pretend a
-    // path0 mutation is a native repaint by itself; if native repaint is needed,
-    // core post-verify will run the native nudge/fallback path.
+    // A successful path0 mutation means edit-mode/native remount can read corrected refs.
+    // Mark rerender as truthy to avoid immediate generic DOM stomp; core verifies visibility
+    // shortly after and triggers native nudge/fallback only if needed.
     const ok = result.hits > 0;
-    _w.__LR_LAST_RERENDER_HITS = 0;
+    _w.__LR_LAST_RERENDER_HITS = ok ? 1 : 0;
     return ok;
   }
 
@@ -470,6 +462,6 @@
   R.nudgeMessageNativeRender = nudgeMessageNativeRender;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v20.2';
+  R.__version = 'v20';
   R.__domLoaded = true;
 })();
