@@ -439,95 +439,92 @@
     if (!messageId) return false;
     let updated = false;
     const DBG = !!_w.__LR_DEBUG;
+
+    // path 0 (best effort): in-place mutation. Frozen objects throw silently and are ignored.
+    // wrtn pre-freezes some msg copies via Immer-like pipeline, so this only updates the ones it can.
     const result = runPath0Mutation(messageId, newText);
     if (result.hits > 0) updated = true;
-    if (DBG) console.log('[Refiner v7] path0 summary', result);
-    // also expose last result for inspection
     _w.__LR_LAST_PATH0 = result;
+    if (DBG) console.log('[Refiner v8] path0 summary', result);
 
-    if (DBG) console.log('[Refiner v7] tryStoreUpdate enter', messageId, 'len=', newText && newText.length);
-
-    // path 1: known store types collected from fiber spine + tree
-    if (rootEl) {
-      const stores = collectFiberStores(rootEl);
-      for (const s of stores) {
-        try {
-          if (s.kind === 'zustand') {
-            const state = s.handle.getState();
-            const patched = patchMessageInState(state, messageId, newText);
-            if (patched) { s.handle.setState(patched, true); updated = true; }
-          } else if (s.kind === 'react-query') {
-            const cache = s.handle.getQueryCache && s.handle.getQueryCache();
-            const queries = (cache && cache.getAll && cache.getAll()) || [];
-            for (const q of queries) {
-              const data = q.state && q.state.data;
-              if (!data) continue;
-              const next = patchMessageInState(data, messageId, newText);
-              if (next) { s.handle.setQueryData(q.queryKey, next); updated = true; }
-            }
-          } else if (s.kind === 'swr') {
-            const cache = s.handle.cache;
-            if (cache && typeof cache[Symbol.iterator] === 'function') {
-              for (const [key, val] of cache) {
-                const data = val && val.data;
-                if (!data) continue;
-                const next = patchMessageInState(data, messageId, newText);
-                if (next) { s.handle.mutate(key, next, false); updated = true; }
-              }
-            }
-          }
-        } catch (_) {}
-      }
-    }
-
-    // path 2: useState / useReducer hooks across the entire fiber tree
+    // path A: targeted re-render of the bubble's owner component(s).
+    // Walk up from the message's DOM container, find functional-component fibers with a
+    // useState/useReducer that ALREADY contains this msg, and dispatch a shallow-cloned
+    // version of its current state. This forces React to re-render that one subtree without
+    // touching unrelated state, avoiding the "child reconciliation" site error from broad
+    // cross-tree dispatch.
+    let rerenderHits = 0;
     try {
-      const roots = [];
-      const tryAddRoot = (el) => {
-        if (!el) return;
-        try {
-          const containerKey = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
-          if (containerKey && el[containerKey] && el[containerKey].stateNode) roots.push(el[containerKey].stateNode.current);
-        } catch (_) {}
-        try {
-          if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
-        } catch (_) {}
-      };
-      tryAddRoot(document.getElementById('__next'));
-      tryAddRoot(document.getElementById('root'));
-      document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
+      const targetEl = rootEl || (R.findMessageContainerById && R.findMessageContainerById(messageId));
+      if (targetEl) {
+        // collect ancestor fibers from the bubble up to the React root
+        const ancestors = [];
+        let el = targetEl;
+        while (el && el !== document.body) {
+          const fk = Object.keys(el).find(k => k.startsWith('__reactFiber$'));
+          if (fk) {
+            let f = el[fk];
+            let depth = 0;
+            while (f && depth < 80) {
+              ancestors.push(f);
+              f = f.return; depth++;
+            }
+            break;
+          }
+          el = el.parentElement;
+        }
 
-      const seenFibers = new WeakSet();
-      let visited = 0;
-      const VISIT_CAP = 50000;
-      for (const root of roots) {
-        const stack = [root];
-        while (stack.length && visited < VISIT_CAP) {
-          const f = stack.pop();
-          if (!f || seenFibers.has(f)) continue;
-          seenFibers.add(f);
-          visited++;
-          let h = f.memoizedState;
-          let hd = 0;
-          while (h && hd < 60) {
-            try {
-              if (h.queue && typeof h.queue.dispatch === 'function') {
-                const cur = h.memoizedState;
-                if (cur && typeof cur === 'object') {
-                  const next = patchMessageInState(cur, messageId, newText);
-                  if (next) {
-                    try { h.queue.dispatch(next); updated = true; } catch (_) {}
-                  }
-                }
+        // shallow check: does this state contain msg as a direct or 1-level nested element?
+        const isMsgRef = (v) => v && typeof v === 'object' && (v._id === messageId || v.id === messageId || v.messageId === messageId || v.msgId === messageId);
+        const containsMsgShallow = (state) => {
+          if (!state || typeof state !== 'object') return false;
+          try {
+            if (Array.isArray(state)) {
+              for (const item of state) {
+                if (isMsgRef(item)) return true;
+                if (Array.isArray(item)) { for (const sub of item) if (isMsgRef(sub)) return true; }
               }
-            } catch (_) {}
+              return false;
+            }
+            // plain-object state: scan one level
+            const proto = Object.getPrototypeOf(state);
+            if (proto !== Object.prototype && proto !== null) return false;
+            for (const k of Object.keys(state)) {
+              const v = state[k];
+              if (isMsgRef(v)) return true;
+              if (Array.isArray(v)) { for (const item of v) if (isMsgRef(item)) return true; }
+            }
+          } catch (_) {}
+          return false;
+        };
+
+        const seenHooks = new WeakSet();
+        for (const f of ancestors) {
+          let h = f.memoizedState; let hd = 0;
+          while (h && hd < 60) {
+            if (!seenHooks.has(h) && h.queue && typeof h.queue.dispatch === 'function') {
+              seenHooks.add(h);
+              const cur = h.memoizedState;
+              if (containsMsgShallow(cur)) {
+                try {
+                  let next;
+                  if (Array.isArray(cur)) next = cur.slice();
+                  else next = Object.assign({}, cur);
+                  h.queue.dispatch(next);
+                  rerenderHits++;
+                  updated = true;
+                } catch (e) { if (DBG) console.warn('[Refiner v8] dispatch threw on ancestor', e); }
+              }
+            }
             h = h.next; hd++;
           }
-          if (f.child) stack.push(f.child);
-          if (f.sibling) stack.push(f.sibling);
+          // cap dispatch attempts to avoid runaway re-renders if the same hook appears multiply
+          if (rerenderHits >= 3) break;
         }
       }
-    } catch (_) {}
+    } catch (e) { if (DBG) console.warn('[Refiner v8] pathA threw', e); }
+    _w.__LR_LAST_RERENDER_HITS = rerenderHits;
+    if (DBG) console.log('[Refiner v8] pathA rerenderHits=', rerenderHits);
 
     return updated;
   }
@@ -821,7 +818,7 @@
   R.lockMessageHTML = lockMessageHTML;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v7';
+  R.__version = 'v8';
   R.__domLoaded = true;
 
 })();
