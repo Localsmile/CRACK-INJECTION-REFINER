@@ -438,6 +438,8 @@
   function tryStoreUpdate(rootEl, messageId, newText) {
     if (!messageId) return false;
     let updated = false;
+    const DBG = !!_w.__LR_DEBUG;
+    if (DBG) console.log('[Refiner v6] tryStoreUpdate enter', messageId, 'len=', newText && newText.length);
 
     // path 0 (primary): in-place mutation across the entire fiber tree.
     // Hook dispatch paths have proven unreliable here -- silent React reducer
@@ -470,13 +472,17 @@
         return null;
       };
       const seenObjs = new WeakSet();
+      let path0Hits = 0;
+      let path0Visited = 0;
       const mutate = (val, depth) => {
         if (!val || depth > 12 || typeof val !== 'object' || seenObjs.has(val)) return;
         seenObjs.add(val);
+        path0Visited++;
         if (isMsg(val)) {
           const fk = fieldKeyOf(val);
+          if (DBG) console.log('[Refiner v6] path0 isMsg hit, fk=', fk, 'oldLen=', fk ? (val[fk] && val[fk].length) : null);
           if (fk && val[fk] !== newText) {
-            try { val[fk] = newText; updated = true; } catch (_) {}
+            try { val[fk] = newText; updated = true; path0Hits++; } catch (e) { if (DBG) console.warn('[Refiner v6] mutate threw', e); }
           }
         }
         if (Array.isArray(val)) {
@@ -511,7 +517,8 @@
           if (f.sibling) stack.push(f.sibling);
         }
       }
-    } catch (_) {}
+      if (DBG) console.log('[Refiner v6] path0 done. roots=', roots.length, 'fibersVisited=', visited, 'objsVisited=', path0Visited, 'hits=', path0Hits);
+    } catch (e) { if (DBG) console.warn('[Refiner v6] path0 threw', e); }
 
     // path 1: known store types collected from fiber spine + tree
     if (rootEl) {
@@ -760,6 +767,7 @@
   R.lockMessageHTML = lockMessageHTML;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
+  R.__version = 'v6';
   R.__domLoaded = true;
 
 })();
