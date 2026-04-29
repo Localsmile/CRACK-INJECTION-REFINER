@@ -134,12 +134,20 @@
 
   function renderMarkdownHTML(mdText) {
     let html = escapeHTML(mdText);
+    // fenced code blocks first; stash into placeholders so the inline-code regex can't shave a backtick
+    const fences = [];
+    html = html.replace(/```(\w*)\r?\n?([\s\S]*?)```/g, function (_m, lang, code) {
+      const idx = fences.length;
+      fences.push('<pre><code' + (lang ? ' class="language-' + lang + '"' : '') + '>' + code + '</code></pre>');
+      return '@@LRFENCE' + idx + '@@';
+    });
     html = html
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
       .replace(/\n/g, '<br>');
+    html = html.replace(/@@LRFENCE(\d+)@@(<br>)?/g, function (_m, idx) { return fences[+idx]; });
     return html;
   }
 
@@ -202,53 +210,44 @@
   function refreshMessageInDOM(originalText, newText, messageId) {
     const oldPlain = stripMarkdown(originalText);
     const newPlain = stripMarkdown(newText);
-    const oldSnippet = normalizeText(oldPlain.length > 36 ? oldPlain.slice(-36) : oldPlain);
     const newSnippet = normalizeText(newPlain.length > 36 ? newPlain.slice(-36) : newPlain);
     const renderedHTML = renderMarkdownHTML(newText);
-    let targetEl = null;
 
-    function tryApply() {
-      const idContainer = findMessageContainerById(messageId);
-      if (idContainer) targetEl = findDeepestMatchingElement(oldPlain, idContainer) || idContainer;
+    // 1) locate a candidate element that contains the original text
+    let candidate = null;
+    const idContainer = findMessageContainerById(messageId);
+    if (idContainer) candidate = findDeepestMatchingElement(oldPlain, idContainer) || idContainer;
+    if (!candidate) candidate = findDeepestMatchingElement(oldPlain);
 
-      if (targetEl && document.contains(targetEl)) {
-        const cur = normalizeText(targetEl.textContent);
-        if (newSnippet && cur.includes(newSnippet) && (!oldSnippet || !cur.includes(oldSnippet))) return 'done';
-        if (!oldSnippet || cur.includes(oldSnippet) || targetEl === idContainer) {
-          targetEl.innerHTML = renderedHTML;
-          try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
-          tryPatchReactFiber(targetEl, originalText, newText, renderedHTML);
-          return 'applied';
-        }
+    // 2) walk up to host markdown wrapper so we replace the whole rendered block, not the inside of <pre><code>
+    let targetEl = candidate;
+    if (targetEl && targetEl.closest) {
+      const md = targetEl.closest('.wrtn-markdown, [class*="wrtn-markdown"]');
+      if (md) targetEl = md;
+      else {
+        const fence = targetEl.closest('pre');
+        if (fence && fence.parentElement) targetEl = fence.parentElement;
       }
-
-      targetEl = findDeepestMatchingElement(oldPlain);
-      if (targetEl) {
-        targetEl.innerHTML = renderedHTML;
-        try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
-        tryPatchReactFiber(targetEl, originalText, newText, renderedHTML);
-        return 'applied';
-      }
-
-      const checkEl = findDeepestMatchingElement(newPlain);
-      if (checkEl) {
-        try { if (messageId) getMessageContainer(checkEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
-        return 'done';
-      }
-      return 'not_found';
     }
 
-    const firstResult = tryApply();
-    const result = { applied: firstResult === 'applied', visible: firstResult === 'done', status: firstResult, messageId: messageId || null };
-    let pollCount = 0;
-    const timer = setInterval(() => {
-      pollCount++;
-      const state = tryApply();
-      if (state === 'done' || pollCount >= 20) clearInterval(timer);
-    }, 500);
+    if (!targetEl || !document.contains(targetEl)) {
+      return { applied: false, visible: false, status: 'not_found', messageId: messageId || null };
+    }
 
-    triggerSWRRevalidation();
-    return result;
+    // 3) already showing new text -- mark and bail
+    const cur = normalizeText(targetEl.textContent);
+    if (newSnippet && cur.includes(newSnippet)) {
+      try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+      return { applied: false, visible: true, status: 'done', messageId: messageId || null };
+    }
+
+    // 4) one-shot apply. no setInterval, no fiber prop mutation, no SWR revalidation -- those caused the freeze
+    try {
+      targetEl.innerHTML = renderedHTML;
+      try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+    } catch (_) {}
+
+    return { applied: true, visible: true, status: 'applied', messageId: messageId || null };
   }
 
   // store discovery + lock guard
