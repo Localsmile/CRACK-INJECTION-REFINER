@@ -312,7 +312,7 @@
     // path A
     let rerenderHits = 0;
     const ancestorDiag = [];
-    const opBudget = { count: 0, max: 50000 };
+    const opBudget = { count: 0, max: 80000 };
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -491,6 +491,75 @@
 
           if (rerenderHits >= 5) break;
         }
+
+        // path B (v13): ancestor scope yielded nothing — walk the whole fiber tree
+        // from React roots and try store-like dispatch on every Provider value /
+        // memoizedProps.{store,client,queryClient} / hook memoizedState. wrtn's chat
+        // store is subscribed by deep components (each bubble) and is not exposed in
+        // the bubble's own ancestor chain, so ancestor-only walk misses it. Shares
+        // seenStore/seenProps with path A so already-touched objects are skipped.
+        let storeBHits = 0;
+        if (rerenderHits === 0) {
+          const collectRoots = () => {
+            const out = [];
+            const add = (el) => {
+              if (!el) return;
+              try {
+                const k = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+                if (k && el[k] && el[k].stateNode) out.push(el[k].stateNode.current);
+              } catch (_) {}
+              try {
+                if (el._reactRootContainer && el._reactRootContainer._internalRoot) out.push(el._reactRootContainer._internalRoot.current);
+              } catch (_) {}
+            };
+            add(document.getElementById('__next'));
+            add(document.getElementById('root'));
+            document.querySelectorAll('body > div, body > main').forEach(add);
+            return out;
+          };
+          const isProviderType = (t) => {
+            try { return t && typeof t === 'object' && (t.$$typeof === Symbol.for('react.provider') || !!t._context); }
+            catch (_) { return false; }
+          };
+          const seenFibersB = new WeakSet();
+          const rootsB = collectRoots();
+          outer: for (const root of rootsB) {
+            const stack = [root];
+            while (stack.length && opBudget.count < opBudget.max) {
+              const f = stack.pop();
+              if (!f || seenFibersB.has(f)) continue;
+              seenFibersB.add(f);
+              opBudget.count++;
+              try {
+                if (isProviderType(f.type) && f.memoizedProps && f.memoizedProps.value) {
+                  if (tryStoreLikeDispatch(f.memoizedProps.value)) { storeBHits++; rerenderHits++; updated = true; }
+                }
+              } catch (_) {}
+              try {
+                const mp = f.memoizedProps;
+                if (mp && typeof mp === 'object' && !seenProps.has(mp)) {
+                  seenProps.add(mp);
+                  for (const k of ['store', 'client', 'queryClient']) {
+                    if (tryStoreLikeDispatch(mp[k])) { storeBHits++; rerenderHits++; updated = true; }
+                  }
+                }
+              } catch (_) {}
+              let h = f.memoizedState; let hd = 0;
+              while (h && hd < 60) {
+                try {
+                  if (h.memoizedState && typeof h.memoizedState === 'object') {
+                    if (tryStoreLikeDispatch(h.memoizedState)) { storeBHits++; rerenderHits++; updated = true; }
+                  }
+                } catch (_) {}
+                h = h.next; hd++;
+              }
+              if (f.child) stack.push(f.child);
+              if (f.sibling) stack.push(f.sibling);
+              if (storeBHits >= 5) break outer;
+            }
+          }
+        }
+        _w.__LR_LAST_STORE_B_HITS = storeBHits;
 
         // diagnostic when nothing fired
         if (rerenderHits === 0) {
@@ -724,7 +793,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v12';
+  R.__version = 'v13';
   R.__domLoaded = true;
 
 })();
