@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Loader)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0-test.32
-// @description 모듈화된 로어 인젝터 로더
+// @version     1.4.0-test.33
+// @description 모듈화된 로어 인젝터 로더 (ready-gate + early menu queue)
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
 // @updateURL   https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260427/embedding_pre/erie_crack_inject.user.js
@@ -60,6 +60,20 @@
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
 
+  // 메뉴 등록 큐 사전 설치 (document-start). 로더가 먼저 설치해야 sub 모듈이
+  // injecter-6 보다 먼저 깨어나도 등록이 스텁 함수로 떨어지지 않음.
+  _w.__LoreInj = _w.__LoreInj || {};
+  if (!_w.__LoreInj.__menuQueue) {
+    const _mq = [];
+    const _smq = [];
+    _w.__LoreInj.__menuQueue = _mq;
+    _w.__LoreInj.__subMenuQueue = _smq;
+    _w.__LoreInj.registerMenu = function(key, cb) { _mq.push({ key, cb }); };
+    _w.__LoreInj.registerSubMenu = function(key, cb) { _smq.push({ key, cb }); };
+  }
+
+  // 전역 ready 게이트: UI 부트스트랩(injecter-6-ui)이 이걸 await 한 뒤에만 마운트한다.
+  // document-start 시점에 노출해야 다른 모듈이 안전하게 참조 가능.
   if (!_w.__LoreInjReady) {
     let _resolve;
     const p = new Promise(r => { _resolve = r; });
@@ -71,8 +85,8 @@
   const POLL_MS = 50;
   const deadline = Date.now() + TIMEOUT_MS;
 
-  //  __uiLoaded 는 UI 가 게이트 통과 후 켜므로 일단 제외시키자는 시발 왜 자꾸 동작을 이상하게 함 시발 ㅁ너으미ㅏㄴㅇㄹ;ㅁ
-  const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded'];
+  // __uiLoaded 는 UI 가 게이트 통과 후 켜므로 제외. 왜 자꾸 안도나ㅣ얌ㄴㅇㅁㄴㅁㄴㅇ
+  const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded', '__inject6Loaded'];
   const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
   const requiredAll = requiredCore.concat(requiredSubs);
 
@@ -95,7 +109,7 @@
     const missing = requiredAll.filter(k => !L[k]);
     if (missing.length === 0) {
       L.allReady = true;
-      console.log('[LoreInj v' + (L.VER || '?') + '] 게이트 통과: 코어 5 + 서브 11 전부 로드됨 → UI 부트스트랩 허용');
+      console.log('[LoreInj v' + (L.VER || '?') + '] 게이트 통과: 코어 6 + 서브 11 전부 로드 + setupSubMenus 준비 → UI 부트스트랩 허용');
       _settle({ ok: true, ver: L.VER });
       // UI 마운트 사후 점검 (실패시 콘솔 경고만)
       const tail = Date.now() + 5000;
