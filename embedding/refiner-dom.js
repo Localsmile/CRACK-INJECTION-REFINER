@@ -319,11 +319,11 @@
     _w.__LR_LAST_PATH0 = result;
     _w.__LR_LAST_OPS = result.objects || 0;
 
-    // A successful path0 mutation means edit-mode/native remount can read corrected refs.
-    // Mark rerender as truthy to avoid immediate generic DOM stomp; core verifies visibility
-    // shortly after and triggers native nudge/fallback only if needed.
+    // v20.2 rollback: keep the working behavior from v20. Do not pretend a
+    // path0 mutation is a native repaint by itself; if native repaint is needed,
+    // core post-verify will run the native nudge/fallback path.
     const ok = result.hits > 0;
-    _w.__LR_LAST_RERENDER_HITS = ok ? 1 : 0;
+    _w.__LR_LAST_RERENDER_HITS = 0;
     return ok;
   }
 
@@ -470,6 +470,6 @@
   R.nudgeMessageNativeRender = nudgeMessageNativeRender;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v21';
+  R.__version = 'v20.2';
   R.__domLoaded = true;
 })();
