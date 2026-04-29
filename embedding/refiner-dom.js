@@ -210,23 +210,46 @@
   function refreshMessageInDOM(originalText, newText, messageId) {
     const oldPlain = stripMarkdown(originalText);
     const newPlain = stripMarkdown(newText);
+    const oldSnippet = normalizeText(oldPlain.length > 36 ? oldPlain.slice(-36) : oldPlain);
     const newSnippet = normalizeText(newPlain.length > 36 ? newPlain.slice(-36) : newPlain);
     const renderedHTML = renderMarkdownHTML(newText);
 
-    // 1) locate a candidate element that contains the original text
-    let candidate = null;
-    const idContainer = findMessageContainerById(messageId);
-    if (idContainer) candidate = findDeepestMatchingElement(oldPlain, idContainer) || idContainer;
-    if (!candidate) candidate = findDeepestMatchingElement(oldPlain);
+    // Locate the bubble's own .wrtn-markdown directly (one per message bubble in wrtn DOM).
+    // Closest() walking + substring class matching could land on a chat-wide wrapper, which
+    // produced the stacked old+user+new render after React reconciled detached children.
+    let targetEl = null;
+    const allMds = document.querySelectorAll('.wrtn-markdown');
 
-    // 2) walk up to host markdown wrapper so we replace the whole rendered block, not the inside of <pre><code>
-    let targetEl = candidate;
-    if (targetEl && targetEl.closest) {
-      const md = targetEl.closest('.wrtn-markdown, [class*="wrtn-markdown"]');
-      if (md) targetEl = md;
-      else {
-        const fence = targetEl.closest('pre');
-        if (fence && fence.parentElement) targetEl = fence.parentElement;
+    // pass 1: prefer the wrtn-markdown that contains old text but not new text (pre-edit bubble)
+    if (oldSnippet) {
+      for (const md of allMds) {
+        const t = normalizeText(md.textContent);
+        if (t.includes(oldSnippet) && (!newSnippet || !t.includes(newSnippet))) {
+          targetEl = md;
+          break;
+        }
+      }
+    }
+
+    // pass 2: any wrtn-markdown containing old snippet
+    if (!targetEl && oldSnippet) {
+      for (const md of allMds) {
+        if (normalizeText(md.textContent).includes(oldSnippet)) { targetEl = md; break; }
+      }
+    }
+
+    // pass 3: already showing new text in some bubble -- treat as visible done
+    if (!targetEl && newSnippet) {
+      for (const md of allMds) {
+        if (normalizeText(md.textContent).includes(newSnippet)) {
+          try {
+            if (messageId) {
+              const c = getMessageContainer(md);
+              if (c) c.setAttribute('data-lore-refiner-message-id', String(messageId));
+            }
+          } catch (_) {}
+          return { applied: false, visible: true, status: 'done', messageId: messageId || null };
+        }
       }
     }
 
@@ -234,17 +257,15 @@
       return { applied: false, visible: false, status: 'not_found', messageId: messageId || null };
     }
 
-    // 3) already showing new text -- mark and bail
-    const cur = normalizeText(targetEl.textContent);
-    if (newSnippet && cur.includes(newSnippet)) {
-      try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
-      return { applied: false, visible: true, status: 'done', messageId: messageId || null };
-    }
-
-    // 4) one-shot apply. no setInterval, no fiber prop mutation, no SWR revalidation -- those caused the freeze
+    // one-shot apply at the bubble level only -- never on chat-wide wrappers
     try {
       targetEl.innerHTML = renderedHTML;
-      try { if (messageId) getMessageContainer(targetEl).setAttribute('data-lore-refiner-message-id', String(messageId)); } catch (_) {}
+      try {
+        if (messageId) {
+          const c = getMessageContainer(targetEl);
+          if (c) c.setAttribute('data-lore-refiner-message-id', String(messageId));
+        }
+      } catch (_) {}
     } catch (_) {}
 
     return { applied: true, visible: true, status: 'applied', messageId: messageId || null };
