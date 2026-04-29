@@ -287,177 +287,31 @@
     return { applied: true, visible: true, status: 'applied', messageId: messageId || null };
   }
 
-  // store discovery + lock guard
-  function collectFiberStores(rootEl) {
-    const out = [];
-    const handleSet = new WeakSet();
-    const addIfStore = (v) => {
-      if (!v || typeof v !== 'object' || handleSet.has(v)) return;
-      if (typeof v.getState === 'function' && typeof v.setState === 'function' && typeof v.subscribe === 'function') {
-        handleSet.add(v); out.push({ kind: 'zustand', handle: v });
-      } else if (v.constructor && v.constructor.name === 'QueryClient') {
-        handleSet.add(v); out.push({ kind: 'react-query', handle: v });
-      } else if (v.cache && typeof v.cache.get === 'function' && typeof v.mutate === 'function') {
-        handleSet.add(v); out.push({ kind: 'swr', handle: v });
-      }
-    };
-    const visitFiber = (f) => {
-      // hook chain memoizedState + queue.lastRenderedState
-      let h = f.memoizedState;
-      let hd = 0;
-      while (h && hd < 60) {
-        addIfStore(h.memoizedState);
-        try { if (h.queue && h.queue.lastRenderedState) addIfStore(h.queue.lastRenderedState); } catch (_) {}
-        h = h.next; hd++;
-      }
-      // context provider value
-      try {
-        const t = f.type;
-        const isProvider = t && typeof t === 'object' && (t.$$typeof === Symbol.for('react.provider') || t._context);
-        if (isProvider && f.memoizedProps) addIfStore(f.memoizedProps.value);
-      } catch (_) {}
-      // class instance props commonly carrying client/store
-      try {
-        if (f.stateNode && typeof f.stateNode === 'object' && f.stateNode.props) {
-          addIfStore(f.stateNode.props.client);
-          addIfStore(f.stateNode.props.store);
-          addIfStore(f.stateNode.props.value);
-        }
-      } catch (_) {}
-      // memoizedProps shallow scan -- some apps pass stores as props
-      try {
-        const mp = f.memoizedProps;
-        if (mp && typeof mp === 'object') {
-          for (const k of Object.keys(mp)) {
-            try { addIfStore(mp[k]); } catch (_) {}
-          }
-        }
-      } catch (_) {}
-    };
-
-    const seenFibers = new WeakSet();
-
-    // Pass 1: walk up from rootEl spine
-    let cur = rootEl;
-    while (cur && cur !== document.body) {
-      const fiberKey = Object.keys(cur).find(k => k.startsWith('__reactFiber$'));
-      if (fiberKey) {
-        let f = cur[fiberKey];
-        let depth = 0;
-        while (f && depth < 80) {
-          if (seenFibers.has(f)) break;
-          seenFibers.add(f);
-          visitFiber(f);
-          f = f.return; depth++;
-        }
-      }
-      cur = cur.parentElement;
-    }
-
-    // Pass 2: walk entire fiber tree from React root(s)
-    const roots = [];
-    const tryAddRoot = (el) => {
-      if (!el) return;
-      try {
-        const containerKey = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
-        if (containerKey && el[containerKey] && el[containerKey].stateNode) roots.push(el[containerKey].stateNode.current);
-      } catch (_) {}
-      try {
-        if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
-      } catch (_) {}
-    };
-    tryAddRoot(document.getElementById('__next'));
-    tryAddRoot(document.getElementById('root'));
-    document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
-
-    let visited = 0;
-    const VISIT_CAP = 50000;
-    for (const root of roots) {
-      const stack = [root];
-      while (stack.length && visited < VISIT_CAP) {
-        const f = stack.pop();
-        if (!f || seenFibers.has(f)) continue;
-        seenFibers.add(f);
-        visited++;
-        visitFiber(f);
-        if (f.child) stack.push(f.child);
-        if (f.sibling) stack.push(f.sibling);
-      }
-    }
-
-    return out;
-  }
-
-  function patchMessageInState(state, messageId, newText, depth, budget) {
-    const b = budget || { count: 0, max: 50000 };
-    const d = depth || 0;
-    if (!state || d > 6) return null;
-    if (++b.count > b.max) return null;
-    const isMsg = (v) => v && typeof v === 'object' &&
-      (v.id === messageId || v._id === messageId || v.messageId === messageId || v.msgId === messageId);
-    const fieldKeyOf = (v) => {
-      if ('content' in v) return 'content';
-      if ('message' in v) return 'message';
-      if ('text' in v) return 'text';
-      if ('body' in v) return 'body';
-      return null;
-    };
-    if (Array.isArray(state)) {
-      let changed = false;
-      const next = state.map(item => {
-        if (isMsg(item)) {
-          const fk = fieldKeyOf(item);
-          if (fk) { changed = true; return Object.assign({}, item, { [fk]: newText }); }
-        }
-        const sub = patchMessageInState(item, messageId, newText, d + 1, b);
-        if (sub) { changed = true; return sub; }
-        return item;
-      });
-      return changed ? next : null;
-    }
-    if (typeof state === 'object') {
-      // skip non-plain objects (Map, Set, Date, class instances) to avoid clone corruption
-      const proto = Object.getPrototypeOf(state);
-      if (proto !== Object.prototype && proto !== null) return null;
-      // plain object that itself is the message (e.g. state.messages[id] = { id, content })
-      if (isMsg(state)) {
-        const fk = fieldKeyOf(state);
-        if (fk) return Object.assign({}, state, { [fk]: newText });
-      }
-      let changed = false;
-      const next = Object.assign({}, state);
-      for (const k of Object.keys(state)) {
-        const sub = patchMessageInState(state[k], messageId, newText, d + 1, b);
-        if (sub) { next[k] = sub; changed = true; }
-      }
-      return changed ? next : null;
-    }
-    return null;
-  }
-
+  // store update strategy:
+  // path 0 — best-effort in-place mutation of msg.content. wrtn freezes some refs (Immer),
+  //          so this only succeeds on unfrozen ones; throws are silently counted.
+  // path A — find the bubble's React fiber and walk UP via fiber.return only (no sibling tree),
+  //          deep-scanning each useState/useReducer hook for any descendant carrying this msg.
+  //          When found, dispatch a top-level shallow clone — React sees a new state ref and
+  //          re-renders THAT subtree only. Scoping to ancestors avoids the cross-tree dispatch
+  //          that broke wrtn's child reconciliation in v6/v7.
   function tryStoreUpdate(rootEl, messageId, newText) {
     if (!messageId) return false;
     let updated = false;
     const DBG = !!_w.__LR_DEBUG;
 
-    // path 0 (best effort): in-place mutation. Frozen objects throw silently and are ignored.
-    // wrtn pre-freezes some msg copies via Immer-like pipeline, so this only updates the ones it can.
+    // path 0
     const result = runPath0Mutation(messageId, newText);
     if (result.hits > 0) updated = true;
     _w.__LR_LAST_PATH0 = result;
-    if (DBG) console.log('[Refiner v8] path0 summary', result);
+    if (DBG) console.log('[Refiner v9] path0', result);
 
-    // path A: targeted re-render of the bubble's owner component(s).
-    // Walk up from the message's DOM container, find functional-component fibers with a
-    // useState/useReducer that ALREADY contains this msg, and dispatch a shallow-cloned
-    // version of its current state. This forces React to re-render that one subtree without
-    // touching unrelated state, avoiding the "child reconciliation" site error from broad
-    // cross-tree dispatch.
+    // path A — ancestor-only deep scan
     let rerenderHits = 0;
     try {
       const targetEl = rootEl || (R.findMessageContainerById && R.findMessageContainerById(messageId));
       if (targetEl) {
-        // collect ancestor fibers from the bubble up to the React root
+        // collect ancestor fibers via fiber.return only
         const ancestors = [];
         let el = targetEl;
         while (el && el !== document.body) {
@@ -474,25 +328,27 @@
           el = el.parentElement;
         }
 
-        // shallow check: does this state contain msg as a direct or 1-level nested element?
-        const isMsgRef = (v) => v && typeof v === 'object' && (v._id === messageId || v.id === messageId || v.messageId === messageId || v.msgId === messageId);
-        const containsMsgShallow = (state) => {
-          if (!state || typeof state !== 'object') return false;
+        // deep check: does this state hold the msg anywhere within depth 8?
+        const isMsgRef = (v) => {
+          if (!v || typeof v !== 'object') return false;
+          try { return v._id === messageId || v.id === messageId || v.messageId === messageId || v.msgId === messageId; } catch (_) { return false; }
+        };
+        const containsMsgDeep = (val, depth, seen) => {
+          if (!val || typeof val !== 'object' || depth > 8) return false;
+          if (seen.has(val)) return false;
+          seen.add(val);
+          if (isMsgRef(val)) return true;
           try {
-            if (Array.isArray(state)) {
-              for (const item of state) {
-                if (isMsgRef(item)) return true;
-                if (Array.isArray(item)) { for (const sub of item) if (isMsgRef(sub)) return true; }
+            if (Array.isArray(val)) {
+              for (let i = 0; i < val.length && i < 500; i++) {
+                if (containsMsgDeep(val[i], depth + 1, seen)) return true;
               }
               return false;
             }
-            // plain-object state: scan one level
-            const proto = Object.getPrototypeOf(state);
+            const proto = Object.getPrototypeOf(val);
             if (proto !== Object.prototype && proto !== null) return false;
-            for (const k of Object.keys(state)) {
-              const v = state[k];
-              if (isMsgRef(v)) return true;
-              if (Array.isArray(v)) { for (const item of v) if (isMsgRef(item)) return true; }
+            for (const k of Object.keys(val)) {
+              if (containsMsgDeep(val[k], depth + 1, seen)) return true;
             }
           } catch (_) {}
           return false;
@@ -505,26 +361,23 @@
             if (!seenHooks.has(h) && h.queue && typeof h.queue.dispatch === 'function') {
               seenHooks.add(h);
               const cur = h.memoizedState;
-              if (containsMsgShallow(cur)) {
+              if (cur && typeof cur === 'object' && containsMsgDeep(cur, 0, new WeakSet())) {
                 try {
-                  let next;
-                  if (Array.isArray(cur)) next = cur.slice();
-                  else next = Object.assign({}, cur);
+                  const next = Array.isArray(cur) ? cur.slice() : Object.assign({}, cur);
                   h.queue.dispatch(next);
                   rerenderHits++;
                   updated = true;
-                } catch (e) { if (DBG) console.warn('[Refiner v8] dispatch threw on ancestor', e); }
+                } catch (e) { if (DBG) console.warn('[Refiner v9] dispatch threw', e); }
               }
             }
             h = h.next; hd++;
           }
-          // cap dispatch attempts to avoid runaway re-renders if the same hook appears multiply
-          if (rerenderHits >= 3) break;
+          if (rerenderHits >= 5) break;
         }
       }
-    } catch (e) { if (DBG) console.warn('[Refiner v8] pathA threw', e); }
+    } catch (e) { if (DBG) console.warn('[Refiner v9] pathA threw', e); }
     _w.__LR_LAST_RERENDER_HITS = rerenderHits;
-    if (DBG) console.log('[Refiner v8] pathA rerenderHits=', rerenderHits);
+    if (DBG) console.log('[Refiner v9] pathA hits=', rerenderHits);
 
     return updated;
   }
@@ -645,86 +498,6 @@
     return summary;
   }
 
-  // Manual test entry: run path 0 standalone with verbose logging. Use from console:
-  //   __LoreRefiner.testMutation('<messageId>', 'TEST_TEXT')
-  function testMutation(messageId, newText) {
-    console.log('[Refiner v7] testMutation start', messageId, 'newLen=', (newText || '').length);
-    const r = runPath0Mutation(messageId, newText);
-    console.log('[Refiner v7] testMutation result', r);
-    return r;
-  }
-
-  // Diagnostic helper: scan all fibers and report where messageId is found.
-  // Usage from console: __LoreRefiner.debugFindMessage('69f04...')
-  function debugFindMessage(messageId) {
-    const findings = [];
-    const seenObjs = new WeakSet();
-    const walk = (val, path, depth) => {
-      if (val == null || depth > 8) return;
-      if (typeof val === 'string') {
-        if (val === messageId) findings.push({ path: path.join('.') || '<root>', kind: 'id-string', sample: val });
-        return;
-      }
-      if (typeof val !== 'object') return;
-      if (seenObjs.has(val)) return;
-      seenObjs.add(val);
-      if (val.id === messageId || val._id === messageId || val.messageId === messageId || val.msgId === messageId) {
-        findings.push({ path: path.join('.') || '<root>', kind: 'message-object', keys: Object.keys(val).slice(0, 30) });
-      }
-      if (Array.isArray(val)) {
-        const lim = Math.min(val.length, 200);
-        for (let i = 0; i < lim; i++) walk(val[i], path.concat('[' + i + ']'), depth + 1);
-        return;
-      }
-      const proto = Object.getPrototypeOf(val);
-      if (proto !== Object.prototype && proto !== null) return;
-      for (const k of Object.keys(val)) walk(val[k], path.concat(k), depth + 1);
-    };
-    const roots = [];
-    const tryAddRoot = (el) => {
-      if (!el) return;
-      try {
-        const containerKey = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
-        if (containerKey && el[containerKey] && el[containerKey].stateNode) roots.push(el[containerKey].stateNode.current);
-      } catch (_) {}
-      try {
-        if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
-      } catch (_) {}
-    };
-    tryAddRoot(document.getElementById('__next'));
-    tryAddRoot(document.getElementById('root'));
-    document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
-    const seenFibers = new WeakSet();
-    let visited = 0;
-    for (const root of roots) {
-      const stack = [root];
-      while (stack.length && visited < 50000) {
-        const f = stack.pop();
-        if (!f || seenFibers.has(f)) continue;
-        seenFibers.add(f);
-        visited++;
-        const dn = (f.type && (f.type.displayName || f.type.name)) || (typeof f.type === 'string' ? f.type : '?');
-        // hooks
-        let h = f.memoizedState; let hd = 0;
-        while (h && hd < 60) {
-          try { walk(h.memoizedState, ['fiber<' + dn + '>', 'hook[' + hd + ']', 'state'], 0); } catch (_) {}
-          h = h.next; hd++;
-        }
-        // memoizedProps
-        try { walk(f.memoizedProps, ['fiber<' + dn + '>', 'props'], 0); } catch (_) {}
-        if (f.child) stack.push(f.child);
-        if (f.sibling) stack.push(f.sibling);
-      }
-    }
-    return findings;
-  }
-
-  // one-shot apply only — prior MutationObserver loop caused a React reconciliation feedback freeze
-  function lockMessageHTML(targetEl, renderedHTML, oldPlain, newPlain, ttlMs) {
-    if (!targetEl) return;
-    try { if (targetEl.innerHTML !== renderedHTML) targetEl.innerHTML = renderedHTML; } catch (_) {}
-  }
-
   function showReloadAction(message) {
     const old = document.querySelector('#refiner-reload-action');
     if (old) old.remove();
@@ -809,16 +582,11 @@
   R.waitForVisibleText = waitForVisibleText;
   R.rememberAssistantMessage = rememberAssistantMessage;
   R.refreshMessageInDOM = refreshMessageInDOM;
-  R.collectFiberStores = collectFiberStores;
-  R.patchMessageInState = patchMessageInState;
   R.tryStoreUpdate = tryStoreUpdate;
   R.runPath0Mutation = runPath0Mutation;
-  R.testMutation = testMutation;
-  R.debugFindMessage = debugFindMessage;
-  R.lockMessageHTML = lockMessageHTML;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v8';
+  R.__version = 'v9';
   R.__domLoaded = true;
 
 })();
