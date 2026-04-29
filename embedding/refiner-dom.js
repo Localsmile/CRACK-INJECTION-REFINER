@@ -313,6 +313,9 @@
     let rerenderHits = 0;
     const ancestorDiag = [];
     const opBudget = { count: 0, max: 200000 };
+    let storeBHits = 0;
+    let pathCHits = 0;
+    let pathCMatches = 0;
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -320,7 +323,7 @@
     };
     const containsMsgDeep = (val, depth, seen) => {
       if (++opBudget.count > opBudget.max) return false;
-      if (!val || typeof val !== 'object' || depth > 12) return false;
+      if (!val || typeof val !== 'object' || depth > 16) return false;
       if (seen.has(val)) return false;
       seen.add(val);
       if (isMsgRef(val)) return true;
@@ -349,7 +352,7 @@
     let replacementMsg = null;
     const cloneWithMsgReplaced = (val, depth, seen) => {
       if (++opBudget.count > opBudget.max) return val;
-      if (!val || typeof val !== 'object' || depth > 12) return val;
+      if (!val || typeof val !== 'object' || depth > 16) return val;
       if (seen.has(val)) return seen.get(val);
       if (isMsgRef(val)) {
         if (!replacementMsg) {
@@ -498,7 +501,6 @@
         // store is subscribed by deep components (each bubble) and is not exposed in
         // the bubble's own ancestor chain, so ancestor-only walk misses it. Shares
         // seenStore/seenProps with path A so already-touched objects are skipped.
-        let storeBHits = 0;
         if (rerenderHits === 0) {
           const collectRoots = () => {
             const out = [];
@@ -559,9 +561,8 @@
             }
           }
         }
-        _w.__LR_LAST_STORE_B_HITS = storeBHits;
 
-        // path C (v14): walk the whole fiber tree and dispatch on every hook whose
+        // path C (v15): walk the whole fiber tree and dispatch on every hook whose
         // memoizedState transitively contains the msg. path 0 proved 360 isMsgEncounters
         // in the fiber tree, so msg-bearing useState/useReducer hooks exist; path A only
         // walked ancestors and missed them, path B only matched store wrappers (zustand /
@@ -569,8 +570,8 @@
         // dispatch path. Capped at 3 successful dispatches to avoid v6/v7-era over-dispatch
         // breaking child reconciliation. replacementMsg is reset per dispatch so each hook
         // gets a fresh new ref (different store branches don't share a stale cached msg).
-        let pathCHits = 0;
-        if (rerenderHits === 0) {
+        // v15: own try-catch wrapper + pathCMatches counter + globals hoisted.
+        try { if (rerenderHits === 0) {
           const collectRootsC = () => {
             const out = [];
             const add = (el) => {
@@ -606,6 +607,7 @@
                   if (cur && typeof cur === 'object') {
                     try {
                       if (containsMsgDeep(cur, 0, new WeakSet())) {
+                        pathCMatches++;
                         replacementMsg = null;
                         const next = cloneWithMsgReplaced(cur, 0, new WeakMap());
                         if (next !== cur) {
@@ -625,8 +627,7 @@
               if (f.sibling) stack.push(f.sibling);
             }
           }
-        }
-        _w.__LR_LAST_PATH_C_HITS = pathCHits;
+        } } catch (_) {}
 
         // diagnostic when nothing fired
         if (rerenderHits === 0) {
@@ -651,6 +652,9 @@
     _w.__LR_LAST_RERENDER_HITS = rerenderHits;
     _w.__LR_LAST_ANCESTORS = ancestorDiag;
     _w.__LR_LAST_OPS = opBudget.count;
+    _w.__LR_LAST_STORE_B_HITS = storeBHits;
+    _w.__LR_LAST_PATH_C_HITS = pathCHits;
+    _w.__LR_LAST_PATH_C_MATCHES = pathCMatches;
     if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
@@ -860,7 +864,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v14';
+  R.__version = 'v15';
   R.__domLoaded = true;
 
 })();
