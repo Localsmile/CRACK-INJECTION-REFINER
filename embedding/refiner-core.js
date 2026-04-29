@@ -349,20 +349,18 @@
                 // own native markdown pipeline, which handles wrtn-specific code-block boxes,
                 // editing-textarea seeds, etc. Our generic innerHTML stomp was racing with
                 // that commit and producing the code-block-wrapping / stale-textarea artifacts.
+                const hasCodeFence = /```/.test(newText || '');
                 const rerenderOk = (_w.__LR_LAST_RERENDER_HITS || 0) > 0;
                 let domResult = null;
                 let domUpdated = false;
-                if (!rerenderOk) {
-                  domResult = R.refreshMessageInDOM ? R.refreshMessageInDOM(assistantText, newText, lastBot.id) : false;
-                  domUpdated = !!(domResult === true || (domResult && (domResult.applied || domResult.visible)));
-                }
+
                 setTimeout(async () => {
-                  let visible = storeOk || domUpdated;
+                  let visible = false;
                   try {
                     visible = R.waitForVisibleText
                       ? await R.waitForVisibleText(newText, lastBot.id, 1800)
-                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : visible);
-                  } catch (_) {}
+                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : storeOk);
+                  } catch (_) { visible = !!storeOk; }
 
                   if (!visible && R.nudgeMessageNativeRender) {
                     let nudged = false;
@@ -377,14 +375,16 @@
                     }
                   }
 
-                  if (!visible && R.refreshMessageInDOM) {
+                  if (!visible && R.refreshMessageInDOM && !hasCodeFence) {
                     let fallbackResult = null;
                     try { fallbackResult = R.refreshMessageInDOM(assistantText, newText, lastBot.id); } catch (_) {}
                     _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
                     visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
+                  } else if (!visible && hasCodeFence) {
+                    _w.__LR_LAST_DOM_FALLBACK = { skipped: true, status: 'skipped_codeblock', messageId: lastBot.id };
                   }
 
-                  if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.');
+                  if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 코드블록 보호를 위해 강제 DOM 치환은 건너뜀. 화면이 예전 응답이면 새로고침으로 반영하세요.');
                 }, 1200);
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
                 if (newFingerprint) processedFingerprints.add(newFingerprint), saveProcessedFingerprints();
@@ -441,4 +441,3 @@
   R.__coreLoaded = true;
 
 })();
- 
