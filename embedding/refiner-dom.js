@@ -439,6 +439,80 @@
     if (!messageId) return false;
     let updated = false;
 
+    // path 0 (primary): in-place mutation across the entire fiber tree.
+    // Hook dispatch paths have proven unreliable here -- silent React reducer
+    // bailouts or shadowed memoizedState indices. Direct mutation of the
+    // message object updates every place that holds the same reference
+    // (zustand selectors, useMemo caches, derived hooks) at once.
+    try {
+      const roots = [];
+      const tryAddRoot = (el) => {
+        if (!el) return;
+        try {
+          const k = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+          if (k && el[k] && el[k].stateNode) roots.push(el[k].stateNode.current);
+        } catch (_) {}
+        try {
+          if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
+        } catch (_) {}
+      };
+      tryAddRoot(document.getElementById('__next'));
+      tryAddRoot(document.getElementById('root'));
+      document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
+
+      const isMsg = (v) => v && typeof v === 'object' &&
+        (v.id === messageId || v._id === messageId || v.messageId === messageId || v.msgId === messageId);
+      const fieldKeyOf = (v) => {
+        if ('content' in v) return 'content';
+        if ('message' in v) return 'message';
+        if ('text' in v) return 'text';
+        if ('body' in v) return 'body';
+        return null;
+      };
+      const seenObjs = new WeakSet();
+      const mutate = (val, depth) => {
+        if (!val || depth > 12 || typeof val !== 'object' || seenObjs.has(val)) return;
+        seenObjs.add(val);
+        if (isMsg(val)) {
+          const fk = fieldKeyOf(val);
+          if (fk && val[fk] !== newText) {
+            try { val[fk] = newText; updated = true; } catch (_) {}
+          }
+        }
+        if (Array.isArray(val)) {
+          for (const v of val) mutate(v, depth + 1);
+          return;
+        }
+        // only descend into plain objects to avoid corrupting Maps/Sets/class instances
+        const p = Object.getPrototypeOf(val);
+        if (p !== Object.prototype && p !== null) return;
+        for (const k of Object.keys(val)) mutate(val[k], depth + 1);
+      };
+
+      const seenFibers = new WeakSet();
+      let visited = 0;
+      const VISIT_CAP = 50000;
+      for (const root of roots) {
+        const stack = [root];
+        while (stack.length && visited < VISIT_CAP) {
+          const f = stack.pop();
+          if (!f || seenFibers.has(f)) continue;
+          seenFibers.add(f);
+          visited++;
+          // hook chain
+          let h = f.memoizedState; let i = 0;
+          while (h && i < 60) {
+            try { mutate(h.memoizedState, 0); } catch (_) {}
+            i++; h = h.next;
+          }
+          // memoizedProps -- some derived data lives directly in props
+          try { mutate(f.memoizedProps, 0); } catch (_) {}
+          if (f.child) stack.push(f.child);
+          if (f.sibling) stack.push(f.sibling);
+        }
+      }
+    } catch (_) {}
+
     // path 1: known store types collected from fiber spine + tree
     if (rootEl) {
       const stores = collectFiberStores(rootEl);
