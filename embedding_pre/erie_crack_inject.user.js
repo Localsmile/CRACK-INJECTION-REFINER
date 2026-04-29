@@ -60,8 +60,6 @@
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
 
-  // 전역 ready 게이트: UI 부트스트랩(injecter-6-ui)이 이걸 await 한 뒤에만 마운트한다.
-  // document-start 시점에 노출해야 다른 모듈이 안전하게 참조 가능.
   if (!_w.__LoreInjReady) {
     let _resolve;
     const p = new Promise(r => { _resolve = r; });
@@ -73,7 +71,7 @@
   const POLL_MS = 50;
   const deadline = Date.now() + TIMEOUT_MS;
 
-  // 게이트 충족에 필요한 플래그 (UI 자체 플래그 __uiLoaded 는 UI 가 게이트 통과 후 켜므로 제외)
+  //  __uiLoaded 는 UI 가 게이트 통과 후 켜므로 일단 제외시키자는 시발 왜 자꾸 동작을 이상하게 함 시발 ㅁ너으미ㅏㄴㅇㄹ;ㅁ
   const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded'];
   const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
   const requiredAll = requiredCore.concat(requiredSubs);
