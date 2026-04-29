@@ -439,86 +439,13 @@
     if (!messageId) return false;
     let updated = false;
     const DBG = !!_w.__LR_DEBUG;
-    if (DBG) console.log('[Refiner v6] tryStoreUpdate enter', messageId, 'len=', newText && newText.length);
+    const result = runPath0Mutation(messageId, newText);
+    if (result.hits > 0) updated = true;
+    if (DBG) console.log('[Refiner v7] path0 summary', result);
+    // also expose last result for inspection
+    _w.__LR_LAST_PATH0 = result;
 
-    // path 0 (primary): in-place mutation across the entire fiber tree.
-    // Hook dispatch paths have proven unreliable here -- silent React reducer
-    // bailouts or shadowed memoizedState indices. Direct mutation of the
-    // message object updates every place that holds the same reference
-    // (zustand selectors, useMemo caches, derived hooks) at once.
-    try {
-      const roots = [];
-      const tryAddRoot = (el) => {
-        if (!el) return;
-        try {
-          const k = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
-          if (k && el[k] && el[k].stateNode) roots.push(el[k].stateNode.current);
-        } catch (_) {}
-        try {
-          if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
-        } catch (_) {}
-      };
-      tryAddRoot(document.getElementById('__next'));
-      tryAddRoot(document.getElementById('root'));
-      document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
-
-      const isMsg = (v) => v && typeof v === 'object' &&
-        (v.id === messageId || v._id === messageId || v.messageId === messageId || v.msgId === messageId);
-      const fieldKeyOf = (v) => {
-        if ('content' in v) return 'content';
-        if ('message' in v) return 'message';
-        if ('text' in v) return 'text';
-        if ('body' in v) return 'body';
-        return null;
-      };
-      const seenObjs = new WeakSet();
-      let path0Hits = 0;
-      let path0Visited = 0;
-      const mutate = (val, depth) => {
-        if (!val || depth > 12 || typeof val !== 'object' || seenObjs.has(val)) return;
-        seenObjs.add(val);
-        path0Visited++;
-        if (isMsg(val)) {
-          const fk = fieldKeyOf(val);
-          if (DBG) console.log('[Refiner v6] path0 isMsg hit, fk=', fk, 'oldLen=', fk ? (val[fk] && val[fk].length) : null);
-          if (fk && val[fk] !== newText) {
-            try { val[fk] = newText; updated = true; path0Hits++; } catch (e) { if (DBG) console.warn('[Refiner v6] mutate threw', e); }
-          }
-        }
-        if (Array.isArray(val)) {
-          for (const v of val) mutate(v, depth + 1);
-          return;
-        }
-        // only descend into plain objects to avoid corrupting Maps/Sets/class instances
-        const p = Object.getPrototypeOf(val);
-        if (p !== Object.prototype && p !== null) return;
-        for (const k of Object.keys(val)) mutate(val[k], depth + 1);
-      };
-
-      const seenFibers = new WeakSet();
-      let visited = 0;
-      const VISIT_CAP = 50000;
-      for (const root of roots) {
-        const stack = [root];
-        while (stack.length && visited < VISIT_CAP) {
-          const f = stack.pop();
-          if (!f || seenFibers.has(f)) continue;
-          seenFibers.add(f);
-          visited++;
-          // hook chain
-          let h = f.memoizedState; let i = 0;
-          while (h && i < 60) {
-            try { mutate(h.memoizedState, 0); } catch (_) {}
-            i++; h = h.next;
-          }
-          // memoizedProps -- some derived data lives directly in props
-          try { mutate(f.memoizedProps, 0); } catch (_) {}
-          if (f.child) stack.push(f.child);
-          if (f.sibling) stack.push(f.sibling);
-        }
-      }
-      if (DBG) console.log('[Refiner v6] path0 done. roots=', roots.length, 'fibersVisited=', visited, 'objsVisited=', path0Visited, 'hits=', path0Hits);
-    } catch (e) { if (DBG) console.warn('[Refiner v6] path0 threw', e); }
+    if (DBG) console.log('[Refiner v7] tryStoreUpdate enter', messageId, 'len=', newText && newText.length);
 
     // path 1: known store types collected from fiber spine + tree
     if (rootEl) {
@@ -603,6 +530,131 @@
     } catch (_) {}
 
     return updated;
+  }
+
+  // Path 0 mutation walker, factored out for both tryStoreUpdate and manual testing.
+  // Defensive against Proxy/getter throws and per-hook seen-set isolation: a throw on
+  // one branch never poisons sibling branches or other hooks.
+  function runPath0Mutation(messageId, newText) {
+    const summary = { roots: 0, fibersVisited: 0, hooksScanned: 0, propsScanned: 0, isMsgEncounters: 0, hits: 0, errors: 0, mutationErrors: 0 };
+    if (!messageId) return summary;
+
+    const isMsg = (v) => {
+      if (!v || typeof v !== 'object') return false;
+      try {
+        return v.id === messageId || v._id === messageId || v.messageId === messageId || v.msgId === messageId;
+      } catch (_) { return false; }
+    };
+    const fieldKeyOf = (v) => {
+      try {
+        if ('content' in v) return 'content';
+        if ('message' in v) return 'message';
+        if ('text' in v) return 'text';
+        if ('body' in v) return 'body';
+      } catch (_) {}
+      return null;
+    };
+
+    // single per-root WeakSet that survives across hooks (msg ref is shared)
+    const globallySeen = new WeakSet();
+    let totalObjs = 0;
+    const OBJ_BUDGET = 200000;
+
+    const mutate = (val, depth, localSeen) => {
+      if (!val || depth > 14 || typeof val !== 'object') return;
+      if (totalObjs++ > OBJ_BUDGET) return;
+      if (localSeen.has(val)) return;
+      localSeen.add(val);
+
+      // try mutate first, BEFORE adding to globallySeen, so a throw later doesn't block re-entry
+      let didMutate = false;
+      let isM = false;
+      try { isM = isMsg(val); } catch (_) { summary.errors++; }
+      if (isM) {
+        summary.isMsgEncounters++;
+        const fk = fieldKeyOf(val);
+        if (fk) {
+          let cur;
+          try { cur = val[fk]; } catch (_) { cur = undefined; summary.errors++; }
+          if (cur !== newText) {
+            try { val[fk] = newText; summary.hits++; didMutate = true; } catch (_) { summary.mutationErrors++; }
+          }
+        }
+      }
+
+      // recurse defensively
+      let isArr = false;
+      try { isArr = Array.isArray(val); } catch (_) {}
+      if (isArr) {
+        for (let i = 0; i < val.length; i++) {
+          let child;
+          try { child = val[i]; } catch (_) { summary.errors++; continue; }
+          try { mutate(child, depth + 1, localSeen); } catch (_) { summary.errors++; }
+        }
+        return;
+      }
+      let proto;
+      try { proto = Object.getPrototypeOf(val); } catch (_) { summary.errors++; return; }
+      if (proto !== Object.prototype && proto !== null) return;
+      let keys;
+      try { keys = Object.keys(val); } catch (_) { summary.errors++; return; }
+      for (const k of keys) {
+        let child;
+        try { child = val[k]; } catch (_) { summary.errors++; continue; }
+        try { mutate(child, depth + 1, localSeen); } catch (_) { summary.errors++; }
+      }
+    };
+
+    const roots = [];
+    const tryAddRoot = (el) => {
+      if (!el) return;
+      try {
+        const k = Object.keys(el).find(k => k.startsWith('__reactContainer$'));
+        if (k && el[k] && el[k].stateNode) roots.push(el[k].stateNode.current);
+      } catch (_) {}
+      try {
+        if (el._reactRootContainer && el._reactRootContainer._internalRoot) roots.push(el._reactRootContainer._internalRoot.current);
+      } catch (_) {}
+    };
+    tryAddRoot(document.getElementById('__next'));
+    tryAddRoot(document.getElementById('root'));
+    document.querySelectorAll('body > div, body > main').forEach(tryAddRoot);
+    summary.roots = roots.length;
+
+    const seenFibers = new WeakSet();
+    let visited = 0;
+    const VISIT_CAP = 50000;
+    for (const root of roots) {
+      const stack = [root];
+      while (stack.length && visited < VISIT_CAP) {
+        const f = stack.pop();
+        if (!f || seenFibers.has(f)) continue;
+        seenFibers.add(f);
+        visited++;
+        // hook chain — fresh localSeen per hook so one stuck hook can't block others
+        let h = f.memoizedState; let i = 0;
+        while (h && i < 60) {
+          summary.hooksScanned++;
+          try { mutate(h.memoizedState, 0, new WeakSet()); } catch (_) { summary.errors++; }
+          i++; h = h.next;
+        }
+        // memoizedProps with its own fresh seen
+        try { mutate(f.memoizedProps, 0, new WeakSet()); summary.propsScanned++; } catch (_) { summary.errors++; }
+        if (f.child) stack.push(f.child);
+        if (f.sibling) stack.push(f.sibling);
+      }
+    }
+    summary.fibersVisited = visited;
+    return summary;
+  }
+
+  // Manual test entry: run path 0 standalone with verbose logging. Use from console:
+  //   __LoreRefiner.testMutation('<messageId>', 'TEST_TEXT')
+  function testMutation(messageId, newText) {
+    console.log('[Refiner v7] testMutation start', messageId, 'newLen=', (newText || '').length);
+    const r = runPath0Mutation(messageId, newText);
+    console.log('[Refiner v7] testMutation result', r);
+    return r;
   }
 
   // Diagnostic helper: scan all fibers and report where messageId is found.
@@ -763,11 +815,13 @@
   R.collectFiberStores = collectFiberStores;
   R.patchMessageInState = patchMessageInState;
   R.tryStoreUpdate = tryStoreUpdate;
+  R.runPath0Mutation = runPath0Mutation;
+  R.testMutation = testMutation;
   R.debugFindMessage = debugFindMessage;
   R.lockMessageHTML = lockMessageHTML;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v6';
+  R.__version = 'v7';
   R.__domLoaded = true;
 
 })();
