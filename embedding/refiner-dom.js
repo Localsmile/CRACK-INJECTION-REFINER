@@ -254,6 +254,17 @@
   // store discovery + lock guard
   function collectFiberStores(rootEl) {
     const out = [];
+    const handleSet = new WeakSet();
+    const addIfStore = (v) => {
+      if (!v || typeof v !== 'object' || handleSet.has(v)) return;
+      if (typeof v.getState === 'function' && typeof v.setState === 'function' && typeof v.subscribe === 'function') {
+        handleSet.add(v); out.push({ kind: 'zustand', handle: v });
+      } else if (v.constructor && v.constructor.name === 'QueryClient') {
+        handleSet.add(v); out.push({ kind: 'react-query', handle: v });
+      } else if (v.cache && typeof v.cache.get === 'function' && typeof v.mutate === 'function') {
+        handleSet.add(v); out.push({ kind: 'swr', handle: v });
+      }
+    };
     let cur = rootEl;
     const seenFibers = new WeakSet();
     while (cur && cur !== document.body) {
@@ -261,24 +272,30 @@
       if (fiberKey) {
         let f = cur[fiberKey];
         let depth = 0;
-        while (f && depth < 60) {
+        while (f && depth < 80) {
           if (seenFibers.has(f)) break;
           seenFibers.add(f);
+          // hook chain memoizedState
           let h = f.memoizedState;
           let hd = 0;
           while (h && hd < 40) {
-            const v = h.memoizedState;
-            if (v && typeof v === 'object') {
-              if (typeof v.getState === 'function' && typeof v.setState === 'function' && typeof v.subscribe === 'function') {
-                out.push({ kind: 'zustand', handle: v });
-              } else if (v.constructor && v.constructor.name === 'QueryClient') {
-                out.push({ kind: 'react-query', handle: v });
-              } else if (v.cache && typeof v.cache.get === 'function' && typeof v.mutate === 'function') {
-                out.push({ kind: 'swr', handle: v });
-              }
-            }
+            addIfStore(h.memoizedState);
             h = h.next; hd++;
           }
+          // context provider value (zustand/react-query/SWR providers)
+          try {
+            const t = f.type;
+            const isProvider = t && typeof t === 'object' && (t.$$typeof === Symbol.for('react.provider') || t._context);
+            if (isProvider && f.memoizedProps) addIfStore(f.memoizedProps.value);
+          } catch (_) {}
+          // class instance props commonly carrying client/store
+          try {
+            if (f.stateNode && f.stateNode.props) {
+              addIfStore(f.stateNode.props.client);
+              addIfStore(f.stateNode.props.store);
+              addIfStore(f.stateNode.props.value);
+            }
+          } catch (_) {}
           f = f.return; depth++;
         }
       }
@@ -287,9 +304,11 @@
     return out;
   }
 
-  function patchMessageInState(state, messageId, newText, depth) {
+  function patchMessageInState(state, messageId, newText, depth, budget) {
+    const b = budget || { count: 0, max: 50000 };
     const d = depth || 0;
     if (!state || d > 6) return null;
+    if (++b.count > b.max) return null;
     if (Array.isArray(state)) {
       let changed = false;
       const next = state.map(item => {
@@ -297,17 +316,20 @@
           const fieldKey = ('content' in item) ? 'content' : ('message' in item) ? 'message' : null;
           if (fieldKey) { changed = true; return Object.assign({}, item, { [fieldKey]: newText }); }
         }
-        const sub = patchMessageInState(item, messageId, newText, d + 1);
+        const sub = patchMessageInState(item, messageId, newText, d + 1, b);
         if (sub) { changed = true; return sub; }
         return item;
       });
       return changed ? next : null;
     }
     if (typeof state === 'object') {
+      // skip non-plain objects (Map, Set, Date, class instances) to avoid clone corruption
+      const proto = Object.getPrototypeOf(state);
+      if (proto !== Object.prototype && proto !== null) return null;
       let changed = false;
       const next = Object.assign({}, state);
       for (const k of Object.keys(state)) {
-        const sub = patchMessageInState(state[k], messageId, newText, d + 1);
+        const sub = patchMessageInState(state[k], messageId, newText, d + 1, b);
         if (sub) { next[k] = sub; changed = true; }
       }
       return changed ? next : null;
@@ -350,24 +372,10 @@
     return updated;
   }
 
+  // one-shot apply only — prior MutationObserver loop caused a React reconciliation feedback freeze
   function lockMessageHTML(targetEl, renderedHTML, oldPlain, newPlain, ttlMs) {
     if (!targetEl) return;
-    const ttl = ttlMs || 8000;
-    const oldTail = String(oldPlain || '').slice(-30).trim();
-    const newTail = String(newPlain || '').slice(-30).trim();
-    let active = true;
-    const apply = () => { if (active && targetEl.innerHTML !== renderedHTML) targetEl.innerHTML = renderedHTML; };
-    apply();
-    let mo = null;
-    try {
-      mo = new MutationObserver(() => {
-        if (!active) return;
-        const cur = normalizeText(targetEl.textContent);
-        if ((oldTail && cur.includes(oldTail)) || (newTail && !cur.includes(newTail))) apply();
-      });
-      mo.observe(targetEl, { childList: true, characterData: true, subtree: true });
-    } catch (_) {}
-    setTimeout(() => { active = false; if (mo) try { mo.disconnect(); } catch (_) {} }, ttl);
+    try { if (targetEl.innerHTML !== renderedHTML) targetEl.innerHTML = renderedHTML; } catch (_) {}
   }
 
   function showReloadAction(message) {
