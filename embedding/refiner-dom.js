@@ -251,6 +251,125 @@
     return result;
   }
 
+  // store discovery + lock guard
+  function collectFiberStores(rootEl) {
+    const out = [];
+    let cur = rootEl;
+    const seenFibers = new WeakSet();
+    while (cur && cur !== document.body) {
+      const fiberKey = Object.keys(cur).find(k => k.startsWith('__reactFiber$'));
+      if (fiberKey) {
+        let f = cur[fiberKey];
+        let depth = 0;
+        while (f && depth < 60) {
+          if (seenFibers.has(f)) break;
+          seenFibers.add(f);
+          let h = f.memoizedState;
+          let hd = 0;
+          while (h && hd < 40) {
+            const v = h.memoizedState;
+            if (v && typeof v === 'object') {
+              if (typeof v.getState === 'function' && typeof v.setState === 'function' && typeof v.subscribe === 'function') {
+                out.push({ kind: 'zustand', handle: v });
+              } else if (v.constructor && v.constructor.name === 'QueryClient') {
+                out.push({ kind: 'react-query', handle: v });
+              } else if (v.cache && typeof v.cache.get === 'function' && typeof v.mutate === 'function') {
+                out.push({ kind: 'swr', handle: v });
+              }
+            }
+            h = h.next; hd++;
+          }
+          f = f.return; depth++;
+        }
+      }
+      cur = cur.parentElement;
+    }
+    return out;
+  }
+
+  function patchMessageInState(state, messageId, newText, depth) {
+    const d = depth || 0;
+    if (!state || d > 6) return null;
+    if (Array.isArray(state)) {
+      let changed = false;
+      const next = state.map(item => {
+        if (item && typeof item === 'object' && (item.id === messageId || item._id === messageId)) {
+          const fieldKey = ('content' in item) ? 'content' : ('message' in item) ? 'message' : null;
+          if (fieldKey) { changed = true; return Object.assign({}, item, { [fieldKey]: newText }); }
+        }
+        const sub = patchMessageInState(item, messageId, newText, d + 1);
+        if (sub) { changed = true; return sub; }
+        return item;
+      });
+      return changed ? next : null;
+    }
+    if (typeof state === 'object') {
+      let changed = false;
+      const next = Object.assign({}, state);
+      for (const k of Object.keys(state)) {
+        const sub = patchMessageInState(state[k], messageId, newText, d + 1);
+        if (sub) { next[k] = sub; changed = true; }
+      }
+      return changed ? next : null;
+    }
+    return null;
+  }
+
+  function tryStoreUpdate(rootEl, messageId, newText) {
+    if (!rootEl || !messageId) return false;
+    const stores = collectFiberStores(rootEl);
+    let updated = false;
+    for (const s of stores) {
+      try {
+        if (s.kind === 'zustand') {
+          const state = s.handle.getState();
+          const patched = patchMessageInState(state, messageId, newText);
+          if (patched) { s.handle.setState(patched, true); updated = true; }
+        } else if (s.kind === 'react-query') {
+          const cache = s.handle.getQueryCache && s.handle.getQueryCache();
+          const queries = (cache && cache.getAll && cache.getAll()) || [];
+          for (const q of queries) {
+            const data = q.state && q.state.data;
+            if (!data) continue;
+            const next = patchMessageInState(data, messageId, newText);
+            if (next) { s.handle.setQueryData(q.queryKey, next); updated = true; }
+          }
+        } else if (s.kind === 'swr') {
+          const cache = s.handle.cache;
+          if (cache && typeof cache[Symbol.iterator] === 'function') {
+            for (const [key, val] of cache) {
+              const data = val && val.data;
+              if (!data) continue;
+              const next = patchMessageInState(data, messageId, newText);
+              if (next) { s.handle.mutate(key, next, false); updated = true; }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return updated;
+  }
+
+  function lockMessageHTML(targetEl, renderedHTML, oldPlain, newPlain, ttlMs) {
+    if (!targetEl) return;
+    const ttl = ttlMs || 8000;
+    const oldTail = String(oldPlain || '').slice(-30).trim();
+    const newTail = String(newPlain || '').slice(-30).trim();
+    let active = true;
+    const apply = () => { if (active && targetEl.innerHTML !== renderedHTML) targetEl.innerHTML = renderedHTML; };
+    apply();
+    let mo = null;
+    try {
+      mo = new MutationObserver(() => {
+        if (!active) return;
+        const cur = normalizeText(targetEl.textContent);
+        if ((oldTail && cur.includes(oldTail)) || (newTail && !cur.includes(newTail))) apply();
+      });
+      mo.observe(targetEl, { childList: true, characterData: true, subtree: true });
+    } catch (_) {}
+    setTimeout(() => { active = false; if (mo) try { mo.disconnect(); } catch (_) {} }, ttl);
+  }
+
   function showReloadAction(message) {
     const old = document.querySelector('#refiner-reload-action');
     if (old) old.remove();
@@ -335,6 +454,10 @@
   R.waitForVisibleText = waitForVisibleText;
   R.rememberAssistantMessage = rememberAssistantMessage;
   R.refreshMessageInDOM = refreshMessageInDOM;
+  R.collectFiberStores = collectFiberStores;
+  R.patchMessageInState = patchMessageInState;
+  R.tryStoreUpdate = tryStoreUpdate;
+  R.lockMessageHTML = lockMessageHTML;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
   R.__domLoaded = true;
