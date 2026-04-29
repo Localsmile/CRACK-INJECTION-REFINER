@@ -317,6 +317,7 @@
     let pathCHits = 0;
     let pathCMatches = 0;
     let pathCSameRef = 0;
+    let pathEHits = 0;
 
     const isMsgRef = (v) => {
       if (!v || typeof v !== 'object') return false;
@@ -324,7 +325,7 @@
     };
     const containsMsgDeep = (val, depth, seen) => {
       if (++opBudget.count > opBudget.max) return false;
-      if (!val || typeof val !== 'object' || depth > 20) return false;
+      if (!val || typeof val !== 'object' || depth > 14) return false;
       if (seen.has(val)) return false;
       seen.add(val);
       if (isMsgRef(val)) return true;
@@ -337,9 +338,12 @@
           for (const v of val.values()) if (containsMsgDeep(v, depth + 1, seen)) return true;
           return false;
         }
-        // v16: proto guard removed. wrtn state may use class instances / Immer drafts /
-        // proxies whose proto rejects plain-Object check. Just try Object.keys; the seen
-        // set + depth limit + outer try/catch handle weird protos safely.
+        // v17: proto guard restored to plain-Object/null. v16 proved msg is NOT in any
+        // hook's memoizedState (matches=0 with guard removed too) — proto loose just
+        // burned 200k budget on heavy-proto walk noise. msg lives in closure / useRef /
+        // module-level / external observable. path E force-rerenders bubble instead.
+        const proto = Object.getPrototypeOf(val);
+        if (proto !== Object.prototype && proto !== null) return false;
         for (const k of Object.keys(val)) if (containsMsgDeep(val[k], depth + 1, seen)) return true;
       } catch (_) {}
       return false;
@@ -354,7 +358,7 @@
     let replacementMsg = null;
     const cloneWithMsgReplaced = (val, depth, seen) => {
       if (++opBudget.count > opBudget.max) return val;
-      if (!val || typeof val !== 'object' || depth > 20) return val;
+      if (!val || typeof val !== 'object' || depth > 14) return val;
       if (seen.has(val)) return seen.get(val);
       if (isMsgRef(val)) {
         if (!replacementMsg) {
@@ -379,12 +383,11 @@
           return changed ? out : val;
         }
         if (val instanceof Map) return val;
-        // v16: preserve original proto via Object.create when cloning. Prevents method
-        // chain loss for class-instance state and Immer-produced drafts.
-        let proto = null;
-        try { proto = Object.getPrototypeOf(val); } catch (_) {}
+        // v17: proto guard restored.
+        const proto = Object.getPrototypeOf(val);
+        if (proto !== Object.prototype && proto !== null) return val;
         seen.set(val, val);
-        const out = (proto && proto !== Object.prototype) ? Object.create(proto) : {};
+        const out = {};
         let changed = false;
         for (const k of Object.keys(val)) {
           out[k] = cloneWithMsgReplaced(val[k], depth + 1, seen);
@@ -635,6 +638,44 @@
           }
         } } catch (_) {}
 
+        // path E (v17): path A/B/C all yielded 0 + path 0 hits>0 → msg owner is
+        // outside React state (closure/useRef/external store). path 0 already mutated
+        // the msg ref in place; we just need React to re-render the bubble so the new
+        // content paints. dispatch shallow-cloned state on bubble ancestor useState
+        // hooks (5 hop, max 2 hits) — same-component re-render only, narrow blast radius.
+        // React.memo on the bubble may still skip if props.msg ref is unchanged; in that
+        // case v18 will swap the msg ref via props mutation.
+        if (rerenderHits === 0 && result.hits > 0) {
+          try {
+            let f = ancestors[0];
+            let dpt = 0;
+            outerE: while (f && dpt < 5) {
+              let h = f.memoizedState; let hd = 0;
+              while (h && hd < 60) {
+                if (h.queue && typeof h.queue.dispatch === 'function') {
+                  try {
+                    const cur = h.memoizedState;
+                    if (cur && typeof cur === 'object') {
+                      let next;
+                      if (Array.isArray(cur)) next = cur.slice();
+                      else if (cur instanceof Map) next = new Map(cur);
+                      else if (cur instanceof Set) next = new Set(cur);
+                      else next = Object.assign({}, cur);
+                      h.queue.dispatch(next);
+                      pathEHits++;
+                      rerenderHits++;
+                      updated = true;
+                      if (pathEHits >= 2) break outerE;
+                    }
+                  } catch (_) {}
+                }
+                h = h.next; hd++;
+              }
+              f = f.return; dpt++;
+            }
+          } catch (_) {}
+        }
+
         // diagnostic when nothing fired
         if (rerenderHits === 0) {
           for (let i = 0; i < Math.min(ancestors.length, 30); i++) {
@@ -662,6 +703,7 @@
     _w.__LR_LAST_PATH_C_HITS = pathCHits;
     _w.__LR_LAST_PATH_C_MATCHES = pathCMatches;
     _w.__LR_LAST_PATH_C_SAME_REF = pathCSameRef;
+    _w.__LR_LAST_PATH_E_HITS = pathEHits;
     if (DBG) console.log('[Refiner v10] pathA hits=', rerenderHits, 'ops=', opBudget.count, 'diag=', ancestorDiag);
 
     return updated;
@@ -871,7 +913,7 @@
   R.runPath0Mutation = runPath0Mutation;
   R.showReloadAction = showReloadAction;
   R.showRefineConfirm = showRefineConfirm;
-  R.__version = 'v16';
+  R.__version = 'v17';
   R.__domLoaded = true;
 
 })();
