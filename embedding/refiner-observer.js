@@ -17,6 +17,16 @@
   let _chatObserver = null;
   let _pollingInterval = null;
 
+  function isChatPath() {
+    const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
+    if (typeof fn === 'function') {
+      try { return !!fn(); } catch (_) {}
+    }
+    return /\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname)
+      || /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname)
+      || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+  }
+
   async function checkLatestMessage() {
     const config = R.ConfigGetter();
     if (!config.refinerEnabled) return;
@@ -60,6 +70,11 @@
   function setupObserver() {
     if (_chatObserver) _chatObserver.disconnect();
     if (_pollingInterval) clearInterval(_pollingInterval);
+
+    if (!isChatPath()) {
+      console.log('[Refiner:observer] non-chat route: observer skipped');
+      return;
+    }
 
     _chatObserver = new MutationObserver(() => {
       const config = R.ConfigGetter();
