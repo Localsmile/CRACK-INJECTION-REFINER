@@ -258,13 +258,49 @@ Entries:
     return _fbSdkPromise;
   }
 
+  function extractBalancedObjectLiteral(src, startIdx) {
+    const open = src.indexOf('{', startIdx);
+    if (open < 0) return '';
+    let depth = 0, quote = '', esc = false;
+    for (let i = open; i < src.length; i++) {
+      const ch = src[i];
+      if (quote) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === quote) quote = '';
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+      if (ch === '{') depth++;
+      if (ch === '}') {
+        depth--;
+        if (depth === 0) return src.slice(open, i + 1);
+      }
+    }
+    return '';
+  }
+
   function parseFirebaseConfig(scriptStr) {
     if (!scriptStr) return null;
     try {
-      const m = scriptStr.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\});?/);
-      if (m) return new Function('return ' + m[1])();
-      const t = scriptStr.trim();
+      const t = String(scriptStr || '').trim();
+      if (!t) return null;
       if (t.startsWith('{')) return new Function('return ' + t)();
+
+      const assign = t.search(/firebaseConfig\s*=/i);
+      if (assign >= 0) {
+        const obj = extractBalancedObjectLiteral(t, assign);
+        if (obj) return new Function('return ' + obj)();
+      }
+
+      const init = t.search(/initializeApp\s*\(/i);
+      if (init >= 0) {
+        const obj = extractBalancedObjectLiteral(t, init);
+        if (obj) return new Function('return ' + obj)();
+      }
+
+      const firstObj = extractBalancedObjectLiteral(t, 0);
+      if (firstObj && /apiKey|projectId/i.test(firstObj)) return new Function('return ' + firstObj)();
     } catch (e) {}
     return null;
   }
