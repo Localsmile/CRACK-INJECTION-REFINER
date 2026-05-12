@@ -38,6 +38,70 @@
   const db = C.getDB();
   const _ls = _w.localStorage;
 
+  function isChatRoute() {
+    const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
+    if (typeof fn === 'function') {
+      try { return !!fn(); } catch (_) {}
+    }
+    return /\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname)
+      || /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname)
+      || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+  }
+
+  function runWhenChatRouteLocal(init) {
+    if (isChatRoute()) return init();
+    let last = location.href;
+    let started = false;
+    const tick = () => {
+      if (last === location.href) return;
+      last = location.href;
+      if (started || !isChatRoute()) return;
+      started = true;
+      init();
+    };
+    try { new MutationObserver(tick).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
+    try { window.addEventListener('popstate', tick); } catch (_) {}
+    try { window.addEventListener('hashchange', tick); } catch (_) {}
+  }
+
+  let _heavyRuntimeInitDone = false;
+  let _heavyRuntimeInitPromise = null;
+  async function ensureHeavyRuntimeInit(reason = '') {
+    if (_heavyRuntimeInitDone) return true;
+    if (_heavyRuntimeInitPromise) return _heavyRuntimeInitPromise;
+    _heavyRuntimeInitPromise = (async () => {
+      await runLocalMigration();
+      if (R && !R.__loreInjectorRuntimeInitDone) {
+        R.init(
+          C,
+          () => settings.config,
+          (url, logItem) => {
+            if (!settings.config.urlRefinerLogs) settings.config.urlRefinerLogs = {};
+            const chatKey = getChatKey();
+            let logs = settings.config.urlRefinerLogs[chatKey] || [];
+            logItem._id = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+            logs.unshift(logItem);
+            if (logs.length > 50) logs.length = 50;
+            settings.config.urlRefinerLogs[chatKey] = logs;
+            settings.save();
+          },
+          (msg, color) => { if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show(msg, { duration: 3000, background: color }); },
+          (url) => settings.config.urlPacks?.[url] || []
+        );
+        R.__loreInjectorRuntimeInitDone = true;
+      }
+      _heavyRuntimeInitDone = true;
+      _w.__LoreInj.__settingsHeavyDeferred = false;
+      _w.__LoreInj.__heavyRuntimeLoaded = true;
+      console.log('[LoreInj:3] heavy runtime initialized', reason || 'chat');
+      return true;
+    })().catch(e => {
+      console.warn('[LoreInj:3] heavy runtime init 실패:', e);
+      throw e;
+    }).finally(() => { _heavyRuntimeInitPromise = null; });
+    return _heavyRuntimeInitPromise;
+  }
+
   function defaultRefinerTopics() {
     const out = {};
     if (R && R.TOPICS) Object.keys(R.TOPICS).forEach(k => out[k] = true);
@@ -506,7 +570,15 @@
   }
 
   settings.load();
-  await runLocalMigration();
+  if (isChatRoute()) {
+    await ensureHeavyRuntimeInit('initial-chat');
+  } else {
+    _w.__LoreInj.__settingsHeavyDeferred = true;
+    console.log('[LoreInj:3] non-chat route: local migration/refiner init deferred');
+    const bootHeavy = () => ensureHeavyRuntimeInit('route-chat').catch(e => console.warn('[LoreInj:3] route heavy init 실패:', e));
+    if (_w.__LoreInj && typeof _w.__LoreInj.runWhenChatRoute === 'function') _w.__LoreInj.runWhenChatRoute(bootHeavy);
+    else runWhenChatRouteLocal(bootHeavy);
+  }
   window.addEventListener('storage', (e) => { if (e.key === 'lore-injector-v5') settings.load(); });
   window.addEventListener('focus', () => { if (Date.now() - (settings._lastSaveTime || 0) > 3000) settings.load(); });
 
@@ -628,25 +700,7 @@
     settings.config.urlPacks = up; settings.config.urlDisabledEntries = ud; settings.save();
   }
 
-  // R.init
-  if (R) {
-    R.init(
-      C,
-      () => settings.config,
-      (url, logItem) => {
-        if (!settings.config.urlRefinerLogs) settings.config.urlRefinerLogs = {};
-        const chatKey = getChatKey();
-        let logs = settings.config.urlRefinerLogs[chatKey] || [];
-        logItem._id = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        logs.unshift(logItem);
-        if (logs.length > 50) logs.length = 50;
-        settings.config.urlRefinerLogs[chatKey] = logs;
-        settings.save();
-      },
-      (msg, color) => { if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show(msg, { duration: 3000, background: color }); },
-      (url) => settings.config.urlPacks?.[url] || []
-    );
-  }
+  // R.init은 ensureHeavyRuntimeInit()에서 채팅 경로 진입 시점에만 실행한다.
 
   Object.assign(_w.__LoreInj, {
     C, R, db, _ls,
@@ -660,7 +714,7 @@
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
     getApiConfigSnapshot, resetSettingsKeepApi,
-    runLocalMigration, getMigrationStatus,
+    runLocalMigration, getMigrationStatus, ensureHeavyRuntimeInit,
     __settingsLoaded: true
   });
   console.log('[LoreInj:3] settings+utils loaded');
