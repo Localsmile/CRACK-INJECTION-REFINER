@@ -63,6 +63,57 @@
   // 메뉴 등록 큐 사전 설치 (document-start). 로더가 먼저 설치해야 sub 모듈이
   // injecter-6 보다 먼저 깨어나도 등록이 스텁 함수로 떨어지지 않음.
   _w.__LoreInj = _w.__LoreInj || {};
+  const L0 = _w.__LoreInj;
+
+  function isChatPath(path = location.pathname) {
+    return /\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(path)
+      || /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(path)
+      || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(path);
+  }
+  function isHomePath(path = location.pathname) {
+    return path === '/' || path === '';
+  }
+  function onRouteChange(cb) {
+    let last = location.href;
+    const tick = () => {
+      if (last === location.href) return;
+      last = location.href;
+      try { cb(); } catch (e) { console.warn('[LoreInj] routechange callback 실패:', e); }
+    };
+    try { new MutationObserver(tick).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
+    try { window.addEventListener('popstate', tick); } catch (_) {}
+    try { window.addEventListener('hashchange', tick); } catch (_) {}
+  }
+  function runWhenChatRoute(init) {
+    if (isChatPath()) return init();
+    let started = false;
+    onRouteChange(() => {
+      if (started || !isChatPath()) return;
+      started = true;
+      init();
+    });
+  }
+  Object.assign(L0, {
+    route: { isChat: isChatPath(), isHome: isHomePath(), path: location.pathname, href: location.href },
+    isChatPath,
+    isHomePath,
+    onRouteChange,
+    runWhenChatRoute
+  });
+  L0.moduleStatus = L0.moduleStatus || {};
+  L0.markLoaded = L0.markLoaded || function(name, meta) {
+    L0.moduleStatus[name] = { ok: true, time: Date.now(), ...(meta || {}) };
+    L0['__' + name + 'Loaded'] = true;
+  };
+  L0.markFailed = L0.markFailed || function(name, error, meta) {
+    L0.moduleStatus[name] = {
+      ok: false,
+      time: Date.now(),
+      error: String(error && error.message || error || 'unknown'),
+      ...(meta || {})
+    };
+    L0['__' + name + 'Failed'] = true;
+  };
   if (!_w.__LoreInj.__menuQueue) {
     const _mq = [];
     const _smq = [];
@@ -106,6 +157,19 @@
       _settle({ ok: false, reason: 'no-core', missing: ['__LoreInj'] });
       return;
     }
+    L.route = {
+      isChat: L.isChatPath ? L.isChatPath() : false,
+      isHome: L.isHomePath ? L.isHomePath() : false,
+      path: location.pathname,
+      href: location.href
+    };
+    if (!L.route.isChat) {
+      L.allReady = false;
+      L.lightReady = true;
+      console.log('[LoreInj] non-chat route: light gate 통과', L.route.path);
+      _settle({ ok: true, mode: 'light', reason: 'non-chat-route', path: location.pathname });
+      return;
+    }
     const missing = requiredAll.filter(k => !L[k]);
     if (missing.length === 0) {
       L.allReady = true;
@@ -123,7 +187,8 @@
     }
     if (Date.now() < deadline) return setTimeout(check, POLL_MS);
     console.error('[LoreInj] 게이트 타임아웃, 미로드 플래그:', missing);
-    _settle({ ok: false, reason: 'timeout', missing });
+    console.error('[LoreInj] 모듈 상태:', L.moduleStatus || {});
+    _settle({ ok: false, reason: 'timeout', missing, moduleStatus: L.moduleStatus || {} });
   };
   check();
 })();
