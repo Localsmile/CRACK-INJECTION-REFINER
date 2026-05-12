@@ -53,6 +53,7 @@
 // @connect     www.gstatic.com
 // @connect     contents-api.wrtn.ai
 // @connect     crack-api.wrtn.ai
+// @connect     *
 // @run-at      document-start
 // ==/UserScript==
 
@@ -140,6 +141,7 @@
   const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded', '__inject6Loaded'];
   const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
   const requiredAll = requiredCore.concat(requiredSubs);
+  const SUB_SOFT_WAIT_MS = 7000;
 
   let _settled = false;
   const _settle = (payload) => {
@@ -170,8 +172,10 @@
       _settle({ ok: true, mode: 'light', reason: 'non-chat-route', path: location.pathname });
       return;
     }
-    const missing = requiredAll.filter(k => !L[k]);
-    if (missing.length === 0) {
+    const missingCore = requiredCore.filter(k => !L[k]);
+    const missingSubs = requiredSubs.filter(k => !L[k]);
+    if (missingCore.length === 0 && !L.__gateCoreReadyAt) L.__gateCoreReadyAt = Date.now();
+    if (missingCore.length === 0 && missingSubs.length === 0) {
       L.allReady = true;
       console.log('[LoreInj v' + (L.VER || '?') + '] 게이트 통과: 코어 6 + 서브 11 전부 로드 + setupSubMenus 준비 → UI 부트스트랩 허용');
       _settle({ ok: true, ver: L.VER });
@@ -185,10 +189,28 @@
       tailCheck();
       return;
     }
+    if (missingCore.length === 0 && missingSubs.length > 0 && Date.now() - (L.__gateCoreReadyAt || Date.now()) >= SUB_SOFT_WAIT_MS) {
+      L.allReady = true;
+      L.partialReady = true;
+      L.missingSubs = missingSubs;
+      console.warn('[LoreInj] 서브모듈 일부 미로드 — partial gate로 UI 부트스트랩 허용:', missingSubs);
+      console.warn('[LoreInj] 모듈 상태:', L.moduleStatus || {});
+      _settle({ ok: true, ver: L.VER, partial: true, missingSubs, moduleStatus: L.moduleStatus || {} });
+      const tail = Date.now() + 5000;
+      const tailCheck = () => {
+        if (L.__uiLoaded) { console.log('[LoreInj v' + (L.VER || '?') + '] UI 마운트 완료(partial)'); return; }
+        if (Date.now() < tail) return setTimeout(tailCheck, 100);
+        console.warn('[LoreInj] __uiLoaded 미설정 — partial gate 이후 UI 마운트가 도중에 죽었을 수 있음');
+      };
+      tailCheck();
+      return;
+    }
     if (Date.now() < deadline) return setTimeout(check, POLL_MS);
+    const missing = requiredAll.filter(k => !L[k]);
     console.error('[LoreInj] 게이트 타임아웃, 미로드 플래그:', missing);
+    console.error('[LoreInj] 코어 미로드:', missingCore, '서브 미로드:', missingSubs);
     console.error('[LoreInj] 모듈 상태:', L.moduleStatus || {});
-    _settle({ ok: false, reason: 'timeout', missing, moduleStatus: L.moduleStatus || {} });
+    _settle({ ok: false, reason: 'timeout', missing, missingCore, missingSubs, moduleStatus: L.moduleStatus || {} });
   };
   check();
 })();
