@@ -125,9 +125,9 @@
     return e;
   }
 
-  const IMPORT_SCHEMA = `[<br>  {<br>    "type": "character|location|item|event|concept|setting",<br>    "name": "Entity Name",<br>    "triggers": ["keyword1", "keyword2", "A&&B"],<br>    "summary": {<br>      "full": "self-contained continuity summary: who/what/why/current state/unresolved hook",<br>      "compact": "entity + state + relation/hook preserved",<br>      "micro": "stable recall handle + current state"<br>    },<br>    "inject": {<br>      "full": "key facts for injection | max 120 chars",<br>      "compact": "essential continuity | max 70 chars",<br>      "micro": "name=status | max 35 chars"<br>    },<br>    "embed_text": "names aliases relationship terms event causes stakes location unresolved hooks",<br>    "state": "current situation noun phrase",<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },<br>    "entities": ["characters/places/items involved"],<br>    "detail": { "attributes": "traits/appearance/abilities", "relations": ["relationship facts"], "background_or_history": "background" },<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  },<br>  {<br>    "type": "relationship|rel",<br>    "name": "A↔B",<br>    "parties": ["A", "B"],<br>    "triggers": ["A&&B", "B&&A"],<br>    "summary": {<br>      "full": "relationship cause + current state + unresolved hook",<br>      "compact": "relationship state + hook",<br>      "micro": "A↔B=status"<br>    },<br>    "inject": {<br>      "full": "relationship facts for injection | max 120 chars",<br>      "compact": "essential relationship continuity | max 70 chars",<br>      "micro": "A↔B=status | max 35 chars"<br>    },<br>    "embed_text": "A B aliases call terms relationship stakes hooks",<br>    "state": "current relationship status",<br>    "callState": {<br>      "A→B": {<br>        "currentTerm": "latest vocative",<br>        "previousTerms": ["older vocative"],<br>        "tone": "affectionate|hostile|formal|neutral",<br>        "scope": "scene|stable|private|public",<br>        "lastChangedTurn": 0,<br>        "confidence": 0.8,<br>        "reason": "why this is current"<br>      }<br>    },<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },<br>    "entities": ["A", "B"],<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  }<br>]`;
+  const IMPORT_SCHEMA = `[  {    "type": "character|location|item|event|concept|setting",    "name": "Entity Name",    "triggers": ["keyword1", "keyword2", "A&&B"],    "summary": {      "full": "self-contained continuity summary: who/what/why/current state/unresolved hook",      "compact": "entity + state + relation/hook preserved",      "micro": "stable recall handle + current state"    },    "inject": {      "full": "key facts for injection | max 120 chars",      "compact": "essential continuity | max 70 chars",      "micro": "name=status | max 35 chars"    },    "embed_text": "names aliases relationship terms event causes stakes location unresolved hooks",    "state": "current situation noun phrase",    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },    "entities": ["characters/places/items involved"],    "detail": { "attributes": "traits/appearance/abilities", "relations": ["relationship facts"], "background_or_history": "background" },    "imp": 5,    "sur": 5,    "emo": 5  },  {    "type": "relationship|rel",    "name": "A↔B",    "parties": ["A", "B"],    "triggers": ["A&&B", "B&&A"],    "summary": {      "full": "relationship cause + current state + unresolved hook",      "compact": "relationship state + hook",      "micro": "A↔B=status"    },    "inject": {      "full": "relationship facts for injection | max 120 chars",      "compact": "essential relationship continuity | max 70 chars",      "micro": "A↔B=status | max 35 chars"    },    "embed_text": "A B aliases call terms relationship stakes hooks",    "state": "current relationship status",    "callState": {      "A→B": {        "currentTerm": "latest vocative",        "previousTerms": ["older vocative"],        "tone": "affectionate|hostile|formal|neutral",        "scope": "scene|stable|private|public",        "lastChangedTurn": 0,        "confidence": 0.8,        "reason": "why this is current"      }    },    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },    "entities": ["A", "B"],    "imp": 5,    "sur": 5,    "emo": 5  }]`;
 
-  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.<br>Convert the following source material into structured lore entries for an RP memory system.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.<br>4. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.<br>5. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>6. summary and inject must both be produced.<br>   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.<br>   - summary.compact: preserve entity, state, relationship, and unresolved hooks.<br>   - summary.micro: stable recall handle + current state only; never a vague teaser.<br>   - inject.full/compact/micro: short text intended for direct OOC injection.<br>7. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.<br>8. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.<br>9. Extract timeline, entities, state, imp/sur/emo for every entry when inferable. imp/sur/emo are 1-10.<br>10. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>11. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
+  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.Convert the following source material into structured lore entries for an RP memory system.RULES:1. JSON ONLY. Output a valid JSON array. No markdown.2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.4. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.5. For relationships, use bidirectional compound triggers: A&&B and B&&A.6. summary and inject must both be produced.   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.   - summary.compact: preserve entity, state, relationship, and unresolved hooks.   - summary.micro: stable recall handle + current state only; never a vague teaser.   - inject.full/compact/micro: short text intended for direct OOC injection.7. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.8. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.9. Extract timeline, entities, state, imp/sur/emo for every entry when inferable. imp/sur/emo are 1-10.10. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.11. Maximum {maxEntries} entries.Schema:{schema}Source Material:{source}`;
 
   async function importFromText(text, packName, apiOpts, opts = {}) {
     const maxEntries = opts.maxEntries || DEFAULTS.importMaxEntries;
@@ -219,13 +219,34 @@
   }
 
   async function fetchExternalText(url) {
+    const errors = [];
     try {
       const r = await fetch(url, { method: 'GET', credentials: 'omit' });
       if (r && r.ok) return await r.text();
-    } catch (_) {}
-    const resp = await gmFetch(url, { method: 'GET', headers: {} });
-    if (!resp || !resp.ok) throw new Error('URL fetch 실패: HTTP ' + (resp ? resp.status : 0));
-    return await resp.text();
+      if (r) errors.push('fetch HTTP ' + r.status);
+    } catch (e) { errors.push('fetch ' + (e.message || String(e))); }
+
+    try {
+      const resp = await gmFetch(url, { method: 'GET', headers: { 'Accept': 'text/html,text/plain,*/*' } });
+      if (resp && resp.ok) return await resp.text();
+      if (resp) errors.push('GM HTTP ' + resp.status);
+    } catch (e) { errors.push('GM ' + (e.message || String(e))); }
+
+    // Some sites such as namu.wiki reject direct userscript requests. Try public text readers as last resort.
+    const bareUrl = String(url || '').replace(/^https?:\/\//i, '');
+    const fallbackUrls = [
+      'https://r.jina.ai/http://' + bareUrl,
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
+    ];
+    for (const fu of fallbackUrls) {
+      try {
+        const resp = await gmFetch(fu, { method: 'GET', headers: { 'Accept': 'text/plain,*/*' } });
+        if (resp && resp.ok) return await resp.text();
+        if (resp) errors.push('fallback HTTP ' + resp.status);
+      } catch (e) { errors.push('fallback ' + (e.message || String(e))); }
+    }
+
+    throw new Error('URL fetch 실패: ' + errors.join(' / '));
   }
 
   async function importFromUrl(url, packName, apiOpts, opts = {}) {
