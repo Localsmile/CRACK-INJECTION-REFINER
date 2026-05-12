@@ -4,6 +4,26 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   const _ls = _w.localStorage;
 
+  function isChatPath() {
+    const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
+    if (typeof fn === 'function') {
+      try { return !!fn(); } catch (_) {}
+    }
+    return /\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(location.pathname)
+      || /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname)
+      || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+  }
+
+  function reloadOnSpaChatRoute() {
+    if (!_w.__LoreInj || typeof _w.__LoreInj.runWhenChatRoute !== 'function') return;
+    _w.__LoreInj.runWhenChatRoute(() => {
+      if (_w.__LoreInj.__uiLoaded || _w.__LoreInj.__spaChatReloading) return;
+      _w.__LoreInj.__spaChatReloading = true;
+      console.log('[LoreInj:6-ui] SPA chat route detected after light boot: reload for full bootstrap');
+      setTimeout(() => location.reload(), 50);
+    });
+  }
+
   // 1) 로더가 노출한 ready 게이트를 먼저 기다린다 (코어 5 + 서브 11 전원 로드 확인).
   //    게이트가 없으면(구버전 로더) 기존 폴링 로직으로 폴백.
   if (_w.__LoreInjReady && typeof _w.__LoreInjReady.then === 'function') {
@@ -22,6 +42,12 @@
     }
     const L = _w.__LoreInj;
     if (!L || !_subs.every(k => L[k])) { console.error('[LoreInj:6-ui] 폴백 대기 타임아웃, UI 마운트 중단'); return; }
+  }
+
+  if (!isChatPath()) {
+    console.log('[LoreInj:6-ui] non-chat route: UI bootstrap skipped');
+    reloadOnSpaChatRoute();
+    return;
   }
 
   // 2) 게이트 통과 후 DOM 준비 대기.
