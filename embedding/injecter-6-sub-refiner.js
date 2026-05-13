@@ -150,9 +150,10 @@
           inp.onchange = () => { settings.config.refinerContextTurns = parseInt(inp.value) || 0; settings.save(); };
           right.appendChild(inp); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
   
-          const tLbl2 = document.createElement('div'); tLbl2.textContent = '프롬프트 ({lore}, {memory}, {context}, {message}, {passWord})'; tLbl2.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; nd.appendChild(tLbl2);
+          const tLbl2 = document.createElement('div'); tLbl2.textContent = '프롬프트 미리보기'; tLbl2.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; nd.appendChild(tLbl2);
           const ta = document.createElement('textarea'); ta.value = settings.config.refinerCustomPrompt; ta.style.cssText = S + 'height:200px;font-family:monospace;resize:vertical;';
-          ta.onchange = () => { settings.config.refinerCustomPrompt = ta.value; settings.save(); tplSel.value = 'custom'; tplDesc.textContent = ''; }; nd.appendChild(ta);
+          ta.readOnly = true;
+          nd.appendChild(ta);
   
           if (R.TEMPLATES) {
             tplSel.onchange = () => {
@@ -174,7 +175,7 @@
               } else {
                 settings.config.refinerUseDynamic = false;
                 topicsWrap.style.display = 'none';
-                tplDesc.textContent = '직접 작성한 프롬프트 사용함.';
+                tplDesc.textContent = '직접 작성한 프롬프트 사용 중. 내용 수정은 프롬프트 관리에서 함.';
                 settings.save();
               }
             };
@@ -202,7 +203,7 @@
               renderTopics();
               tplDesc.textContent = '체크한 검수 주제만 AI 프롬프트에 들어감.';
             } else if (matched !== 'custom') tplDesc.textContent = R.TEMPLATES[matched].desc;
-            else tplDesc.textContent = '직접 작성한 프롬프트 사용함.';
+            else tplDesc.textContent = '직접 작성한 프롬프트 사용 중. 내용 수정은 프롬프트 관리에서 함.';
           }
   
           const clearFpBtn = document.createElement('button'); clearFpBtn.textContent = '처리 기록 큐 초기화'; clearFpBtn.style.cssText = 'width:100%;padding:8px;margin-top:12px;background:#654;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;';

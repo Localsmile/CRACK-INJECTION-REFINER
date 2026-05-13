@@ -1,0 +1,316 @@
+Lore Inject v1 점검 및 정리 작업 계획서
+작성일: 2026-05-14
+
+목표
+- 현재 코드에서 잠재적인 버그, 동작성 문제, 스코어링 시스템 문제, 추출/삽입 문제를 확인한다.
+- 불필요하거나 죽은 코드를 선별해 정리한다.
+- 스크립트 다중 로드, UI 메뉴 구성 랜덤화, 설정 UI/UX 파편화 문제를 추가 점검한다.
+
+1. 즉시 확인된 핵심 리스크
+
+1.1 injecter-2.js 문법 오류
+- 위치: embedding/injecter-2.js
+- 증상: node --check 기준 SyntaxError: Unexpected token '<'
+- 원인 후보: DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB 뒤에 HTML <br><br> 문자열이 코드 본문으로 유입됨.
+- 영향: const 모듈 로드 실패 -> settings/extract/inject/UI 모듈 로드 연쇄 실패 가능.
+- 우선순위: 최상
+- 작업:
+  - <br> 유입부 제거.
+  - LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB 선언이 정상 JS로 이어지도록 복구.
+  - 전체 embedding/*.js node --check 통과 확인.
+
+1.2 자동 추출 patch 모드 id 누락
+- 위치: embedding/injecter-4.js
+- 증상: patch 모드는 op.id를 요구하지만, 기존 DB 컨텍스트 생성 시 id를 제거하는 코드가 있음.
+- 영향: LLM이 patch를 출력해도 applyExtractPatchOp에서 무시될 가능성.
+- 작업:
+  - patch 모드에서는 stable id가 포함된 digest를 전달하도록 수정.
+  - entryDigestForExtract/buildExistingLoreDigest 미사용 상태를 해소.
+  - full-object 모드와 patch 모드의 입력/출력 지시를 명확히 분리.
+
+1.3 rerank 설정 미반영
+- 위치: embedding/core-search.js, embedding/injecter-5.js, embedding/injecter-6-sub-api.js
+- 증상: UI에서 rerankPrompt를 수정할 수 있으나 smartRerank 내부는 하드코딩 프롬프트를 사용.
+- 영향: 설정 UI와 실제 동작이 불일치.
+- 작업:
+  - smartRerank가 config.rerankPrompt 또는 apiOpts.rerankPrompt를 사용하도록 연결.
+  - injecter-5.js에서 smartRerank 호출 시 config를 전달.
+  - 기본 프롬프트와 커스텀 프롬프트 모두 JSON 응답 파싱 형식을 보장하도록 정리.
+
+2. 스코어링/삽입 파이프라인 점검 계획
+
+2.1 hybridSearch 점수 구성 확인
+- triggerScore, embedding similarity, temporal graph, unresolved priority, maintenance, anchor boost가 중복 가산되는지 확인.
+- timeline_event가 hybridSearch와 injecter-5.js의 resolveTemporalRecall에서 중복 추가/가산되는 경로를 검토.
+- anchor 엔트리가 무조건 높은 점수로 예산을 잠식하지 않는지 확인.
+
+2.2 active character boost/penalty 확인
+- character/identity에만 activeCharBoost가 적용되는 현재 정책이 relationship/promise와 충돌하지 않는지 확인.
+- relationshipGraphScore와 activeEntityWeight가 관계 엔트리에 충분히 작동하는지 확인.
+
+2.3 예산 계산 확인
+- MAX_INPUT_CHARS가 injecter-5.js에 2000으로 하드코딩되어 있고 core-kernel.js PLATFORM.inputCharLimit도 2000으로 별도 존재함.
+- 설정값으로 일원화할 수 있는지 확인.
+- temporalRecallBlock, firstEncounterBlock, honorifics, lore 본문이 budget을 초과할 때 graceful downgrade/drop이 되는지 검증.
+
+3. 추출/병합 파이프라인 점검 계획
+
+3.1 patch/full-object 모드 분기 정리
+- patch 모드: 기존 entry id 포함 digest 전송, add/patch op만 권장.
+- full-object 모드: id 없는 full entry 전송, name/type 기반 병합.
+- 두 모드의 프롬프트와 실제 mergeExtractedData 동작을 맞춘다.
+
+3.2 anchor 보호 검증
+- 기존 anchor 엔트리에서 summary/state/detail/call/inject/timeline/entities/cond/score/arc가 보호되는지 확인.
+- append.triggers/eventHistory/callHistory는 허용되는지 확인.
+- timeline_event anchor의 union merge backup이 의도대로 작동하는지 확인.
+
+3.3 임베딩 무효화/갱신 검증
+- 기존 엔트리 patch/merge/delete 시 invalidateEntryEmbeddings 호출 누락이 없는지 확인.
+- packName/model/sourceHash mismatch cleanup이 실제 stale row를 제거하는지 확인.
+
+4. 스크립트 다중 호출/로드 순서 리스크 추가 점검 계획
+
+4.1 현재 구조
+- userscript loader는 https://crack.wrtn.ai/* 에서 시작하지만 metadata @require는 사용하지 않는다.
+- 메인화면에서는 경량 route watcher만 실행하고 heavy module stack은 로드하지 않는다.
+- 채팅/에피소드 경로에 직접 접속하거나 SPA 라우팅으로 진입하면 jsDelivr에서 모듈을 fetch하고 userscript sandbox에서 묶음 eval한다.
+- dynamic GM_xmlhttpRequest loader는 Tampermonkey 권한 확인과 UI 미표시 문제를 유발했기 때문에 사용하지 않는다.
+- 각 모듈은 __LoreInj 플래그와 큐를 공유한다.
+- document-start에서 __menuQueue/__subMenuQueue와 registerMenu/registerSubMenu를 사전 설치한다.
+- injecter-6.js가 큐를 ModalManager에 연결하고, injecter-6-ui.js가 __LoreInjReady를 기다린 뒤 UI를 마운트한다.
+
+4.2 점검할 위험
+- sub module이 injecter-6.js보다 먼저 실행될 때 등록 큐가 보존되는지.
+- registerSubMenu fallback이 빈 함수로 덮여 메뉴 등록이 유실되는 경로가 남아있는지.
+- partial gate가 너무 빨리 열려 일부 메뉴가 빠진 UI가 고정되는지.
+- __registeredMenuKeys가 한 번 등록 실패한 메뉴를 재시도하지 못하게 막는지.
+- route change 후 chat route 진입 시 light gate 상태에서 full UI가 정상 재초기화되는지.
+- dynamic fetch URL 캐시/버전 쿼리 불일치로 일부 파일만 구버전이 로드될 때 모듈 플래그가 호환되는지.
+
+4.3 작업
+- loader, injecter-6.js, injecter-6-ui.js, 모든 sub module의 register 시점을 표로 정리.
+- 메뉴 등록 큐에 들어온 key 목록과 실제 Modal menu 목록을 비교하는 debug snapshot 함수를 추가할지 검토.
+- partialReady 상태에서도 늦게 도착한 sub menu가 UI에 반영되는지 확인.
+- 실패한 메뉴 등록은 moduleStatus에 남기고 재시도 가능한 구조로 개선.
+- load gate timeout, soft wait, tail check 로그를 사용자가 이해 가능한 진단 메시지로 개선.
+- 모바일 메인화면 부하 방지와 SPA 진입 지원을 동시에 위해 userscript는 전체 경로에 match하되, heavy module은 채팅/에피소드 경로에서만 동적 로드.
+
+5. UI 메뉴 구성이 랜덤하게 바뀌는 문제 추가 점검 계획
+
+5.1 추정 원인 후보
+- __menuQueue와 __subMenuQueue의 등록 순서가 파일 실행 타이밍에 의존.
+- setupSubMenus에서 queue 순회 순서를 그대로 사용해 메뉴 순서가 변동.
+- MutationObserver/route observer가 __updateModalMenu 또는 doInjection을 반복 호출하며 메뉴를 재구성.
+- decentralized-modal의 createMenu 호출 순서에 따라 표시 순서가 바뀜.
+- partial gate 이후 늦게 등록된 메뉴가 뒤늦게 append되어 순서가 달라짐.
+
+5.2 작업
+- 메뉴 key별 고정 order map을 정의한다.
+- setupSubMenus에서 queue를 key/order 기준으로 stable sort 후 등록한다.
+- 등록 중복 방지는 key 기준으로 유지하되, 표시 순서는 매번 동일하게 보장한다.
+- 누락 메뉴와 지연 메뉴를 구분해 UI 진단 탭 또는 콘솔 로그에 노출한다.
+- 메뉴 재생성 함수가 호출되어도 기존 순서가 흔들리지 않는지 확인한다.
+
+5.3 검증
+- 새로고침 20회 기준 메뉴 순서 스냅샷 비교.
+- chat route 직접 진입, home -> chat route 이동, 느린 네트워크/캐시 혼합 상황에서 메뉴 순서 비교.
+- 일부 sub module 로드 실패 상황에서 표시되는 메뉴와 오류 표시가 일관적인지 확인.
+
+6. 옵션/설정 UI/UX 파편화 개선 계획
+
+6.1 현재 문제
+- API, 추출, 삽입, 임베딩, 리랭크, 시간축, Refiner, 로그, 세션, 파일 관리가 여러 메뉴에 분산되어 있음.
+- 초심자는 어떤 기능을 켜야 기본 동작이 되는지 알기 어렵다.
+- 빠른 설정이 있어도 상세 설정과 실제 동작의 연결이 명확하지 않다.
+- 일부 설정은 UI에 있지만 실제 코드에서 쓰이지 않거나, 반대로 코드 설정이 UI에 드러나지 않는 후보가 있다.
+
+6.2 정보 구조 재설계
+- "처음 설정" 섹션:
+  - API 연결
+  - 현재 채팅에 로어 팩 연결
+  - 자동 추출 켜기/끄기
+  - 기본 삽입 테스트
+- "일상 사용" 섹션:
+  - 로어 목록/검색/수정
+  - 현재 채팅 활성 팩
+  - 수동 추출
+  - 최근 삽입 로그
+- "고급 설정" 섹션:
+  - 임베딩/리랭크
+  - 시간축 회상/Judge
+  - Refiner
+  - 예산/압축/쿨다운
+- "유지보수" 섹션:
+  - 백업/복원
+  - 가져오기/내보내기
+  - stale embedding 정리
+  - 마이그레이션/진단
+
+6.3 UX 개선 작업
+- 설정 항목마다 "기본값", "권장값", "현재 상태"를 구분해 표시.
+- 위험한 고급 옵션은 접힌 상태로 배치.
+- 현재 채팅에서 실제로 활성화된 기능을 상단 상태 요약으로 표시.
+- API 키 없음, 활성 팩 없음, 자동 추출 꺼짐, 임베딩 켜짐 but 임베딩 없음 같은 상태를 명확히 경고.
+- 설정 검색 또는 "문제 해결" 진단 버튼 추가 검토.
+
+6.4 설정 정합성 점검
+- UI에 존재하지만 실제 동작에 연결되지 않은 설정 찾기.
+- 실제 코드에서 사용하지만 UI에서 조정할 수 없는 설정 찾기.
+- 같은 의미의 설정이 여러 이름으로 존재하는지 확인.
+- 기본값이 core-kernel.js DEFAULTS와 injecter-3.js settings 기본값 사이에서 충돌하는지 확인.
+
+6.5 다음 구현 단위
+- 1단계: 메인 설정 패널 상단에 "현재 상태 요약" 추가.
+  - API 연결 상태
+  - 현재 URL 활성 팩 수
+  - 로어 엔트리 수
+  - 자동 추출 ON/OFF
+  - 임베딩 ON/OFF 및 stale embedding 정리 필요 여부
+  - Refiner ON/OFF
+- 2단계: "문제 해결" 버튼 추가.
+  - API 키 없음
+  - 활성 팩 없음
+  - 메뉴 일부 누락
+  - dynamic loader 실패
+  - patch 모드 id/digest 상태
+  - 임베딩 켜짐 but embeddings 없음
+- 3단계: 고급 설정 접기.
+  - 임베딩/리랭크/시간축/Judge/쿨다운/압축은 기본 접힘 상태.
+  - 초심자에게 필요한 일상 사용 버튼은 상단에 유지.
+
+7. 불필요/죽은 코드 정리 후보
+
+7.1 즉시 후보
+- 완료: injecter-4.js addedCount는 증가하지만 반환/로그에 사용되지 않아 제거함.
+- 완료: injecter-6-sub-extract.js isEntryEnabledForUrl destructuring은 해당 파일에서 사용되지 않아 제거함.
+- 완료: injecter-6-ui.js gear fallback 관련 주석과 로그가 현재 동작과 불일치해 정리함.
+- core-format.js: preserveFields placeholder는 실제 미사용. 단, 향후 계획이 명확하면 주석 정리만 권장.
+
+7.2 보류 후보
+- core-format.js의 adaptiveFormat/assembleInjection/budgetFormat 하위 호환 함수들은 외부 또는 단일 번들에서 참조될 수 있으므로 즉시 삭제하지 않는다.
+- embedding/crack-lore-core.user.js는 레거시 단일 번들일 수 있어 배포 경로 확인 전 삭제하지 않는다.
+
+8. 검증 계획
+
+8.1 정적 검증
+- node --check embedding/*.js
+- 주요 파일에서 <br> 같은 HTML artifact 검색.
+- registerMenu/registerSubMenu 등록 key 목록 검색.
+
+8.2 동작 검증
+- UI 로드:
+  - 새로고침 반복.
+  - home route -> chat route 이동.
+  - partial gate 상황 시뮬레이션.
+- 메뉴 순서:
+  - 20회 로드 후 메뉴 key 순서 비교.
+- 추출:
+  - patch 모드에서 op.id 포함 여부 확인.
+  - add/patch/full-object 병합 결과 확인.
+- 삽입:
+  - trigger only, embedding only, timeline recall, rerank enabled 케이스 비교.
+  - 예산 초과 입력에서 삽입 취소/축약 동작 확인.
+
+9. 작업 순서
+
+1. injecter-2.js 문법 오류 복구.
+2. 전체 node --check 통과.
+3. 메뉴 등록 순서와 누락 리스크 분석 및 stable order 설계.
+4. UI 메뉴 랜덤 순서 문제 수정.
+5. patch 모드 id/digest 경로 수정.
+6. rerank 설정 연결.
+7. 죽은 코드와 불필요 import 정리.
+8. 설정 UI/UX 재구성 설계안 작성.
+9. 최소 동작 검증.
+
+10. 진행 로그
+
+2026-05-14
+- 완료: injecter-2.js에 유입된 HTML <br> artifact 제거.
+- 완료: LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB 선언 복구.
+- 완료: embedding/*.js 전체 node --check 통과 확인.
+- 완료: CODE_FLOW.md 작성. 주요 파일 연결점, 로더 흐름, 추출/삽입/UI/Refiner 경로를 영어로 문서화.
+- 완료: injecter-6.js 메뉴 등록 순서를 stable sort로 고정. UI 메뉴 랜덤 순서 문제의 직접 원인 후보를 완화.
+- 완료: injecter-4.js patch 모드 기존 DB 컨텍스트에 stable id 포함 digest를 전달하도록 수정.
+- 완료: core-search.js / injecter-5.js rerank 설정 연결. UI의 rerankPrompt가 실제 smartRerank에 반영됨.
+- 변경: userscript @match를 실제 채팅/에피소드 경로로 제한했으나, 메인화면 SPA 진입 시 스크립트가 시작되지 않는 문제가 있어 다시 https://crack.wrtn.ai/* 로 복구.
+- 취소: lightweight dynamic loader 방식은 Tampermonkey 권한 확인과 UI 미표시 문제를 유발해 제거.
+- 완료: metadata @require 스택 복구. 기존 실행 컨텍스트를 보존해 UI 진입점이 다시 동작하도록 수정.
+- 완료: 메인화면에서 오래 머문 뒤 채팅으로 이동해도 ready gate가 즉시 timeout되지 않도록 SPA chat route 진입 시 gate deadline 재설정.
+- 완료: injecter-6.js에 late menu remount 추가. partial gate 이후 늦게 등록되는 메뉴가 이미 생성된 모달에 자동 연결되도록 보강.
+- 완료: userscript 버전 및 변경 파일 cache-buster를 1.4.0-test.48로 갱신. 이후 dynamic loader 전환으로 metadata @require는 제거됨.
+- 완료: userscript 버전을 1.4.0-test.49로 갱신.
+- 취소: dynamic loader 진행/실패 badge 및 retryDynamicLoad() 제거. 원인: UI 로드 실패와 Tampermonkey 권한 불편.
+- 완료: injecter-4.js addedCount 미사용 변수 제거.
+- 완료: injecter-6-sub-extract.js 미사용 isEntryEnabledForUrl destructuring 제거.
+- 완료: injecter-6-ui.js 오래된 gear fallback 주석/로그 정리.
+- 완료: userscript 버전을 1.4.0-test.51로 갱신하고 @require 스택 복구.
+- 완료: API 비용 UI의 기능명에서 내부 key 괄호 표기를 제거.
+- 완료: API 비용 UI의 "채팅별" 섹션을 "로어팩별"로 변경. urlAutoExtPacks 매핑이 있는 경우 chat id 대신 로어팩 이름을 표시.
+- 완료: 로어 관리에서 마지막 엔트리를 삭제해 0개가 된 팩은 packs 테이블에서 제거.
+- 완료: 파일 관리 렌더링 시 entryCount를 실제 entries 기준으로 보정하고 0개 팩은 자동 제거.
+- 완료: userscript 버전을 1.4.0-test.52로 갱신하고 변경 submodule cache-buster 갱신.
+- 완료: 초심자에게 노출되는 UI 용어 1차 정리.
+  - "시간축 이벤트 추출" -> "중요 장면 기억하기"
+  - "저출력 Patch 모드" -> "변경분만 저장"
+  - "Judge/Reranker/Reasoning" 등 내부 구현 용어를 "참고 장면 고르기/후보 재정렬/생각 깊이"로 변경.
+  - 도움말의 동일 항목도 설정 화면과 같은 용어로 맞춤.
+- 완료: Firebase API 입력 안내에서 "embedding-001만 쓸 것" 같은 구현자식 문구 제거.
+- 완료: 메인 설정 상단에 현재 상태 요약 추가. API, 활성 로어팩, 사용 가능한 로어 수, 자동 대화 정리, 의미 검색 상태를 한눈에 표시.
+- 완료: userscript 버전을 1.4.0-test.53으로 갱신하고 변경 UI submodule cache-buster 갱신.
+- 완료: 메인 설정 상태 요약 추가 후 userscript 버전을 1.4.0-test.54로 갱신하고 injecter-6-sub-main.js cache-buster 갱신.
+- 완료: Tampermonkey @require internal error 대응.
+  - raw.githubusercontent.com 기반 @require 전체를 jsDelivr GitHub CDN 경로로 전환.
+  - 모든 모듈 cache-buster를 1.4.0-test.55로 통일.
+  - 문제 재현 URL은 브라우저/PowerShell에서는 200이지만 Tampermonkey @require 단계에서 실패할 수 있어 MIME이 application/javascript로 내려오는 CDN을 우선 사용.
+- 완료: "변경분만 저장" 입력/출력 계약 수정.
+  - ON/OFF 모두 같은 기존 로어 digest(id 포함)를 전송하도록 변경.
+  - ON/OFF 모두 같은 통합 스키마를 전송하도록 변경.
+  - 옵션 차이는 출력 형식 지시만 남김: ON은 patch/add, OFF는 full updated entries.
+  - 기존 활성 로어팩이 있을 때 add 결과가 이름만 달라 새 항목으로 늘어나는 문제를 줄이기 위해 type + parties/triggers/entities 기반 기존 항목 탐색을 추가.
+  - 기존 유저에게 재추출을 요구하거나 자동으로 재추출하는 마이그레이션은 추가하지 않음.
+- 완료: userscript 버전을 1.4.0-test.56으로 갱신하고 injecter-4.js cache-buster 갱신.
+- 완료: 시간축 추출 출력 과다 문제 완화.
+  - 시간축 추출은 일반 추출과 별도 API 호출이라 변경분만 저장 ON/OFF와 무관하게 큰 출력이 발생할 수 있었음.
+  - 시간축 추출 프롬프트에 기존 timeline_event digest를 삽입해 이미 저장된 중요 장면은 다시 출력하지 않도록 지시.
+  - 같은 chatKey/context hash 스킵은 근본 해결이 아니라 제거함.
+- 완료: userscript 버전을 1.4.0-test.57로 갱신하고 injecter-4.js cache-buster 갱신.
+- 완료: 시간축 추출도 일반 추출처럼 변경분만 저장 ON/OFF 출력 계약을 분리.
+  - ON/OFF 모두 같은 기존 timeline_event digest와 같은 통합 스키마를 전송.
+  - ON은 timeline_event patch/add 출력, OFF는 full updated scene memory 출력.
+  - timeline_event patch op 병합 로직 추가.
+  - 기존 scene memory와 중복이면 []를 출력하도록 지시.
+- 완료: 수동 추출 확인창이 일반 추출 직후 작업을 막던 문제 수정.
+  - 확인창은 일반 추출, 자동 임베딩, 시간축 추출까지 끝난 뒤 한 번만 표시.
+  - API 설정 없음/대화 없음/실패 같은 즉시 중단 케이스는 기존처럼 즉시 알림.
+- 완료: userscript 버전을 1.4.0-test.58로 갱신하고 injecter-4.js cache-buster 갱신.
+- 완료: patch ON 후처리 방어 추가.
+  - 모델이 patch 모드 지시를 무시하고 full object를 반환해도 기존 항목과 비교해 새 상태/트리거/엔티티/이벤트/호칭/시간축 변화가 없으면 저장을 건너뜀.
+  - 일반 로어와 timeline_event 모두 적용.
+- 완료: 메인 화면 부하 완화용 경량 부트스트랩 로더 전환.
+  - metadata @require 전체 제거. 메인 화면에서는 로더 본문만 실행.
+  - 채팅/에피소드 URL에 직접 접속하거나 SPA 라우팅으로 진입할 때만 jsDelivr에서 모듈 38개를 fetch 후 userscript sandbox에서 한 번에 eval.
+  - GM_xmlhttpRequest 동적 다운로드는 사용하지 않음. 따라서 이전 dynamic loader의 Tampermonkey @connect 허용 확인 문제를 피함.
+  - userscript 버전을 1.4.0-test.59로 갱신.
+- 완료: 병합 count 의미 수정.
+  - 기존에는 모델이 full object를 반환해 병합 루프에 들어가면 실제 변경이 없어도 processedCount가 증가할 수 있었음.
+  - 이 count가 자동 임베딩 트리거가 되어 OFF 테스트에서 불필요한 임베딩 입력비용을 만들 가능성이 있었음.
+  - patch op / temporal patch op / full object merge 모두 DB 내용 signature 비교 후 실제 변화가 없으면 count 0 처리.
+  - 수동 추출 완료창에 실제 임베딩 완료 개수를 표시하도록 변경.
+- 완료: userscript 버전을 1.4.0-test.60으로 갱신.
+- 완료: UI/UX 문구 2차 정리.
+  - 메인 설정/추출 설정/API 설정/Refiner/공용 API 입력 안내의 존댓말형 설명을 짧은 음슴체로 정리.
+  - API 설정은 API Key / Vertex JSON / Firebase 입력 경로를 유지하고, 화면만 "API 연결", "모델 선택", "고급 지시문"으로 나눠 초심자용 흐름을 강화.
+  - 도움말을 최신 동작 기준으로 갱신: 메인화면 지연 로드, 변경분만 저장 입력/출력 계약, 중요 장면 별도 호출, 비용 표시 기준을 반영.
+- 완료: userscript 버전을 1.4.0-test.61로 갱신.
+- 완료: UI/UX 파편화 실질 정리.
+  - "과거 장면 불러오기 판단"의 모델/생각 깊이 선택을 추출 화면에서 제거하고 API 설정의 모델 선택으로 이동.
+  - API 설정은 연결 + 기능별 모델 선택만 담당하도록 정리.
+  - 새 "프롬프트 관리" 메뉴 추가. 추출 템플릿, 후보 재정렬 지시문, 응답 교정 지시문을 한 화면에서 수정.
+  - 추출 화면의 프롬프트 템플릿 편집 블록 제거.
+  - AI 응답 교정 화면의 프롬프트 textarea는 편집 입력이 아니라 미리보기로 변경하고, 직접 편집은 프롬프트 관리에서 하도록 정리.
+- 완료: userscript 버전을 1.4.0-test.62로 갱신.
+- 검증: 각 수정 후 embedding/*.js node --check 통과.
+- 검증: embedding_pre/erie_crack_inject.user.js node --check 통과.
+- 검증: loader의 동적 모듈 URL 38개 HEAD 요청 성공.
