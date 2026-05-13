@@ -48,7 +48,14 @@
 
   function normalizeApiOpts(apiOpts = {}) {
     const out = { ...(apiOpts || {}) };
-    if (out.model === '_custom') out.model = out.customModel || out.autoExtCustomModel || 'gemini-3-flash-preview';
+    const liveCfg = _w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config
+      ? _w.__LoreInj.settings.config
+      : {};
+    if (!out.apiType && liveCfg.autoExtApiType) out.apiType = liveCfg.autoExtApiType;
+    if (out.apiType === 'firebase' && (!out.firebaseScript || !String(out.firebaseScript).includes('apiKey')) && liveCfg.autoExtFirebaseScript) {
+      out.firebaseScript = liveCfg.autoExtFirebaseScript;
+    }
+    if (out.model === '_custom') out.model = out.customModel || out.autoExtCustomModel || liveCfg.autoExtCustomModel || 'gemini-3-flash-preview';
     if (!out.model) out.model = 'gemini-3-flash-preview';
     if (out.apiType === 'firebase' && !out.firebaseScript) {
       throw new Error('Firebase 모드: firebaseScript 설정이 지식 변환 호출에 전달되지 않았습니다.');
