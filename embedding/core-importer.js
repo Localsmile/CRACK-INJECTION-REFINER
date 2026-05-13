@@ -51,12 +51,24 @@
     const liveCfg = _w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config
       ? _w.__LoreInj.settings.config
       : {};
+
+    // URL import and text import must use the exact same API surface as auto extract.
+    // Fill any missing field from the live settings snapshot, but never switch apiType implicitly after it is chosen.
     if (!out.apiType && liveCfg.autoExtApiType) out.apiType = liveCfg.autoExtApiType;
-    if (out.apiType === 'firebase' && (!out.firebaseScript || !String(out.firebaseScript).includes('apiKey')) && liveCfg.autoExtFirebaseScript) {
-      out.firebaseScript = liveCfg.autoExtFirebaseScript;
-    }
+    out.apiType = out.apiType || 'key';
+
+    if (!out.key && liveCfg.autoExtKey) out.key = liveCfg.autoExtKey;
+    if (!out.vertexJson && liveCfg.autoExtVertexJson) out.vertexJson = liveCfg.autoExtVertexJson;
+    if (!out.vertexLocation && liveCfg.autoExtVertexLocation) out.vertexLocation = liveCfg.autoExtVertexLocation;
+    if (!out.vertexProjectId && liveCfg.autoExtVertexProjectId) out.vertexProjectId = liveCfg.autoExtVertexProjectId;
+    if (!out.firebaseScript && liveCfg.autoExtFirebaseScript) out.firebaseScript = liveCfg.autoExtFirebaseScript;
+    if (!out.firebaseEmbedKey && liveCfg.autoExtFirebaseEmbedKey) out.firebaseEmbedKey = liveCfg.autoExtFirebaseEmbedKey;
+
     if (out.model === '_custom') out.model = out.customModel || out.autoExtCustomModel || liveCfg.autoExtCustomModel || 'gemini-3-flash-preview';
-    if (!out.model) out.model = 'gemini-3-flash-preview';
+    if (!out.model) out.model = liveCfg.autoExtModel === '_custom'
+      ? (liveCfg.autoExtCustomModel || 'gemini-3-flash-preview')
+      : (liveCfg.autoExtModel || 'gemini-3-flash-preview');
+
     if (out.apiType === 'firebase' && !out.firebaseScript) {
       throw new Error('Firebase 모드: firebaseScript 설정이 지식 변환 호출에 전달되지 않았습니다.');
     }
@@ -146,9 +158,23 @@
     for (let i = 0; i < text.length; i += chunkSize) chunks.push(text.slice(i, i + chunkSize));
     const chunkResults = [];
     const safeApiOpts = normalizeApiOpts(apiOpts);
+    C.__lastImportApiDebug = {
+      apiType: safeApiOpts.apiType,
+      model: safeApiOpts.model,
+      hasKey: !!safeApiOpts.key,
+      hasVertexJson: !!safeApiOpts.vertexJson,
+      vertexLocation: safeApiOpts.vertexLocation || '',
+      firebaseScriptLen: String(safeApiOpts.firebaseScript || '').length,
+      firebaseScriptHead: String(safeApiOpts.firebaseScript || '').trim().slice(0, 60).replace(/\s+/g, ' '),
+      hasFirebaseEmbedKey: !!safeApiOpts.firebaseEmbedKey,
+      chunks: chunks.length,
+      sourceChars: String(text || '').length
+    };
     for (let ci = 0; ci < chunks.length; ci++) {
       const chunk = chunks[ci];
-      const prompt = IMPORT_PROMPT_TEMPLATE.replace('{source}', chunk).replace('{schema}', IMPORT_SCHEMA).replace('{maxEntries}', String(maxEntries));
+      const schemaText = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n');
+      const promptTpl = IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n');
+      const prompt = promptTpl.replace('{source}', chunk).replace('{schema}', schemaText).replace('{maxEntries}', String(maxEntries));
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let gotEntries = 0;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;
