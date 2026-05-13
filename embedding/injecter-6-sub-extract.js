@@ -274,8 +274,27 @@
           urlBtn.onclick = async () => {
             if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; }
             urlBtn.disabled = true; urlBtn.textContent = '변환중...';
+            const startMs = Date.now();
+            let phaseMsg = '에리가 URL 본문 가져오는 중';
+            const setBusy = (msg, color = '#4a9') => {
+              phaseMsg = msg;
+              rDiv.textContent = msg;
+              rDiv.style.color = color;
+              try { C.showStatusBadge(msg); } catch (_) {}
+            };
+            const tick = setInterval(() => {
+              const sec = Math.floor((Date.now() - startMs) / 1000);
+              setBusy(phaseMsg.replace(/\s*\(\d+초\)$/, '') + ` (${sec}초)`);
+            }, 1000);
+            setBusy(phaseMsg + ' (0초)');
             try {
-              const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), buildGenerationApiOpts());
+              const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), buildGenerationApiOpts(), {
+                onProgress: (ev) => {
+                  if (ev && ev.phase === 'chunk') {
+                    setBusy(`에리가 URL 내용을 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
+                  }
+                }
+              });
               const rpt = C.__lastImportReport;
               let msg = '✅ ' + cnt + '개 생성';
               if (rpt) {
@@ -287,11 +306,16 @@
                 }
               }
               rDiv.textContent = msg;
+              rDiv.style.color = cnt > 0 ? '#4a9' : '#da8';
               if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
             } catch (e) {
               rDiv.textContent = '❌ ' + (e.message || String(e));
+              rDiv.style.color = '#d66';
+            } finally {
+              clearInterval(tick);
+              try { C.hideStatusBadge(); } catch (_) {}
+              urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false;
             }
-            urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false;
           };
           nd.appendChild(urlBtn); nd.appendChild(rDiv);
           const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:#ccc;font-weight:bold;margin-top:16px;margin-bottom:8px;">텍스트 → 로어 팩</div>'; nd.appendChild(t2);
@@ -302,8 +326,27 @@
           tBtn.onclick = async () => {
             if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; }
             tBtn.disabled = true; tBtn.textContent = '변환중...';
+            const startMs = Date.now();
+            let phaseMsg = '에리가 텍스트를 로어로 변환 중';
+            const setBusy = (msg, color = '#4a9') => {
+              phaseMsg = msg;
+              rDiv2.textContent = msg;
+              rDiv2.style.color = color;
+              try { C.showStatusBadge(msg); } catch (_) {}
+            };
+            const tick = setInterval(() => {
+              const sec = Math.floor((Date.now() - startMs) / 1000);
+              setBusy(phaseMsg.replace(/\s*\(\d+초\)$/, '') + ` (${sec}초)`);
+            }, 1000);
+            setBusy(phaseMsg + ' (0초)');
             try {
-              const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), buildGenerationApiOpts());
+              const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), buildGenerationApiOpts(), {
+                onProgress: (ev) => {
+                  if (ev && ev.phase === 'chunk') {
+                    setBusy(`에리가 텍스트를 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
+                  }
+                }
+              });
               const rpt = C.__lastImportReport;
               let msg = '✅ ' + cnt + '개 생성';
               if (rpt) {
@@ -315,11 +358,16 @@
                 }
               }
               rDiv2.textContent = msg;
+              rDiv2.style.color = cnt > 0 ? '#4a9' : '#da8';
               if (cnt > 0) await setPackEnabled(nameInp2.value.trim(), true);
             } catch (e) {
               rDiv2.textContent = '❌ ' + (e.message || String(e));
+              rDiv2.style.color = '#d66';
+            } finally {
+              clearInterval(tick);
+              try { C.hideStatusBadge(); } catch (_) {}
+              tBtn.textContent = '텍스트 변환'; tBtn.disabled = false;
             }
-            tBtn.textContent = '텍스트 변환'; tBtn.disabled = false;
           };
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
