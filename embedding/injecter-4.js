@@ -16,15 +16,38 @@
     getChatKey, getTurnCounter,
     getAutoExtPackForUrl,
     addExtLog, setPackEnabled,
+    DEFAULT_AUTO_EXTRACT_SCHEMA,
     DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA,
     DEFAULT_TEMPORAL_EXTRACT_PROMPT,
     DEFAULT_TEMPORAL_EXTRACT_SCHEMA
   } = _w.__LoreInj;
 
-  // v1.4.0-test.47: promptWithDb 안 {outputMode} 토큰을 모드별로 치환. patch ON ↔ full-object OFF 분기를 출력 지시에서 명확히 분리.
-  const OUTPUT_MODE_PATCH = `PATCH OUTPUT MODE WITH EXISTING DB:<br>- Existing entries are provided as compact digests with stable "id".<br>- For an existing entry, DO NOT re-output the full object.<br>- Output {"op":"patch","id":...} only when something changed.<br>- For unchanged existing entries, output nothing.<br>- For brand-new lore, output {"op":"add","entry":{...}}.<br>- Legacy full-entry output is still accepted, but prefer add/patch.<br>- Patch token rule:<br>  - Do not repeat unchanged summary.full.<br>  - Prefer set.state only if state changed.<br>  - Prefer set.summary.compact/micro only when current state/hook changed.<br>  - Prefer append.eventHistory for new concrete events.<br>  - Prefer append.triggers for new literal aliases.<br>  - If summary.full is unavoidable, keep it under 220 chars.<br>- Anchored entries:<br>  - If an existing digest has "anchor": true, do not set protected fields.<br>  - Only append new triggers/eventHistory/callHistory.`;
+  // v1.4.0-test.56: patch ON/OFF must not change the DB context payload. Only output instructions differ.
+  const OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
+- Existing entries are provided as compact digests with stable "id".
+- For an existing entry, do NOT re-output the full object.
+- Output {"op":"patch","id":...} only when something changed.
+- For unchanged existing entries, output nothing.
+- For brand-new lore, output {"op":"add","entry":{...}}.
+- Do not repeat unchanged summary.full.
+- Prefer set.state only if state changed.
+- Prefer append.eventHistory for new concrete events.
+- Prefer append.triggers for new literal aliases.
+- If summary.full is unavoidable, keep it under 220 chars.
+- Anchored entries: only append new triggers/eventHistory/callHistory.`;
 
-  const OUTPUT_MODE_FULL = `FULL-OBJECT OUTPUT MODE WITH EXISTING DB:<br>- For each NEW lore, output the complete entry object per the schema.<br>- For each UPDATED existing entry, re-output the FULL entry with the SAME "name". The merge layer integrates by name.<br>- Do NOT use add/patch op format in this mode. Output entry objects directly inside the JSON array.<br>- For unchanged existing entries, output nothing (omit them entirely).<br>- Anchored entries:<br>  - If an existing entry has "anchor": true, ONLY append new triggers and eventHistory.<br>  - Do NOT re-output summary/state/inject/call/cond/imp/sur/emo for anchored entries.`;
+  const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
+- Existing entries are provided as compact digests with stable "id".
+- For each NEW lore, output the complete entry object.
+- For each UPDATED existing entry, output the complete updated entry object and keep the same "name" when possible.
+- Do NOT use add/patch op format in this mode.
+- For unchanged existing entries, output nothing.
+- Anchored entries: only append new triggers and eventHistory.`;
+
+  const UNIFIED_EXTRACT_SCHEMA = `${DEFAULT_AUTO_EXTRACT_SCHEMA}
+
+Patch-mode alternative when OUTPUT MODE asks for SAVE ONLY CHANGES:
+${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 
   function normalizeEntryForMerge(entry, turn) {
     if (C.normalizeLoreEntry) return C.normalizeLoreEntry(entry, { turn, source: 'auto_extracted' });
@@ -108,11 +131,60 @@
     return out;
   }
 
-  function buildExistingLoreContext(entries, context, limit, patchMode) {
+  function buildExistingLoreContext(entries, context, limit) {
     const selected = selectExistingForContext(entries, context, limit || 20);
-    if (patchMode) return JSON.stringify(selected.map(entryDigestForExtract), null, 2);
-    const clean = selected.map(({ id, packName, project, enabled, ...rest }) => rest);
-    return JSON.stringify(clean, null, 2);
+    return JSON.stringify(selected.map(entryDigestForExtract), null, 2);
+  }
+
+  function normKey(v) {
+    return String(v || '').trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  function arrOverlapScore(a, b) {
+    const aa = new Set((Array.isArray(a) ? a : []).map(normKey).filter(Boolean));
+    const bb = new Set((Array.isArray(b) ? b : []).map(normKey).filter(Boolean));
+    let n = 0;
+    for (const x of aa) if (bb.has(x)) n++;
+    return n;
+  }
+
+  function entryParties(e) {
+    let parties = e.parties || e.entities || e.detail?.parties || [];
+    if ((!Array.isArray(parties) || parties.length < 2) && typeof e.name === 'string') {
+      if (e.name.includes('↔')) parties = e.name.split('↔').map(s => s.trim()).filter(Boolean);
+      else if (e.name.includes('&')) parties = e.name.split('&').map(s => s.trim()).filter(Boolean);
+    }
+    return Array.isArray(parties) ? parties : [];
+  }
+
+  async function findExistingForIncoming(packName, e) {
+    const TL_TYPE_MERGE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
+    if (!e || !e.name) return null;
+    if (e.id != null) {
+      const byId = await db.entries.get(e.id);
+      if (byId && byId.packName === packName) return byId;
+    }
+    if (e.type === TL_TYPE_MERGE) return null;
+    const candidates = await db.entries.where('packName').equals(packName).and(x => x.type !== TL_TYPE_MERGE).toArray();
+    const nName = normKey(e.name);
+    const nType = normKey(e.type);
+    const eTriggers = e.triggers || [];
+    const eEntities = e.entities || e.parties || e.detail?.parties || [];
+    const eParties = entryParties(e).map(normKey).sort().join('|');
+    let best = null, bestScore = 0;
+    for (const x of candidates) {
+      const sameType = normKey(x.type) === nType || (['rel','relationship'].includes(nType) && ['rel','relationship'].includes(normKey(x.type))) || (['prom','promise'].includes(nType) && ['prom','promise'].includes(normKey(x.type)));
+      if (!sameType) continue;
+      let score = 0;
+      if (normKey(x.name) === nName) score += 100;
+      const xParties = entryParties(x).map(normKey).sort().join('|');
+      if (eParties && xParties && eParties === xParties) score += 90;
+      score += arrOverlapScore(eTriggers, x.triggers) * 30;
+      score += arrOverlapScore(eEntities, x.entities || x.parties || x.detail?.parties) * 20;
+      if (nName && (normKey(x.name).includes(nName) || nName.includes(normKey(x.name)))) score += 25;
+      if (score > bestScore) { bestScore = score; best = x; }
+    }
+    return bestScore >= 60 ? best : null;
   }
 
   async function applyExtractPatchOp(op, packName, chatKey) {
@@ -323,6 +395,7 @@
         }
       } else {
         existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name && x.type !== TL_TYPE_MERGE).first();
+        if (!existing) existing = await findExistingForIncoming(packName, e);
       }
       // Phase 12: timeline_event union merge backup — 일반 머지 흐름이 단순 spread로 union 필드를 덮어쓰는 것을 방지.
       // Phase 13-fix: anchor 보호된 timeline_event는 union backup도 건너뛴다 (anchor 무결성 우선; participants/hooks 등도 anchor snap이 그대로 보존).
@@ -631,8 +704,7 @@
       const packName = await getAutoExtPackForUrl(_url);
       const existingEntries = await db.entries.where('packName').equals(packName).toArray();
       if (existingEntries.length > 0) {
-        // Patch mode must include stable ids; full-object mode keeps legacy id-free entries.
-        entriesText = buildExistingLoreContext(existingEntries, context, 20, _patchOn);
+        entriesText = buildExistingLoreContext(existingEntries, context, 20);
       }
     }
     let personaPrefix = '';
@@ -642,7 +714,7 @@
     }
     const tpl = settings.getActiveTemplate();
     const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
-    const extractSchema = _patchOn ? (DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || tpl.schema) : tpl.schema;
+    const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
     const outputModeText = settings.config.autoExtIncludeDb ? (_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL) : '';
     const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
@@ -747,11 +819,10 @@
         const packName = await getAutoExtPackForUrl(_url);
         const existing = await db.entries.where('packName').equals(packName).toArray();
         if (existing.length > 0) {
-          // Patch mode must include stable ids; full-object mode keeps legacy id-free entries.
-          entriesText = buildExistingLoreContext(existing, context, 20, _patchOn);
+          entriesText = buildExistingLoreContext(existing, context, 20);
         }
       }
-      const extractSchema = _patchOn ? (DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || tpl.schema) : tpl.schema;
+      const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
       const outputModeText = settings.config.autoExtIncludeDb ? (_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL) : '';
       const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
