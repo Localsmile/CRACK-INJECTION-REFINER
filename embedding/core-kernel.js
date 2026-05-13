@@ -332,8 +332,18 @@ Entries:
     let url, headers;
     if (isFirebase) {
       // Firebase SDK (페이지 컨텍스트 주입). 3.x=global, 2.x=us-central1 자동.
-      const cfg = parseFirebaseConfig(firebaseScript);
-      if (!cfg || !cfg.apiKey || !cfg.projectId) return { text: null, status: 0, error: 'Firebase 스크립트 형식 오류 (firebaseConfig = {...} 형태 붙여넣기 필요)', retries: 0 };
+      let cfg = parseFirebaseConfig(firebaseScript);
+      if (!cfg || !cfg.apiKey || !cfg.projectId) {
+        const liveScript = _w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config
+          ? _w.__LoreInj.settings.config.autoExtFirebaseScript
+          : '';
+        if (liveScript && liveScript !== firebaseScript) cfg = parseFirebaseConfig(liveScript);
+      }
+      if (!cfg || !cfg.apiKey || !cfg.projectId) {
+        const len = String(firebaseScript || '').length;
+        const head = String(firebaseScript || '').trim().slice(0, 40).replace(/\s+/g, ' ');
+        return { text: null, status: 0, error: 'Firebase 스크립트 형식 오류 (firebaseConfig = {...} 형태 붙여넣기 필요; len=' + len + ', head=' + head + ')', retries: 0 };
+      }
       try {
         const sdk = await loadFirebaseSdk();
         const fb_is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
