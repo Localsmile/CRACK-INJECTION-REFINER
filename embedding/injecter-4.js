@@ -206,6 +206,25 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return n;
   }
 
+  function stableForCompare(v) {
+    if (Array.isArray(v)) return v.map(stableForCompare);
+    if (v && typeof v === 'object') {
+      const out = {};
+      Object.keys(v).sort().forEach(k => {
+        if (['id', 'ts', 'lastUpdated', 'lastMigrationAt', 'localMigrationVersion', 'migratedFromVersion', 'gateScore'].includes(k)) return;
+        if (k.startsWith('_')) return;
+        out[k] = stableForCompare(v[k]);
+      });
+      return out;
+    }
+    return v;
+  }
+
+  function entryContentSignature(entry) {
+    try { return JSON.stringify(stableForCompare(entry || {})); }
+    catch (_) { return String(entry && entry.name || '') + '|' + String(entry && entry.type || ''); }
+  }
+
   function entryParties(e) {
     let parties = e.parties || e.entities || e.detail?.parties || [];
     if ((!Array.isArray(parties) || parties.length < 2) && typeof e.name === 'string') {
@@ -280,6 +299,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     if (!op || op.op !== 'patch' || op.id == null) return 0;
     let existing = await db.entries.get(op.id);
     if (!existing || existing.packName !== packName) return 0;
+    const beforeSig = entryContentSignature(existing);
 
     const anchorGuard = existing.anchor === true;
     try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_patch'); } catch (_) {}
@@ -338,6 +358,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 
     existing.lastUpdated = Date.now();
     try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
+    if (entryContentSignature(existing) === beforeSig) return 0;
     try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch (_) {}
     await db.entries.put(existing);
     return 1;
@@ -348,6 +369,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     let existing = await db.entries.get(op.id);
     const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
     if (!existing || existing.packName !== packName || existing.type !== TL_TYPE) return 0;
+    const beforeSig = entryContentSignature(existing);
 
     try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'temporal_patch'); } catch (_) {}
     const set = op.set || {};
@@ -377,6 +399,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 
     existing.lastUpdated = Date.now();
     try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
+    if (entryContentSignature(existing) === beforeSig) return 0;
     try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch (_) {}
     await db.entries.put(existing);
     return 1;
@@ -515,13 +538,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const addCount = events.length ? await mergeExtractedData(events, url) : 0;
       const count = patchedCount + addCount;
       let embedMsg = '';
+      let embedCount = 0;
       if (count > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
         try {
           const epName = await getAutoExtPackForUrl(url);
           extBadgeShow('에리가 시간축 임베딩 갱신 중');
           const embedOpts = { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-          await C.embedPack(epName, embedOpts);
-          embedMsg = ' / 임베딩 완료';
+          embedCount = await C.embedPack(epName, embedOpts);
+          embedMsg = ' / 임베딩 ' + embedCount + '개 완료';
         } catch(embErr) {
           console.warn('[Lore] 시간축 자동임베딩 실패:', embErr.message);
           embedMsg = ' / 임베딩 실패';
@@ -611,6 +635,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       }
       if (existing) {
         existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
+        const _beforeExistingSig = entryContentSignature(existing);
         // 서사 무결성: 덮어쓰기 전 현재 상태 백업 (append-only)
         try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge'); } catch(ex) {}
         // Narrative Anchor: 앵커 엔트리는 summary/state/detail/call/inject 등 내러티브 필드 보호.
@@ -805,6 +830,10 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (_tlMergeBackup.when && Object.keys(_tlMergeBackup.when).length) existing.when = _tlMergeBackup.when;
         }
         try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch(_) {}
+        if (entryContentSignature(existing) === _beforeExistingSig) {
+          processedCount--;
+          continue;
+        }
         try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch(_) {}
         await db.entries.put(existing);
       } else {
@@ -938,6 +967,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       let generalCount = 0;
       let generalStatus = '추출 내용 없음';
       let embedMsg = '';
+      let embedCount = 0;
       if (Array.isArray(parsed) && parsed.length > 0) {
         generalCount = await mergeExtractedData(parsed, _url);
         generalStatus = '성공';
@@ -946,8 +976,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             const epName = await getAutoExtPackForUrl(_url);
             extBadgeShow('에리가 임베딩 갱신 중');
             const embedOpts = { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-            await C.embedPack(epName, embedOpts);
-            embedMsg = ' (자동 임베딩 완료)';
+            embedCount = await C.embedPack(epName, embedOpts);
+            embedMsg = ' (임베딩 ' + embedCount + '개 완료)';
           } catch(embErr) { console.warn('[Lore] 자동임베딩 실패:', embErr.message); embedMsg = ' (자동 임베딩 실패)'; }
         }
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: generalCount, msgs: recentMsgs.length, isManual, status: generalStatus, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
