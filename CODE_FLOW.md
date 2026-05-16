@@ -633,6 +633,7 @@ The UI was later tightened so responsibilities are clearer:
 
 - Loader partial gate can still mount UI with missing submenus if some submodules fail permanently, but late successful registrations now remount automatically.
 - The loader now avoids metadata `@require` for project modules. The main page only runs a lightweight route watcher; the heavy stack loads after a chat/episode route is reached.
+- The loader installs a lightweight fetch/WebSocket interceptor at `document-start` before heavy modules load. `injecter-5.js` later registers the real inject function through `__loreRegister`, so mobile/Safari timing is less likely to miss the first chat send.
 - Dynamic module loading uses normal `fetch` from jsDelivr and evaluates the concatenated bundle in the userscript sandbox. It intentionally avoids `GM_xmlhttpRequest` for module downloads to prevent Tampermonkey runtime permission prompts.
 - Platform calls must not assume `CrackUtil` is available as an unqualified global after dynamic eval. Use the safe `core-platform.js` helper so chat id, log extraction, persona lookup, and pack naming do not silently fall back to empty values.
 - Extraction patch mode depends on stable `id` values being sent to the model.

@@ -337,3 +337,12 @@ Lore Inject v1 점검 및 정리 작업 계획서
   - 정규화된 추출 항목이 0개면 병합/임베딩 건너뜀.
   - patch 항목이 있어도 실제 DB 내용 signature가 변하지 않으면 count 0, 자동 임베딩도 실행하지 않음.
 - 완료: userscript 버전을 1.4.0-test.64로 갱신.
+
+## 2026-05-16 iPhone/mobile auto-insert timing follow-up
+
+- 완료: 자동 삽입 전송 훅을 로더 단계로 선설치.
+  - 기존에는 heavy module 동적 로드 후 injecter-1.js가 fetch/WebSocket을 후킹했음.
+  - 모바일 Safari/iPhone처럼 로드 타이밍이 늦거나 SPA 전송 객체가 먼저 만들어지는 환경에서는 자동 삽입 훅이 늦게 붙을 위험이 있었음.
+  - 로더가 document-start에서 얇은 fetch/WebSocket wrapper와 __loreRegister를 먼저 설치하고, 실제 inject 함수는 injecter-5.js가 나중에 등록하도록 변경.
+  - heavy module은 여전히 채팅/에피소드 URL에서만 로드하므로 메인화면 부하 방지 구조는 유지.
+- 완료: userscript 버전을 1.4.0-test.65로 갱신.

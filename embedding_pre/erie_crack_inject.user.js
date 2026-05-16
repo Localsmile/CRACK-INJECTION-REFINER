@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Loader)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0-test.64
+// @version     1.4.0-test.65
 // @description 모듈화된 로어 인젝터 로더
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
@@ -24,7 +24,7 @@
   'use strict';
 
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const LOADER_VERSION = '1.4.0-test.64';
+  const LOADER_VERSION = '1.4.0-test.65';
   const CDN_BASE = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260513/embedding/';
   const CACHE = 'v=' + encodeURIComponent(LOADER_VERSION);
   const MODULES = [
@@ -101,6 +101,116 @@
     p.__resolve = _resolve;
     _w.__LoreInjReady = p;
   }
+
+  function installEarlyInterceptor() {
+    if (L0.__interceptorLoaded) return;
+    const origFetch = _w.fetch && _w.fetch.bind(_w);
+    const origWsSend = _w.WebSocket && _w.WebSocket.prototype && _w.WebSocket.prototype.send;
+    if (!origFetch || !origWsSend) return;
+    let injectFn = null;
+
+    async function injectText(text) {
+      if (!injectFn || typeof text !== 'string' || !text || text.includes('OOC:')) return text;
+      try { return await injectFn(text); } catch (e) {
+        console.error('[Lore] early inject err:', e);
+        return text;
+      }
+    }
+
+    _w.WebSocket.prototype.send = function(data) {
+      const ws = this;
+      if (injectFn && typeof data === 'string' && data.length > 10) {
+        const bi = data.indexOf('[');
+        if (bi > 0) {
+          try {
+            const prefix = data.slice(0, bi);
+            const arr = JSON.parse(data.slice(bi));
+            if (Array.isArray(arr) && arr[0] === 'send' && arr[1] && typeof arr[1].message === 'string' && arr[1].message.length > 0) {
+              const orig = arr[1].message;
+              (async () => {
+                const mod = await injectText(orig);
+                if (orig !== mod) {
+                  arr[1].message = mod;
+                  origWsSend.call(ws, prefix + JSON.stringify(arr));
+                } else {
+                  origWsSend.call(ws, data);
+                }
+              })();
+              return;
+            }
+          } catch (_) {}
+        }
+      }
+      return origWsSend.call(this, data);
+    };
+
+    _w.fetch = async function(...args) {
+      try {
+        if (injectFn) {
+          let reqUrl = '', isReq = false;
+          if (args[0] instanceof Request) { reqUrl = args[0].url; isReq = true; }
+          else reqUrl = String(args[0] || '');
+          const method = isReq ? args[0].method : ((args[1] || {}).method || 'GET');
+          if (String(method).toUpperCase() === 'POST' && reqUrl && (reqUrl.includes('/messages') || reqUrl.includes('/chat') || reqUrl.includes('wrtn.ai'))) {
+            let bodyText = null;
+            if (isReq) { try { bodyText = await args[0].clone().text(); } catch (_) {} }
+            else if (args[1] && typeof args[1].body === 'string') bodyText = args[1].body;
+            if (bodyText) {
+              let body = null; try { body = JSON.parse(bodyText); } catch (_) {}
+              if (body && typeof body === 'object') {
+                let injected = false;
+                if (Array.isArray(body.messages)) {
+                  for (let i = body.messages.length - 1; i >= 0; i--) {
+                    if (body.messages[i].role === 'user' && typeof body.messages[i].content === 'string') {
+                      const orig = body.messages[i].content;
+                      const mod = await injectText(orig);
+                      if (orig !== mod) { body.messages[i].content = mod; injected = true; }
+                      break;
+                    }
+                  }
+                }
+                if (!injected) {
+                  for (const key of ['content', 'message', 'text', 'prompt', 'query']) {
+                    if (typeof body[key] === 'string') {
+                      const orig = body[key];
+                      const mod = await injectText(orig);
+                      if (orig !== mod) { body[key] = mod; injected = true; }
+                      break;
+                    }
+                  }
+                }
+                if (!injected && body.variables && typeof body.variables === 'object') {
+                  for (const key of ['content', 'message', 'text', 'prompt', 'query']) {
+                    if (typeof body.variables[key] === 'string') {
+                      const orig = body.variables[key];
+                      const mod = await injectText(orig);
+                      if (orig !== mod) { body.variables[key] = mod; injected = true; }
+                      break;
+                    }
+                  }
+                }
+                if (injected) {
+                  const newBodyText = JSON.stringify(body);
+                  if (isReq) args[0] = new Request(args[0], { body: newBodyText });
+                  else { args[1] = args[1] || {}; args[1].body = newBodyText; }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Lore] early fetch hook err:', e);
+      }
+      return origFetch.apply(this, args);
+    };
+
+    _w.__loreRegister = function(fn) { injectFn = fn; };
+    L0.__interceptorLoaded = true;
+    L0.__earlyInterceptorLoaded = true;
+    console.log('[LoreInj:loader] early interceptor loaded');
+  }
+
+  installEarlyInterceptor();
 
   function isChatPath(path = location.pathname) {
     return /\/characters\/[a-f0-9]+\/chats\/[a-f0-9]+/.test(path)
