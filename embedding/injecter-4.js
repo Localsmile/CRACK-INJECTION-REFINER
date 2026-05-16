@@ -25,6 +25,7 @@
   // v1.4.0-test.56: patch ON/OFF must not change the DB context payload. Only output instructions differ.
   const OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
 - Existing entries are provided as compact digests with stable "id".
+- Output must be one JSON array. Never return a bare object.
 - For an existing entry, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
 - For unchanged existing entries, output nothing.
@@ -39,6 +40,7 @@
 
   const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
 - Existing entries are provided as compact digests with stable "id".
+- Output must be one JSON array. Never return a bare object.
 - For each NEW lore, output the complete entry object.
 - For each UPDATED existing entry, output the complete updated entry object and keep the same "name" when possible.
 - Do NOT use add/patch op format in this mode.
@@ -52,6 +54,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 
   const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
 - Existing important scene memories are provided as compact digests with stable "id".
+- Output must be one JSON array. Never return a bare object.
 - For an existing scene memory, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
 - For unchanged existing scene memories, output nothing.
@@ -62,6 +65,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 
   const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
 - Existing important scene memories are provided as compact digests with stable "id".
+- Output must be one JSON array. Never return a bare object.
 - For each NEW important scene, output the complete timeline_event object.
 - For each UPDATED existing scene, output the complete updated timeline_event object and keep the same "name" when possible.
 - Do NOT use add/patch op format in this mode.
@@ -407,16 +411,29 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return 1;
   }
 
+  function isExtractItemObject(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    if (item.op === 'patch' || item.op === 'add') return true;
+    if (item.entry && typeof item.entry === 'object') return true;
+    return !!(item.name || item.title || item.type || item.summary || item.keywords || item.content);
+  }
+
   function normalizeExtractItems(entries) {
-    if (entries && !Array.isArray(entries) && Array.isArray(entries.entries)) return entries.entries;
-    if (entries && !Array.isArray(entries) && Array.isArray(entries.items)) return entries.items;
-    return Array.isArray(entries) ? entries : [];
+    if (Array.isArray(entries)) return entries.filter(Boolean);
+    if (entries && !Array.isArray(entries)) {
+      if (Array.isArray(entries.entries)) return entries.entries.filter(Boolean);
+      if (Array.isArray(entries.items)) return entries.items.filter(Boolean);
+      if (Array.isArray(entries.patches)) return entries.patches.filter(Boolean);
+      if (isExtractItemObject(entries)) return [entries];
+    }
+    return [];
   }
 
   function normalizeTemporalCandidates(parsed, limit) {
     let arr = parsed;
     if (arr && !Array.isArray(arr) && Array.isArray(arr.events)) arr = arr.events;
     if (arr && !Array.isArray(arr) && Array.isArray(arr.entries)) arr = arr.entries;
+    if (arr && !Array.isArray(arr) && isExtractItemObject(arr)) arr = [arr];
     if (!Array.isArray(arr)) return [];
     const max = Math.max(1, limit || 5);
     const clamp10 = (v, fb) => {
@@ -449,6 +466,36 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       })
       .filter(e => e.name)
       .slice(0, max);
+  }
+
+  async function callGeminiJsonWithRepair(prompt, apiOpts, repairHint) {
+    let res = await C.callGeminiApi(prompt, apiOpts);
+    let parsed = parseJsonLoose(res && res.text);
+    if (!parsed && apiOpts && apiOpts.maxOutputTokens) {
+      const firstCost = res && res.cost;
+      const retryPrompt = prompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n- Return only one complete JSON array.\n- If there is no change, return exactly [].\n' + (repairHint || '');
+      res = await C.callGeminiApi(retryPrompt, {
+        ...apiOpts,
+        maxRetries: 0,
+        maxOutputTokens: null,
+        responseMimeType: 'application/json'
+      });
+      parsed = parseJsonLoose(res && res.text);
+      if (res && firstCost && res.cost) {
+        const retryCost = res.cost;
+        const unknown = !!(firstCost.unknown || retryCost.unknown || firstCost.usd == null || retryCost.usd == null);
+        res.cost = {
+          ...retryCost,
+          inTok: (Number(firstCost.inTok) || 0) + (Number(retryCost.inTok) || 0),
+          outTok: (Number(firstCost.outTok) || 0) + (Number(retryCost.outTok) || 0),
+          usd: unknown ? null : ((Number(firstCost.usd) || 0) + (Number(retryCost.usd) || 0)),
+          unknown,
+          estimated: !!(firstCost.estimated || retryCost.estimated),
+          repairRetry: true
+        };
+      }
+    }
+    return { res, parsed };
   }
 
   function temporalDigestForExtract(e) {
@@ -522,12 +569,13 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
-      const res = await C.callGeminiApi(prompt, { ...apiOpts, responseMimeType: 'application/json', maxRetries: 1, timeoutMs: 120000, maxOutputTokens: _patchOn ? 1024 : null, costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } });
+      const temporalApiOpts = { ...apiOpts, responseMimeType: 'application/json', maxRetries: 1, timeoutMs: 120000, maxOutputTokens: _patchOn ? 1024 : null, costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } };
+      const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
       _tmpElapsedMs = Date.now() - _tmpT0;
       _tmpCost = (res && res.cost) || null;
-      apiLog = { status: res.status, error: res.error, retries: res.retries };
-      if (!res.text) throw new Error('시간축 AI 응답없음 (' + (res.error || '알수없음') + ')');
-      const parsed = parseJsonLoose(res.text);
+      apiLog = res ? { status: res.status, error: res.error, retries: res.retries } : null;
+      if (!res || !res.text) throw new Error('시간축 AI 응답없음 (' + ((res && res.error) || '알수없음') + ')');
+      if (!parsed) throw new Error('시간축 JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       let patchedCount = 0;
       for (const item of normalizeExtractItems(parsed)) {
         if (item && item.op === 'patch') patchedCount += await applyTemporalPatchOp(item, packName, chatKey);
@@ -954,20 +1002,20 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       };
       const _extT0 = Date.now();
-      const res = await C.callGeminiApi(prompt, apiOpts);
+      const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Do not output a single object. Wrap patch/add items in an array.');
       _extElapsedMs = Date.now() - _extT0;
       _extCost = (res && res.cost) || null;
-      apiLog = { status: res.status, error: res.error, retries: res.retries };
-      if (!res.text) throw new Error('AI 응답없음 (' + (res.error || '알수없음') + ')');
-      const parsed = parseJsonLoose(res.text);
+      apiLog = res ? { status: res.status, error: res.error, retries: res.retries } : null;
+      if (!res || !res.text) throw new Error('AI 응답없음 (' + ((res && res.error) || '알수없음') + ')');
       if (!parsed) throw new Error('JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
+      const parsedItems = normalizeExtractItems(parsed);
       let generalCount = 0;
       let generalStatus = '추출 내용 없음';
       let embedMsg = '';
       let embedCount = 0;
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        generalCount = await mergeExtractedData(parsed, _url);
-        generalStatus = '성공';
+      if (parsedItems.length > 0) {
+        generalCount = await mergeExtractedData(parsedItems, _url);
+        generalStatus = generalCount > 0 ? '성공' : '변경 없음';
         if (generalCount > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
           try {
             const epName = await getAutoExtPackForUrl(_url);
@@ -1071,11 +1119,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
             firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: 0, responseMimeType: 'application/json',
+            maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+            maxOutputTokens: _patchOn ? 4096 : null,
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           };
           const _bt0 = Date.now();
-          const res = await C.callGeminiApi(prompt, apiOpts);
+          const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Do not output a single object. Wrap patch/add items in an array.');
           _batchTotalElapsedMs += Date.now() - _bt0;
           if (res && res.cost) {
             if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
@@ -1084,12 +1133,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
           if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
           rawSnippet = String(res.text).slice(0, 200);
-          const parsed = parseJsonLoose(res.text);
           if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            mergedCount = await mergeExtractedData(parsed, _url);
+          const parsedItems = normalizeExtractItems(parsed);
+          if (parsedItems.length > 0) {
+            mergedCount = await mergeExtractedData(parsedItems, _url);
             report.entriesAdded += mergedCount;
-            status = 'ok'; ok = true;
+            status = mergedCount > 0 ? 'ok' : 'empty'; ok = true;
           } else {
             status = 'empty'; ok = true;
           }

@@ -637,6 +637,9 @@ The UI was later tightened so responsibilities are clearer:
 - Platform calls must not assume `CrackUtil` is available as an unqualified global after dynamic eval. Use the safe `core-platform.js` helper so chat id, log extraction, persona lookup, and pack naming do not silently fall back to empty values.
 - Extraction patch mode depends on stable `id` values being sent to the model.
 - Patch-mode full-object fallback must pass through the merge layer. No-op writes are skipped by post-merge content signatures, not by a narrow pre-merge guard, because summary/detail/inject-only changes are valid updates.
+- Extraction responses are normalized before merge. Manual extract, auto conversation cleanup, batch extract, and temporal extract accept JSON arrays, `{ entries: [...] }`, `{ items: [...] }`, `{ patches: [...] }`, and a complete single `add`/`patch` object.
+- A parsed response with zero normalized items means no merge and no embedding. A `patch` item that does not change the stored content also returns count `0` after signature comparison.
+- Patch-mode parse failures can retry once without `maxOutputTokens`; this is only a recovery path for invalid/truncated JSON, not the normal extraction path.
 - Temporal recall judge is intentionally best-effort. It has a longer timeout and one retry, then falls back to deterministic recall rather than blocking insertion.
 - Rerank UI settings must remain connected to `core-search.smartRerank`.
 - Multiple defaults exist across `core-kernel.js` and `injecter-3.js`; setting drift is possible.
