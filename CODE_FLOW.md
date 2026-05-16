@@ -577,6 +577,40 @@ The alert includes the number of embeddings actually generated, so `0` means the
 
 ## UI Bootstrap Flow
 
+### 260517 Hybrid Require Experiment
+
+The `260517-hybrid-require` branch splits bootstrap into two userscripts:
+
+- `embedding_pre/erie_crack_inject.user.js` is a lightweight router for all `crack.wrtn.ai` routes.
+- `embedding_pre/erie_crack_inject_chat.user.js` is the chat-only body and uses `@require` for the full module stack.
+
+Router flow:
+
+```text
+document-start on any crack.wrtn.ai route
+  -> do not load heavy modules on main/non-chat pages
+  -> watch history/navigation mutations
+  -> when SPA navigation reaches a chat route, reload once
+  -> chat-only userscript starts on the reloaded chat URL
+```
+
+Chat body flow:
+
+```text
+document-start on chat/episode route only
+  -> userscript manager loads @require dependencies before body execution
+  -> injecter-1 hooks fetch/WebSocket early
+  -> injecter-3 loads settings and URL pack mappings
+  -> injecter-4/extract and injecter-5/inject register
+  -> injecter-6 and submenus register
+  -> require gate resolves
+  -> injecter-6-ui mounts
+```
+
+This branch intentionally trades one SPA route reload for a more 260427-like initialization order inside chat pages, while keeping the main page free of the heavy module stack.
+
+### 260513 Dynamic Loader
+
 ```text
 userscript document-start on any crack.wrtn.ai route
   -> create __LoreInj queues and __LoreInjReady
@@ -631,6 +665,7 @@ The UI was later tightened so responsibilities are clearer:
 
 ## Known High-Risk Areas
 
+- In the hybrid branch, users need both userscripts installed: the router and the chat body. The router alone cannot load the full injector.
 - Loader partial gate can still mount UI with missing submenus if some submodules fail permanently, but late successful registrations now remount automatically.
 - The loader now avoids metadata `@require` for project modules. The main page only runs a lightweight route watcher; the heavy stack loads after a chat/episode route is reached.
 - The loader installs a lightweight fetch/WebSocket interceptor at `document-start` before heavy modules load. `injecter-5.js` later registers the real inject function through `__loreRegister`, so mobile/Safari timing is less likely to miss the first chat send.

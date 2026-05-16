@@ -346,3 +346,21 @@ Lore Inject v1 점검 및 정리 작업 계획서
   - 로더가 document-start에서 얇은 fetch/WebSocket wrapper와 __loreRegister를 먼저 설치하고, 실제 inject 함수는 injecter-5.js가 나중에 등록하도록 변경.
   - heavy module은 여전히 채팅/에피소드 URL에서만 로드하므로 메인화면 부하 방지 구조는 유지.
 - 완료: userscript 버전을 1.4.0-test.65로 갱신.
+
+## 2026-05-17 hybrid require branch experiment
+
+- 작업 브랜치: 260517-hybrid-require
+- 목표: 260513 배포 브랜치는 유지하고, 메인화면 부하 방지와 260427식 @require 안정성을 함께 검증.
+- 완료: 메인 라우터 스크립트 분리.
+  - embedding_pre/erie_crack_inject.user.js는 전체 crack.wrtn.ai에서 실행되는 초경량 라우터만 담당.
+  - 메인/비채팅 화면에서는 heavy module을 불러오지 않음.
+  - SPA 이동으로 채팅 URL이 감지되면 채팅 URL에서 새 문서 로드가 일어나도록 location.reload() 1회 유도.
+- 완료: 채팅방 전용 본체 스크립트 추가.
+  - embedding_pre/erie_crack_inject_chat.user.js 추가.
+  - stories/*/episodes/*, characters/*/chats/*, u/*/c/* 주소에서만 실행.
+  - 260427처럼 @require로 전체 모듈을 document-start 부트스트랩.
+  - 설정/인터셉터/추출/UI 모듈의 초기화 순서를 동적 fetch/eval보다 안정적으로 고정.
+- 완료: refresh_github_cdn_cache.bat 기본 REF를 260517-hybrid-require로 변경.
+- 설치 URL:
+  - Router: https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject.user.js
+  - Chat body: https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject_chat.user.js
