@@ -228,7 +228,7 @@
     scanRange: 5, scanOffset: 2, maxEntries: 3, cooldownEnabled: true, cooldownTurns: 3,
     strictMatch: true, similarityMatch: true, activeProject: '',
 
-    autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 1,
+    autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '',
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
@@ -243,7 +243,7 @@
     temporalCompressionApiEnabled: false, temporalCompressionTargetChars: 140,
     temporalCompressionPreserveFields: ['participants', 'location', 'hooks'],
     temporalRecallJudgeEnabled: false, temporalRecallJudgeModel: 'gemini-3.1-flash-lite-preview', temporalRecallJudgeCustomModel: '',
-    temporalRecallJudgeReasoning: 'minimal', temporalRecallJudgeTimeoutMs: 2500,
+    temporalRecallJudgeReasoning: 'minimal', temporalRecallJudgeTimeoutMs: 8000,
     temporalRecallJudgeCandidateLimit: 6,
     temporalRecallFallbackMode: 'deterministic',
     temporalRecallJudgePrompt: DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
@@ -645,7 +645,8 @@
       let chatId = C.getCurrentChatId();
       if (!chatId) { const match = url.match(/\/episodes\/([a-f0-9]+)/); if (match) chatId = match[1]; }
       if (chatId) {
-        const room = await CrackUtil.chatRoom().roomData(chatId);
+        const CU = _w.CrackUtil || (typeof CrackUtil !== 'undefined' ? CrackUtil : null);
+        const room = CU ? await CU.chatRoom().roomData(chatId) : null;
         if (room && !(room instanceof Error)) baseName = room.story?.name || room.title || '자동추출';
       }
     } catch(e) {}

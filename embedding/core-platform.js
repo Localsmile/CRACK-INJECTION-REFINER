@@ -8,14 +8,22 @@
   if (!C || !C.__kernelLoaded) { console.error('[LoreCore:platform] kernel 미로드'); return; }
   if (C.__platformLoaded) return;
 
-  function getCurUrl() { return window.location.pathname; }
-  function getCurrentChatId() { try { return CrackUtil.path().chatRoom() || null; } catch (e) { return null; } }
+  function crackUtil() { return _w.CrackUtil || (typeof CrackUtil !== 'undefined' ? CrackUtil : null); }
+  function getCurUrl() { return _w.location.pathname; }
+  function getCurrentChatId() {
+    try {
+      const CU = crackUtil();
+      return CU ? (CU.path().chatRoom() || null) : null;
+    } catch (e) { return null; }
+  }
 
   async function fetchLogs(count) {
     const chatId = getCurrentChatId();
     if (!chatId) return [];
     try {
-      const items = await CrackUtil.chatRoom().extractLogs(chatId, { maxCount: count });
+      const CU = crackUtil();
+      if (!CU) return [];
+      const items = await CU.chatRoom().extractLogs(chatId, { maxCount: count });
       if (items instanceof Error || !Array.isArray(items)) return [];
       return items.map(m => ({ role: m.role, message: m.content }));
     } catch (e) { return []; }
@@ -23,7 +31,10 @@
 
   async function fetchAllMemories(chatRoomId) {
     let token = '';
-    try { token = CrackUtil.cookie().getAuthToken(); } catch (e) {}
+    try {
+      const CU = crackUtil();
+      token = CU ? CU.cookie().getAuthToken() : '';
+    } catch (e) {}
     if (!token) return { goal: [], shortTerm: [], relationship: [], longTerm: [] };
     const headers = { 'Authorization': 'Bearer ' + token };
     const result = { goal: [], shortTerm: [], relationship: [], longTerm: [] };
@@ -52,7 +63,9 @@
     try {
       const chatId = getCurrentChatId();
       if (!chatId) return null;
-      const persona = await CrackUtil.chatRoom().currentPersona(chatId);
+      const CU = crackUtil();
+      if (!CU) return null;
+      const persona = await CU.chatRoom().currentPersona(chatId);
       if (persona && !(persona instanceof Error) && persona.name) return persona.name;
     } catch (e) {}
     return null;

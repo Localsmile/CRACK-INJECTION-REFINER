@@ -634,7 +634,10 @@ The UI was later tightened so responsibilities are clearer:
 - Loader partial gate can still mount UI with missing submenus if some submodules fail permanently, but late successful registrations now remount automatically.
 - The loader now avoids metadata `@require` for project modules. The main page only runs a lightweight route watcher; the heavy stack loads after a chat/episode route is reached.
 - Dynamic module loading uses normal `fetch` from jsDelivr and evaluates the concatenated bundle in the userscript sandbox. It intentionally avoids `GM_xmlhttpRequest` for module downloads to prevent Tampermonkey runtime permission prompts.
+- Platform calls must not assume `CrackUtil` is available as an unqualified global after dynamic eval. Use the safe `core-platform.js` helper so chat id, log extraction, persona lookup, and pack naming do not silently fall back to empty values.
 - Extraction patch mode depends on stable `id` values being sent to the model.
+- Patch-mode full-object fallback must pass through the merge layer. No-op writes are skipped by post-merge content signatures, not by a narrow pre-merge guard, because summary/detail/inject-only changes are valid updates.
+- Temporal recall judge is intentionally best-effort. It has a longer timeout and one retry, then falls back to deterministic recall rather than blocking insertion.
 - Rerank UI settings must remain connected to `core-search.smartRerank`.
 - Multiple defaults exist across `core-kernel.js` and `injecter-3.js`; setting drift is possible.
 - `crack-lore-core.user.js` appears to be a legacy single-file bundle and should not be deleted until distribution paths are confirmed.

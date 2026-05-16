@@ -335,7 +335,7 @@ Entries:
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
-      costContext = null, signal = null } = opts;
+      costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 
     // 비용 추적: costContext 미지정 시 unknown/global로 폴백 기록(누락 방지).
     // usageMetadata 부재 시 char/4 추정 + estimated:true.
@@ -386,6 +386,7 @@ Entries:
         const fbGenConfig = {};
         if (Object.keys(thinkingConfig).length > 0) fbGenConfig.thinkingConfig = thinkingConfig;
         if (responseMimeType) fbGenConfig.responseMimeType = responseMimeType;
+        if (maxOutputTokens != null) fbGenConfig.maxOutputTokens = maxOutputTokens;
         // VertexAIBackend 강제 (GoogleAIBackend는 콘솔에서 별도 활성화 필요).
         // 인스턴스 캐시로 cold init 비용 분할상환.
         const appName = 'crack-ext-' + simpleHash(cfg.apiKey + ':' + cfg.projectId);
@@ -440,13 +441,14 @@ Entries:
     const genConfig = {};
     if (Object.keys(thinkingConfig).length > 0) genConfig.thinkingConfig = thinkingConfig;
     if (responseMimeType) genConfig.responseMimeType = responseMimeType;
+    if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
     const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
 
     let lastStatus = 0, lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
-        const r = await gmFetch(url, { method: 'POST', headers, body, signal });
+        const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
         lastStatus = r.status;
 
         // 401 토큰 갱신
@@ -482,7 +484,10 @@ Entries:
           lastError = '응답 파싱 실패';
         }
       } catch (e) { lastError = e.message; }
-      if (attempt < maxRetries) await new Promise(res => setTimeout(res, 2000));
+      if (attempt < maxRetries) {
+        const waitMs = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
+        await new Promise(res => setTimeout(res, waitMs));
+      }
     }
     return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
   }

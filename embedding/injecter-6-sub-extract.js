@@ -122,7 +122,7 @@
           nd.appendChild(C.createToggleRow('AI로 참고 장면 고르기', '규칙 판단 뒤 AI가 필요한 과거 장면 한 번 더 고름.', settings.config.temporalRecallJudgeEnabled, (v) => { settings.config.temporalRecallJudgeEnabled = v; settings.save(); }));
           const jrow = document.createElement('div'); jrow.style.cssText = 'display:flex;gap:12px;margin-top:10px;';
           const jmkNum = (label, key, defaultVal, min, max) => { const f = document.createElement('div'); f.style.flex = '1'; const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal; if (min !== undefined) i.min = min; if (max !== undefined) i.max = max; i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;'; const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } }; i.oninput = save; i.onchange = save; f.appendChild(l); f.appendChild(i); return f; };
-          jrow.appendChild(jmkNum('응답 제한 시간(ms)', 'temporalRecallJudgeTimeoutMs', 2500, 500, 30000));
+          jrow.appendChild(jmkNum('응답 제한 시간(ms)', 'temporalRecallJudgeTimeoutMs', 8000, 1000, 60000));
           jrow.appendChild(jmkNum('검토할 장면 수', 'temporalRecallJudgeCandidateLimit', 6, 1, 30));
           nd.appendChild(jrow);
         }});

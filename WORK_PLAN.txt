@@ -311,6 +311,13 @@ Lore Inject v1 점검 및 정리 작업 계획서
   - 추출 화면의 프롬프트 템플릿 편집 블록 제거.
   - AI 응답 교정 화면의 프롬프트 textarea는 편집 입력이 아니라 미리보기로 변경하고, 직접 편집은 프롬프트 관리에서 하도록 정리.
 - 완료: userscript 버전을 1.4.0-test.62로 갱신.
+- 완료: 핵심 기능 회귀 의심 1차 수정.
+  - 동적 loader/eval 환경에서 CrackUtil 직접 참조가 실패할 수 있는 core-platform 경로를 안전한 참조로 변경.
+  - 과거 장면 판단 timeout 기본값을 2.5초에서 8초로 완화하고, judge API에 1회 재시도와 출력 제한을 추가.
+  - 생성 API 호출에 timeoutMs/maxOutputTokens 전달을 지원해 추출/시간축 호출은 120초까지 대기하고 patch ON 출력은 제한.
+  - patch ON 상태에서 모델이 full object fallback을 반환한 경우 pre-merge guard가 summary/detail/inject 변경을 누락하던 문제를 제거. 병합 후 signature 비교로 no-op만 건너뜀.
+  - 자동 추출 기본 재시도 값을 2로 상향.
+- 완료: userscript 버전을 1.4.0-test.63으로 갱신.
 - 검증: 각 수정 후 embedding/*.js node --check 통과.
 - 검증: embedding_pre/erie_crack_inject.user.js node --check 통과.
 - 검증: loader의 동적 모듈 URL 38개 HEAD 요청 성공.

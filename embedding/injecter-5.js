@@ -77,7 +77,9 @@
         ...apiOpts,
         model: _judgeModel,
         responseMimeType: 'application/json',
-        maxRetries: 0,
+        maxRetries: 1,
+        timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
+        maxOutputTokens: 512,
         thinkingConfig: { thinkingLevel: config.temporalRecallJudgeReasoning || 'minimal' },
         costContext: { feature: 'judge', chatKey: getChatKey() || 'global' },
         signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined

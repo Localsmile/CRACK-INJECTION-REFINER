@@ -28,6 +28,7 @@
 - For an existing entry, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
 - For unchanged existing entries, output nothing.
+- If nothing changed at all, return exactly [].
 - For brand-new lore, output {"op":"add","entry":{...}}.
 - Do not repeat unchanged summary.full.
 - Prefer set.state only if state changed.
@@ -54,6 +55,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 - For an existing scene memory, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
 - For unchanged existing scene memories, output nothing.
+- If nothing changed at all, return exactly [].
 - For brand-new important scenes, output {"op":"add","entry":{...}}.
 - If the conversation only repeats already stored scene memories, output [].
 - Keep patch fields tiny: prefer append.hooks, append.recallTriggers, append.actions, or set.summary.compact/micro only when changed.`;
@@ -520,7 +522,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
-      const res = await C.callGeminiApi(prompt, { ...apiOpts, responseMimeType: 'application/json', costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } });
+      const res = await C.callGeminiApi(prompt, { ...apiOpts, responseMimeType: 'application/json', maxRetries: 1, timeoutMs: 120000, maxOutputTokens: _patchOn ? 1024 : null, costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } });
       _tmpElapsedMs = Date.now() - _tmpT0;
       _tmpCost = (res && res.cost) || null;
       apiLog = { status: res.status, error: res.error, retries: res.retries };
@@ -609,16 +611,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name && x.type !== TL_TYPE_MERGE).first();
         if (!existing) existing = await findExistingForIncoming(packName, e);
       }
-      const _patchModeGuard = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false && item.op !== 'patch';
-      if (_patchModeGuard && existing) {
-        const meaningful = e.type === TL_TYPE_MERGE
-          ? hasMeaningfulTemporalFullUpdate(existing, e)
-          : hasMeaningfulPatchModeFullUpdate(existing, e);
-        if (!meaningful) {
-          processedCount--;
-          continue;
-        }
-      }
+      // Full-object fallback from patch mode is allowed through the normal merge path.
+      // The after-merge signature check below skips true no-op updates, while still
+      // accepting summary/detail/inject changes that the older pre-merge guard missed.
       // Phase 12: timeline_event union merge backup — 일반 머지 흐름이 단순 spread로 union 필드를 덮어쓰는 것을 방지.
       // Phase 13-fix: anchor 보호된 timeline_event는 union backup도 건너뛴다 (anchor 무결성 우선; participants/hooks 등도 anchor snap이 그대로 보존).
       let _tlMergeBackup = null;
@@ -954,6 +949,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
+        timeoutMs: 120000,
+        maxOutputTokens: _patchOn ? 4096 : null,
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       };
       const _extT0 = Date.now();
@@ -1109,7 +1106,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
               firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-              maxRetries: 0, responseMimeType: 'application/json',
+              maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+              maxOutputTokens: _patchOn ? 4096 : null,
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             };
             const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length });
