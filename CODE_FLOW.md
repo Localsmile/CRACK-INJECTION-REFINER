@@ -666,6 +666,7 @@ The UI was later tightened so responsibilities are clearer:
 ## Known High-Risk Areas
 
 - In the hybrid branch, users need both userscripts installed: the router and the chat body. The router alone cannot load the full injector.
+- The `260518` branch keeps the hybrid split and adds `@grant unsafeWindow` plus `@sandbox raw` to the chat body metadata as a first iOS Safari insertion fix. This is intentionally metadata-only; if insertion still fails on iOS, the next step is a page-context bridge for fetch/WebSocket.
 - Loader partial gate can still mount UI with missing submenus if some submodules fail permanently, but late successful registrations now remount automatically.
 - The loader now avoids metadata `@require` for project modules. The main page only runs a lightweight route watcher; the heavy stack loads after a chat/episode route is reached.
 - The loader installs a lightweight fetch/WebSocket interceptor at `document-start` before heavy modules load. `injecter-5.js` later registers the real inject function through `__loreRegister`, so mobile/Safari timing is less likely to miss the first chat send.

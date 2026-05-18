@@ -364,3 +364,17 @@ Lore Inject v1 점검 및 정리 작업 계획서
 - 설치 URL:
   - Router: https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject.user.js
   - Chat body: https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject_chat.user.js
+
+## 2026-05-18 iOS Safari insertion metadata branch
+
+- 작업 브랜치: 260518
+- 기준: 260517-hybrid-require
+- 목표: 이전 배포/테스트 브랜치 영향 없이 iPhone Safari 삽입 실패 1차 수정만 검증.
+- 완료: Chat body userscript metadata에 page context 접근 힌트 추가.
+  - @grant unsafeWindow 추가.
+  - @sandbox raw 추가.
+  - 목적: iOS Safari/Tampermonkey 계열에서 실제 page window의 fetch/WebSocket 후킹 가능성을 높임.
+- 완료: Router/Chat body updateURL/downloadURL 및 refresh_github_cdn_cache.bat REF를 260518로 변경.
+- 설치 URL:
+  - Router: https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260518/embedding_pre/erie_crack_inject.user.js
+  - Chat body: https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260518/embedding_pre/erie_crack_inject_chat.user.js

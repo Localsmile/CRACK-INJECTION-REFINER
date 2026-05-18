@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Router)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0-test.66
+// @version     1.4.0-test.67
 // @description 채팅방 전용 본체로 진입시키는 초경량 라우터
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
-// @updateURL   https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject.user.js
-// @downloadURL https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject.user.js
+// @updateURL   https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260518/embedding_pre/erie_crack_inject.user.js
+// @downloadURL https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260518/embedding_pre/erie_crack_inject.user.js
 // @run-at      document-start
 // @grant       none
 // ==/UserScript==
@@ -14,8 +14,8 @@
 (function () {
   'use strict';
 
-  const ROUTER_VERSION = '1.4.0-test.66';
-  const CHAT_SCRIPT_URL = 'https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260517-hybrid-require/embedding_pre/erie_crack_inject_chat.user.js';
+  const ROUTER_VERSION = '1.4.0-test.67';
+  const CHAT_SCRIPT_URL = 'https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260518/embedding_pre/erie_crack_inject_chat.user.js';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   _w.__LoreInjRouter = _w.__LoreInjRouter || {};
   _w.__LoreInjRouter.version = ROUTER_VERSION;

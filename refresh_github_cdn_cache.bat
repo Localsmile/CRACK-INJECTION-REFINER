@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "REPO=Localsmile/CRACK-INJECTION-REFINER"
-set "REF=260517-hybrid-require"
+set "REF=260518"
 set "ARGS=%*"
 set "DRY_RUN=0"
 set "NO_HEAD=0"
