@@ -33,7 +33,7 @@
     btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:#833;color:#fff;border:0;border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.35);';
     btn.onclick = () => {
       const L = _w.__LoreInj || {};
-      const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], route: L.route || null };
+      const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], menuOrder: L.__menuOrder || null, route: L.route || null };
       alert(JSON.stringify(payload, null, 2).slice(0, 3000));
     };
     document.body.appendChild(btn);

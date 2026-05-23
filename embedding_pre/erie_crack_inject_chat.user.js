@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Chat)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0-test.69
+// @version     1.4.0-test.70
 // @description 채팅방에서만 @require로 안정 부트스트랩되는 로어 인젝터 본체
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/stories/*/episodes/*
@@ -67,7 +67,7 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   _w.__LoreInj = _w.__LoreInj || {};
   const L = _w.__LoreInj;
-  L.chatBootstrapVersion = '1.4.0-test.69';
+  L.chatBootstrapVersion = '1.4.0-test.70';
 
   if (!_w.__LoreInjReady) {
     let resolveReady;
@@ -76,9 +76,8 @@
     _w.__LoreInjReady = p;
   }
 
-  const TIMEOUT_MS = 30000;
+  const TIMEOUT_MS = 45000;
   const POLL_MS = 50;
-  const SUB_SOFT_WAIT_MS = 7000;
   const deadline = Date.now() + TIMEOUT_MS;
   const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded', '__inject6Loaded'];
   const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
@@ -106,14 +105,6 @@
       state.allReady = true;
       console.log('[LoreInj chat ' + (state.VER || L.chatBootstrapVersion) + '] require gate passed');
       settle({ ok: true, ver: state.VER || L.chatBootstrapVersion });
-      return;
-    }
-    if (missingCore.length === 0 && missingSubs.length > 0 && Date.now() - (state.__gateCoreReadyAt || Date.now()) >= SUB_SOFT_WAIT_MS) {
-      state.allReady = true;
-      state.partialReady = true;
-      state.missingSubs = missingSubs;
-      console.warn('[LoreInj chat] partial require gate:', missingSubs);
-      settle({ ok: true, ver: state.VER || L.chatBootstrapVersion, partial: true, missingSubs });
       return;
     }
     if (Date.now() < deadline) return setTimeout(check, POLL_MS);
