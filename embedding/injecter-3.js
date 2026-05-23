@@ -666,6 +666,30 @@
     settings.config.urlAutoExtPacks[url] = packName; settings.save();
   }
 
+  function getUrlStateKey(url) {
+    const curUrl = url || C.getCurUrl();
+    const packsByUrl = settings.config.urlPacks || {};
+    if (packsByUrl[curUrl]) return curUrl;
+    try {
+      const chatId = C.getCurrentChatId && C.getCurrentChatId();
+      if (chatId) {
+        const found = Object.keys(packsByUrl).find(k => k && k.includes(chatId) && packsByUrl[k] && packsByUrl[k].length);
+        if (found) return found;
+      }
+    } catch (_) {}
+    return curUrl;
+  }
+
+  function getActivePacksForUrl(url) {
+    const key = getUrlStateKey(url);
+    return (settings.config.urlPacks && settings.config.urlPacks[key]) || [];
+  }
+
+  function getDisabledEntriesForUrl(url) {
+    const key = getUrlStateKey(url);
+    return (settings.config.urlDisabledEntries && settings.config.urlDisabledEntries[key]) || [];
+  }
+
   function getExtLog(chatKey) { return settings.config.urlExtLogs?.[chatKey] || []; }
   function addExtLog(chatKey, logItem) {
     if (!settings.config.urlExtLogs) settings.config.urlExtLogs = {};
@@ -691,14 +715,13 @@
   }
 
   function isEntryEnabledForUrl(entry) {
-    const curUrl = C.getCurUrl();
-    const packs = settings.config.urlPacks?.[curUrl] || [];
-    const disabled = settings.config.urlDisabledEntries?.[curUrl] || [];
+    const packs = getActivePacksForUrl();
+    const disabled = getDisabledEntriesForUrl();
     return packs.includes(entry.packName) && !disabled.includes(entry.id);
   }
 
   async function setPackEnabled(packName, state) {
-    const curUrl = C.getCurUrl();
+    const curUrl = getUrlStateKey();
     const up = JSON.parse(JSON.stringify(settings.config.urlPacks || {}));
     const ud = JSON.parse(JSON.stringify(settings.config.urlDisabledEntries || {}));
     up[curUrl] = up[curUrl] || []; ud[curUrl] = ud[curUrl] || [];
@@ -714,7 +737,7 @@
   }
 
   function setEntryEnabled(entry, state) {
-    const curUrl = C.getCurUrl();
+    const curUrl = getUrlStateKey();
     const up = JSON.parse(JSON.stringify(settings.config.urlPacks || {}));
     const ud = JSON.parse(JSON.stringify(settings.config.urlDisabledEntries || {}));
     up[curUrl] = up[curUrl] || []; ud[curUrl] = ud[curUrl] || [];
@@ -737,6 +760,7 @@
     getTurnCounter, setTurnCounter,
     getCooldownMap, setCooldownLastTurn,
     getAutoExtPackForUrl, setAutoExtPackForUrl,
+    getUrlStateKey, getActivePacksForUrl, getDisabledEntriesForUrl,
     getExtLog, addExtLog, clearExtLog,
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,

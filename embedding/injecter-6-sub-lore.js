@@ -17,7 +17,7 @@
   _w.__LoreInj.registerSubMenu('lore', function(modal) {
     modal.createSubMenu('로어 관리 (목록)', (m) => {
       const renderPanel = async (panel) => {
-        const _url = C.getCurUrl(); const activePacks = settings.config.urlPacks?.[_url] || [];
+        const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
         if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 파일 탭에서 활성화하세요.'); return; }
         const entries = await db.entries.toArray();
         const filtered = entries.filter(e => activePacks.includes(e.packName));

@@ -15,7 +15,7 @@
         const chatKey = getChatKey();
         const turnCounter = getTurnCounter(chatKey);
         const cMap = getCooldownMap(chatKey);
-        const urlPacks = settings.config.urlPacks?.[C.getCurUrl()] || [];
+        const urlPacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []);
   
         let allEntries = [];
         if (urlPacks.length > 0) {
@@ -52,7 +52,7 @@
               _ls.removeItem('lore-recent-injections:' + chatKey);
               _ls.removeItem('lore-fe-recent-' + chatKey);
 
-              const packs = settings.config.urlPacks?.[curUrl] || [];
+              const packs = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(curUrl) : (settings.config.urlPacks?.[curUrl] || []);
               if (packs.length) {
                 const entries = await db.entries.where('packName').anyOf(packs).toArray();
                 for (const e of entries) {

@@ -210,8 +210,9 @@
     const turnCounter = incrementTurnCounter(chatKey);
     if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
 
-    const activePackState = resolveActivePackState(_url);
-    const activePacksArr = activePackState.packs || [];
+    const activePacksArr = typeof _w.__LoreInj.getActivePacksForUrl === 'function'
+      ? _w.__LoreInj.getActivePacksForUrl(_url)
+      : (resolveActivePackState(_url).packs || []);
     if (!activePacksArr.length) {
       addInjLog(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
@@ -221,7 +222,9 @@
       return userInput;
     }
     const allForPacks = await db.entries.where('packName').anyOf(activePacksArr).toArray();
-    const disabledSet = new Set(activePackState.disabled || []);
+    const disabledSet = new Set(typeof _w.__LoreInj.getDisabledEntriesForUrl === 'function'
+      ? _w.__LoreInj.getDisabledEntriesForUrl(_url)
+      : (resolveActivePackState(_url).disabled || []));
     let enabled = allForPacks.filter(e => !disabledSet.has(e.id));
     if (!enabled.length) {
       addInjLog(chatKey, {

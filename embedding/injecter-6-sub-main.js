@@ -36,7 +36,7 @@
           const cfg = settings.config || {};
           const apiType = cfg.autoExtApiType || 'key';
           const apiReady = apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
-          const activePacks = (cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || [];
+          const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
           chip('API', apiReady ? '설정됨' : '미설정', apiReady);
           const packValue = chip('활성 로어팩', activePacks.length ? activePacks.length + '개' : '없음', activePacks.length > 0);
           const entryValue = chip('사용 가능한 로어', '확인 중', true);
