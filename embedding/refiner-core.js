@@ -62,6 +62,19 @@
     try { _ls.setItem(_PROCESSED_KEY_PREFIX + chatKey, JSON.stringify(Array.from(set))); } catch (_) {}
   }
 
+  const _activeRefines = new Set();
+  function _refineLockKey(chatId, messageId, text) {
+    return String(chatId || 'global') + ':' + String(messageId || (text || '').slice(0, 80));
+  }
+  function _acquireRefineLock(chatId, messageId, text) {
+    const key = _refineLockKey(chatId, messageId, text);
+    if (_activeRefines.has(key)) return null;
+    _activeRefines.add(key);
+    return function releaseRefineLock() {
+      _activeRefines.delete(key);
+    };
+  }
+
   function formatCallStateForRefiner(entry) {
     const out = [];
     const addState = (key, raw) => {
@@ -172,10 +185,21 @@
     const chatRoomId = Core.getCurrentChatId();
     if (!chatRoomId) { Core.hideStatusBadge(); return; }
     const url = Core.getCurUrl();
+    let targetLog = null;
+    try { targetLog = await CrackUtil.chatRoom().findLastBotMessage(chatRoomId); } catch (_) {}
+    const targetMsgId = targetLog && !(targetLog instanceof Error) ? targetLog.id : '';
+    const releaseRefineLock = _acquireRefineLock(chatRoomId, targetMsgId, assistantText);
+    if (!releaseRefineLock) {
+      R.lastState = { state: 'skipped', detail: 'duplicate refiner call blocked', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
+      Core.hideStatusBadge();
+      return;
+    }
+    let holdRefineLock = false;
 
     // 1. 로어
     let loreText = '활성화된 로어 없음.';
     let activeEntries = [];
+    try {
     if (GetActivePacksCallback) {
       try {
         const activePacks = GetActivePacksCallback(url);
@@ -360,7 +384,7 @@
           try {
             const _cid = Core.getCurrentChatId();
             if (!_cid) throw new Error('채팅방 ID 없음');
-            const lastBot = await CrackUtil.chatRoom().findLastBotMessage(_cid);
+            const lastBot = targetLog && !(targetLog instanceof Error) ? targetLog : await CrackUtil.chatRoom().findLastBotMessage(_cid);
             if (lastBot && !(lastBot instanceof Error)) {
               const token = CrackUtil.cookie().getAuthToken();
               const editUrl = `https://crack-api.wrtn.ai/crack-gen/v3/chats/${_cid}/messages/${lastBot.id}`;
@@ -389,7 +413,8 @@
                 _loadChat(_currentChatKey()).add(newFp);
                 saveProcessedFingerprints();
                 // store update -> DOM apply -> lock fallback -> verify -> reload toast last resort
-                const oldPlain = R.stripMarkdown ? R.stripMarkdown(assistantText) : assistantText;
+                const originalForDom = (lastBot && lastBot.content) || assistantText;
+                const oldPlain = R.stripMarkdown ? R.stripMarkdown(originalForDom) : originalForDom;
                 const newPlain = R.stripMarkdown ? R.stripMarkdown(serverText) : serverText;
                 let targetEl = null;
                 try {
@@ -408,13 +433,23 @@
                 let domResult = null;
                 let domUpdated = false;
 
-                setTimeout(async () => {
+                const verifyAndPatchVisible = async (delayMs) => {
+                  if (delayMs) await new Promise(r => setTimeout(r, delayMs));
                   let visible = false;
                   try {
                     visible = R.waitForVisibleText
-                      ? await R.waitForVisibleText(serverText, serverMessageId, 1800)
+                      ? await R.waitForVisibleText(serverText, serverMessageId, 900)
                       : (R.isTextVisible ? R.isTextVisible(serverText, serverMessageId) : storeOk);
                   } catch (_) { visible = !!storeOk; }
+
+                  if (!visible && R.refreshMessageInDOM && !hasCodeFence) {
+                    let fallbackResult = null;
+                    try { fallbackResult = R.refreshMessageInDOM(originalForDom, serverText, serverMessageId); } catch (_) {}
+                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
+                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
+                  } else if (!visible && hasCodeFence) {
+                    _w.__LR_LAST_DOM_FALLBACK = { skipped: true, status: 'skipped_codeblock', messageId: serverMessageId };
+                  }
 
                   if (!visible && R.nudgeMessageNativeRender) {
                     let nudged = false;
@@ -423,23 +458,19 @@
                     if (nudged) {
                       try {
                         visible = R.waitForVisibleText
-                          ? await R.waitForVisibleText(serverText, serverMessageId, 1800)
+                          ? await R.waitForVisibleText(serverText, serverMessageId, 900)
                           : (R.isTextVisible ? R.isTextVisible(serverText, serverMessageId) : visible);
                       } catch (_) {}
                     }
                   }
 
-                  if (!visible && R.refreshMessageInDOM && !hasCodeFence) {
-                    let fallbackResult = null;
-                    try { fallbackResult = R.refreshMessageInDOM(assistantText, serverText, serverMessageId); } catch (_) {}
-                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
-                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
-                  } else if (!visible && hasCodeFence) {
-                    _w.__LR_LAST_DOM_FALLBACK = { skipped: true, status: 'skipped_codeblock', messageId: serverMessageId };
-                  }
+                  if (!visible && delayMs && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침 필요.');
+                  return visible;
+                };
 
-                  if (!visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침 필요.');
-                }, 1200);
+                verifyAndPatchVisible(150).then((visible) => {
+                  if (!visible) setTimeout(() => { verifyAndPatchVisible(0); }, 1200);
+                });
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(serverText).slice(0, 80) : (serverText || '').slice(0, 80);
                 if (newFingerprint) { _loadChat(_currentChatKey()).add(newFingerprint); saveProcessedFingerprints(); }
                 if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
@@ -466,7 +497,13 @@
             if (ToastCallback) ToastCallback('에리: 제안을 로그에 보관함', '#258');
             if (enqueueCallback) setTimeout(enqueueCallback, 100);
           } else {
-            R.showRefineConfirm(parsed.reason, correctedText, (newText) => { applyRefinement(newText); }, () => { if (enqueueCallback) setTimeout(enqueueCallback, 100); });
+            holdRefineLock = true;
+            R.showRefineConfirm(
+              parsed.reason,
+              correctedText,
+              (newText) => { applyRefinement(newText).finally(releaseRefineLock); },
+              () => { releaseRefineLock(); if (enqueueCallback) setTimeout(enqueueCallback, 100); }
+            );
           }
         }
       }
@@ -474,6 +511,9 @@
       if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'System Error: ' + e.message, isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
       Core.hideStatusBadge();
       if (ToastCallback) ToastCallback(`에리: 교정 실패 — ${e.message}`, '#a55');
+    }
+    } finally {
+      if (!holdRefineLock) releaseRefineLock();
     }
   }
 
