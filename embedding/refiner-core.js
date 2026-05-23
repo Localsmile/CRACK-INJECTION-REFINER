@@ -62,6 +62,19 @@
     try { _ls.setItem(_PROCESSED_KEY_PREFIX + chatKey, JSON.stringify(Array.from(set))); } catch (_) {}
   }
 
+  const _activeRefines = new Set();
+  function _refineLockKey(chatId, messageId, text) {
+    return String(chatId || 'global') + ':' + String(messageId || (text || '').slice(0, 80));
+  }
+  function _acquireRefineLock(chatId, messageId, text) {
+    const key = _refineLockKey(chatId, messageId, text);
+    if (_activeRefines.has(key)) return null;
+    _activeRefines.add(key);
+    return function releaseRefineLock() {
+      _activeRefines.delete(key);
+    };
+  }
+
   function formatCallStateForRefiner(entry) {
     const out = [];
     const addState = (key, raw) => {
@@ -172,10 +185,21 @@
     const chatRoomId = Core.getCurrentChatId();
     if (!chatRoomId) { Core.hideStatusBadge(); return; }
     const url = Core.getCurUrl();
+    let targetLog = null;
+    try { targetLog = await CrackUtil.chatRoom().findLastBotMessage(chatRoomId); } catch (_) {}
+    const targetMsgId = targetLog && !(targetLog instanceof Error) ? targetLog.id : '';
+    const releaseRefineLock = _acquireRefineLock(chatRoomId, targetMsgId, assistantText);
+    if (!releaseRefineLock) {
+      R.lastState = { state: 'skipped', detail: 'duplicate refiner call blocked', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
+      Core.hideStatusBadge();
+      return;
+    }
+    let holdRefineLock = false;
 
     // 1. 로어
     let loreText = '활성화된 로어 없음.';
     let activeEntries = [];
+    try {
     if (GetActivePacksCallback) {
       try {
         const activePacks = GetActivePacksCallback(url);
@@ -360,81 +384,99 @@
           try {
             const _cid = Core.getCurrentChatId();
             if (!_cid) throw new Error('채팅방 ID 없음');
-            const lastBot = await CrackUtil.chatRoom().findLastBotMessage(_cid);
+            const lastBot = targetLog && !(targetLog instanceof Error) ? targetLog : await CrackUtil.chatRoom().findLastBotMessage(_cid);
             if (lastBot && !(lastBot instanceof Error)) {
               const token = CrackUtil.cookie().getAuthToken();
-              const editUrl = `https://contents-api.wrtn.ai/character-chat/v3/chats/${_cid}/messages/${lastBot.id}`;
+              const editUrl = `https://crack-api.wrtn.ai/crack-gen/v3/chats/${_cid}/messages/${lastBot.id}`;
               const editResult = await Core.gmFetch(editUrl, {
                 method: 'PATCH',
-                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                headers: {
+                  'Accept': 'application/json, text/plain, */*',
+                  'Authorization': 'Bearer ' + token,
+                  'Content-Type': 'application/json',
+                  'platform': 'web',
+                  'wrtn-locale': 'ko-KR'
+                },
                 body: JSON.stringify({ message: newText })
               });
 
-              const newFp = lastBot.id || newText.slice(0, 40);
-              _loadChat(_currentChatKey()).add(newFp);
-              saveProcessedFingerprints();
+              let editText = '';
+              let editJson = null;
+              try { editText = editResult.text ? await editResult.text() : ''; } catch (_) {}
+              try { editJson = editText ? JSON.parse(editText) : null; } catch (_) {}
+              const serverOk = !!(editResult.ok && (!editJson || editJson.result === 'SUCCESS'));
+              const serverText = (editJson && editJson.data && typeof editJson.data.content === 'string') ? editJson.data.content : newText;
+              const serverMessageId = (editJson && editJson.data && (editJson.data._id || editJson.data.id)) || lastBot.id;
 
-              if (editResult.ok) {
+              if (serverOk) {
+                const newFp = serverMessageId || serverText.slice(0, 40);
+                _loadChat(_currentChatKey()).add(newFp);
+                saveProcessedFingerprints();
                 // store update -> DOM apply -> lock fallback -> verify -> reload toast last resort
-                const oldPlain = R.stripMarkdown ? R.stripMarkdown(assistantText) : assistantText;
-                const newPlain = R.stripMarkdown ? R.stripMarkdown(newText) : newText;
+                const originalForDom = (lastBot && lastBot.content) || assistantText;
+                const oldPlain = R.stripMarkdown ? R.stripMarkdown(originalForDom) : originalForDom;
+                const newPlain = R.stripMarkdown ? R.stripMarkdown(serverText) : serverText;
                 let targetEl = null;
                 try {
-                  targetEl = (R.findMessageContainerById && R.findMessageContainerById(lastBot.id))
+                  targetEl = (R.findMessageContainerById && R.findMessageContainerById(serverMessageId))
                           || (R.findDeepestMatchingElement && R.findDeepestMatchingElement(oldPlain))
                           || null;
                 } catch (_) {}
-                const storeOk = !!(targetEl && R.tryStoreUpdate && R.tryStoreUpdate(targetEl, lastBot.id, newText));
+                const storeOk = !!(targetEl && R.tryStoreUpdate && R.tryStoreUpdate(targetEl, serverMessageId, serverText));
                 // v11: gate innerHTML stomp behind path A failure.
                 // When path A fired (RERENDER_HITS > 0), wrtn re-renders the bubble with its
                 // own native markdown pipeline, which handles wrtn-specific code-block boxes,
                 // editing-textarea seeds, etc. Our generic innerHTML stomp was racing with
                 // that commit and producing the code-block-wrapping / stale-textarea artifacts.
-                const hasCodeFence = /```/.test(newText || '');
+                const hasCodeFence = /```/.test(serverText || '');
                 const rerenderOk = (_w.__LR_LAST_RERENDER_HITS || 0) > 0;
                 let domResult = null;
                 let domUpdated = false;
 
-                setTimeout(async () => {
+                const verifyAndPatchVisible = async (delayMs) => {
+                  if (delayMs) await new Promise(r => setTimeout(r, delayMs));
                   let visible = false;
                   try {
                     visible = R.waitForVisibleText
-                      ? await R.waitForVisibleText(newText, lastBot.id, 1800)
-                      : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : storeOk);
+                      ? await R.waitForVisibleText(serverText, serverMessageId, 900)
+                      : (R.isTextVisible ? R.isTextVisible(serverText, serverMessageId) : storeOk);
                   } catch (_) { visible = !!storeOk; }
+
+                  if (!visible && R.refreshMessageInDOM && !hasCodeFence) {
+                    let fallbackResult = null;
+                    try { fallbackResult = R.refreshMessageInDOM(originalForDom, serverText, serverMessageId); } catch (_) {}
+                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
+                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
+                  } else if (!visible && hasCodeFence) {
+                    _w.__LR_LAST_DOM_FALLBACK = { skipped: true, status: 'skipped_codeblock', messageId: serverMessageId };
+                  }
 
                   if (!visible && R.nudgeMessageNativeRender) {
                     let nudged = false;
-                    try { nudged = !!R.nudgeMessageNativeRender(lastBot.id); } catch (_) {}
+                    try { nudged = !!R.nudgeMessageNativeRender(serverMessageId); } catch (_) {}
                     _w.__LR_LAST_NATIVE_NUDGE = nudged;
                     if (nudged) {
                       try {
                         visible = R.waitForVisibleText
-                          ? await R.waitForVisibleText(newText, lastBot.id, 1800)
-                          : (R.isTextVisible ? R.isTextVisible(newText, lastBot.id) : visible);
+                          ? await R.waitForVisibleText(serverText, serverMessageId, 900)
+                          : (R.isTextVisible ? R.isTextVisible(serverText, serverMessageId) : visible);
                       } catch (_) {}
                     }
                   }
 
-                  if (!visible && R.refreshMessageInDOM && !hasCodeFence) {
-                    let fallbackResult = null;
-                    try { fallbackResult = R.refreshMessageInDOM(assistantText, newText, lastBot.id); } catch (_) {}
-                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
-                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
-                  } else if (!visible && hasCodeFence) {
-                    _w.__LR_LAST_DOM_FALLBACK = { skipped: true, status: 'skipped_codeblock', messageId: lastBot.id };
-                  }
+                  if (!visible && delayMs && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침 필요.');
+                  return visible;
+                };
 
-                  if (!storeOk && !visible && R.showReloadAction) R.showReloadAction('서버 수정 완료. 코드블록 보호를 위해 강제 DOM 치환은 건너뜀. 화면이 예전 응답이면 새로고침으로 반영하세요.');
-                }, 1200);
-                const newFingerprint = R.stripMarkdown ? R.stripMarkdown(newText).slice(0, 80) : (newText || '').slice(0, 80);
+                verifyAndPatchVisible(150).then((visible) => {
+                  if (!visible) setTimeout(() => { verifyAndPatchVisible(0); }, 1200);
+                });
+                const newFingerprint = R.stripMarkdown ? R.stripMarkdown(serverText).slice(0, 80) : (serverText || '').slice(0, 80);
                 if (newFingerprint) { _loadChat(_currentChatKey()).add(newFingerprint); saveProcessedFingerprints(); }
                 if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
-                console.log('[Refiner] PATCH 성공. id=', lastBot.id, 'status=', editResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
+                console.log('[Refiner] PATCH 성공. id=', serverMessageId, 'status=', editResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
               } else {
-                let errText = '';
-                try { errText = editResult.text ? await editResult.text() : ''; } catch(ex) {}
-                console.error('[Refiner] PATCH 실패. status=', editResult.status, 'body=', errText.slice(0, 300));
+                console.error('[Refiner] PATCH 실패. status=', editResult.status, 'body=', (editText || '').slice(0, 300));
                 if (ToastCallback) ToastCallback(`에리: 서버 수정 실패 (${editResult.status})`, '#a55');
               }
             } else {
@@ -455,7 +497,13 @@
             if (ToastCallback) ToastCallback('에리: 제안을 로그에 보관함', '#258');
             if (enqueueCallback) setTimeout(enqueueCallback, 100);
           } else {
-            R.showRefineConfirm(parsed.reason, correctedText, (newText) => { applyRefinement(newText); }, () => { if (enqueueCallback) setTimeout(enqueueCallback, 100); });
+            holdRefineLock = true;
+            R.showRefineConfirm(
+              parsed.reason,
+              correctedText,
+              (newText) => { applyRefinement(newText).finally(releaseRefineLock); },
+              () => { releaseRefineLock(); if (enqueueCallback) setTimeout(enqueueCallback, 100); }
+            );
           }
         }
       }
@@ -463,6 +511,9 @@
       if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'System Error: ' + e.message, isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
       Core.hideStatusBadge();
       if (ToastCallback) ToastCallback(`에리: 교정 실패 — ${e.message}`, '#a55');
+    }
+    } finally {
+      if (!holdRefineLock) releaseRefineLock();
     }
   }
 
