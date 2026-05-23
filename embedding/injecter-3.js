@@ -226,6 +226,7 @@
     enabled: true, position: 'before',
     prefix: OOC_FORMATS.default.prefix, suffix: OOC_FORMATS.default.suffix,
     scanRange: 5, scanOffset: 2, maxEntries: 3, cooldownEnabled: true, cooldownTurns: 3,
+    statusBadgeEnabled: true,
     strictMatch: true, similarityMatch: true, activeProject: '',
 
     autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,

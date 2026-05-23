@@ -12,7 +12,12 @@
   var _pulseStyleAdded = false;
   var _statusLabel = null;
   var _statusDot = null;
+  var _statusAutoHideTimer = null;
   function showStatusBadge(text) {
+    if (_w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config && _w.__LoreInj.settings.config.statusBadgeEnabled === false) {
+      hideStatusBadge();
+      return;
+    }
     if (!_pulseStyleAdded) {
       try {
         var head = document.head || document.getElementsByTagName('head')[0];
@@ -29,7 +34,7 @@
       _statusBadge = document.createElement('div');
       _statusBadge.id = 'lore-status-badge';
       // z-index는 host 모달(흐히 999999)을 넘기도록 정수 상한구간으로 설정.
-      _statusBadge.style.cssText = 'position:fixed;bottom:70px;right:20px;z-index:2147483646;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:8px 16px;font-size:12px;color:#ccc;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .3s;opacity:0;pointer-events:none;';
+      _statusBadge.style.cssText = 'position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 118px);right:20px;z-index:2147483646;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:8px 16px;font-size:12px;color:#ccc;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .3s;opacity:0;pointer-events:none;';
       _statusDot = document.createElement('span');
       _statusDot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite;flex-shrink:0;';
       _statusLabel = document.createElement('span');
@@ -44,6 +49,12 @@
     if (_statusLabel && _statusLabel.textContent !== text) _statusLabel.textContent = text;
     if (_statusBadge.style.opacity !== '1') _statusBadge.style.opacity = '1';
     if (_statusBadge.style.pointerEvents !== 'auto') _statusBadge.style.pointerEvents = 'auto';
+    if (_statusAutoHideTimer) { clearTimeout(_statusAutoHideTimer); _statusAutoHideTimer = null; }
+    if (text === '에리가 응답 기다리는 중') {
+      _statusAutoHideTimer = setTimeout(function () {
+        if (_statusLabel && _statusLabel.textContent === '에리가 응답 기다리는 중') hideStatusBadge();
+      }, 45000);
+    }
     // host CSP/sandbox에서 @keyframes가 묵살될 경우를 대비한 JS 펄스 폴백 (500ms toggle).
     if (_statusDot && !_statusDot.__pulseTimer) {
       var __on = true;
@@ -54,6 +65,7 @@
     }
   }
   function hideStatusBadge() {
+    if (_statusAutoHideTimer) { clearTimeout(_statusAutoHideTimer); _statusAutoHideTimer = null; }
     if (_statusBadge) { _statusBadge.style.opacity = '0'; _statusBadge.style.pointerEvents = 'none'; }
     if (_statusDot && _statusDot.__pulseTimer) {
       try { clearInterval(_statusDot.__pulseTimer); } catch (_) {}

@@ -72,6 +72,20 @@
           C.setFullWidth(nd);
           nd.appendChild(C.createToggleRow('응답 교정 켜기', 'AI 응답 시 로어 기반 자동 검수.', settings.config.refinerEnabled, (v) => { settings.config.refinerEnabled = v; settings.save(); if(v && R.setNeedsWarmup) R.setNeedsWarmup(); }));
           nd.appendChild(C.createToggleRow('자동 반영 (팝업 없음)', '검수 결과를 팝업 없이 즉시 적용.', settings.config.refinerAutoMode, (v) => { settings.config.refinerAutoMode = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('상태 배지 표시', '진행 상태를 화면 우측에 띄움. 모바일에서 겹치면 끄기.', settings.config.statusBadgeEnabled !== false, (v) => { settings.config.statusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
+
+          const live = document.createElement('div');
+          live.style.cssText = 'font-size:11px;color:#888;margin:8px 0 12px;padding:8px;border:1px solid #333;border-radius:4px;background:#111;line-height:1.4;';
+          const renderLive = () => {
+            const st = R.getRefinerState ? R.getRefinerState() : null;
+            if (!st) { live.textContent = '상태: 대기'; return; }
+            const age = st.at ? Math.max(0, Math.floor((Date.now() - st.at) / 1000)) : 0;
+            live.textContent = '상태: ' + (st.state || 'idle') + (st.detail ? ' · ' + st.detail : '') + ' · ' + age + '초 전';
+          };
+          renderLive();
+          try { if (R.__refinerStatusUiTimer) clearInterval(R.__refinerStatusUiTimer); } catch(_) {}
+          R.__refinerStatusUiTimer = setInterval(renderLive, 1000);
+          nd.appendChild(live);
   
           const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:8px;';
   

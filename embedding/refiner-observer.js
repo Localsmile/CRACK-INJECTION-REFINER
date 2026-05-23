@@ -18,6 +18,11 @@
   let _pollingInterval = null;
   // v1.4.0-test.38 B2 fix: 워치독 핸들 보관 — SPA 라우트 전환 시 setupObserver 재호출되며 누적 방지
   let _watchdogInterval = null;
+  let _waitingSince = 0;
+
+  function setRefinerState(state, detail) {
+    R.lastState = { state: state || 'idle', detail: detail || '', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
+  }
 
   function isChatPath() {
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
@@ -31,7 +36,7 @@
 
   async function checkLatestMessage() {
     const config = R.ConfigGetter();
-    if (!config.refinerEnabled) return;
+    if (!config.refinerEnabled) { R.Core && R.Core.hideStatusBadge(); setRefinerState('off', 'disabled'); return; }
 
     const currentUrl = R.Core.getCurUrl();
     if (currentUrl !== _lastKnownUrl) {
@@ -39,7 +44,7 @@
     }
 
     const chatId = R.Core.getCurrentChatId();
-    if (!chatId) return;
+    if (!chatId) { R.Core && R.Core.hideStatusBadge(); setRefinerState('idle', 'no chat id'); return; }
 
     try {
       const lastLog = await CrackUtil.chatRoom().findLastMessageId(chatId, "assistant");
@@ -57,13 +62,20 @@
 
       if (msgId !== lastAssistantMsgId) {
         R.Core.showStatusBadge('에리가 응답 기다리는 중');
+        _waitingSince = Date.now();
+        setRefinerState('waiting', 'assistant response detected');
         lastAssistantMsgId = msgId; lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
       } else {
         if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
-          if (idleCount >= 2 && Date.now() - lastChangeTime > 4000) R.enqueueRefine(lastLog.content, msgId);
+          if (idleCount >= 2 && Date.now() - lastChangeTime > 4000) {
+            setRefinerState('queued', 'stable assistant response');
+            _waitingSince = 0;
+            R.enqueueRefine(lastLog.content, msgId);
+          }
         } else {
           lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
+          setRefinerState('waiting', 'assistant response still changing');
         }
       }
     } catch (e) {}
@@ -76,12 +88,14 @@
 
     if (!isChatPath()) {
       console.log('[Refiner:observer] non-chat route: observer skipped');
+      R.Core && R.Core.hideStatusBadge();
+      setRefinerState('idle', 'non-chat route');
       return;
     }
 
     _chatObserver = new MutationObserver(() => {
       const config = R.ConfigGetter();
-      if (!config.refinerEnabled) return;
+      if (!config.refinerEnabled) { R.Core && R.Core.hideStatusBadge(); setRefinerState('off', 'disabled'); return; }
       if (window._refinerDebounceTimer) clearTimeout(window._refinerDebounceTimer);
       window._refinerDebounceTimer = setTimeout(() => { checkLatestMessage(); }, 800);
     });
@@ -96,6 +110,12 @@
     _watchdogInterval = setInterval(() => {
       if (R.workerBusy && Date.now() - R.workerStartTime > R.WORKER_TIMEOUT) {
         R.workerBusy = false; R.Core && R.Core.hideStatusBadge();
+        setRefinerState('timeout', 'worker timeout');
+      }
+      if (_waitingSince && Date.now() - _waitingSince > 45000) {
+        _waitingSince = 0;
+        R.Core && R.Core.hideStatusBadge();
+        setRefinerState('timeout', 'waiting timeout');
       }
       if (R.refineQueue.length > 0 && !R.workerBusy) R.processQueue();
     }, 2000);
@@ -103,6 +123,7 @@
 
   R.setupObserver = setupObserver;
   R.setNeedsWarmup = function() { _needsWarmup = true; };
+  R.getRefinerState = function() { return R.lastState || { state: 'idle', detail: '', at: 0, queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy }; };
   R.__observerLoaded = true;
 
 })();
