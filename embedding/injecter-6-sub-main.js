@@ -98,7 +98,7 @@
           emRow.appendChild(emL); emRow.appendChild(emSel); nd.appendChild(emRow);
 
           nd.appendChild(C.createToggleRow('추출 후 검색 준비', '새 로어를 의미 검색용으로 자동 준비함.', settings.config.autoEmbedOnExtract !== false, (v) => { settings.config.autoEmbedOnExtract = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('오래된 기억 다시 챙기기', '오래 안 나온 중요 로어도 필요하면 다시 넣음.', settings.config.decayEnabled, (v) => { settings.config.decayEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('오래된 정보도 가끔 넣기', '직접 관련이 약해도 중요한 과거 정보를 주기적으로 넣음.', settings.config.periodicRecallEnabled !== false, (v) => { settings.config.periodicRecallEnabled = v; settings.config.decayEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('AI로 후보 다시 고르기', '검색 후보를 AI가 현재 장면 기준으로 다시 정렬함.', settings.config.rerankEnabled || false, (v) => { settings.config.rerankEnabled = v; settings.save(); }));
         }});
 

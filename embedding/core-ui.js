@@ -190,7 +190,7 @@
     fbTa.onchange = () => { config[fbScriptKey] = fbTa.value; triggerSave(); };
     firebaseArea.appendChild(fbTa);
     const fbEmbNote = document.createElement('div');
-    fbEmbNote.textContent = '의미 검색용 Gemini API Key. Firebase 방식은 검색 준비용 별도 키 필요. 의미 검색 모델 설정과 맞춰 사용 권장.';
+    fbEmbNote.textContent = '의미 검색용 Gemini API Key. Firebase 방식은 검색 준비용 별도 키 필요. Google AI Studio에서 무료 키 발급 가능.';
     fbEmbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;line-height:1.4;';
     firebaseArea.appendChild(fbEmbNote);
     const fbEmbInput = document.createElement('input'); fbEmbInput.type = 'text';

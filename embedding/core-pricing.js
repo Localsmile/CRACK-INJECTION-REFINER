@@ -15,6 +15,7 @@
     'gemini-3.1-pro-preview':        { in: 2.00,  out: 12.00, longIn: 4.00,  longOut: 18.00, longThreshold: 200000 },
     'gemini-3-pro-preview':          { in: 2.00,  out: 12.00, longIn: 4.00,  longOut: 18.00, longThreshold: 200000 },
     'gemini-3.1-flash-lite-preview': { in: 0.25,  out: 1.50 },
+    'gemini-3.5-flash':              { in: 1.50,  out: 9.00 },
     'gemini-3-flash-preview':        { in: 0.50,  out: 3.00 },
     'gemini-2.5-pro':                { in: 1.25,  out: 10.00, longIn: 2.50,  longOut: 15.00, longThreshold: 200000 },
     'gemini-2.5-flash':              { in: 0.30,  out: 2.50 },

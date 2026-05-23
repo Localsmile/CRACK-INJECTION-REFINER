@@ -31,6 +31,23 @@
     return String(e?.eventId || e?.id || e?.name || '');
   }
 
+  function resolveActivePackState(url) {
+    const packsByUrl = settings.config.urlPacks || {};
+    const disabledByUrl = settings.config.urlDisabledEntries || {};
+    let key = url;
+    let packs = packsByUrl[key] || [];
+    if (!packs.length) {
+      try {
+        const chatId = C.getCurrentChatId && C.getCurrentChatId();
+        if (chatId) {
+          const found = Object.keys(packsByUrl).find(k => k && k.includes(chatId) && packsByUrl[k] && packsByUrl[k].length);
+          if (found) { key = found; packs = packsByUrl[found] || []; }
+        }
+      } catch (_) {}
+    }
+    return { key, packs, disabled: disabledByUrl[key] || [] };
+  }
+
   function buildTemporalJudgeCandidates(scored, limit) {
     return (scored || [])
       .filter(s => s && s.entry && C.isTimelineEvent && C.isTimelineEvent(s.entry))
@@ -193,12 +210,27 @@
     const turnCounter = incrementTurnCounter(chatKey);
     if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
 
-    const activePacksArr = settings.config.urlPacks?.[_url] || [];
-    if (!activePacksArr.length) return userInput;
+    const activePackState = resolveActivePackState(_url);
+    const activePacksArr = activePackState.packs || [];
+    if (!activePacksArr.length) {
+      addInjLog(chatKey, {
+        time: new Date().toLocaleTimeString(), turn: turnCounter,
+        matched: [], count: 0, note: '활성 로어팩 없음',
+        reason: 'no_active_packs', url: _url
+      });
+      return userInput;
+    }
     const allForPacks = await db.entries.where('packName').anyOf(activePacksArr).toArray();
-    const disabledSet = new Set(settings.config.urlDisabledEntries?.[_url] || []);
+    const disabledSet = new Set(activePackState.disabled || []);
     let enabled = allForPacks.filter(e => !disabledSet.has(e.id));
-    if (!enabled.length) return userInput;
+    if (!enabled.length) {
+      addInjLog(chatKey, {
+        time: new Date().toLocaleTimeString(), turn: turnCounter,
+        matched: [], count: 0, note: '사용 가능한 로어 없음',
+        reason: 'no_enabled_entries', activePacks: activePacksArr.slice(0, 8)
+      });
+      return userInput;
+    }
 
     const fetchCount = Math.max(20, (settings.config.scanRange || 6) * 3);
     const recentMsgs = await C.fetchLogs(fetchCount);
@@ -223,6 +255,7 @@
       relationshipGraphWeight: config.relationshipGraphWeight != null ? config.relationshipGraphWeight : C.DEFAULTS.relationshipGraphWeight,
       unresolvedWeight: config.unresolvedWeight != null ? config.unresolvedWeight : C.DEFAULTS.unresolvedWeight,
       maintenanceWeight: config.maintenanceWeight != null ? config.maintenanceWeight : C.DEFAULTS.maintenanceWeight,
+      periodicRecallEnabled: config.periodicRecallEnabled !== false,
       timelineRetrievalEnabled: config.timelineRetrievalEnabled !== false,
       timelineRecallWeight: config.timelineRecallWeight != null ? config.timelineRecallWeight : (C.DEFAULTS.timelineRecallWeight || 0.32),
       timelineNoCuePenalty: config.timelineNoCuePenalty != null ? config.timelineNoCuePenalty : (C.DEFAULTS.timelineNoCuePenalty || 0.35),
@@ -238,7 +271,7 @@
       scored = r.scored || []; activeNames = r.activeNames || [];
       if (C.resolveTemporalRecall && config.timelineRetrievalEnabled !== false) {
         const resolved = C.resolveTemporalRecall(userInput, recentMsgs, enabled, { currentTurn: turnCounter, activeNames, limit: 4 });
-        if (resolved && resolved.candidates && resolved.candidates.length) {
+        if (resolved && resolved.candidates && resolved.candidates.length && (config.periodicRecallEnabled !== false || resolved.hasCue)) {
           const byId = new Map(scored.map(s => [s.entry.id, s]));
           for (const c of resolved.candidates) {
             const old = byId.get(c.entry.id);
@@ -334,12 +367,31 @@
       C.showStatusBadge('에리가 응답 기다리는 중');
     }
 
+    let cooldownFilteredAll = false;
+    const scoredCountBeforeCooldown = scored.length;
     if (config.cooldownEnabled) {
       const cMap = getCooldownMap(chatKey);
+      let staleCooldownCount = 0;
       scored = scored.filter(s => {
         const last = cMap[s.entry.id];
+        if (last !== undefined && turnCounter != null && Number(last) > turnCounter) {
+          delete cMap[s.entry.id];
+          staleCooldownCount++;
+          return true;
+        }
         return last === undefined || (turnCounter - last) >= config.cooldownTurns;
       });
+      if (staleCooldownCount > 0) settings.save();
+      cooldownFilteredAll = scoredCountBeforeCooldown > 0 && !scored.length;
+      if (cooldownFilteredAll) {
+        addInjLog(chatKey, {
+          time: new Date().toLocaleTimeString(), turn: turnCounter,
+          matched: [], count: 0, note: '삽입 쿨타임 대기',
+          reason: 'cooldown_filtered_all',
+          cooldownTurns: config.cooldownTurns,
+          activePacks: activePacksArr.slice(0, 8)
+        });
+      }
     }
 
     // Delta skip: 최근 N턴 이내 동일 콘텐츠로 주입된 엔트리는 재주입 생략 (예산 확보).
@@ -369,7 +421,17 @@
     });
     const topScored = _loreScored.slice(0, config.maxEntries || 4);
     const topEntries = topScored.map(s => { if (s.components) s.entry._nway = s.components; return s.entry; });
-    if (!topEntries.length && !temporalPlan.text) return userInput;
+    if (!topEntries.length && !temporalPlan.text) {
+      if (!cooldownFilteredAll) {
+        addInjLog(chatKey, {
+          time: new Date().toLocaleTimeString(), turn: turnCounter,
+          matched: [], count: 0, note: '삽입 후보 없음',
+          reason: 'no_injection_candidates',
+          activePacks: activePacksArr.slice(0, 8)
+        });
+      }
+      return userInput;
+    }
 
     const pfx = config.prefix || OOC_FORMATS.default.prefix;
     const sfx = config.suffix || OOC_FORMATS.default.suffix;

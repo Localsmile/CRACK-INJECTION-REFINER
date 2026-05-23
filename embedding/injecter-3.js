@@ -254,7 +254,7 @@
     autoPacks: ['자동추출'], urlPacks: {}, urlDisabledEntries: {},
     urlTurnCounters: {}, urlCooldownMaps: {}, urlAutoExtPacks: {}, urlExtLogs: {}, urlInjLogs: {},
 
-    embeddingEnabled: true, activeCharDetection: true, decayEnabled: true,
+    embeddingEnabled: true, activeCharDetection: true, decayEnabled: true, periodicRecallEnabled: true,
     loreBudgetChars: 300, loreBudgetMax: 500,
     compressionMode: 'auto', embeddingWeight: 0.35, useCompressedFormat: true,
     honorificMatrixEnabled: true, firstEncounterWarning: true, activeCharBoostEnabled: true,

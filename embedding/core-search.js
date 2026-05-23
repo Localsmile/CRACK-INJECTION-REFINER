@@ -99,10 +99,11 @@
     const relationshipGraphWeight = cfg.relationshipGraphWeight != null ? cfg.relationshipGraphWeight : (DEFAULTS.relationshipGraphWeight || 0.22);
     const temporalWeight = cfg.temporalWeight != null ? cfg.temporalWeight : (DEFAULTS.temporalWeight || 0.18);
     const unresolvedWeight = cfg.unresolvedWeight != null ? cfg.unresolvedWeight : (DEFAULTS.unresolvedWeight || 0.28);
-    const maintenanceWeight = cfg.maintenanceWeight != null ? cfg.maintenanceWeight : (DEFAULTS.maintenanceWeight || 0.12);
+    const periodicRecallEnabled = cfg.periodicRecallEnabled !== false;
+    const maintenanceWeight = periodicRecallEnabled ? (cfg.maintenanceWeight != null ? cfg.maintenanceWeight : (DEFAULTS.maintenanceWeight || 0.12)) : 0;
     const timelineRetrievalEnabled = cfg.timelineRetrievalEnabled !== false;
     const timelineRecallWeight = cfg.timelineRecallWeight != null ? cfg.timelineRecallWeight : (DEFAULTS.timelineRecallWeight || 0.32);
-    const timelineNoCuePenalty = cfg.timelineNoCuePenalty != null ? cfg.timelineNoCuePenalty : (DEFAULTS.timelineNoCuePenalty || 0.35);
+    const timelineNoCuePenalty = periodicRecallEnabled ? (cfg.timelineNoCuePenalty != null ? cfg.timelineNoCuePenalty : (DEFAULTS.timelineNoCuePenalty || 0.35)) : 0;
     const timelineRecallLimit = cfg.timelineRecallPoolLimit || Math.max(8, (cfg.maxEntries || 4) * 3);
 
     // decay fallback: entry.lastMentionedTurn 없으면 localStorage 'lore-last-mention' 맵 조회
@@ -232,7 +233,7 @@
         components.relationshipGraph = C.relationshipGraphScore ? C.relationshipGraphScore(e, activeNames) : 0;
         components.temporal = C.temporalRecencyScore ? C.temporalRecencyScore(e, turnCounter || 0) : 0;
         components.unresolved = C.unresolvedPriorityScore ? C.unresolvedPriorityScore(e) : 0;
-        components.maintenance = C.maintenanceRecallScore ? C.maintenanceRecallScore(e, turnCounter || 0, cfg) : 0;
+        components.maintenance = periodicRecallEnabled && C.maintenanceRecallScore ? C.maintenanceRecallScore(e, turnCounter || 0, cfg) : 0;
         score += components.activeEntity * activeEntityWeight;
         score += components.relationshipGraph * relationshipGraphWeight;
         score += components.temporal * temporalWeight;
@@ -251,9 +252,9 @@
         }
       }
 
-      // 앵커 최소 점수 보장
-      if (e.anchor === true && score < 0.2) score = 0.2;
-      if (e.anchor === true && temporalEnabled) score += 0.4;
+      // 앵커는 주기 회수 ON일 때만 단독 삽입 후보가 될 수 있음.
+      if (e.anchor === true && periodicRecallEnabled && score < 0.2) score = 0.2;
+      if (e.anchor === true && temporalEnabled && periodicRecallEnabled) score += 0.4;
 
       return { entry: e, score, tScore, eSim: eSimRaw, matchedTrigger: matched, components };
     });
