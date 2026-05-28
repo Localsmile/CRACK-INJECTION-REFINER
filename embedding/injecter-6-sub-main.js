@@ -35,7 +35,7 @@
           };
           const cfg = settings.config || {};
           const apiType = cfg.autoExtApiType || 'key';
-          const apiReady = apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
+          const apiReady = apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : apiType === 'nim' ? !!cfg.autoExtNimKey : !!cfg.autoExtKey;
           const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
           chip('API', apiReady ? '설정됨' : '미설정', apiReady);
           const packValue = chip('활성 로어팩', activePacks.length ? activePacks.length + '개' : '없음', activePacks.length > 0);
@@ -71,7 +71,8 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          nd.appendChild(C.createToggleRow('로어 인젝션 활성화', '대화에 설정 정보를 자동 삽입함.', settings.config.enabled, (v) => { settings.config.enabled = v; settings.save(); }));
+          const injectionOn = settings.config.injectionEnabled !== undefined ? settings.config.injectionEnabled !== false : settings.config.enabled !== false;
+          nd.appendChild(C.createToggleRow('로어 삽입', '대화에 로어를 자동 삽입함. 추출 기능과 별도.', injectionOn, (v) => { settings.config.injectionEnabled = v; settings.config.enabled = v; settings.save(); }));
 
           nd.appendChild(C.createToggleRow('적응형 로어 압축', '주입 공간 부족 시 텍스트를 자동으로 짧게 줄임.', settings.config.useCompressedFormat !== false, (v) => { settings.config.useCompressedFormat = v; settings.save(); }));
           const cmpWrap = document.createElement('div'); cmpWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-left:10px;';

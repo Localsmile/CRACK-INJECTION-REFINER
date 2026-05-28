@@ -57,6 +57,7 @@ universal_bundle_work/dist/erie_crack_inject_universal.user.js
 ### 로어 삽입
 
 - 채팅 요청 직전 사용자 입력에 로어를 삽입합니다.
+- 삽입 ON/OFF는 추출 ON/OFF와 별도로 관리합니다.
 - 트리거, 의미 검색, 최근 대화, 쿨타임, 중요도, 오래된 정보 주기 삽입 여부를 기준으로 후보를 고릅니다.
 - 삽입 예산에 맞춰 로어 내용을 자동 압축합니다.
 - 같은 로어가 반복 삽입되지 않도록 턴 기반 쿨타임을 적용합니다.
@@ -64,6 +65,7 @@ universal_bundle_work/dist/erie_crack_inject_universal.user.js
 ### 로어 추출
 
 - 자동 추출, 수동 추출, 전체 로그 일괄 추출을 지원합니다.
+- 자동 추출은 로어 삽입을 꺼도 별도 설정이 켜져 있으면 주기적으로 동작합니다.
 - 기존 로어팩을 입력에 포함하여 새 정보와 기존 정보를 병합합니다.
 - 변경분만 저장 모드에서는 입력 조건은 유지하고 출력만 변경분 중심으로 받습니다.
 - 변화가 없는 경우 저장과 임베딩 준비를 건너뛰도록 설계되어 있습니다.
@@ -94,8 +96,20 @@ universal_bundle_work/dist/erie_crack_inject_universal.user.js
 - Gemini API Key
 - Vertex AI 서비스 계정 JSON
 - Firebase 설정 스크립트
+- NVIDIA NIM OpenAI 호환 Chat Completions API
 
 Firebase 방식에서 임베딩을 사용하는 경우 별도 Gemini API Key가 필요할 수 있습니다.
+
+NVIDIA NIM 방식은 생성 API 키와 임베딩용 Gemini API Key를 별도로 입력합니다. 기존 Gemini, Vertex, Firebase 설정 값은 삭제하지 않고 보존합니다. 의미 검색과 임베딩은 NIM 키가 아니라 Gemini 임베딩 API로 생성합니다.
+
+NIM 모델 기본 선택지는 다음과 같습니다.
+
+- deepseek-ai/deepseek-v4-pro
+- deepseek-ai/deepseek-v4-flash
+- z-ai/glm5.1
+- moonshotai/kimi-k2.6
+
+NIM 모델 설정은 Gemini 모델 설정과 별도로 저장됩니다. API 방식을 NIM으로 선택하면 NIM 모델 설정만 표시하고, Gemini 계열을 선택하면 Gemini 모델 설정만 표시합니다.
 
 모델 설정은 기능별로 분리됩니다.
 
@@ -105,7 +119,7 @@ Firebase 방식에서 임베딩을 사용하는 경우 별도 Gemini API Key가 
 - 과거 장면 판단 모델
 - 응답 교정 모델
 
-API 비용 표시는 Gemini 응답의 `usageMetadata`가 있으면 해당 토큰 사용량을 기준으로 계산합니다. `usageMetadata`가 없으면 글자 수 기반 추정값을 사용합니다. 실제 청구액은 Google 계정의 결제 내역이 기준입니다.
+API 비용 표시는 Gemini 응답의 `usageMetadata` 또는 OpenAI 호환 응답의 `usage`가 있으면 해당 토큰 사용량을 기준으로 계산합니다. 토큰 사용량이 없으면 글자 수 기반 추정값을 사용합니다. 실제 청구액은 각 API 제공자의 결제 내역이 기준입니다.
 
 ## 저장소 구조
 

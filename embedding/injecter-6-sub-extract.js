@@ -10,32 +10,10 @@
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   function buildGenerationApiOpts(overrides = {}, costContext = null) {
-    const cfg = settings.config || {};
-    const model = cfg.autoExtModel === '_custom'
-      ? cfg.autoExtCustomModel
-      : cfg.autoExtModel;
-    const opts = {
-      apiType: cfg.autoExtApiType || 'key',
-      key: cfg.autoExtKey,
-      vertexJson: cfg.autoExtVertexJson,
-      vertexLocation: cfg.autoExtVertexLocation || 'global',
-      vertexProjectId: cfg.autoExtVertexProjectId,
-      firebaseScript: cfg.autoExtFirebaseScript,
-      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
-      model: model || 'gemini-3-flash-preview',
-      maxRetries: cfg.autoExtMaxRetries || 1,
-      responseMimeType: 'application/json',
-      costContext,
-      ...overrides
-    };
-    const reasoning = cfg.autoExtReasoning || 'medium';
-    if (String(opts.model || '').includes('gemini-3') && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
-      opts.thinkingConfig = { thinkingLevel: reasoning };
+    if (_w.__LoreInj.buildGenerationApiOpts) {
+      return _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', { responseMimeType: 'application/json', ...overrides }, costContext);
     }
-    if (String(opts.model || '').includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') {
-      opts.thinkingConfig.thinkingLevel = 'low';
-    }
-    return opts;
+    return { ...(overrides || {}), costContext };
   }
   
   _w.__LoreInj.registerSubMenu('extract', function(modal) {

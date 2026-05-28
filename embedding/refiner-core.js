@@ -217,13 +217,15 @@
 
       let _lE = [];
       if (config.refinerLoreMode === 'semantic' && config.embeddingEnabled) {
-        const apiOpts = {
-          apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
-          vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
-          firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
-          model: config.embeddingModel || 'gemini-embedding-001',
-          costContext: { feature: 'embed', chatKey: chatRoomId || 'global' }
-        };
+        const apiOpts = (_w.__LoreInj && _w.__LoreInj.buildEmbeddingApiOpts)
+          ? _w.__LoreInj.buildEmbeddingApiOpts({ feature: 'embed', chatKey: chatRoomId || 'global' })
+          : {
+              apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
+              vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+              firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
+              model: config.embeddingModel || 'gemini-embedding-001',
+              costContext: { feature: 'embed', chatKey: chatRoomId || 'global' }
+            };
         const searchConfig = { scanRange: matchTurns, strictMatch: true, similarityMatch: true, embeddingEnabled: true, embeddingWeight: 0.5 };
         try {
           const searchResult = await Core.hybridSearch(assistantText, _tMsgs, activeEntries, searchConfig, apiOpts);
@@ -311,22 +313,24 @@
     let _refElapsedMs = 0, _refCost = null;
     try {
       if (ToastCallback) ToastCallback('에리가 응답 검수 중', '#258');
-      const apiOpts = {
-        apiType: config.autoExtApiType || 'key',
-        key: config.autoExtKey,
-        vertexJson: config.autoExtVertexJson,
-        vertexLocation: config.autoExtVertexLocation || 'global',
-        vertexProjectId: config.autoExtVertexProjectId,
-        firebaseScript: config.autoExtFirebaseScript,
-        firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
-        model: _refModel,
-        maxRetries: 1,
-        costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
-      };
+      const apiOpts = (_w.__LoreInj && _w.__LoreInj.buildGenerationApiOpts)
+        ? _w.__LoreInj.buildGenerationApiOpts('refinerModel', 'refinerCustomModel', { model: _refModel, maxRetries: 1 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
+        : {
+            apiType: config.autoExtApiType || 'key',
+            key: config.autoExtKey,
+            vertexJson: config.autoExtVertexJson,
+            vertexLocation: config.autoExtVertexLocation || 'global',
+            vertexProjectId: config.autoExtVertexProjectId,
+            firebaseScript: config.autoExtFirebaseScript,
+            firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
+            model: _refModel,
+            maxRetries: 1,
+            costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
+          };
 
       // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)
       const is3x = apiOpts.model.includes('gemini-3') || apiOpts.model.includes('gemini-2.0-flash-thinking');
-      if (is3x) {
+      if (apiOpts.apiType !== 'nim' && is3x) {
         const isPro = apiOpts.model.includes('pro');
         apiOpts.thinkingConfig = isPro ? { thinkingLevel: 'low' } : { thinkingLevel: 'minimal' };
       }

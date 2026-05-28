@@ -14,6 +14,13 @@
   }
 
   const FIELD_STYLE = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+  const NIM_MODELS = [
+    ['DeepSeek V4 Pro (기본)', 'deepseek-ai/deepseek-v4-pro'],
+    ['DeepSeek V4 Flash', 'deepseek-ai/deepseek-v4-flash'],
+    ['GLM-5.1', 'z-ai/glm5.1'],
+    ['Kimi K2.6', 'moonshotai/kimi-k2.6'],
+    ['직접 입력', '_custom']
+  ];
 
   function addSelect(nd, label, value, groups, onChange, opts = {}) {
     const l = document.createElement('div');
@@ -48,6 +55,34 @@
       onChange(sel.value);
       if (customInput) customInput.style.display = sel.value === '_custom' ? '' : 'none';
       if (opts.onAfterChange) opts.onAfterChange(sel.value, customInput);
+    };
+    return { sel, customInput };
+  }
+
+  function addNimModelSelect(nd, label, key, customKey, fallback) {
+    const l = document.createElement('div');
+    l.textContent = label;
+    l.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;';
+    nd.appendChild(l);
+    const sel = document.createElement('select');
+    sel.style.cssText = FIELD_STYLE;
+    NIM_MODELS.forEach(([text, val]) => {
+      const o = document.createElement('option');
+      o.value = val; o.textContent = text; sel.appendChild(o);
+    });
+    sel.value = settings.config[key] || fallback || 'deepseek-ai/deepseek-v4-pro';
+    if (![...sel.options].some(o => o.value === sel.value)) sel.value = '_custom';
+    nd.appendChild(sel);
+    const customInput = document.createElement('input');
+    customInput.value = settings.config[customKey] || (sel.value === '_custom' ? (settings.config[key] || '') : '');
+    customInput.placeholder = '예: deepseek-ai/deepseek-v4-pro';
+    customInput.style.cssText = FIELD_STYLE + 'margin-top:6px;' + (sel.value === '_custom' ? '' : 'display:none;');
+    customInput.onchange = () => { settings.config[customKey] = customInput.value.trim(); settings.config[key] = '_custom'; settings.save(); };
+    nd.appendChild(customInput);
+    sel.onchange = () => {
+      settings.config[key] = sel.value;
+      customInput.style.display = sel.value === '_custom' ? '' : 'none';
+      settings.save();
     };
     return { sel, customInput };
   }
@@ -169,11 +204,12 @@
           C.setFullWidth(nd);
           const t = document.createElement('div'); t.textContent = 'API 연결'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
           const apiSummary = document.createElement('div');
-          const apiTypeLabel = (settings.config.autoExtApiType || 'key') === 'vertex' ? 'Vertex JSON' : (settings.config.autoExtApiType || 'key') === 'firebase' ? 'Firebase' : 'API Key';
-          apiSummary.textContent = '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면 추출이 이 연결 사용함.';
+          const apiTypeLabel = (settings.config.autoExtApiType || 'key') === 'vertex' ? 'Vertex JSON' : (settings.config.autoExtApiType || 'key') === 'firebase' ? 'Firebase' : (settings.config.autoExtApiType || 'key') === 'nim' ? 'NVIDIA NIM' : 'API Key';
+          apiSummary.textContent = '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면, 후보 재정렬, 응답 교정에서 사용함.';
           apiSummary.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
           nd.appendChild(apiSummary);
-          C.createApiInput(settings.config, 'autoExt', nd, () => settings.save());
+          let modelArea = null;
+          C.createApiInput(settings.config, 'autoExt', nd, () => { settings.save(); if (modelArea) renderModelBlock(modelArea); });
   
           const testRow = document.createElement('div'); testRow.style.cssText = 'margin:12px 0 16px;display:flex;gap:8px;align-items:center;';
           const testBtn = document.createElement('button'); testBtn.textContent = 'API 키 테스트';
@@ -181,44 +217,70 @@
           const testResult = document.createElement('span'); testResult.style.cssText = 'font-size:12px;color:#888;word-break:break-all;';
           testBtn.onclick = async () => {
             const apiType = settings.config.autoExtApiType || 'key';
-            const missing = apiType === 'vertex' ? !settings.config.autoExtVertexJson : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript : !settings.config.autoExtKey;
-            if (missing) { alert(apiType === 'vertex' ? 'Vertex JSON 필요.' : apiType === 'firebase' ? 'Firebase 설정 필요.' : 'API 키 필요.'); return; }
+            const missing = apiType === 'vertex' ? !settings.config.autoExtVertexJson : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript : apiType === 'nim' ? !settings.config.autoExtNimKey : !settings.config.autoExtKey;
+            if (missing) { alert(apiType === 'vertex' ? 'Vertex JSON 필요.' : apiType === 'firebase' ? 'Firebase 설정 필요.' : apiType === 'nim' ? 'NVIDIA NIM API 키 필요.' : 'API 키 필요.'); return; }
             testBtn.disabled = true; testResult.textContent = '테스트 중...';
             try {
-              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: settings.config.autoExtModel, maxRetries: 0, costContext: { feature: 'apiTest', chatKey: 'global' } });
-              testResult.textContent = r.text ? '✅ 성공: ' + r.text.trim().slice(0, 50) : '❌ 실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
-            } catch(e) { testResult.textContent = '❌ 오류: ' + e.message; testResult.style.color = '#d66'; }
+              const r = await C.callGeminiApi('Say "OK" in one word.', _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', { maxRetries: 0 }, { feature: 'apiTest', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, nimKey: settings.config.autoExtNimKey, nimBaseUrl: settings.config.autoExtNimBaseUrl, model: settings.config.autoExtModel, maxRetries: 0, costContext: { feature: 'apiTest', chatKey: 'global' } });
+              testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
+            } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = '#d66'; }
             testBtn.disabled = false;
           };
           testRow.appendChild(testBtn); testRow.appendChild(testResult); nd.appendChild(testRow);
   
-          const modelHead = document.createElement('div'); modelHead.textContent = '모델 선택'; modelHead.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:14px 0 8px;padding-top:10px;border-top:1px solid #333;'; nd.appendChild(modelHead);
-          const modelNote = document.createElement('div'); modelNote.textContent = 'API를 쓰는 기능별 모델을 여기서 한 번에 관리함. 프롬프트 내용은 프롬프트 관리 메뉴에서 수정함.'; modelNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;'; nd.appendChild(modelNote);
-          addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || 'gemini-3-flash-preview', [['Gemini 3.x', [['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]], ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]], (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
-          addSelect(nd, '후보 재정렬 모델', settings.config.rerankModel || 'gemini-3-flash-preview', [['Gemini', [['3.1 Flash Lite (추천)', 'gemini-3.1-flash-lite-preview'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite']]]], (v) => { settings.config.rerankModel = v; settings.save(); });
-          const judgeCtl = addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || 'gemini-3.1-flash-lite-preview', [['Gemini 3.x (추천)', [['3.1 Flash Lite (기본)', 'gemini-3.1-flash-lite-preview'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview']]], ['Gemini 2.x', [['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]], (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
-          addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : '', [['기본 LLM과 동일', [['기본 LLM 사용', '']]], ['Gemini 3.x', [['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Flash Lite', 'gemini-3.1-flash-lite-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]], ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]], (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
-  
-          const rl = document.createElement('div'); rl.textContent = '생각 깊이'; rl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(rl);
-          const rs = document.createElement('select'); rs.style.cssText = FIELD_STYLE;
-          [['Off', 'off'], ['Minimal (256)', 'minimal'], ['Low (1024)', 'low'], ['Medium (2048)', 'medium'], ['High (4096)', 'high'], ['Budget (사용자 지정)', 'budget']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; rs.appendChild(o); });
-          rs.value = settings.config.autoExtReasoning || 'medium'; nd.appendChild(rs);
-          const bl = document.createElement('div'); bl.textContent = '생각 예산'; bl.style.cssText = 'font-size:11px;color:#666;margin-bottom:4px;margin-top:8px;' + (rs.value === 'budget' ? '' : 'display:none;');
-          const bi = document.createElement('input'); bi.type = 'number'; bi.value = settings.config.autoExtBudget || 2048; bi.style.cssText = FIELD_STYLE + (rs.value === 'budget' ? '' : 'display:none;');
-          bi.onchange = () => { settings.config.autoExtBudget = parseInt(bi.value) || 2048; settings.save(); };
-          rs.onchange = () => { settings.config.autoExtReasoning = rs.value; settings.save(); const isB = rs.value === 'budget'; bl.style.display = isB ? '' : 'none'; bi.style.display = isB ? '' : 'none'; };
-          nd.appendChild(bl); nd.appendChild(bi);
-          const jrl = document.createElement('div'); jrl.textContent = '과거 장면 판단 생각 깊이'; jrl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(jrl);
-          const jrs = document.createElement('select'); jrs.style.cssText = FIELD_STYLE;
-          [['Minimal (권장)', 'minimal'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; jrs.appendChild(o); });
-          jrs.value = settings.config.temporalRecallJudgeReasoning || 'minimal';
-          nd.appendChild(jrs);
-          const proWarn = document.createElement('div'); proWarn.style.cssText = 'font-size:10px;color:#d96;margin-top:4px;display:none;'; proWarn.textContent = '주의: Pro 모델은 minimal 미지원. low 이상 권장.'; nd.appendChild(proWarn);
-          const refreshProWarn = () => { const m = judgeCtl.sel.value === '_custom' ? (judgeCtl.customInput?.value || '') : judgeCtl.sel.value; proWarn.style.display = (String(m).includes('pro') && jrs.value === 'minimal') ? '' : 'none'; };
-          judgeCtl.sel.addEventListener('change', refreshProWarn);
-          if (judgeCtl.customInput) judgeCtl.customInput.addEventListener('change', refreshProWarn);
-          jrs.onchange = () => { settings.config.temporalRecallJudgeReasoning = jrs.value; settings.save(); refreshProWarn(); };
-          refreshProWarn();
+          function renderModelBlock(host) {
+            host.innerHTML = '';
+            const modelHead = document.createElement('div'); modelHead.textContent = '모델 선택'; modelHead.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:14px 0 8px;padding-top:10px;border-top:1px solid #333;'; host.appendChild(modelHead);
+            const isNim = (settings.config.autoExtApiType || 'key') === 'nim';
+            const modelNote = document.createElement('div');
+            modelNote.textContent = isNim ? 'NIM 전용 모델만 표시함. Gemini 모델 설정은 보존됨.' : 'Gemini 계열 모델만 표시함. NIM 모델 설정은 보존됨.';
+            modelNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
+            host.appendChild(modelNote);
+            if (isNim) {
+              addNimModelSelect(host, '추출/정리용 NIM 모델', 'autoExtNimModel', 'autoExtNimModelCustom', 'deepseek-ai/deepseek-v4-pro');
+              addNimModelSelect(host, '후보 재정렬 NIM 모델', 'rerankNimModel', 'rerankNimModelCustom', 'deepseek-ai/deepseek-v4-flash');
+              addNimModelSelect(host, '과거 장면 판단 NIM 모델', 'temporalRecallJudgeNimModel', 'temporalRecallJudgeNimModelCustom', 'deepseek-ai/deepseek-v4-flash');
+              addNimModelSelect(host, '응답 교정 NIM 모델', 'refinerNimModel', 'refinerNimModelCustom', 'deepseek-ai/deepseek-v4-flash');
+              const nl = document.createElement('div'); nl.textContent = 'NIM 추론'; nl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; host.appendChild(nl);
+              const ns = document.createElement('select'); ns.style.cssText = FIELD_STYLE;
+              [['끄기', 'none'], ['높음', 'high'], ['최대', 'max']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; ns.appendChild(o); });
+              ns.value = settings.config.autoExtNimReasoning || 'high';
+              ns.onchange = () => { settings.config.autoExtNimReasoning = ns.value; settings.save(); };
+              host.appendChild(ns);
+              const nn = document.createElement('div');
+              nn.textContent = 'DeepSeek는 none/high/max 적용. Kimi/GLM은 생각 켜기/끄기로 처리함.';
+              nn.style.cssText = 'font-size:10px;color:#888;margin-top:4px;line-height:1.4;';
+              host.appendChild(nn);
+              return;
+            }
+            addSelect(host, '추출/정리용 모델', settings.config.autoExtModel || 'gemini-3-flash-preview', [['Gemini 3.x', [['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]], ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]], (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
+            addSelect(host, '후보 재정렬 모델', settings.config.rerankModel || 'gemini-3-flash-preview', [['Gemini', [['3.1 Flash Lite (추천)', 'gemini-3.1-flash-lite-preview'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite']]]], (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
+            const judgeCtl = addSelect(host, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || 'gemini-3.1-flash-lite-preview', [['Gemini 3.x (추천)', [['3.1 Flash Lite (기본)', 'gemini-3.1-flash-lite-preview'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview']]], ['Gemini 2.x', [['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]], (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
+            addSelect(host, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : '', [['기본 LLM과 동일', [['기본 LLM 사용', '']]], ['Gemini 3.x', [['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Flash Lite', 'gemini-3.1-flash-lite-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]], ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]], ['기타', [['직접 입력', '_custom']]]], (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
+            const rl = document.createElement('div'); rl.textContent = '생각 깊이'; rl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; host.appendChild(rl);
+            const rs = document.createElement('select'); rs.style.cssText = FIELD_STYLE;
+            [['Off', 'off'], ['Minimal (256)', 'minimal'], ['Low (1024)', 'low'], ['Medium (2048)', 'medium'], ['High (4096)', 'high'], ['Budget (사용자 지정)', 'budget']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; rs.appendChild(o); });
+            rs.value = settings.config.autoExtReasoning || 'medium'; host.appendChild(rs);
+            const bl = document.createElement('div'); bl.textContent = '생각 예산'; bl.style.cssText = 'font-size:11px;color:#666;margin-bottom:4px;margin-top:8px;' + (rs.value === 'budget' ? '' : 'display:none;');
+            const bi = document.createElement('input'); bi.type = 'number'; bi.value = settings.config.autoExtBudget || 2048; bi.style.cssText = FIELD_STYLE + (rs.value === 'budget' ? '' : 'display:none;');
+            bi.onchange = () => { settings.config.autoExtBudget = parseInt(bi.value) || 2048; settings.save(); };
+            rs.onchange = () => { settings.config.autoExtReasoning = rs.value; settings.save(); const isB = rs.value === 'budget'; bl.style.display = isB ? '' : 'none'; bi.style.display = isB ? '' : 'none'; };
+            host.appendChild(bl); host.appendChild(bi);
+            const jrl = document.createElement('div'); jrl.textContent = '과거 장면 판단 생각 깊이'; jrl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; host.appendChild(jrl);
+            const jrs = document.createElement('select'); jrs.style.cssText = FIELD_STYLE;
+            [['Minimal (권장)', 'minimal'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; jrs.appendChild(o); });
+            jrs.value = settings.config.temporalRecallJudgeReasoning || 'minimal';
+            host.appendChild(jrs);
+            const proWarn = document.createElement('div'); proWarn.style.cssText = 'font-size:10px;color:#d96;margin-top:4px;display:none;'; proWarn.textContent = '주의: Pro 모델은 minimal 미지원. low 이상 권장.'; host.appendChild(proWarn);
+            const refreshProWarn = () => { const m = judgeCtl.sel.value === '_custom' ? (judgeCtl.customInput?.value || '') : judgeCtl.sel.value; proWarn.style.display = (String(m).includes('pro') && jrs.value === 'minimal') ? '' : 'none'; };
+            judgeCtl.sel.addEventListener('change', refreshProWarn);
+            if (judgeCtl.customInput) judgeCtl.customInput.addEventListener('change', refreshProWarn);
+            jrs.onchange = () => { settings.config.temporalRecallJudgeReasoning = jrs.value; settings.save(); refreshProWarn(); };
+            refreshProWarn();
+          }
+          modelArea = document.createElement('div');
+          nd.appendChild(modelArea);
+          renderModelBlock(modelArea);
         }});
       }, 'API 설정');
     });

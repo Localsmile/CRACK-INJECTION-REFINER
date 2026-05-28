@@ -593,7 +593,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         try {
           const epName = await getAutoExtPackForUrl(url);
           extBadgeShow('에리가 시간축 임베딩 갱신 중');
-          const embedOpts = { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+          const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
+            ? _w.__LoreInj.buildEmbeddingApiOpts({ feature: 'embed', chatKey: chatKey || 'global' })
+            : { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
           embedCount = await C.embedPack(epName, embedOpts);
           embedMsg = ' / 임베딩 ' + embedCount + '개 완료';
         } catch(embErr) {
@@ -959,6 +961,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const apiType = settings.config.autoExtApiType || 'key';
     const missing = apiType === 'vertex' ? !settings.config.autoExtVertexJson
                   : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript
+                  : apiType === 'nim' ? !settings.config.autoExtNimKey
                   : !settings.config.autoExtKey;
     if (missing) { if (isManual) alert('API 설정 미완료.'); return; }
     const scanR = settings.config.autoExtScanRange || 6; const extraTurns = _extQ.pendingTurns || 0;
@@ -991,7 +994,13 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let apiLog = null, _extElapsedMs = 0, _extCost = null;
     try {
-      const apiOpts = {
+      const apiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', {
+        model: _extModel,
+        maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
+        timeoutMs: 120000,
+        maxOutputTokens: _patchOn ? 4096 : null,
+        costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
+      }, { feature: 'autoExtract', chatKey: chatKey || 'global' }) : {
         apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
         vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
         firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
@@ -1020,7 +1029,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           try {
             const epName = await getAutoExtPackForUrl(_url);
             extBadgeShow('에리가 임베딩 갱신 중');
-            const embedOpts = { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+            const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
+              ? _w.__LoreInj.buildEmbeddingApiOpts({ feature: 'embed', chatKey: chatKey || 'global' })
+              : { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
             embedCount = await C.embedPack(epName, embedOpts);
             embedMsg = ' (임베딩 ' + embedCount + '개 완료)';
           } catch(embErr) { console.warn('[Lore] 자동임베딩 실패:', embErr.message); embedMsg = ' (자동 임베딩 실패)'; }
@@ -1057,6 +1068,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const apiType = settings.config.autoExtApiType || 'key';
     const missing = apiType === 'vertex' ? !settings.config.autoExtVertexJson
                   : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript
+                  : apiType === 'nim' ? !settings.config.autoExtNimKey
                   : !settings.config.autoExtKey;
     if (missing) throw new Error('API 설정 미완료');
 
@@ -1114,7 +1126,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;
         try {
-          const apiOpts = {
+          const apiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', {
+            maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+            maxOutputTokens: _patchOn ? 4096 : null,
+            costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
+          }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
             apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
             vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
             firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
@@ -1150,7 +1166,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         // Phase 11: per-batch temporal pass so batch extraction also harvests timeline events.
         if (settings.config.temporalExtractEnabled !== false) {
           try {
-            const tApiOpts = {
+            const tApiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', {
+              maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+              maxOutputTokens: _patchOn ? 4096 : null,
+              costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
+            }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
               apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
               vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
               firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
@@ -1185,12 +1205,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       try {
         const epName = await getAutoExtPackForUrl(_url);
         extBadgeShow('에리가 임베딩 갱신 중');
-        const embedOpts = {
-          apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
-          vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-          firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-          model: settings.config.embeddingModel || 'gemini-embedding-001'
-        };
+        const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
+          ? _w.__LoreInj.buildEmbeddingApiOpts({ feature: 'embed', chatKey: chatKey || 'global' })
+          : {
+              apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
+              vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+              firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+              model: settings.config.embeddingModel || 'gemini-embedding-001'
+            };
         await C.embedPack(epName, embedOpts);
         report.embedded = true;
       } catch(embErr) {

@@ -120,8 +120,12 @@
   function getApiConfigSnapshot(config) {
     const keys = [
       'autoExtApiType', 'autoExtKey', 'autoExtVertexJson', 'autoExtVertexLocation', 'autoExtVertexProjectId',
-      'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtModel', 'autoExtCustomModel',
-      'autoExtReasoning', 'autoExtBudget', 'embeddingModel', 'rerankModel', 'refinerModel', 'refinerCustomModel',
+      'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtNimKey', 'autoExtNimBaseUrl', 'autoExtNimEmbedKey',
+      'autoExtNimModel', 'autoExtNimModelCustom', 'rerankNimModel', 'rerankNimModelCustom',
+      'temporalRecallJudgeNimModel', 'temporalRecallJudgeNimModelCustom', 'refinerNimModel', 'refinerNimModelCustom',
+      'autoExtNimReasoning',
+      'autoExtModel', 'autoExtCustomModel',
+      'autoExtReasoning', 'autoExtBudget', 'embeddingModel', 'rerankModel', 'rerankCustomModel', 'refinerModel', 'refinerCustomModel',
       'temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel', 'temporalRecallJudgeReasoning'
     ];
     const out = {};
@@ -223,7 +227,7 @@
   }
 
   const defaultSettings = {
-    enabled: true, position: 'before',
+    enabled: true, injectionEnabled: true, position: 'before',
     prefix: OOC_FORMATS.default.prefix, suffix: OOC_FORMATS.default.suffix,
     scanRange: 5, scanOffset: 2, maxEntries: 3, cooldownEnabled: true, cooldownTurns: 3,
     statusBadgeEnabled: true,
@@ -232,6 +236,11 @@
     autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '',
+    autoExtNimKey: '', autoExtNimBaseUrl: 'https://integrate.api.nvidia.com/v1', autoExtNimEmbedKey: '',
+    autoExtNimModel: 'deepseek-ai/deepseek-v4-pro', rerankNimModel: 'deepseek-ai/deepseek-v4-flash',
+    temporalRecallJudgeNimModel: 'deepseek-ai/deepseek-v4-flash', refinerNimModel: 'deepseek-ai/deepseek-v4-flash',
+    autoExtNimModelCustom: '', rerankNimModelCustom: '', temporalRecallJudgeNimModelCustom: '', refinerNimModelCustom: '',
+    autoExtNimReasoning: 'high',
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
@@ -262,7 +271,7 @@
     decayHalfLife: C.DEFAULTS.decayHalfLife,
     embeddingModel: 'gemini-embedding-001', autoEmbedOnExtract: true,
     aiMemoryTurns: 3, importanceGating: true, importanceThreshold: 12, pendingPromiseBoost: true,
-    oocFormat: 'default', oocPromptVersion: OOC_FORMAT_VERSION, autoExtractPromptVersion: AUTO_EXTRACT_PROMPT_VERSION, rerankEnabled: false, rerankModel: 'gemini-3-flash-preview',
+    oocFormat: 'default', oocPromptVersion: OOC_FORMAT_VERSION, autoExtractPromptVersion: AUTO_EXTRACT_PROMPT_VERSION, rerankEnabled: false, rerankModel: 'gemini-3-flash-preview', rerankCustomModel: '',
     rerankPrompt: C.DEFAULTS.rerankPrompt,
 
     refinerEnabled: false, refinerAutoMode: false, refinerPassKeyword: 'PASS',
@@ -288,6 +297,9 @@
           const p = JSON.parse(saved);
           if (p && typeof p === 'object') {
             for (const k in p) { if (p[k] !== undefined) this.config[k] = p[k]; }
+            if (p.injectionEnabled === undefined && p.enabled !== undefined) this.config.injectionEnabled = p.enabled !== false;
+            if (this.config.injectionEnabled === undefined) this.config.injectionEnabled = this.config.enabled !== false;
+            this.config.enabled = this.config.injectionEnabled !== false;
             if (Array.isArray(this.config.templates)) {
               const dT = this.config.templates.find(t => t.isDefault || t.id === 'default');
               if (dT) {
@@ -721,6 +733,92 @@
     return packs.includes(entry.packName) && !disabled.includes(entry.id);
   }
 
+  function resolveModelValue(modelKey, customKey, fallback) {
+    const cfg = settings.config || {};
+    const value = cfg[modelKey];
+    if (value === '_custom') return cfg[customKey] || fallback;
+    return value || fallback;
+  }
+
+  function buildGenerationApiOpts(modelKey = 'autoExtModel', customKey = 'autoExtCustomModel', overrides = {}, costContext = null) {
+    const cfg = settings.config || {};
+    const apiType = overrides.apiType || cfg.autoExtApiType || 'key';
+    const nimModelKeyMap = {
+      autoExtModel: 'autoExtNimModel',
+      rerankModel: 'rerankNimModel',
+      temporalRecallJudgeModel: 'temporalRecallJudgeNimModel',
+      refinerModel: 'refinerNimModel'
+    };
+    const isNim = apiType === 'nim';
+    const model = overrides.model || (isNim
+      ? ((cfg[nimModelKeyMap[modelKey] || 'autoExtNimModel'] === '_custom')
+          ? (cfg[(nimModelKeyMap[modelKey] || 'autoExtNimModel') + 'Custom'] || cfg.autoExtNimModelCustom || 'deepseek-ai/deepseek-v4-pro')
+          : (cfg[nimModelKeyMap[modelKey] || 'autoExtNimModel'] || cfg.autoExtNimModel || 'deepseek-ai/deepseek-v4-pro'))
+      : resolveModelValue(modelKey, customKey, 'gemini-3-flash-preview'));
+    const opts = {
+      apiType,
+      key: cfg.autoExtKey,
+      vertexJson: cfg.autoExtVertexJson,
+      vertexLocation: cfg.autoExtVertexLocation || 'global',
+      vertexProjectId: cfg.autoExtVertexProjectId,
+      firebaseScript: cfg.autoExtFirebaseScript,
+      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
+      nimKey: cfg.autoExtNimKey,
+      nimBaseUrl: cfg.autoExtNimBaseUrl || 'https://integrate.api.nvidia.com/v1',
+      nimReasoningEffort: cfg.autoExtNimReasoning || 'high',
+      model,
+      maxRetries: cfg.autoExtMaxRetries || 1,
+      costContext,
+      ...overrides
+    };
+    const reasoning = cfg.autoExtReasoning || 'medium';
+    if (!isNim && String(opts.model || '').includes('gemini-3') && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
+      opts.thinkingConfig = { thinkingLevel: reasoning };
+    }
+    if (!isNim && String(opts.model || '').includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') {
+      opts.thinkingConfig.thinkingLevel = 'low';
+    }
+    return opts;
+  }
+
+  function buildEmbeddingApiOpts(costContext = null, overrides = {}) {
+    const cfg = settings.config || {};
+    let apiType = cfg.autoExtApiType || 'key';
+    let key = cfg.autoExtKey;
+    if (apiType === 'nim') {
+      apiType = 'key';
+      key = cfg.autoExtNimEmbedKey || cfg.autoExtKey || cfg.autoExtFirebaseEmbedKey || '';
+    }
+    return {
+      apiType,
+      key,
+      vertexJson: cfg.autoExtVertexJson,
+      vertexLocation: cfg.autoExtVertexLocation || 'global',
+      vertexProjectId: cfg.autoExtVertexProjectId,
+      firebaseScript: cfg.autoExtFirebaseScript,
+      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
+      model: cfg.embeddingModel || 'gemini-embedding-001',
+      costContext,
+      ...overrides
+    };
+  }
+
+  function isGenerationApiConfigured() {
+    const cfg = settings.config || {};
+    const apiType = cfg.autoExtApiType || 'key';
+    if (apiType === 'vertex') return !!cfg.autoExtVertexJson;
+    if (apiType === 'firebase') return !!cfg.autoExtFirebaseScript;
+    if (apiType === 'nim') return !!cfg.autoExtNimKey;
+    return !!cfg.autoExtKey;
+  }
+
+  function isEmbeddingApiConfigured() {
+    const opts = buildEmbeddingApiOpts();
+    if (opts.apiType === 'vertex') return !!opts.vertexJson;
+    if (opts.apiType === 'firebase') return !!opts.firebaseEmbedKey;
+    return !!opts.key;
+  }
+
   async function setPackEnabled(packName, state) {
     const curUrl = getUrlStateKey();
     const up = JSON.parse(JSON.stringify(settings.config.urlPacks || {}));
@@ -766,6 +864,8 @@
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
     getApiConfigSnapshot, resetSettingsKeepApi,
+    resolveModelValue, buildGenerationApiOpts, buildEmbeddingApiOpts,
+    isGenerationApiConfigured, isEmbeddingApiConfigured,
     runLocalMigration, getMigrationStatus, ensureHeavyRuntimeInit,
     __settingsLoaded: true
   });

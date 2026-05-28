@@ -126,15 +126,20 @@
     const projKey = prefix + 'VertexProjectId';
     const fbScriptKey = prefix + 'FirebaseScript';
     const fbEmbKey = prefix + 'FirebaseEmbedKey';
+    const nimKeyKey = prefix + 'NimKey';
+    const nimBaseUrlKey = prefix + 'NimBaseUrl';
+    const nimEmbedKeyKey = prefix + 'NimEmbedKey';
     const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
     const typeRow = document.createElement('div');
     typeRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;';
     const btnKey = document.createElement('button');
     const btnVertex = document.createElement('button');
     const btnFirebase = document.createElement('button');
+    const btnNim = document.createElement('button');
     const keyArea = document.createElement('div');
     const vertexArea = document.createElement('div');
     const firebaseArea = document.createElement('div');
+    const nimArea = document.createElement('div');
     const curMode = () => config[apiTypeKey] || 'key';
     const sty = (on) => `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${on ? '#285' : '#444'};background:${on ? '#285' : 'transparent'};color:${on ? '#fff' : '#ccc'};`;
     const updateBtns = () => {
@@ -142,17 +147,21 @@
       btnKey.style.cssText = sty(m === 'key');
       btnVertex.style.cssText = sty(m === 'vertex');
       btnFirebase.style.cssText = sty(m === 'firebase');
+      btnNim.style.cssText = sty(m === 'nim');
       keyArea.style.display = m === 'key' ? '' : 'none';
       vertexArea.style.display = m === 'vertex' ? '' : 'none';
       firebaseArea.style.display = m === 'firebase' ? '' : 'none';
+      nimArea.style.display = m === 'nim' ? '' : 'none';
     };
     btnKey.textContent = 'API Key';
     btnVertex.textContent = 'Vertex AI (JSON)';
     btnFirebase.textContent = 'Firebase';
+    btnNim.textContent = 'NVIDIA NIM';
     btnKey.onclick = () => { config[apiTypeKey] = 'key'; updateBtns(); triggerSave(); };
     btnVertex.onclick = () => { config[apiTypeKey] = 'vertex'; updateBtns(); triggerSave(); };
     btnFirebase.onclick = () => { config[apiTypeKey] = 'firebase'; updateBtns(); triggerSave(); };
-    typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex); typeRow.appendChild(btnFirebase);
+    btnNim.onclick = () => { config[apiTypeKey] = 'nim'; updateBtns(); triggerSave(); };
+    typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex); typeRow.appendChild(btnFirebase); typeRow.appendChild(btnNim);
     nd.appendChild(typeRow);
     // key 모드
     const ki = document.createElement('input'); ki.type = 'text';
@@ -212,6 +221,34 @@
     fbEmbInput.onchange = () => { config[fbEmbKey] = fbEmbInput.value.trim(); triggerSave(); };
     firebaseArea.appendChild(fbEmbInput);
     nd.appendChild(firebaseArea);
+    // NVIDIA NIM 모드 — 생성 API만 OpenAI 호환 엔드포인트로 호출. 임베딩은 기존 Gemini/Vertex/Firebase 설정을 보존 사용.
+    const nimNote = document.createElement('div');
+    nimNote.textContent = 'NVIDIA NIM 생성 API. Gemini/Vertex/Firebase 값은 지우지 않고 별도 보관됨.';
+    nimNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:6px;line-height:1.4;';
+    nimArea.appendChild(nimNote);
+    const nimKeyInput = document.createElement('input'); nimKeyInput.type = 'text';
+    nimKeyInput.value = config[nimKeyKey] || ''; nimKeyInput.placeholder = 'nvapi-...';
+    nimKeyInput.setAttribute('autocomplete', 'off');
+    nimKeyInput.style.cssText = S + '-webkit-text-security:disc;margin-bottom:8px;';
+    nimKeyInput.onchange = () => { config[nimKeyKey] = nimKeyInput.value.trim(); triggerSave(); };
+    nimArea.appendChild(nimKeyInput);
+    const nimBaseInput = document.createElement('input'); nimBaseInput.type = 'text';
+    nimBaseInput.value = config[nimBaseUrlKey] || 'https://integrate.api.nvidia.com/v1';
+    nimBaseInput.placeholder = 'https://integrate.api.nvidia.com/v1';
+    nimBaseInput.style.cssText = S;
+    nimBaseInput.onchange = () => { config[nimBaseUrlKey] = nimBaseInput.value.trim() || 'https://integrate.api.nvidia.com/v1'; triggerSave(); };
+    nimArea.appendChild(nimBaseInput);
+    const nimEmbNote = document.createElement('div');
+    nimEmbNote.textContent = '의미 검색용 Gemini API Key. NIM은 생성 전용으로 쓰고, 임베딩은 Gemini API 키로 생성함.';
+    nimEmbNote.style.cssText = 'font-size:11px;color:#888;margin:8px 0 4px;line-height:1.4;';
+    nimArea.appendChild(nimEmbNote);
+    const nimEmbInput = document.createElement('input'); nimEmbInput.type = 'text';
+    nimEmbInput.value = config[nimEmbedKeyKey] || ''; nimEmbInput.placeholder = 'AIzaSy...';
+    nimEmbInput.setAttribute('autocomplete', 'off');
+    nimEmbInput.style.cssText = S + '-webkit-text-security:disc;';
+    nimEmbInput.onchange = () => { config[nimEmbedKeyKey] = nimEmbInput.value.trim(); triggerSave(); };
+    nimArea.appendChild(nimEmbInput);
+    nd.appendChild(nimArea);
     updateBtns();
   }
 

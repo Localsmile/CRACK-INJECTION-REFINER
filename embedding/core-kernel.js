@@ -334,6 +334,7 @@ Entries:
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
+      nimKey = '', nimBaseUrl = 'https://integrate.api.nvidia.com/v1', nimReasoningEffort = 'high',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 
@@ -362,7 +363,8 @@ Entries:
     };
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
-    let url, headers;
+    const isNim = apiType === 'nim';
+    let url, headers, body;
     if (isFirebase) {
       // Firebase SDK (페이지 컨텍스트 주입). 3.x=global, 2.x=us-central1 자동.
       let cfg = parseFirebaseConfig(firebaseScript);
@@ -432,17 +434,42 @@ Entries:
         url = `https://${host}/v1/projects/${projId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
         headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
       } catch (e) { return { text: null, status: 0, error: e.message, retries: 0 }; }
+    } else if (isNim) {
+      if (!nimKey) return { text: null, status: 0, error: 'NVIDIA NIM API 키 누락', retries: 0 };
+      const base = String(nimBaseUrl || 'https://integrate.api.nvidia.com/v1').trim().replace(/\/+$/, '');
+      url = /\/chat\/completions$/i.test(base) ? base : base + '/chat/completions';
+      headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${nimKey}` };
     } else {
       if (!key) return { text: null, status: 0, error: 'API 키 누락', retries: 0 };
       url = _gBase + model + ':generateContent';
       headers = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
     }
 
-    const genConfig = {};
-    if (Object.keys(thinkingConfig).length > 0) genConfig.thinkingConfig = thinkingConfig;
-    if (responseMimeType) genConfig.responseMimeType = responseMimeType;
-    if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
-    const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
+    if (isNim) {
+      const nimBody = {
+        model,
+        messages: [{ role: 'user', content: prompt }]
+      };
+      if (maxOutputTokens != null) nimBody.max_tokens = maxOutputTokens;
+      if (nimReasoningEffort && nimReasoningEffort !== 'off') {
+        const m = String(model || '').toLowerCase();
+        if (m.includes('deepseek-v4')) {
+          nimBody.reasoning_effort = nimReasoningEffort;
+        } else if (m.includes('kimi')) {
+          nimBody.chat_template_kwargs = { thinking: nimReasoningEffort !== 'none' };
+        } else if (m.includes('glm')) {
+          nimBody.chat_template_kwargs = { enable_thinking: nimReasoningEffort !== 'none' };
+        }
+      }
+      if (responseMimeType === 'application/json') nimBody.response_format = { type: 'json_object' };
+      body = JSON.stringify(nimBody);
+    } else {
+      const genConfig = {};
+      if (Object.keys(thinkingConfig).length > 0) genConfig.thinkingConfig = thinkingConfig;
+      if (responseMimeType) genConfig.responseMimeType = responseMimeType;
+      if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
+      body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
+    }
 
     let lastStatus = 0, lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -476,10 +503,22 @@ Entries:
           }
         } else {
           const json = await r.json();
-          const parts = json.candidates?.[0]?.content?.parts || [];
-          const textPart = parts.find(p => p.text && !p.thought);
-          const text = textPart?.text ?? null;
-          const _restCost = _trackCost(json.usageMetadata, prompt, text);
+          let text = null;
+          let usage = json.usageMetadata;
+          if (isNim) {
+            text = json.choices?.[0]?.message?.content ?? null;
+            if (json.usage) {
+              usage = {
+                promptTokenCount: json.usage.prompt_tokens,
+                candidatesTokenCount: json.usage.completion_tokens
+              };
+            }
+          } else {
+            const parts = json.candidates?.[0]?.content?.parts || [];
+            const textPart = parts.find(p => p.text && !p.thought);
+            text = textPart?.text ?? null;
+          }
+          const _restCost = _trackCost(usage, prompt, text);
           if (text) return { text, status: r.status, error: null, retries: attempt, cost: _restCost };
           lastError = '응답 파싱 실패';
         }

@@ -90,17 +90,22 @@
       const _judgeTimeoutMs = Math.max(0, Number(config.temporalRecallJudgeTimeoutMs || 0));
       const _judgeModel = (config.temporalRecallJudgeModel === '_custom' ? config.temporalRecallJudgeCustomModel : config.temporalRecallJudgeModel) || 'gemini-3.1-flash-lite-preview';
       const _judgeAbortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-      const _judgeCall = C.callGeminiApi(prompt, {
-        ...apiOpts,
+      const _judgeOpts = (_w.__LoreInj.buildGenerationApiOpts || (() => ({ ...apiOpts })))(
+        'temporalRecallJudgeModel',
+        'temporalRecallJudgeCustomModel',
+        {
         model: _judgeModel,
         responseMimeType: 'application/json',
         maxRetries: 1,
         timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
         maxOutputTokens: 512,
-        thinkingConfig: { thinkingLevel: config.temporalRecallJudgeReasoning || 'minimal' },
         costContext: { feature: 'judge', chatKey: getChatKey() || 'global' },
         signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
-      });
+        },
+        { feature: 'judge', chatKey: getChatKey() || 'global' }
+      );
+      if (_judgeOpts.apiType !== 'nim') _judgeOpts.thinkingConfig = { thinkingLevel: config.temporalRecallJudgeReasoning || 'minimal' };
+      const _judgeCall = C.callGeminiApi(prompt, _judgeOpts);
       let _judgeTimer = null;
       const res = _judgeTimeoutMs > 0
         ? await Promise.race([
@@ -205,10 +210,11 @@
   }
 
   async function inject(userInput) {
-    if (!settings.config.enabled) return userInput;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const turnCounter = incrementTurnCounter(chatKey);
     if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
+    const injectionOn = settings.config.injectionEnabled !== undefined ? settings.config.injectionEnabled !== false : settings.config.enabled !== false;
+    if (!injectionOn) return userInput;
 
     const activePacksArr = typeof _w.__LoreInj.getActivePacksForUrl === 'function'
       ? _w.__LoreInj.getActivePacksForUrl(_url)
@@ -239,13 +245,15 @@
     const recentMsgs = await C.fetchLogs(fetchCount);
 
     const config = settings.config;
-    const apiOpts = {
-      apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
-      vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
-      firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
-      model: config.embeddingModel || 'gemini-embedding-001',
-      costContext: { feature: 'embed', chatKey: chatKey || 'global' }
-    };
+    const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ feature: 'embed', chatKey: chatKey || 'global' })
+      : {
+          apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
+          vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+          firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
+          model: config.embeddingModel || 'gemini-embedding-001',
+          costContext: { feature: 'embed', chatKey: chatKey || 'global' }
+        };
     const searchConfig = {
       chatKey: chatKey, turnCounter: turnCounter,
       scanRange: config.scanRange || 6, scanOffset: config.scanOffset || 0,
@@ -357,14 +365,17 @@
       try {
         C.showStatusBadge('에리가 로어 재정렬 중');
         const last2 = recentMsgs.slice(-4).map(m => m.role + ': ' + m.message).join('\n');
-        scored = await C.smartRerank(userInput, scored, last2, {
-          apiType: config.autoExtApiType || 'key', key: config.autoExtKey,
-          vertexJson: config.autoExtVertexJson, vertexLocation: config.autoExtVertexLocation || 'global',
-          vertexProjectId: config.autoExtVertexProjectId,
-          firebaseScript: config.autoExtFirebaseScript,
-          model: config.rerankModel || config.autoExtModel || 'gemini-3-flash-preview',
-          costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
-        }, config);
+        const rerankOpts = _w.__LoreInj.buildGenerationApiOpts
+          ? _w.__LoreInj.buildGenerationApiOpts('rerankModel', 'rerankCustomModel', {}, { feature: 'rerank', chatKey: chatKey || 'global' })
+          : {
+              apiType: config.autoExtApiType || 'key', key: config.autoExtKey,
+              vertexJson: config.autoExtVertexJson, vertexLocation: config.autoExtVertexLocation || 'global',
+              vertexProjectId: config.autoExtVertexProjectId,
+              firebaseScript: config.autoExtFirebaseScript,
+              model: config.rerankModel || config.autoExtModel || 'gemini-3-flash-preview',
+              costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
+            };
+        scored = await C.smartRerank(userInput, scored, last2, rerankOpts, config);
       } catch(e) {}
       // 리랭크 직후 hide 대신 "응답 기다리는 중"으로 전환 — Refiner가 실제 응답 감지 시 다음 상태로 교체/hide 담당
       C.showStatusBadge('에리가 응답 기다리는 중');

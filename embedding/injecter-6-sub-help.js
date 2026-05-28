@@ -22,7 +22,7 @@
       },
       {
         "label": "[인젝션/압축]",
-        "text": "로어 인젝션 활성화\n대화에 로어 자동 삽입함. 보통 ON 권장.\n\n적응형 로어 압축\n삽입 공간이 부족하면 로어 길이를 자동으로 줄임.\n자동: 남은 공간에 맞춤\n길게: 자세히 넣음\n짧게: 핵심만 넣음\n아주 짧게: 최소 정보만 넣음"
+        "text": "로어 삽입\n대화에 로어 자동 삽입함. 자동 대화 정리와 별도 ON/OFF.\n\n적응형 로어 압축\n삽입 공간이 부족하면 로어 길이를 자동으로 줄임.\n자동: 남은 공간에 맞춤\n길게: 자세히 넣음\n짧게: 핵심만 넣음\n아주 짧게: 최소 정보만 넣음"
       },
       {
         "label": "[검색 & 감지]",
@@ -72,7 +72,7 @@
     "sections": [
       {
         "label": "[API 연결]",
-        "text": "지원 방식은 3종.\nAPI Key: 가장 단순함. 처음 설정 권장.\nVertex JSON: 서비스 계정 JSON 사용함.\nFirebase: Firebase 설정 스크립트 사용함. 의미 검색 준비는 별도 Gemini API Key 필요. Google AI Studio에서 무료 키 발급 가능."
+        "text": "지원 방식은 4종.\nAPI Key: Gemini API 키 사용.\nVertex JSON: 서비스 계정 JSON 사용.\nFirebase: Firebase 설정 스크립트 사용. 의미 검색 준비는 별도 Gemini API Key 필요. Google AI Studio에서 무료 키 발급 가능.\nNVIDIA NIM: OpenAI 호환 /v1/chat/completions 사용. 생성 키와 임베딩용 Gemini API Key를 따로 입력함. 기존 Gemini 설정은 보존됨."
       },
       {
         "label": "[모델 선택]",
