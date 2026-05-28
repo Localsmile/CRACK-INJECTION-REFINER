@@ -180,10 +180,16 @@ Entries:
   // 네트워크
   const _GM_xhr = (typeof GM_xmlhttpRequest !== 'undefined') ? GM_xmlhttpRequest : ((typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest.bind(GM) : null);
   // AbortSignal forwarding: GM_xmlhttpRequest의 abort() 호출로 실제 요청 취소.
-  function gmFetch(url, opts) {
+  function gmFetch(url, opts = {}) {
     const signal = opts && opts.signal;
+    const runNativeFetch = () => fetch(url, {
+      method: opts.method || 'GET',
+      headers: opts.headers || {},
+      body: opts.body || null,
+      signal: signal || undefined
+    });
     if (!_GM_xhr) {
-      return fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: signal || undefined });
+      return runNativeFetch();
     }
     return new Promise((resolve, reject) => {
       if (signal && signal.aborted) { reject(new Error('aborted')); return; }
@@ -195,8 +201,17 @@ Entries:
       xhrHandle = _GM_xhr({
         method: opts.method || 'GET', url, headers: opts.headers || {}, data: opts.body || null, responseType: 'text',
         onload: (r) => { cleanup(); resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: () => Promise.resolve(r.responseText), json: () => Promise.resolve(JSON.parse(r.responseText)) }); },
-        onerror: () => { cleanup(); reject(new Error('네트워크 오류')); },
-        ontimeout: () => { cleanup(); reject(new Error('타임아웃')); },
+        timeout: opts.timeout || opts.timeoutMs || 0,
+        onerror: async (r) => {
+          cleanup();
+          if (opts.fallbackToFetchOnError) {
+            try { resolve(await runNativeFetch()); return; }
+            catch (fe) { reject(new Error('네트워크 오류: ' + new URL(url, location.href).host + ' / fetch=' + (fe.message || String(fe)))); return; }
+          }
+          const status = r && r.status ? ' status=' + r.status : '';
+          reject(new Error('네트워크 오류: ' + new URL(url, location.href).host + status));
+        },
+        ontimeout: () => { cleanup(); reject(new Error('타임아웃: ' + new URL(url, location.href).host)); },
         onabort: () => { cleanup(); reject(new Error('aborted')); }
       });
     });
@@ -597,8 +612,11 @@ Entries:
         const url = _gBase + model + ':embedContent';
         const bodyObj = { content: { parts: [{ text: arr[0] }] }, output_dimensionality: dimensions };
         if (model.includes('embedding-001')) bodyObj.taskType = taskType;
-        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) });
-        if (!r.ok) throw new Error('임베딩 API 실패: ' + r.status);
+        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj), fallbackToFetchOnError: true, timeoutMs: 90000 });
+        if (!r.ok) {
+          const errBody = r.text ? await r.text().catch(() => '') : '';
+          throw new Error('임베딩 API 실패: ' + r.status + ' url=' + url + ' body=' + errBody.slice(0, 300).replace(/\n/g, ' '));
+        }
         const json = await r.json();
         const embs = json.embeddings || [json.embedding];
         _trackEmbedCost(arr, model);
@@ -610,8 +628,11 @@ Entries:
           if (model.includes('embedding-001')) req.taskType = taskType;
           return req;
         });
-        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }) });
-        if (!r.ok) throw new Error('배치 임베딩 API 실패: ' + r.status);
+        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }), fallbackToFetchOnError: true, timeoutMs: 120000 });
+        if (!r.ok) {
+          const errBody = r.text ? await r.text().catch(() => '') : '';
+          throw new Error('배치 임베딩 API 실패: ' + r.status + ' url=' + url + ' body=' + errBody.slice(0, 300).replace(/\n/g, ' '));
+        }
         const json = await r.json();
         if (!json.embeddings) throw new Error('임베딩 결과가 없습니다.');
         _trackEmbedCost(arr, model);
