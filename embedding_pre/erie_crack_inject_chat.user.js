@@ -56,6 +56,7 @@
 // @connect     oauth2.googleapis.com
 // @connect     firebasevertexai.googleapis.com
 // @connect     www.gstatic.com
+// @connect     integrate.api.nvidia.com
 // @connect     contents-api.wrtn.ai
 // @connect     crack-api.wrtn.ai
 // @connect     *
