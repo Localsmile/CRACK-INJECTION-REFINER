@@ -17,7 +17,7 @@
   const NIM_MODELS = [
     ['DeepSeek V4 Pro (기본)', 'deepseek-ai/deepseek-v4-pro'],
     ['DeepSeek V4 Flash', 'deepseek-ai/deepseek-v4-flash'],
-    ['GLM-5.1', 'z-ai/glm5.1'],
+    ['GLM-5.1', 'z-ai/glm-5.1'],
     ['Kimi K2.6', 'moonshotai/kimi-k2.6'],
     ['직접 입력', '_custom']
   ];

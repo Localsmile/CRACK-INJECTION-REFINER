@@ -496,7 +496,10 @@ Entries:
 
         if (!r.ok) {
           const errBody = r.text ? await r.text().catch(() => '') : '';
-          lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\\n/g, ' ')}`;
+          const errText = errBody.slice(0, 500).replace(/\\n/g, ' ');
+          lastError = isNim
+            ? `NIM HTTP ${r.status} model=${model} url=${url} body=${errText}`
+            : `HTTP ${r.status} ${errText}`;
           if ([400, 403, 404].includes(r.status)) break;
           // 429 지수 백오프
           if (r.status === 429 && attempt < maxRetries) {

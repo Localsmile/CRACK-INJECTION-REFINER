@@ -750,7 +750,11 @@
       refinerModel: 'refinerNimModel'
     };
     const isNim = apiType === 'nim';
-    const model = overrides.model || (isNim
+    const overrideModel = overrides.model;
+    const ignoreGeminiOverrideForNim = isNim && /^gemini[-_]/i.test(String(overrideModel || ''));
+    const safeOverrides = { ...overrides };
+    if (ignoreGeminiOverrideForNim) delete safeOverrides.model;
+    const model = (!ignoreGeminiOverrideForNim && overrideModel) || (isNim
       ? ((cfg[nimModelKeyMap[modelKey] || 'autoExtNimModel'] === '_custom')
           ? (cfg[(nimModelKeyMap[modelKey] || 'autoExtNimModel') + 'Custom'] || cfg.autoExtNimModelCustom || 'deepseek-ai/deepseek-v4-pro')
           : (cfg[nimModelKeyMap[modelKey] || 'autoExtNimModel'] || cfg.autoExtNimModel || 'deepseek-ai/deepseek-v4-pro'))
@@ -769,7 +773,7 @@
       model,
       maxRetries: cfg.autoExtMaxRetries || 1,
       costContext,
-      ...overrides
+      ...safeOverrides
     };
     const reasoning = cfg.autoExtReasoning || 'medium';
     if (!isNim && String(opts.model || '').includes('gemini-3') && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
@@ -787,7 +791,7 @@
     let key = cfg.autoExtKey;
     if (apiType === 'nim') {
       apiType = 'key';
-      key = cfg.autoExtNimEmbedKey || cfg.autoExtKey || cfg.autoExtFirebaseEmbedKey || '';
+      key = cfg.autoExtNimEmbedKey || '';
     }
     return {
       apiType,

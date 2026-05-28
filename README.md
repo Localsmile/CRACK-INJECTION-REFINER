@@ -106,7 +106,7 @@ NIM 모델 기본 선택지는 다음과 같습니다.
 
 - deepseek-ai/deepseek-v4-pro
 - deepseek-ai/deepseek-v4-flash
-- z-ai/glm5.1
+- z-ai/glm-5.1
 - moonshotai/kimi-k2.6
 
 NIM 모델 설정은 Gemini 모델 설정과 별도로 저장됩니다. API 방식을 NIM으로 선택하면 NIM 모델 설정만 표시하고, Gemini 계열을 선택하면 Gemini 모델 설정만 표시합니다.
