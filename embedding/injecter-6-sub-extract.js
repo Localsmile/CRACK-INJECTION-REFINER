@@ -145,9 +145,11 @@
             const start = Date.now();
             let curBatch = null;
             let curTotal = null;
+            let curPhase = '처리 중';
+            let curModel = '';
             const tick = setInterval(() => {
               const sec = Math.floor((Date.now() - start) / 1000);
-              if (curBatch && curTotal) bStatus.textContent = '배치 ' + curBatch + '/' + curTotal + ' 처리 중 (' + sec + '초)';
+              if (curBatch && curTotal) bStatus.textContent = '배치 ' + curBatch + '/' + curTotal + ' ' + curPhase + ' (' + sec + '초)' + (curModel ? ' · ' + curModel : '');
               else bStatus.textContent = '전체 로그 가져오는 중 (' + sec + '초)';
             }, 1000);
             try {
@@ -157,10 +159,20 @@
                 maxAttempts: settings.config.batchExtMaxAttempts || 3,
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);
-                  if (ev.phase === 'batch') {
+                  if (ev.index && ev.total) {
                     curBatch = ev.index;
                     curTotal = ev.total;
-                    bStatus.textContent = '배치 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                    curModel = ev.model || curModel || '';
+                    const phaseLabel = {
+                      batch: '준비 중',
+                      batch_api: 'AI 호출 중' + (ev.attempt ? ' ' + ev.attempt + '/' + (ev.maxAttempts || '?') : ''),
+                      batch_parse: '응답 정리 중',
+                      batch_temporal: '중요 장면 추출 중',
+                      batch_done: '완료',
+                      embed: '임베딩 갱신 중'
+                    }[ev.phase] || '처리 중';
+                    curPhase = phaseLabel;
+                    bStatus.textContent = '배치 ' + ev.index + '/' + ev.total + ' ' + phaseLabel + ' (' + sec + '초)' + (curModel ? ' · ' + curModel : '');
                   }
                 }
               });

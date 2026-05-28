@@ -1099,14 +1099,19 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const tpl = settings.getActiveTemplate();
     const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
 
-    const _batchModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
+    const _batchPreviewOpts = _w.__LoreInj.buildGenerationApiOpts
+      ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', {}, { feature: 'batchExtract', chatKey: chatKey || 'global' })
+      : null;
+    const _batchModel = _batchPreviewOpts && _batchPreviewOpts.model
+      ? _batchPreviewOpts.model
+      : (settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel);
     let _batchTotalElapsedMs = 0, _batchTotalUsd = 0;
     let _batchHasUnknown = false, _batchHasEstimated = false, _batchCostKnown = false;
 
     for (let bi = 0; bi < batches.length; bi++) {
       const msgs = batches[bi];
       extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 분석 중');
-      if (onProgress) { try { onProgress({ phase: 'batch', index: bi + 1, total: batches.length }); } catch(_){} }
+      if (onProgress) { try { onProgress({ phase: 'batch', index: bi + 1, total: batches.length, model: _batchModel }); } catch(_){} }
 
       const context = msgs.map(m => m.role + ': ' + m.message).join('\n');
       const _patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
@@ -1126,8 +1131,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;
         try {
+          if (onProgress) { try { onProgress({ phase: 'batch_api', index: bi + 1, total: batches.length, attempt: attempt + 1, maxAttempts, model: _batchModel }); } catch(_){} }
           const apiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', {
-            maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+            maxRetries: 0, responseMimeType: 'application/json', timeoutMs: 120000,
             maxOutputTokens: _patchOn ? 4096 : null,
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
@@ -1135,7 +1141,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
             firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+            maxRetries: 0, responseMimeType: 'application/json', timeoutMs: 120000,
             maxOutputTokens: _patchOn ? 4096 : null,
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           };
@@ -1149,6 +1155,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
           if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
           rawSnippet = String(res.text).slice(0, 200);
+          if (onProgress) { try { onProgress({ phase: 'batch_parse', index: bi + 1, total: batches.length, model: apiOpts.model || _batchModel }); } catch(_){} }
           if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
           const parsedItems = normalizeExtractItems(parsed);
           if (parsedItems.length > 0) {
@@ -1166,8 +1173,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         // Phase 11: per-batch temporal pass so batch extraction also harvests timeline events.
         if (settings.config.temporalExtractEnabled !== false) {
           try {
+            if (onProgress) { try { onProgress({ phase: 'batch_temporal', index: bi + 1, total: batches.length, model: _batchModel }); } catch(_){} }
             const tApiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts('autoExtModel', 'autoExtCustomModel', {
-              maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+              maxRetries: 0, responseMimeType: 'application/json', timeoutMs: 120000,
               maxOutputTokens: _patchOn ? 4096 : null,
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
@@ -1175,7 +1183,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
               firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-              maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
+              maxRetries: 0, responseMimeType: 'application/json', timeoutMs: 120000,
               maxOutputTokens: _patchOn ? 4096 : null,
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             };
@@ -1191,6 +1199,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             report.batchResults.push({ batch: bi + 1, status: 'temporal_failed', attempts: 1, error: terr.message || String(terr) });
           }
         }
+        if (onProgress) { try { onProgress({ phase: 'batch_done', index: bi + 1, total: batches.length, model: _batchModel, status }); } catch(_){} }
       } else {
         report.failed++;
         report.batchResults.push({ batch: bi + 1, status: 'failed', attempts, error: lastErr, rawSnippet });
@@ -1205,6 +1214,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       try {
         const epName = await getAutoExtPackForUrl(_url);
         extBadgeShow('에리가 임베딩 갱신 중');
+        if (onProgress) { try { onProgress({ phase: 'embed', index: batches.length, total: batches.length, model: settings.config.embeddingModel || 'gemini-embedding-001' }); } catch(_){} }
         const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
           ? _w.__LoreInj.buildEmbeddingApiOpts({ feature: 'embed', chatKey: chatKey || 'global' })
           : {
