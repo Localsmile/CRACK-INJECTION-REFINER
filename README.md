@@ -1,213 +1,171 @@
 # CRACK-INJECTION-REFINER
 
-[비공식] `crystallized-chasm` 기반 연동 확장 스크립트
-[crack.wrtn.ai](https://crack.wrtn.ai) 전용 RP 로어 자동 주입 · AI 응답 교정 · 대화 기반 DB 자동 구축
+`crack.wrtn.ai` 채팅 화면에서 동작하는 비공식 Tampermonkey 사용자 스크립트입니다.
 
-WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣고, Gemini / Vertex AI 연동으로 대화 로그에서 로어를 추출해 IndexedDB에 누적함.
-
-컨텍스트 관리 로직/기술을 크랙 유저 채팅을 수정/삽입하는 방식으로 구현.
-
----
-
-## 기반 프로젝트
-
-- [milkyway0308 / crystallized-chasm](https://github.com/milkyway0308/crystallized-chasm)
-  공용 코어(`crack-shared-core`, `chasm-shared-core`), `decentralized-modal`, `toastify-injection`을 그대로 사용함.
-
----
-
-## 아키텍처
-
-로더 스크립트가 `@require`로 모듈을 순차 로드함.
-엔트리는 단일 유저스크립트지만 내부적으로 **Core 라이브러리 + 인젝터 + 리파이너**로 분리됨.
-
-### Core 라이브러리
-
-| 모듈 | 역할 |
-| --- | --- |
-| `core-ui.js` | 설정/로그 UI 공통 컴포넌트 |
-| `core-kernel.js` | 전역 상태, 이벤트 버스, 수명 주기 |
-| `core-platform.js` | WebSocket / fetch 후킹, Gemini·Vertex 호출 래퍼 |
-| `core-memory.js` | Dexie DB, 워킹 메모리, 첫만남 기록, 감쇠 스코어 |
-| `core-format.js` | adaptiveFormat(full / compact / micro), 동적 예산 계산 |
-| `core-search.js` | 하이브리드 검색(트리거 + 임베딩), 활성 캐릭터 감지 |
-| `core-embedding.js` | 임베딩 생성·캐시, 유사도 계산 |
-| `core-importer.js` | JSON 팩 가져오기/내보내기, 스키마 검증 |
-
-### 인젝터 (6개 모듈)
-
-로더의 검증 루틴(`__interceptorLoaded` 등)이 요구하는 순서:
-
-1. **interceptor** — Socket.IO `send` 선점(document-start), fetch 폴백
-2. **const** — 상수, 기본 설정, 정규식 테이블
-3. **settings** — URL별 설정 저장/로드, 마이그레이션
-4. **extract** — 대화 로그 → Gemini → 로어 추출 → 중요도 게이팅 → 병합
-5. **inject** — 트리거 매칭, 예산 산정, adaptiveFormat, 메시지 앞/뒤 삽입
-6. **ui** — 설정 패널, 팩 편집기, 로그 뷰어, 쿨다운 모니터
-
-### 리파이너
-
-`refiner.js` — AI 응답 후처리(문체 교정, 금지어 필터, 커스텀 룰) 전담.
-
----
-
-## 기능 요약
-
-### 1. 메시지 인터셉트
-
-- Socket.IO(WebSocket) `send` 인터셉트, wrtn 자체 JS보다 선행 실행(`@run-at document-start`)
-- fetch 폴백 지원
-- 인터셉션 실패 시 토스트 경고
-
-### 2. 로어 주입
-
-- IndexedDB(Dexie) 기반 로어 팩, JSON 가져오기/내보내기, 수동 입력
-- 한국어 조사 인식 정규식(은/는/이/가/을/를 …)
-- 바이그램 유사도 기반 오타 허용 매칭
-- `&&` 복합 트리거 (예: `캐릭터A && 이벤트X`)
-- 하이브리드 검색: 트리거 매칭 + 임베딩 유사도 + 시간 감쇠 혼합
-- 2단계 시간 감쇠: `aiMemoryTurns`(AI 단기 기억 한계)와 `decayHalfLife`(관련성 반감기)를 분리
-- Importance Gating: 중요도 낮은 로어는 자동 추출 단계에서 컷
-- adaptiveFormat: 2000자 제한 내 여유 글자 수를 계산해 full → compact → micro 단계적 압축
-- 워킹 메모리 / 씬 상태 / 첫만남 추적 / 호칭 매트릭스
-- 재주입 쿨다운(턴 기반, per-entry), 주입 위치(앞/뒤) 선택
-- 모순 감지 로깅
-
-### 3. Gemini / Vertex AI 연동
-
-- 대화 자동 분석 → 로어 자동 추출 → DB 병합(주기적 / 수동)
-- 기존 DB 포함 전송으로 중복 추출 방지
-- 이중 인증: API Key · Vertex AI(서비스 계정 JWT)
-- 모델 선택: Gemini 2.x / 3.x / 커스텀 ID
-- Thinking 레벨, 토큰 버짓, 재시도 로직
-- 임베딩 모델 별도 지정 가능
-
-### 4. URL별 상태 관리
-
-- 채팅방(URL)별 팩 활성화, 쿨다운, 턴 카운터, 로그가 독립
-- 자동 추출 팩 이름 자동 생성(URL suffix 기반)
-- 활성 캐릭터 감지(`detectActiveCharacters`)로 씬별 우선순위 조정
-
-### 5. UI
-
-- `ModalManager` 기반 설정 패널(`decentralized-modal.js`)
-- 팩 관리, 항목별 ON/OFF, 인라인 JSON 편집
-- 주입/추출 실행 로그 뷰어
-- 쿨다운 상태 모니터 + 수동 해제
-
----
-
-## 기술 구현 상세
-
-### WebSocket 인터셉션
-
-- `document-start` 시점에 `window.WebSocket`을 프록시 래퍼로 교체
-- 기존 `send`를 저장 후 래핑, 유저 메시지 프레임(Socket.IO 이벤트 코드 + payload)만 필터링
-- payload를 디코딩 → 로어 주입 → 재인코딩 → 원본 `send.call`로 위임
-- 인젝션 실패·파싱 실패 시 원본 payload를 그대로 통과시켜 채팅 유실 방지
-- fetch 폴백: 일부 업데이트 경로에서 HTTP POST로 전송되는 경우를 대비해 `window.fetch` 동일 패턴으로 래핑
-
-### 하이브리드 검색 파이프라인
-
-입력: 최근 N턴 로그 + 활성 로어 팩
-출력: 주입 후보 배열(점수 정렬)
-
-1. **트리거 스캔** — 각 엔트리의 `triggers`를 최근 `scan_range`턴에 대해 정규식/바이그램 매칭, 한국어 조사 허용
-2. **임베딩 회수** — 트리거 미스 엔트리 중 `importance ≥ threshold`인 것만 임베딩 유사도 상위 K 회수
-3. **활성 캐릭터 보정** — `detectActiveCharacters`가 반환한 집합에 속한 엔트리의 점수에 가중치
-4. **재주입 스코어** — `calcReinjectionScore(lastInjectedTurn, currentTurn, halfLife, memoryTurns)`로 감쇠 반영
-5. **병합** — 트리거 점수 + 임베딩 점수 + 재주입 점수를 가중 합산, 중복 엔트리 dedupe
-
-### 2단계 시간 감쇠 모델
-
-두 파라미터가 완전히 다른 곡선을 그림:
-
-- `aiMemoryTurns` — AI가 직전 몇 턴을 "기억하고 있다"고 가정하는 윈도우. 윈도우 안이면 재주입 불필요(점수 감점)
-- `decayHalfLife` — 로어 자체의 관련성 반감기. 경과 턴이 반감기를 넘을수록 재주입 필요도가 지수적으로 상승
-
-- `memoryOverlap`: 0~1, 윈도우 안이면 1에 가까워 감점
-- `relevanceDecay`: 반감기 기반 지수 회복 함수, 오래된 로어일수록 다시 필요하다고 판단
-
-### adaptiveFormat 과 동적 예산
-
-입력 제한 2000자 내에서 "최대한 많은 로어를 의미 있게" 삽입하기 위한 목적
-
-1. 원본 유저 메시지 길이 측정 → `budget = 2000 - len(userMessage) - 안전빵`
-2. 후보 로어를 점수 내림차순으로 정렬
-3. `full` 포맷으로 시뮬레이션 누적, 예산 초과 시 후순위부터 `compact`로 다운그레이드
-4. 그래도 초과면 `micro`(summary only) 로 재다운그레이드
-5. 그래도 초과면 하위 엔트리 드롭
-6. 마지막으로 섹션 헤더·구분자 포함 길이 재검증
-
-각 포맷은 `detail` 하위 필드 중 어떤 걸 살리고 버릴지 규칙이 다름. `importance`가 높을수록 full 유지 확률이 높아지는 tie-break를 둠.
-
-### Importance Gating
-
-자동 추출이 로그당 수십 개씩 뽑아내면 DB가 노이즈로 오염됨. 방지책:
-
-- 추출 결과 각 엔트리에 `importance: 1~5` 요구
-- `importance < minImportance`는 저장 단계에서 드롭
-- 중복 병합 시 `max(importance)` 유지, summary/detail은 최신본으로 덮어쓰되 모순되면 `conflict` 로그에 기록
-
-### 모순 감지
-
-동일 엔트리에 대해 속성값이 바뀔 때:
-
-- 단순 추가/확장 → silent merge
-- 기존 값과 상충(예: 생존 → 사망, 소속 A → 소속 B) → `conflict` 로그에 턴·이전값·새값·출처 메시지 기록
-- UI에서 유저가 수동으로 채택·롤백 가능
-
-### 워킹 메모리 / 씬 상태
-
-`core-memory.js`가 URL별로 유지하는 단기 슬롯.
-
-- 현재 장소, 활성 인물, 진행 중 이벤트를 추적
-- 매 턴 LLM 추출 결과로 갱신
-- `detectActiveCharacters`가 이 슬롯과 최근 발화를 교차해 "지금 씬에 실제로 등장한" 인물만 골라 로어 우선순위에 반영
-
-### 첫만남 추적 / 호칭 매트릭스
-
-- 엔트리별 `firstEncounter`: 해당 로어가 채팅 문맥에서 처음 등장한 턴/메시지 ID 저장
-- 첫 등장 이전에는 로어를 주입하지 않아 "AI가 모르는 정보를 이미 아는 것처럼 말하는" 누수 방지
-- 호칭 매트릭스: 인물 A가 인물 B를 부르는 호칭을 관계·상황별로 기록, 캐릭터 간 톤 일관성 확보
-
-### 스토리지 레이아웃
-
-- Dexie DB: `packs`, `entries`, `embeddings`, `workingMemory`, `firstEncounters`, `logs`
-- localStorage: URL별 경량 상태(쿨다운, 턴 카운터, 마지막 추출 시각)
-- IndexedDB 용량 압박 시 임베딩부터 LRU 축출
-
-### Gemini / Vertex 호출 계층
-
-`core-platform.js` 안에서 통합:
-
-- 공통 스키마로 요청 빌드 → 인증 모드 분기(Key vs JWT)
-- Vertex는 서비스 계정 JSON에서 JWT 서명 후 OAuth 토큰 교환 → `Authorization: Bearer`
-- Thinking/토큰 버짓은 모델이 지원하는 경우에만 파라미터 주입
-- 재시도: 지수 백오프, 4xx는 즉시 실패, 5xx·네트워크 오류만 재시도
-- 토스트로 실패 원인 표면화(Key 만료, 쿼터 초과, 모델 미지원 등 구분)
-
----
+주요 목적은 RP 대화 중 로어를 자동 삽입하고, 대화 로그를 기반으로 로어팩을 추출하며, Gemini 계열 API를 이용해 응답 교정을 수행하는 것입니다.
 
 ## 설치
 
-1. [Tampermonkey](https://www.tampermonkey.net/) 또는 [Violentmonkey](https://violentmonkey.github.io/) 설치
-2. 아래 링크로 유저스크립트 설치
-https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject.user.js
+권장 설치 파일:
 
----
+```text
+https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/main/universal_bundle_work/dist/erie_crack_inject_universal.user.js
+```
 
-## 의존성
+배포 보존 브랜치:
 
-- [Dexie.js](https://dexie.org/)
-- `crack-shared-core` / `chasm-shared-core` ([milkyway0308](https://github.com/milkyway0308/crystallized-chasm))
-- `decentralized-modal.js`
-- `toastify-injection.js`
+```text
+https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523-universal-clean/universal_bundle_work/dist/erie_crack_inject_universal.user.js
+```
 
-모두 `@require` CDN 로드, 별도 설치 불필요.
+`260523-universal-clean` 브랜치는 보존용 배포 브랜치입니다. `main` 브랜치는 해당 브랜치의 단일 설치용 번들 구조를 기준으로 관리합니다.
 
----
+## 동작 대상
 
-## 크레딧
-- 코어 프레임워크: [milkyway0308 / crystallized-chasm](https://github.com/milkyway0308/crystallized-chasm)
-- 확장 스크립트 및 로어 엔진: Localsmile
+스크립트는 다음 형태의 채팅 경로에서 실제 기능을 수행합니다.
+
+```text
+https://crack.wrtn.ai/stories/*/episodes/*
+https://crack.wrtn.ai/characters/*/chats/*
+https://crack.wrtn.ai/u/*/c/*
+```
+
+메인 화면에서는 무거운 모듈을 직접 실행하지 않습니다. 메인 화면에서 채팅 경로로 SPA 이동이 발생하면 채팅 전용 부트스트랩을 위해 재로드를 유도합니다.
+
+## 로드 구조
+
+이 저장소는 소스 관리를 위해 파일을 모듈 단위로 분리하지만, 사용자가 설치하는 파일은 단일 userscript입니다.
+
+관리용 소스:
+
+```text
+embedding/
+embedding_pre/
+universal_bundle_work/
+```
+
+사용자 설치용 출력:
+
+```text
+universal_bundle_work/dist/erie_crack_inject_universal.user.js
+```
+
+외부 런타임 의존성은 Dexie만 `@require`로 유지합니다. 프로젝트 내부 모듈은 빌드 시 단일 userscript 본문에 포함됩니다.
+
+## 주요 기능
+
+### 로어 삽입
+
+- 채팅 요청 직전 사용자 입력에 로어를 삽입합니다.
+- 트리거, 의미 검색, 최근 대화, 쿨타임, 중요도, 오래된 정보 주기 삽입 여부를 기준으로 후보를 고릅니다.
+- 삽입 예산에 맞춰 로어 내용을 자동 압축합니다.
+- 같은 로어가 반복 삽입되지 않도록 턴 기반 쿨타임을 적용합니다.
+
+### 로어 추출
+
+- 자동 추출, 수동 추출, 전체 로그 일괄 추출을 지원합니다.
+- 기존 로어팩을 입력에 포함하여 새 정보와 기존 정보를 병합합니다.
+- 변경분만 저장 모드에서는 입력 조건은 유지하고 출력만 변경분 중심으로 받습니다.
+- 변화가 없는 경우 저장과 임베딩 준비를 건너뛰도록 설계되어 있습니다.
+
+### 중요 장면 추출
+
+- 일반 로어 추출과 별도 API 호출로 동작합니다.
+- 사건, 약속, 관계 변화, 상태 변화처럼 이후 대화에서 다시 참조할 정보를 저장합니다.
+- 변경분만 저장 모드가 켜진 경우 중요 장면도 변경분 중심으로 갱신합니다.
+
+### 과거 장면 판단
+
+- 저장된 중요 장면 중 현재 대화에 관련된 항목을 판단합니다.
+- 판단 모델과 reasoning 설정은 API 설정에서 관리합니다.
+
+### 응답 교정
+
+- 마지막 assistant 응답을 로어, 메모리, 최근 대화 기준으로 검수합니다.
+- 수동 교정과 자동 교정을 지원합니다.
+- 서버 수정은 `crack-gen/v3/chats/{chatId}/messages/{messageId}` PATCH 경로를 사용합니다.
+- 같은 메시지에 대한 중복 교정 호출을 방지합니다.
+- 서버 수정 성공 후 현재 화면이 갱신되지 않으면 DOM 반영을 시도하고, 실패 시 새로고침 안내를 표시합니다.
+
+## API 설정
+
+지원 방식:
+
+- Gemini API Key
+- Vertex AI 서비스 계정 JSON
+- Firebase 설정 스크립트
+
+Firebase 방식에서 임베딩을 사용하는 경우 별도 Gemini API Key가 필요할 수 있습니다.
+
+모델 설정은 기능별로 분리됩니다.
+
+- 추출/정리 모델
+- 임베딩 모델
+- 후보 재정렬 모델
+- 과거 장면 판단 모델
+- 응답 교정 모델
+
+API 비용 표시는 Gemini 응답의 `usageMetadata`가 있으면 해당 토큰 사용량을 기준으로 계산합니다. `usageMetadata`가 없으면 글자 수 기반 추정값을 사용합니다. 실제 청구액은 Google 계정의 결제 내역이 기준입니다.
+
+## 저장소 구조
+
+```text
+embedding/
+  core-*.js                  공통 런타임, DB, API, 검색, 포맷, 가격 계산
+  injecter-*.js              로어 삽입, 추출, 병합, 설정 UI
+  refiner-*.js               응답 교정, DOM 반영, 큐, observer
+  vendor/                    외부 기반 코드 및 UI 의존 파일
+
+embedding_pre/
+  erie_crack_inject.user.js       라우터형 설치 스크립트
+  erie_crack_inject_chat.user.js  분할 require형 채팅 스크립트
+
+universal_bundle_work/
+  build-universal-bundle.ps1      단일 userscript 생성
+  bundle-manifest.json            번들 포함 파일 목록
+  verify-universal-bundle.ps1     번들 검증
+  dist/                           사용자 설치용 출력 파일
+
+BETA/
+LORE_TEST/
+user_note/
+```
+
+## 빌드
+
+단일 설치용 userscript 생성:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File universal_bundle_work\build-universal-bundle.ps1
+```
+
+검증:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File universal_bundle_work\verify-universal-bundle.ps1
+node --check universal_bundle_work\dist\erie_crack_inject_universal.user.js
+```
+
+## 저장 데이터
+
+주요 저장소:
+
+- IndexedDB: 로어팩, 로어 엔트리, 임베딩 캐시
+- localStorage: 설정, URL별 활성 로어팩, 쿨타임, 교정 처리 지문
+- sessionStorage: 라우터 재로드 방지 플래그
+
+기존 사용자 로어팩 데이터와 설정 키는 유지하는 방향으로 마이그레이션합니다.
+
+## 개발 기준
+
+- 사용자 설치용 파일은 `universal_bundle_work/dist/erie_crack_inject_universal.user.js`입니다.
+- 기능 수정은 먼저 `embedding/` 소스에 적용한 뒤 번들을 다시 생성합니다.
+- `dist` 파일만 직접 수정하지 않습니다.
+- `260523-universal-clean` 브랜치는 보존용으로 유지합니다.
+- `main` 브랜치는 단일 설치용 universal 구조를 기준으로 관리합니다.
+
+## 주의 사항
+
+- 이 스크립트는 비공식 사용자 스크립트입니다.
+- 대상 사이트의 DOM, API 경로, 응답 스키마가 변경되면 일부 기능이 동작하지 않을 수 있습니다.
+- API 호출 기능은 사용자의 API Key 또는 클라우드 계정 비용을 발생시킬 수 있습니다.
