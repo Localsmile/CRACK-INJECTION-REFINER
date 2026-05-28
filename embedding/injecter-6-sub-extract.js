@@ -143,6 +143,13 @@
             bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 중...';
             bStatus.textContent = '전체 로그 가져오는 중'; bStatus.style.color = '#4a9';
             const start = Date.now();
+            let curBatch = null;
+            let curTotal = null;
+            const tick = setInterval(() => {
+              const sec = Math.floor((Date.now() - start) / 1000);
+              if (curBatch && curTotal) bStatus.textContent = '배치 ' + curBatch + '/' + curTotal + ' 처리 중 (' + sec + '초)';
+              else bStatus.textContent = '전체 로그 가져오는 중 (' + sec + '초)';
+            }, 1000);
             try {
               const report = await _w.__LoreInj.runBatchExtract({
                 turnsPerBatch: settings.config.batchExtTurnsPerBatch || 50,
@@ -150,18 +157,25 @@
                 maxAttempts: settings.config.batchExtMaxAttempts || 3,
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);
-                  if (ev.phase === 'batch') bStatus.textContent = '배치 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                  if (ev.phase === 'batch') {
+                    curBatch = ev.index;
+                    curTotal = ev.total;
+                    bStatus.textContent = '배치 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                  }
                 }
               });
+              clearInterval(tick);
               const sec = Math.floor((Date.now() - start) / 1000);
               let msg = '완료 (' + sec + '초) — ' + report.totalBatches + '개 배치 / 성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / 병합 ' + report.entriesAdded + '건';
               if (report.failed > 0) { msg += ' ⚠️ 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
               else { bStatus.style.color = '#4a9'; }
               bStatus.textContent = msg;
             } catch(e) {
+              clearInterval(tick);
               bStatus.textContent = '실패 — ' + (e.message || String(e)).slice(0, 80);
               bStatus.style.color = '#d66';
             } finally {
+              clearInterval(tick);
               bBtn.textContent = orig; bBtn.disabled = false;
             }
           };

@@ -461,7 +461,10 @@ Entries:
           nimBody.chat_template_kwargs = { enable_thinking: nimReasoningEffort !== 'none' };
         }
       }
-      if (responseMimeType === 'application/json') nimBody.response_format = { type: 'json_object' };
+      // NVIDIA hosted NIM endpoints are OpenAI-compatible, but model-specific
+      // surfaces can reject JSON response_format despite accepting plain chat
+      // completions. Extraction prompts already require JSON, so avoid this
+      // optional parameter for NIM.
       body = JSON.stringify(nimBody);
     } else {
       const genConfig = {};
