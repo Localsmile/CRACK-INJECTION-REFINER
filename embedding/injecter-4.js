@@ -991,7 +991,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
   function extBadgeHide() {
     _extBadgeMsg = null;
     if (_extBadgeWatchdog) { clearInterval(_extBadgeWatchdog); _extBadgeWatchdog = null; }
-    try { C.hideStatusBadge(); } catch(e){}
+    try { C.hideStatusBadge(true); } catch(e){}
   }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && _extBadgeMsg) { try { C.showStatusBadge(_extBadgeMsg); } catch(e){} }

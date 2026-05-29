@@ -17,6 +17,7 @@
   var _statusKeepAliveTimer = null;
   var _statusVisible = false;
   var _statusCurrentText = '';
+  var _statusHideToken = 0;
   function showStatusBadge(text) {
     if (_w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config && _w.__LoreInj.settings.config.statusBadgeEnabled === false) {
       hideStatusBadge(true);
@@ -85,19 +86,21 @@
   function hideStatusBadge(immediate) {
     if (_statusAutoHideTimer) { clearTimeout(_statusAutoHideTimer); _statusAutoHideTimer = null; }
     if (_statusHideDelayTimer) { clearTimeout(_statusHideDelayTimer); _statusHideDelayTimer = null; }
+    var token = ++_statusHideToken;
     const doHide = function () {
+      if (token !== _statusHideToken) return;
       _statusVisible = false;
       _statusCurrentText = '';
       if (_statusBadge) { _statusBadge.style.opacity = '0'; _statusBadge.style.pointerEvents = 'none'; }
       if (_statusKeepAliveTimer) { clearInterval(_statusKeepAliveTimer); _statusKeepAliveTimer = null; }
+      if (_statusDot && _statusDot.__pulseTimer) {
+        try { clearInterval(_statusDot.__pulseTimer); } catch (_) {}
+        _statusDot.__pulseTimer = null;
+        try { _statusDot.style.opacity = '1'; } catch (_) {}
+      }
     };
     if (immediate) doHide();
     else _statusHideDelayTimer = setTimeout(doHide, 350);
-    if (_statusDot && _statusDot.__pulseTimer) {
-      try { clearInterval(_statusDot.__pulseTimer); } catch (_) {}
-      _statusDot.__pulseTimer = null;
-      try { _statusDot.style.opacity = '1'; } catch (_) {}
-    }
   }
 
   // 설정 UI 헬퍼
