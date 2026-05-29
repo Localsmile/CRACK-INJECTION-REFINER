@@ -472,15 +472,15 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     let res = await C.callGeminiApi(prompt, apiOpts);
     let parsed = parseJsonLoose(res && res.text);
     const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
-    const shouldRepair = !parsed && apiOpts && apiOpts.maxOutputTokens && !isDeepSeek;
+    const shouldRepair = !parsed && apiOpts && apiOpts.maxOutputTokens;
     if (shouldRepair) {
       const firstCost = res && res.cost;
       const retryPrompt = prompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n- Return only one complete JSON array.\n- If there is no change, return exactly [].\n' + (repairHint || '');
       res = await C.callGeminiApi(retryPrompt, {
-        ...apiOpts,
-        maxRetries: 0,
-        maxOutputTokens: null,
-        responseMimeType: 'application/json'
+          ...apiOpts,
+          maxRetries: 0,
+          maxOutputTokens: isDeepSeek ? Math.max(Number(apiOpts.maxOutputTokens) || 0, 4096) : null,
+          responseMimeType: 'application/json'
       });
       parsed = parseJsonLoose(res && res.text);
       if (res && firstCost && res.cost) {
@@ -1069,9 +1069,10 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const apiType = settings.config.autoExtApiType || 'key';
     const isDeepSeek = apiType === 'deepseek';
     const requestedAttempts = opts.maxAttempts || 3;
-    const maxAttempts = isDeepSeek ? Math.min(requestedAttempts, 1) : Math.min(requestedAttempts, 2);
+    const maxAttempts = Math.max(1, requestedAttempts);
     const batchTimeoutMs = isDeepSeek ? 60000 : 90000;
     const batchInnerRetries = 0;
+    const maxRecoveryRounds = Math.max(0, Number(opts.maxRecoveryRounds != null ? opts.maxRecoveryRounds : 2));
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const missingReason = typeof _w.__LoreInj.getApiMissingReason === 'function'
@@ -1170,6 +1171,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
         } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
       }
+      const finalizeBatchResult = async (currentRound = 0) => {
       if (ok) {
         if (status === 'empty') report.empty++; else report.ok++;
         report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount });
@@ -1209,6 +1211,64 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         report.batchResults.push({ batch: bi + 1, status: 'failed', attempts, error: lastErr, rawSnippet });
         console.warn('[Lore:batch] 배치 ' + (bi + 1) + '/' + batches.length + ' 실패 (' + attempts + '회): ' + lastErr);
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: msgs.length, isManual: true, status: '배치 ' + (bi + 1) + '/' + batches.length + ' 실패', error: lastErr, model: _batchModel });
+      }
+      };
+      await finalizeBatchResult(0);
+      if (!ok && maxRecoveryRounds > 0) {
+        // 실패 배치는 사용자가 다시 누르지 않아도 같은 구간만 자동 재시도한다.
+        for (let rr = 1; rr <= maxRecoveryRounds && !ok; rr++) {
+          extBadgeShow('에리가 실패 배치 ' + (bi + 1) + '/' + batches.length + ' 재시도 ' + rr + '/' + maxRecoveryRounds);
+          const waitMs = Math.min(12000, 1500 * rr) + Math.random() * 500;
+          await new Promise(r => setTimeout(r, waitMs));
+          status = 'failed'; lastErr = ''; rawSnippet = ''; attempts = 0; mergedCount = 0;
+          for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
+            attempts++;
+            try {
+              const retryApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
+                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
+                maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
+                maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : null,
+                costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
+              }, { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }) : {
+                apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
+                deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
+                vertexJson: settings.config.autoExtVertexJson,
+                vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+                firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
+                maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
+                maxOutputTokens: _patchOn ? 4096 : null,
+                costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
+              });
+              const _rt0 = Date.now();
+              const { res, parsed } = await callGeminiJsonWithRepair(prompt, retryApiOpts, 'Return one JSON array only. No markdown fences. No explanation.');
+              _batchTotalElapsedMs += Date.now() - _rt0;
+              if (res && res.cost) {
+                if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
+                else _batchHasUnknown = true;
+                if (res.cost.estimated) _batchHasEstimated = true;
+              }
+              if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
+              rawSnippet = String(res.text).slice(0, 200);
+              if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
+              const parsedItems = normalizeExtractItems(parsed);
+              if (parsedItems.length > 0) {
+                mergedCount = await mergeExtractedData(parsedItems, _url);
+                report.entriesAdded += mergedCount;
+                status = mergedCount > 0 ? 'ok_retry' : 'empty_retry'; ok = true;
+              } else {
+                status = 'empty_retry'; ok = true;
+              }
+            } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
+          }
+          if (ok) {
+            if (report.failed > 0) report.failed--;
+            if (status === 'empty_retry') report.empty++; else report.ok++;
+            report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount, recoveryRound: rr });
+          } else {
+            report.batchResults.push({ batch: bi + 1, status: 'retry_failed', attempts, error: lastErr, rawSnippet, recoveryRound: rr });
+          }
+        }
       }
     }
 

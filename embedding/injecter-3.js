@@ -205,15 +205,58 @@
   function parseJsonLoose(text) {
     if (!text) return null;
     let t = String(text).trim();
-    t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    try { return JSON.parse(t); } catch {}
+    const tryParse = (s) => {
+      if (!s) return null;
+      try { return JSON.parse(String(s).trim()); } catch (_) { return null; }
+    };
+    const stripFence = (s) => String(s || '')
+      .trim()
+      .replace(/^\uFEFF/, '')
+      .replace(/^```(?:json|javascript|js)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+    const fenced = t.match(/```(?:json|javascript|js)?\s*([\s\S]*?)```/i);
+    const candidates = [t, stripFence(t)];
+    if (fenced && fenced[1]) candidates.push(stripFence(fenced[1]));
+    for (const c of candidates) {
+      const parsed = tryParse(c);
+      if (parsed !== null) return parsed;
+    }
+    function extractBalanced(s, start) {
+      const open = s[start];
+      const close = open === '[' ? ']' : '}';
+      let depth = 0, inStr = false, esc = false;
+      for (let i = start; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === '\\') esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') { inStr = true; continue; }
+        if (ch === open) depth++;
+        else if (ch === close) {
+          depth--;
+          if (depth === 0) return s.slice(start, i + 1);
+        }
+      }
+      return null;
+    }
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== '[' && t[i] !== '{') continue;
+      const seg = extractBalanced(t, i);
+      const parsed = tryParse(seg);
+      if (parsed !== null) return parsed;
+    }
     const firstBracket = t.search(/[\[{]/);
     if (firstBracket >= 0) {
       const open = t[firstBracket];
       const close = open === '[' ? ']' : '}';
       const lastClose = t.lastIndexOf(close);
       if (lastClose > firstBracket) {
-        try { return JSON.parse(t.slice(firstBracket, lastClose + 1)); } catch {}
+        const parsed = tryParse(t.slice(firstBracket, lastClose + 1));
+        if (parsed !== null) return parsed;
       }
     }
     return null;
