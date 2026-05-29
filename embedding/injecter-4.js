@@ -471,7 +471,9 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   async function callGeminiJsonWithRepair(prompt, apiOpts, repairHint) {
     let res = await C.callGeminiApi(prompt, apiOpts);
     let parsed = parseJsonLoose(res && res.text);
-    if (!parsed && apiOpts && apiOpts.maxOutputTokens) {
+    const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
+    const shouldRepair = !parsed && apiOpts && apiOpts.maxOutputTokens && !isDeepSeek;
+    if (shouldRepair) {
       const firstCost = res && res.cost;
       const retryPrompt = prompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n- Return only one complete JSON array.\n- If there is no change, return exactly [].\n' + (repairHint || '');
       res = await C.callGeminiApi(retryPrompt, {
@@ -1064,10 +1066,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
   async function runBatchExtract(opts = {}) {
     const turnsPerBatch = opts.turnsPerBatch || 50;
     const overlap = opts.overlap !== undefined ? opts.overlap : 5;
-    const maxAttempts = opts.maxAttempts || 3;
+    const apiType = settings.config.autoExtApiType || 'key';
+    const isDeepSeek = apiType === 'deepseek';
+    const maxAttempts = isDeepSeek ? Math.min(opts.maxAttempts || 3, 1) : (opts.maxAttempts || 3);
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const apiType = settings.config.autoExtApiType || 'key';
     const missingReason = typeof _w.__LoreInj.getApiMissingReason === 'function'
       ? _w.__LoreInj.getApiMissingReason(settings.config, 'generate')
       : (apiType === 'deepseek' ? (!settings.config.autoExtDeepSeekKey && 'DeepSeek API 키 필요.') : '');
@@ -1129,8 +1132,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         try {
           const apiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
-            maxOutputTokens: _patchOn ? 4096 : null,
+            maxRetries: isDeepSeek ? 0 : 1, responseMimeType: 'application/json', timeoutMs: isDeepSeek ? 60000 : 120000,
+            maxOutputTokens: _patchOn ? (isDeepSeek ? 2048 : 4096) : null,
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
             apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1139,8 +1142,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
             firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
-            maxOutputTokens: _patchOn ? 4096 : null,
+            maxRetries: isDeepSeek ? 0 : 1, responseMimeType: 'application/json', timeoutMs: isDeepSeek ? 60000 : 120000,
+            maxOutputTokens: _patchOn ? (isDeepSeek ? 2048 : 4096) : null,
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           });
           const _bt0 = Date.now();
@@ -1172,8 +1175,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           try {
             const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-              maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
-              maxOutputTokens: _patchOn ? 4096 : null,
+              maxRetries: isDeepSeek ? 0 : 1, responseMimeType: 'application/json', timeoutMs: isDeepSeek ? 60000 : 120000,
+              maxOutputTokens: _patchOn ? (isDeepSeek ? 1024 : 4096) : null,
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
               apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1182,8 +1185,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
               firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-              maxRetries: 1, responseMimeType: 'application/json', timeoutMs: 120000,
-              maxOutputTokens: _patchOn ? 4096 : null,
+              maxRetries: isDeepSeek ? 0 : 1, responseMimeType: 'application/json', timeoutMs: isDeepSeek ? 60000 : 120000,
+              maxOutputTokens: _patchOn ? (isDeepSeek ? 1024 : 4096) : null,
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             });
             const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length });

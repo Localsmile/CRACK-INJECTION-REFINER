@@ -293,7 +293,7 @@
     autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '',
-    autoExtDeepSeekKey: '', autoExtDeepSeekThinking: true, autoExtDeepSeekReasoning: 'high',
+    autoExtDeepSeekKey: '', autoExtDeepSeekThinking: false, autoExtDeepSeekReasoning: 'high',
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
@@ -894,6 +894,31 @@
     return (config && config.autoExtApiType) === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview';
   }
 
+  function isModelCompatibleWithApi(model, apiType) {
+    const m = String(model || '');
+    if (!m || m === '_custom') return true;
+    return apiType === 'deepseek' ? m.startsWith('deepseek-') : !m.startsWith('deepseek-');
+  }
+
+  function normalizeApiModelDefaults(config) {
+    const cfg = config || settings.config || {};
+    const apiType = cfg.autoExtApiType || 'key';
+    const fallback = getGenerationFallbackModel(cfg);
+    if (!isModelCompatibleWithApi(cfg.autoExtModel, apiType)) cfg.autoExtModel = fallback;
+    if (apiType === 'deepseek') {
+      if (!cfg.autoExtModel || cfg.autoExtModel === '_custom') cfg.autoExtModel = fallback;
+      if (!cfg.rerankModel || !isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = fallback;
+      if (!cfg.temporalRecallJudgeModel || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = fallback;
+      if (cfg.refinerModel === '' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = fallback;
+      if (cfg.autoExtDeepSeekThinking === undefined) cfg.autoExtDeepSeekThinking = false;
+    } else {
+      if (!isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3-flash-preview';
+      if (!isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';
+      if (!isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite-preview';
+    }
+    return cfg;
+  }
+
   function getApiMissingReason(config, purpose = 'generate') {
     const cfg = config || settings.config || {};
     if (purpose === 'embed') {
@@ -981,7 +1006,7 @@
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
     getApiConfigSnapshot, resetSettingsKeepApi,
-    resolveConfiguredModel, getGenerationFallbackModel, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts,
+    resolveConfiguredModel, getGenerationFallbackModel, normalizeApiModelDefaults, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts,
     getStableChatStateKey, applyPresetKeepState, backupSettings, getSettingsStorageHealth,
     runLocalMigration, getMigrationStatus, ensureHeavyRuntimeInit,
     __settingsLoaded: true

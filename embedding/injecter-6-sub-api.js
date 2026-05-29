@@ -94,6 +94,13 @@
     return inp;
   }
 
+  function ensureApiModelDefaults() {
+    if (typeof _w.__LoreInj.normalizeApiModelDefaults === 'function') {
+      _w.__LoreInj.normalizeApiModelDefaults(settings.config);
+      settings.save();
+    }
+  }
+
   function getGenerationModelGroups() {
     const apiType = settings.config.autoExtApiType || 'key';
     if (apiType === 'deepseek') {
@@ -213,6 +220,7 @@
     modal.createSubMenu('API 설정', (m) => {
       m.replaceContentPanel((panel) => {
         panel.addBoxedField('', '', { onInit: (nd) => {
+          ensureApiModelDefaults();
           C.setFullWidth(nd);
           const t = document.createElement('div'); t.textContent = 'API 연결'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
           const apiSummary = document.createElement('div');
@@ -224,7 +232,12 @@
           const providerSel = document.createElement('select'); providerSel.style.cssText = FIELD_STYLE;
           [['Gemini API Key', 'key'], ['Firebase', 'firebase'], ['Vertex JSON', 'vertex'], ['DeepSeek', 'deepseek']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; providerSel.appendChild(o); });
           providerSel.value = settings.config.autoExtApiType || 'key';
-          providerSel.onchange = () => { settings.config.autoExtApiType = providerSel.value; if (providerSel.value === 'deepseek' && (!settings.config.autoExtModel || settings.config.autoExtModel.startsWith('gemini-'))) settings.config.autoExtModel = 'deepseek-v4-flash'; if (providerSel.value !== 'deepseek' && String(settings.config.autoExtModel || '').startsWith('deepseek-')) settings.config.autoExtModel = 'gemini-3-flash-preview'; settings.save(); alert('API 종류 변경됨. API 설정 화면 다시 열 것.'); };
+          providerSel.onchange = () => {
+            settings.config.autoExtApiType = providerSel.value;
+            if (typeof _w.__LoreInj.normalizeApiModelDefaults === 'function') _w.__LoreInj.normalizeApiModelDefaults(settings.config);
+            settings.save();
+            alert('API 종류 변경됨. API 설정 화면 다시 열 것.');
+          };
           nd.appendChild(providerSel);
           if ((settings.config.autoExtApiType || 'key') === 'deepseek') {
             addSimpleInput(nd, 'DeepSeek API 키', settings.config.autoExtDeepSeekKey || '', (v) => { settings.config.autoExtDeepSeekKey = v; settings.save(); }, { placeholder: 'sk-...' });
@@ -261,10 +274,12 @@
   
           const modelHead = document.createElement('div'); modelHead.textContent = '모델 선택'; modelHead.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:14px 0 8px;padding-top:10px;border-top:1px solid #333;'; nd.appendChild(modelHead);
           const modelNote = document.createElement('div'); modelNote.textContent = 'API를 쓰는 기능별 모델을 여기서 한 번에 관리함. 프롬프트 내용은 프롬프트 관리 메뉴에서 수정함.'; modelNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;'; nd.appendChild(modelNote);
-          addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
-          addSelect(nd, '후보 재정렬 모델', settings.config.rerankModel || '', getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
-          const judgeCtl = addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || '', getLightModelGroups(), (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
-          addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : '', getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
+          const isDeepSeekApi = (settings.config.autoExtApiType || 'key') === 'deepseek';
+          const deepSeekDefault = 'deepseek-v4-flash';
+          addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || (isDeepSeekApi ? deepSeekDefault : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
+          addSelect(nd, '후보 재정렬 모델', settings.config.rerankModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
+          const judgeCtl = addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
+          addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
   
           if ((settings.config.autoExtApiType || 'key') !== 'deepseek') {
             const rl = document.createElement('div'); rl.textContent = '생각 깊이'; rl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(rl);

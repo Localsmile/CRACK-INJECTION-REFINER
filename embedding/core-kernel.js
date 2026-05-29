@@ -416,7 +416,7 @@ Entries:
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
-      deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
+      deepSeekKey = '', deepSeekThinking = false, deepSeekReasoning = 'high',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 
