@@ -13,19 +13,11 @@
   var _statusLabel = null;
   var _statusDot = null;
   var _statusAutoHideTimer = null;
-  var _statusHideDelayTimer = null;
-  var _statusKeepAliveTimer = null;
-  var _statusVisible = false;
-  var _statusCurrentText = '';
-  var _statusHideToken = 0;
   function showStatusBadge(text) {
     if (_w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config && _w.__LoreInj.settings.config.statusBadgeEnabled === false) {
-      hideStatusBadge(true);
+      hideStatusBadge();
       return;
     }
-    _statusVisible = true;
-    _statusCurrentText = String(text || '');
-    if (_statusHideDelayTimer) { clearTimeout(_statusHideDelayTimer); _statusHideDelayTimer = null; }
     if (!_pulseStyleAdded) {
       try {
         var head = document.head || document.getElementsByTagName('head')[0];
@@ -54,25 +46,14 @@
     if (mountTarget && _statusBadge.parentNode !== mountTarget) {
       try { mountTarget.appendChild(_statusBadge); } catch (_) {}
     }
-    if (_statusLabel && _statusLabel.textContent !== _statusCurrentText) _statusLabel.textContent = _statusCurrentText;
+    if (_statusLabel && _statusLabel.textContent !== text) _statusLabel.textContent = text;
     if (_statusBadge.style.opacity !== '1') _statusBadge.style.opacity = '1';
     if (_statusBadge.style.pointerEvents !== 'auto') _statusBadge.style.pointerEvents = 'auto';
     if (_statusAutoHideTimer) { clearTimeout(_statusAutoHideTimer); _statusAutoHideTimer = null; }
-    if (_statusCurrentText === '에리가 응답 기다리는 중') {
+    if (text === '에리가 응답 기다리는 중') {
       _statusAutoHideTimer = setTimeout(function () {
         if (_statusLabel && _statusLabel.textContent === '에리가 응답 기다리는 중') hideStatusBadge();
       }, 45000);
-    }
-    if (!_statusKeepAliveTimer) {
-      _statusKeepAliveTimer = setInterval(function () {
-        if (!_statusVisible || !_statusCurrentText) return;
-        var mountTarget = document.body || document.documentElement;
-        if (mountTarget && _statusBadge && _statusBadge.parentNode !== mountTarget) {
-          try { mountTarget.appendChild(_statusBadge); } catch (_) {}
-        }
-        if (_statusLabel && _statusLabel.textContent !== _statusCurrentText) _statusLabel.textContent = _statusCurrentText;
-        if (_statusBadge && _statusBadge.style.opacity !== '1') _statusBadge.style.opacity = '1';
-      }, 700);
     }
     // host CSP/sandbox에서 @keyframes가 묵살될 경우를 대비한 JS 펄스 폴백 (500ms toggle).
     if (_statusDot && !_statusDot.__pulseTimer) {
@@ -83,24 +64,14 @@
       }, 500);
     }
   }
-  function hideStatusBadge(immediate) {
+  function hideStatusBadge() {
     if (_statusAutoHideTimer) { clearTimeout(_statusAutoHideTimer); _statusAutoHideTimer = null; }
-    if (_statusHideDelayTimer) { clearTimeout(_statusHideDelayTimer); _statusHideDelayTimer = null; }
-    var token = ++_statusHideToken;
-    const doHide = function () {
-      if (token !== _statusHideToken) return;
-      _statusVisible = false;
-      _statusCurrentText = '';
-      if (_statusBadge) { _statusBadge.style.opacity = '0'; _statusBadge.style.pointerEvents = 'none'; }
-      if (_statusKeepAliveTimer) { clearInterval(_statusKeepAliveTimer); _statusKeepAliveTimer = null; }
-      if (_statusDot && _statusDot.__pulseTimer) {
-        try { clearInterval(_statusDot.__pulseTimer); } catch (_) {}
-        _statusDot.__pulseTimer = null;
-        try { _statusDot.style.opacity = '1'; } catch (_) {}
-      }
-    };
-    if (immediate) doHide();
-    else _statusHideDelayTimer = setTimeout(doHide, 350);
+    if (_statusBadge) { _statusBadge.style.opacity = '0'; _statusBadge.style.pointerEvents = 'none'; }
+    if (_statusDot && _statusDot.__pulseTimer) {
+      try { clearInterval(_statusDot.__pulseTimer); } catch (_) {}
+      _statusDot.__pulseTimer = null;
+      try { _statusDot.style.opacity = '1'; } catch (_) {}
+    }
   }
 
   // 설정 UI 헬퍼
