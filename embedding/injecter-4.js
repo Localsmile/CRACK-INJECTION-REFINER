@@ -977,6 +977,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
   const _extQ = { running: false, pendingTurns: 0, manualPending: false };
   let _extBadgeMsg = null, _extBadgeWatchdog = null;
   function extBadgeShow(msg) {
+    if (settings.config.extractStatusBadgeEnabled === false) return;
     _extBadgeMsg = msg;
     try { C.showStatusBadge(msg); } catch(e){}
     if (_extBadgeWatchdog) return;

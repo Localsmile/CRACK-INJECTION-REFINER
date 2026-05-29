@@ -365,7 +365,7 @@
     compressionMode: 'auto', embeddingWeight: 0.35, useCompressedFormat: true,
     honorificMatrixEnabled: true, firstEncounterWarning: true, activeCharBoostEnabled: true,
     decayHalfLife: C.DEFAULTS.decayHalfLife,
-    embeddingModel: 'gemini-embedding-001', autoEmbedOnExtract: true,
+    embeddingModel: 'gemini-embedding-001', autoEmbedOnExtract: true, extractStatusBadgeEnabled: true,
     aiMemoryTurns: 3, importanceGating: true, importanceThreshold: 12, pendingPromiseBoost: true,
     oocFormat: 'default', oocPromptVersion: OOC_FORMAT_VERSION, autoExtractPromptVersion: AUTO_EXTRACT_PROMPT_VERSION, rerankEnabled: false, rerankModel: 'gemini-3-flash-preview', rerankCustomModel: '',
     rerankPrompt: C.DEFAULTS.rerankPrompt,

@@ -52,6 +52,7 @@
           nd.appendChild(C.createToggleRow('변경분만 저장', '기존 로어 전체 대신 바뀐 부분만 받아 출력 토큰 줄임.', settings.config.autoExtPatchMode !== false, (v) => { settings.config.autoExtPatchMode = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('페르소나 정보 전송', '추출 시 페르소나 이름을 같이 보내 정확도 올림.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('중요 장면 기억하기', '중요 사건/약속을 나중에 떠올릴 수 있게 별도 정리함.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('추출 상태 배지 표시', '추출/배치/임베딩 진행 상태를 화면에 띄움. 모바일에서 겹치면 끄기.', settings.config.extractStatusBadgeEnabled !== false, (v) => { settings.config.extractStatusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(true); }));
   
           const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const makeInput = (label, key, defaultVal) => {
