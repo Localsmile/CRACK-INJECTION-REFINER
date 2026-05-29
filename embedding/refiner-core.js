@@ -299,11 +299,9 @@
     const callChangeContext = buildCallChangeContext(activeEntries, allMsgsForContext);
     if (callChangeContext) contextText += '\n\n' + callChangeContext;
 
-    // 4. 검수 요청
-    Core.showStatusBadge('에리가 잼민이에게 묻는 중');
     const passWord = config.refinerPassKeyword || 'PASS';
     const promptTpl = config.refinerCustomPrompt || R.DEFAULT_PROMPT;
-    const prompt = promptTpl
+    let prompt = promptTpl
       .replace('{lore}', loreText)
       .replace('{memory}', memoryText)
       .replace('{context}', contextText)
@@ -315,7 +313,6 @@
                    || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : (config.autoExtModel || _fallbackModel));
     let _refElapsedMs = 0, _refCost = null;
     try {
-      if (ToastCallback) ToastCallback('에리가 응답 검수 중', '#258');
       const apiOpts = _w.__LoreInj && _w.__LoreInj.buildGenerationApiOpts
         ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: 60000, maxOutputTokens: 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
         : {
@@ -335,10 +332,15 @@
           maxOutputTokens: 2048,
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
-      if (apiOpts.apiType === 'deepseek') {
+      const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';
+      Core.showStatusBadge(isDeepSeekRefiner ? '에리가 딥식이에게 묻는 중' : '에리가 잼민이에게 묻는 중');
+      if (ToastCallback) ToastCallback(isDeepSeekRefiner ? '에리가 딥식이로 응답 검수 중' : '에리가 응답 검수 중', '#258');
+      if (isDeepSeekRefiner) {
         // Refiner is a short single-turn checker. Thinking mode adds latency and can
         // trigger provider-side reasoning_content errors in some DeepSeek V4 paths.
         apiOpts.deepSeekThinking = false;
+        apiOpts.responseMimeType = 'application/json';
+        prompt += '\n\nDeepSeek JSON mode instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
       }
 
       // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)
@@ -352,7 +354,19 @@
       const response = await Core.callGeminiApi(prompt, apiOpts);
       _refElapsedMs = Date.now() - _refT0;
       _refCost = (response && response.cost) || null;
-      if (!response.text) throw new Error(response.error || 'AI 응답 없음');
+      if (!response.text) {
+        if (LogCallback) LogCallback(url, {
+          time: new Date().toLocaleTimeString(),
+          original: assistantText,
+          result: 'API Error: ' + ((response && response.error) || 'AI 응답 없음'),
+          isError: true,
+          api: response ? { status: response.status, error: response.error, retries: response.retries } : null,
+          model: _refModel,
+          elapsedMs: _refElapsedMs,
+          cost: _refCost
+        });
+        throw new Error((response && response.error) || 'AI 응답 없음');
+      }
       const text = response.text.trim();
 
       const isPass = text.includes(passWord) && text.length < passWord.length + 10;
@@ -374,6 +388,14 @@
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
         if (ToastCallback) ToastCallback('에리: 응답 해석 실패, 원본 유지', '#a55');
+        return;
+      }
+
+      if (parsed && parsed.pass === true) {
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: parsed.reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
+        Core.showStatusBadge('에리: 이상 없음');
+        setTimeout(Core.hideStatusBadge, 2000);
+        if (ToastCallback) ToastCallback('에리: 통과', '#4a9');
         return;
       }
 
