@@ -574,6 +574,7 @@ DEDUP RULE:
     const chatKey = opts.chatKey || getChatKey();
     const isManual = !!opts.isManual;
     const msgCount = opts.msgCount || 0;
+    const skipEmbedding = !!opts.skipEmbedding;
     const promptTpl = settings.config.temporalExtractPrompt || DEFAULT_TEMPORAL_EXTRACT_PROMPT;
     const baseTemporalSchema = settings.config.temporalExtractSchema || DEFAULT_TEMPORAL_EXTRACT_SCHEMA;
     const schema = `${baseTemporalSchema}
@@ -601,7 +602,15 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
-      const temporalApiOpts = { ...apiOpts, responseMimeType: 'application/json', maxRetries: 1, timeoutMs: 120000, maxOutputTokens: _patchOn ? 1024 : null, costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } };
+      const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
+      const temporalApiOpts = {
+        ...apiOpts,
+        responseMimeType: 'application/json',
+        maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
+        timeoutMs: apiOpts.timeoutMs || 120000,
+        maxOutputTokens: _patchOn ? (apiOpts.maxOutputTokens || (isDeepSeekTemporal ? 2048 : 4096)) : null,
+        costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' }
+      };
       const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
       _tmpElapsedMs = Date.now() - _tmpT0;
       _tmpCost = (res && res.cost) || null;
@@ -621,11 +630,23 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const count = patchedCount + addCount;
       let embedMsg = '';
       let embedCount = 0;
-      if (count > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
+      if (!skipEmbedding && count > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
         try {
           const epName = await getAutoExtPackForUrl(url);
           extBadgeShow('에리가 시간축 임베딩 갱신 중');
-          const embedOpts = { ...apiOpts, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+          const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
+            ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
+            : {
+              apiType: (settings.config.autoExtApiType || 'key') === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'),
+              key: (settings.config.autoExtApiType || 'key') === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey,
+              vertexJson: settings.config.autoExtVertexJson,
+              vertexLocation: settings.config.autoExtVertexLocation || 'global',
+              vertexProjectId: settings.config.autoExtVertexProjectId,
+              firebaseScript: settings.config.autoExtFirebaseScript,
+              firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+              model: settings.config.embeddingModel || 'gemini-embedding-001',
+              costContext: { feature: 'embed', chatKey: chatKey || 'global' }
+            };
           embedCount = await C.embedPack(epName, embedOpts);
           embedMsg = ' / 임베딩 ' + embedCount + '개 완료';
         } catch(embErr) {
@@ -1224,7 +1245,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               maxOutputTokens: _patchOn ? (isDeepSeek ? 2048 : 4096) : null,
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             });
-            const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length });
+            const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true });
             if (tres && tres.count) {
               report.entriesAdded += tres.count;
               report.batchResults.push({ batch: bi + 1, status: 'temporal_ok', attempts: 1, entries: tres.count });

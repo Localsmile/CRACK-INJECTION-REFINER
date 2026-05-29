@@ -317,7 +317,7 @@
     try {
       if (ToastCallback) ToastCallback('에리가 응답 검수 중', '#258');
       const apiOpts = _w.__LoreInj && _w.__LoreInj.buildGenerationApiOpts
-        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
+        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: 60000, maxOutputTokens: 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
         : {
           apiType: config.autoExtApiType || 'key',
           key: config.autoExtKey,
@@ -331,8 +331,15 @@
           firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
           model: _refModel,
           maxRetries: 1,
+          timeoutMs: 60000,
+          maxOutputTokens: 2048,
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
+      if (apiOpts.apiType === 'deepseek') {
+        // Refiner is a short single-turn checker. Thinking mode adds latency and can
+        // trigger provider-side reasoning_content errors in some DeepSeek V4 paths.
+        apiOpts.deepSeekThinking = false;
+      }
 
       // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)
       const is3x = apiOpts.model.includes('gemini-3') || apiOpts.model.includes('gemini-2.0-flash-thinking');
@@ -360,7 +367,9 @@
       let parsed = null;
       try {
         const raw = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-        parsed = JSON.parse(raw);
+        const looseParser = _w.__LoreInj && _w.__LoreInj.parseJsonLoose;
+        parsed = looseParser ? looseParser(raw) : JSON.parse(raw);
+        if (!parsed) throw new Error('empty parsed json');
       } catch (e) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
