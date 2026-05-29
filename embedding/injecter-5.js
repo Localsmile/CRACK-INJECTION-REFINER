@@ -88,7 +88,8 @@
       // kernel 단의 callGeminiApi가 opts.signal을 fetch/GM_xmlhttpRequest로 전달해야 해야 완전 취소 가능.
       // kernel 미지원 시 abort는 user-land race만 끊고, fetch 자체는 끝까지 실행됨(추후 kernel 보강 필요).
       const _judgeTimeoutMs = Math.max(0, Number(config.temporalRecallJudgeTimeoutMs || 0));
-      const _judgeModel = (config.temporalRecallJudgeModel === '_custom' ? config.temporalRecallJudgeCustomModel : config.temporalRecallJudgeModel) || 'gemini-3.1-flash-lite-preview';
+      const _judgeModel = (config.temporalRecallJudgeModel === '_custom' ? config.temporalRecallJudgeCustomModel : config.temporalRecallJudgeModel)
+        || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3.1-flash-lite-preview');
       const _judgeAbortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
       const _judgeCall = C.callGeminiApi(prompt, {
         ...apiOpts,
@@ -97,7 +98,9 @@
         maxRetries: 1,
         timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
         maxOutputTokens: 512,
-        thinkingConfig: { thinkingLevel: config.temporalRecallJudgeReasoning || 'minimal' },
+        thinkingConfig: (apiOpts && apiOpts.apiType) === 'deepseek' ? undefined : { thinkingLevel: config.temporalRecallJudgeReasoning || 'minimal' },
+        deepSeekThinking: config.autoExtDeepSeekThinking !== false,
+        deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
         costContext: { feature: 'judge', chatKey: getChatKey() || 'global' },
         signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
       });
@@ -239,13 +242,17 @@
     const recentMsgs = await C.fetchLogs(fetchCount);
 
     const config = settings.config;
-    const apiOpts = {
-      apiType: config.autoExtApiType || 'key', key: config.autoExtKey, vertexJson: config.autoExtVertexJson,
-      vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
-      firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
-      model: config.embeddingModel || 'gemini-embedding-001',
-      costContext: { feature: 'embed', chatKey: chatKey || 'global' }
-    };
+    const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
+      : {
+        apiType: config.autoExtApiType === 'deepseek' ? 'key' : (config.autoExtApiType || 'key'),
+        key: config.autoExtApiType === 'deepseek' ? config.autoExtFirebaseEmbedKey : config.autoExtKey,
+        vertexJson: config.autoExtVertexJson,
+        vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
+        firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
+        model: config.embeddingModel || 'gemini-embedding-001',
+        costContext: { feature: 'embed', chatKey: chatKey || 'global' }
+      };
     const searchConfig = {
       chatKey: chatKey, turnCounter: turnCounter,
       scanRange: config.scanRange || 6, scanOffset: config.scanOffset || 0,
@@ -357,14 +364,22 @@
       try {
         C.showStatusBadge('에리가 로어 재정렬 중');
         const last2 = recentMsgs.slice(-4).map(m => m.role + ': ' + m.message).join('\n');
-        scored = await C.smartRerank(userInput, scored, last2, {
-          apiType: config.autoExtApiType || 'key', key: config.autoExtKey,
+        const rerankModel = (config.rerankModel === '_custom' ? config.rerankCustomModel : config.rerankModel)
+          || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : config.autoExtModel)
+          || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3-flash-preview');
+        const rerankApiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
+          model: rerankModel,
+          costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
+        }, { feature: 'rerank', chatKey: chatKey || 'global' }) : {
+          apiType: config.autoExtApiType || 'key', key: config.autoExtKey, deepSeekKey: config.autoExtDeepSeekKey,
+          deepSeekThinking: config.autoExtDeepSeekThinking !== false, deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
           vertexJson: config.autoExtVertexJson, vertexLocation: config.autoExtVertexLocation || 'global',
           vertexProjectId: config.autoExtVertexProjectId,
           firebaseScript: config.autoExtFirebaseScript,
-          model: config.rerankModel || config.autoExtModel || 'gemini-3-flash-preview',
+          model: rerankModel,
           costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
-        }, config);
+        };
+        scored = await C.smartRerank(userInput, scored, last2, rerankApiOpts, config);
       } catch(e) {}
       // 리랭크 직후 hide 대신 "응답 기다리는 중"으로 전환 — Refiner가 실제 응답 감지 시 다음 상태로 교체/hide 담당
       C.showStatusBadge('에리가 응답 기다리는 중');

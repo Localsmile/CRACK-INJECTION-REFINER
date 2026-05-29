@@ -24,7 +24,10 @@
     'gemini-2.0-flash-lite':         { in: 0.075, out: 0.30 },
     'gemini-embedding-001':          { in: 0.15,  out: 0 },
     // prefix 폴백: 미등록 임베딩 변종(gemini-embedding-2-preview 등) 기본 단가.
-    'gemini-embedding':              { in: 0.15,  out: 0 }
+    'gemini-embedding':              { in: 0.15,  out: 0 },
+    // DeepSeek V4 official pricing, 2026-05 docs. Cache hit is tracked separately when usage exposes it.
+    'deepseek-v4-flash':             { in: 0.14,  out: 0.28, cacheHitIn: 0.0028 },
+    'deepseek-v4-pro':               { in: 0.435, out: 0.87, cacheHitIn: 0.003625 }
   };
 
   function normalizeModel(model) {
@@ -57,6 +60,18 @@
       if (p.longOut != null) outRate = p.longOut;
     }
     return (i * inRate + o * outRate) / 1e6;
+  }
+
+  function computeCostDetailed(model, inTok, outTok, ev) {
+    const p = getPricing(model);
+    if (!p) return null;
+    const hit = Math.max(0, Number(ev && ev.cacheHitTok) || 0);
+    const miss = Math.max(0, Number(ev && ev.cacheMissTok) || 0);
+    if (p.cacheHitIn != null && (hit > 0 || miss > 0)) {
+      const other = Math.max(0, (Number(inTok) || 0) - hit - miss);
+      return ((hit * p.cacheHitIn) + ((miss + other) * p.in) + (Math.max(0, Number(outTok) || 0) * p.out)) / 1e6;
+    }
+    return computeCost(model, inTok, outTok, Number(ev && ev.contextLen) || inTok);
   }
 
   // === 이벤트 로깅 ===
@@ -102,7 +117,7 @@
     const rawModel = String(ev.model || '');
     const model = normalizeModel(rawModel) || rawModel;
     const contextLen = Number(ev.contextLen) || inTok;
-    const usd = computeCost(rawModel, inTok, outTok, contextLen);
+    const usd = computeCostDetailed(rawModel, inTok, outTok, ev);
     const unknown = usd == null;
     const rec = {
       ts: Number(ev.ts) || Date.now(),
@@ -110,6 +125,8 @@
       feature: String(ev.feature || 'unknown'),
       model,
       inTok, outTok,
+      cacheHitTok: Math.max(0, Number(ev.cacheHitTok) || 0),
+      cacheMissTok: Math.max(0, Number(ev.cacheMissTok) || 0),
       usd: unknown ? null : usd,
       unknown,
       estimated: !!ev.estimated
@@ -167,7 +184,7 @@
   }
 
   Object.assign(C, {
-    PRICING, computeCost, recordApiCost, getCostEvents, clearCostEvents, normalizeModel,
+    PRICING, computeCost, computeCostDetailed, recordApiCost, getCostEvents, clearCostEvents, normalizeModel,
     getCumulativeCost, clearCumulativeCost,
     __pricingLoaded: true
   });

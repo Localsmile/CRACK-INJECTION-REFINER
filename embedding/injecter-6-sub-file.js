@@ -11,6 +11,180 @@
   if (_w.__LoreInj.__subFileLoaded) return;
 
   const { C, db, settings, setPackEnabled } = _w.__LoreInj;
+  const _ls = _w.localStorage;
+  const BACKUP_SCHEMA = 'crack-lore-full-backup';
+  const BACKUP_VERSION = 1;
+  const DB_TABLES = ['packs', 'entries', 'embeddings', 'workingMemory', 'encounters', 'entryVersions', 'snapshots'];
+  const LS_KEYS = ['lore-turn-counters', 'lore-last-mention', 'lore-api-cost-log', 'lore-api-cost-cumulative', 'lore-local-migration-version', 'lore-local-migration-status'];
+  const SECRET_SETTING_KEYS = ['autoExtKey', 'autoExtVertexJson', 'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtDeepSeekKey'];
+
+  function clonePlain(v) {
+    return JSON.parse(JSON.stringify(v == null ? null : v));
+  }
+
+  function sanitizeSettings(config, includeSecrets) {
+    const out = clonePlain(config || {});
+    if (!includeSecrets) {
+      SECRET_SETTING_KEYS.forEach(k => { if (out[k] !== undefined) out[k] = ''; });
+    }
+    return out;
+  }
+
+  function downloadJson(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function safeFileName(s) {
+    return String(s || 'backup').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
+  }
+
+  async function exportFullBackup(opts = {}) {
+    const includeSecrets = !!opts.includeSecrets;
+    const includeLogs = opts.includeLogs !== false;
+    const tables = {};
+    for (const name of DB_TABLES) {
+      try { tables[name] = db[name] ? await db[name].toArray() : []; }
+      catch (_) { tables[name] = []; }
+    }
+    const localStorageData = {};
+    for (const key of LS_KEYS) {
+      if (!includeLogs && key.includes('cost')) continue;
+      try {
+        const val = _ls.getItem(key);
+        if (val != null) localStorageData[key] = val;
+      } catch (_) {}
+    }
+    return {
+      schema: BACKUP_SCHEMA,
+      version: BACKUP_VERSION,
+      exportedAt: Date.now(),
+      appVersion: _w.__LoreInj && _w.__LoreInj.VER || '',
+      includeSecrets,
+      settings: sanitizeSettings(settings.config, includeSecrets),
+      localStorage: localStorageData,
+      db: tables
+    };
+  }
+
+  function normalizeBackup(raw) {
+    if (!raw || typeof raw !== 'object') throw new Error('백업 파일 형식 아님');
+    if (raw.schema === BACKUP_SCHEMA && raw.db && raw.settings) return raw;
+    if (Array.isArray(raw) || Array.isArray(raw.entries)) {
+      return { schema: 'legacy-lore-pack', version: 0, db: { entries: Array.isArray(raw) ? raw : raw.entries }, settings: null, localStorage: {} };
+    }
+    throw new Error('지원하지 않는 백업 형식');
+  }
+
+  async function clearKnownTables() {
+    for (const name of [...DB_TABLES].reverse()) {
+      try { if (db[name]) await db[name].clear(); } catch (_) {}
+    }
+  }
+
+  async function importFullBackup(backup, mode, opts = {}) {
+    const replace = mode === 'replace';
+    const includeSecrets = !!opts.includeSecrets;
+    if (_w.__LoreInj.backupSettings) _w.__LoreInj.backupSettings('before-file-import');
+    const data = normalizeBackup(backup);
+    const sourceDb = data.db || {};
+    const idMap = {};
+
+    if (replace) await clearKnownTables();
+
+    if (data.settings && (replace || opts.importSettings)) {
+      const importedSettings = sanitizeSettings(data.settings, includeSecrets);
+      if (!includeSecrets) SECRET_SETTING_KEYS.forEach(k => { importedSettings[k] = settings.config[k] || ''; });
+      if (replace) settings.config = Object.assign(clonePlain(_w.__LoreInj.defaultSettings || {}), importedSettings);
+      else settings.config = Object.assign(settings.config, importedSettings);
+      settings.save();
+    }
+
+    const packs = Array.isArray(sourceDb.packs) ? sourceDb.packs : [];
+    for (const p of packs) {
+      if (!p || !p.name) continue;
+      try { await db.packs.put(p); } catch (_) {}
+    }
+
+    const entries = Array.isArray(sourceDb.entries) ? sourceDb.entries : [];
+    const touchedPacks = new Set();
+    for (const raw of entries) {
+      if (!raw || !raw.name) continue;
+      const oldId = raw.id;
+      const e = clonePlain(raw);
+      if (!e.packName) e.packName = '가져온 백업';
+      touchedPacks.add(e.packName);
+      if (!e.triggers) e.triggers = [e.name];
+      if (C.normalizeLoreEntry) Object.assign(e, C.normalizeLoreEntry(e, { source: 'backup_import' }));
+      if (replace) {
+        await db.entries.put(e);
+        if (oldId != null) idMap[oldId] = e.id != null ? e.id : oldId;
+      } else {
+        delete e.id;
+        const ex = await db.entries.where('packName').equals(e.packName).and(x => x.name === e.name).first();
+        if (ex) {
+          await db.entries.update(ex.id, e);
+          if (oldId != null) idMap[oldId] = ex.id;
+          try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch (_) {}
+        } else {
+          const newId = await db.entries.add(e);
+          if (oldId != null) idMap[oldId] = newId;
+        }
+      }
+    }
+
+    const embeddings = Array.isArray(sourceDb.embeddings) ? sourceDb.embeddings : [];
+    for (const raw of embeddings) {
+      if (!raw || raw.entryId == null) continue;
+      const newEntryId = replace ? raw.entryId : idMap[raw.entryId];
+      if (newEntryId == null) continue;
+      const emb = clonePlain(raw);
+      emb.entryId = newEntryId;
+      if (!replace) delete emb.id;
+      try { await db.embeddings.put(emb); } catch (_) {}
+    }
+
+    for (const name of ['workingMemory', 'encounters', 'entryVersions', 'snapshots']) {
+      const rows = Array.isArray(sourceDb[name]) ? sourceDb[name] : [];
+      if (!db[name]) continue;
+      for (const raw of rows) {
+        const row = clonePlain(raw);
+        if (!replace && row.id != null) delete row.id;
+        if (name === 'entryVersions' && row.entryId != null && idMap[row.entryId] != null) row.entryId = idMap[row.entryId];
+        try { await db[name].put(row); } catch (_) {}
+      }
+    }
+
+    for (const packName of touchedPacks) {
+      if (!packName) continue;
+      const exists = await db.packs.get(packName);
+      if (!exists) await db.packs.put({ name: packName, entryCount: 0, project: settings.config.activeProject || '' });
+    }
+
+    const allPacks = await db.packs.toArray();
+    for (const p of allPacks) {
+      const count = await db.entries.where('packName').equals(p.name).count();
+      if (count <= 0) await db.packs.delete(p.name);
+      else await db.packs.update(p.name, { entryCount: count });
+    }
+
+    if (data.localStorage && typeof data.localStorage === 'object') {
+      for (const [key, value] of Object.entries(data.localStorage)) {
+        if (!includeSecrets && key === 'lore-injector-v5') continue;
+        try { _ls.setItem(key, String(value)); } catch (_) {}
+      }
+    }
+
+    settings.load();
+    return { packs: allPacks.length, entries: entries.length, embeddings: embeddings.length, mode };
+  }
 
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
@@ -71,6 +245,61 @@
           manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
         }});
 
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          const title = document.createElement('div'); title.textContent = '전체 백업/복원'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
+          const desc = document.createElement('div'); desc.textContent = '설정, 로어팩, 로어, 검색 준비, 채팅별 활성 상태를 파일로 저장/복원함.'; desc.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:10px;'; nd.appendChild(desc);
+
+          const optRow = document.createElement('div'); optRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;';
+          const mkCheck = (label, checked) => {
+            const wrap = document.createElement('label'); wrap.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;';
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!checked;
+            wrap.appendChild(cb); wrap.appendChild(document.createTextNode(label));
+            optRow.appendChild(wrap);
+            return cb;
+          };
+          const includeSecretsCb = mkCheck('API 키 포함', false);
+          const includeLogsCb = mkCheck('비용/로그 포함', true);
+          const importSettingsCb = mkCheck('설정도 가져오기', true);
+          nd.appendChild(optRow);
+
+          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+          const B = 'padding:7px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid #444;background:#111;color:#ccc;font-weight:bold;';
+          const exportBtn = document.createElement('button'); exportBtn.textContent = '전체 내보내기'; exportBtn.style.cssText = B + 'border-color:#285;color:#6c9;';
+          exportBtn.onclick = async () => {
+            exportBtn.disabled = true; const orig = exportBtn.textContent; exportBtn.textContent = '준비 중...';
+            try {
+              const data = await exportFullBackup({ includeSecrets: includeSecretsCb.checked, includeLogs: includeLogsCb.checked });
+              const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+              downloadJson('crack-lore-backup-' + stamp + '.json', data);
+            } catch (e) { alert('내보내기 실패: ' + e.message); }
+            exportBtn.textContent = orig; exportBtn.disabled = false;
+          };
+          const importFile = document.createElement('input'); importFile.type = 'file'; importFile.accept = '.json,application/json'; importFile.style.display = 'none';
+          const importMergeBtn = document.createElement('button'); importMergeBtn.textContent = '백업 병합'; importMergeBtn.style.cssText = B + 'border-color:#258;color:#8bc;';
+          const importReplaceBtn = document.createElement('button'); importReplaceBtn.textContent = '백업 교체'; importReplaceBtn.style.cssText = B + 'border-color:#833;color:#e88;';
+          let importMode = 'merge';
+          importMergeBtn.onclick = () => { importMode = 'merge'; importFile.click(); };
+          importReplaceBtn.onclick = () => {
+            if (!confirm('현재 설정/로어를 백업 파일 내용으로 교체함. 작업 전 내부 백업은 남기지만 신중히 진행할 것.')) return;
+            importMode = 'replace'; importFile.click();
+          };
+          importFile.onchange = async (ev) => {
+            const file = ev.target.files && ev.target.files[0]; if (!file) return;
+            try {
+              const data = JSON.parse(await file.text());
+              const report = await importFullBackup(data, importMode, { includeSecrets: includeSecretsCb.checked, importSettings: importSettingsCb.checked });
+              alert('백업 가져오기 완료: ' + report.mode + ' / 로어 ' + report.entries + '개 / 임베딩 ' + report.embeddings + '개');
+              m.replaceContentPanel(renderPackUI, '파일 관리');
+            } catch (e) {
+              alert('백업 가져오기 실패: ' + e.message);
+            }
+            importFile.value = '';
+          };
+          row.appendChild(exportBtn); row.appendChild(importMergeBtn); row.appendChild(importReplaceBtn); row.appendChild(importFile); nd.appendChild(row);
+          const warn = document.createElement('div'); warn.textContent = 'API 키 포함 파일은 공유 금지. 교체 복원은 현재 로컬 DB를 백업 파일 기준으로 바꿈.'; warn.style.cssText = 'font-size:10px;color:#a87;line-height:1.4;margin-top:8px;'; nd.appendChild(warn);
+        }});
+
         panel.addBoxedField('', '', { onInit: async (nd) => {
           C.setFullWidth(nd);
           const rawPacks = await db.packs.toArray();
@@ -104,7 +333,7 @@
             const B = 'font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
             const exportBtn = document.createElement('button'); exportBtn.textContent = '내보내기'; exportBtn.style.cssText = B;
             exportBtn.onclick = async () => { const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert('항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
-            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; embBtn.onclick = async () => { const apiType = settings.config.autoExtApiType || 'key'; const miss = apiType === 'vertex' ? !settings.config.autoExtVertexJson : apiType === 'firebase' ? !settings.config.autoExtFirebaseEmbedKey : !settings.config.autoExtKey; if (miss) { alert(apiType === 'firebase' ? '임베딩용 Gemini API 키 필요.' : 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const cnt = await C.embedPack(pack.name, { apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = 'OK' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('실패:' + e.message); } };
+            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; embBtn.onclick = async () => { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) { alert(miss || 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; const cnt = await C.embedPack(pack.name, apiOpts, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = 'OK' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('실패:' + e.message); } };
             const cleanBtn = document.createElement('button'); cleanBtn.textContent = '정리'; cleanBtn.title = 'API 호출 없이 stale embeddings 삭제'; cleanBtn.style.cssText = B + 'color:#da8;border-color:#642;';
             cleanBtn.onclick = async () => { cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('stale embedding 정리 완료: ' + JSON.stringify(rpt)); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
             const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';

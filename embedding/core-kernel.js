@@ -330,12 +330,102 @@ Entries:
     } catch (e) { return false; }
   }
 
+  function trackGenerationCost(model, usageMeta, promptText, outText, costContext, opts = {}) {
+    const core = _w.__LoreCore;
+    if (!core || typeof core.recordApiCost !== 'function') return null;
+    const ctx = costContext || { feature: 'unknown', chatKey: 'global' };
+    try {
+      let inTok, outTok, estimated = false;
+      if (usageMeta && (usageMeta.promptTokenCount != null || usageMeta.candidatesTokenCount != null)) {
+        inTok = Number(usageMeta.promptTokenCount) || 0;
+        outTok = (Number(usageMeta.candidatesTokenCount) || 0) + (Number(usageMeta.thoughtsTokenCount) || 0);
+      } else if (usageMeta && (usageMeta.prompt_tokens != null || usageMeta.completion_tokens != null)) {
+        inTok = Number(usageMeta.prompt_tokens) || 0;
+        outTok = Number(usageMeta.completion_tokens) || 0;
+      } else {
+        inTok = Math.ceil(String(promptText || '').length / 4);
+        outTok = Math.ceil(String(outText || '').length / 4);
+        estimated = true;
+      }
+      return core.recordApiCost({
+        chatKey: ctx.chatKey || 'global',
+        feature: ctx.feature || 'unknown',
+        model, inTok, outTok, estimated,
+        cacheHitTok: Number(opts.cacheHitTok) || 0,
+        cacheMissTok: Number(opts.cacheMissTok) || 0
+      });
+    } catch (_) { return null; }
+  }
+
+  async function callDeepSeekApi(prompt, opts = {}) {
+    const {
+      key = '', model = 'deepseek-v4-flash', maxRetries = 1, responseMimeType,
+      costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null,
+      deepSeekThinking = true, deepSeekReasoning = 'high'
+    } = opts;
+    if (!key) return { text: null, status: 0, error: 'DeepSeek API 키 누락', retries: 0 };
+    const url = 'https://api.deepseek.com/chat/completions';
+    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key };
+    const bodyObj = {
+      model,
+      messages: [{ role: 'user', content: String(prompt || '') }],
+      stream: false
+    };
+    if (responseMimeType && String(responseMimeType).includes('json')) bodyObj.response_format = { type: 'json_object' };
+    if (maxOutputTokens != null) bodyObj.max_tokens = maxOutputTokens;
+    const thinkingOn = deepSeekThinking !== false;
+    bodyObj.thinking = { type: thinkingOn ? 'enabled' : 'disabled' };
+    if (thinkingOn) bodyObj.reasoning_effort = deepSeekReasoning === 'max' || deepSeekReasoning === 'xhigh' ? 'max' : 'high';
+    const body = JSON.stringify(bodyObj);
+    let lastStatus = 0, lastError = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (signal && signal.aborted) { lastError = 'aborted'; break; }
+        const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
+        lastStatus = r.status;
+        if (!r.ok) {
+          const errBody = r.text ? await r.text().catch(() => '') : '';
+          lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\\n/g, ' ')}`;
+          if ([400, 401, 403, 404].includes(r.status)) break;
+          if ((r.status === 429 || r.status >= 500) && attempt < maxRetries) {
+            const waitMs = Math.min(10000, 1000 * Math.pow(2, attempt + 1)) + Math.random() * 500;
+            await new Promise(res => setTimeout(res, waitMs));
+            continue;
+          }
+        } else {
+          const json = await r.json();
+          const msg = json.choices && json.choices[0] && json.choices[0].message;
+          const text = msg && msg.content != null ? String(msg.content) : null;
+          const usage = json.usage || null;
+          const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
+          const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
+          const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
+          if (text) return { text, status: r.status, error: null, retries: attempt, cost };
+          lastError = 'DeepSeek 응답 파싱 실패';
+        }
+      } catch (e) { lastError = e.message; }
+      if (attempt < maxRetries) {
+        const waitMs = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
+        await new Promise(res => setTimeout(res, waitMs));
+      }
+    }
+    return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
+  }
+
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
+      deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
+
+    if (apiType === 'deepseek') {
+      return await callDeepSeekApi(prompt, {
+        key: deepSeekKey || key, model, maxRetries, responseMimeType, costContext, signal,
+        timeoutMs, maxOutputTokens, deepSeekThinking, deepSeekReasoning
+      });
+    }
 
     // 비용 추적: costContext 미지정 시 unknown/global로 폴백 기록(누락 방지).
     // usageMetadata 부재 시 char/4 추정 + estimated:true.
@@ -353,11 +443,7 @@ Entries:
           outTok = Math.ceil(String(outText || '').length / 4);
           estimated = true;
         }
-        return core.recordApiCost({
-          chatKey: ctx.chatKey || 'global',
-          feature: ctx.feature || 'unknown',
-          model, inTok, outTok, estimated
-        });
+        return trackGenerationCost(model, { promptTokenCount: inTok, candidatesTokenCount: outTok }, promptText, outText, ctx);
       } catch (_) { return null; }
     };
     const isVertex = apiType === 'vertex';
@@ -638,7 +724,7 @@ Entries:
   Object.assign(ns, {
     VER, DB_SCHEMA_VERSION, LOCAL_MIGRATION_VERSION, TIMELINE_EVENT_TYPE, TIMELINE_SCHEMA_VERSION, TIMELINE_COMPRESSION_LEVELS, SAFETY, PLATFORM, DEFAULTS,
     getDB, gmFetch, parseServiceAccountJson, getVertexAccessToken,
-    callGeminiApi, embedText, embedTexts, warmupFirebase,
+    callGeminiApi, callDeepSeekApi, embedText, embedTexts, warmupFirebase,
     normalizeVector, cosineSim, simpleHash,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true

@@ -89,7 +89,7 @@
             settings.save();
           },
           (msg, color) => { if (typeof ToastifyInjection !== 'undefined') ToastifyInjection.show(msg, { duration: 3000, background: color }); },
-          (url) => settings.config.urlPacks?.[url] || []
+          (url) => getActivePacksForUrl(url)
         );
         R.__loreInjectorRuntimeInitDone = true;
       }
@@ -120,8 +120,9 @@
   function getApiConfigSnapshot(config) {
     const keys = [
       'autoExtApiType', 'autoExtKey', 'autoExtVertexJson', 'autoExtVertexLocation', 'autoExtVertexProjectId',
-      'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtModel', 'autoExtCustomModel',
-      'autoExtReasoning', 'autoExtBudget', 'embeddingModel', 'rerankModel', 'refinerModel', 'refinerCustomModel',
+      'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtDeepSeekKey', 'autoExtDeepSeekThinking',
+      'autoExtDeepSeekReasoning', 'autoExtModel', 'autoExtCustomModel',
+      'autoExtReasoning', 'autoExtBudget', 'embeddingModel', 'rerankModel', 'rerankCustomModel', 'refinerModel', 'refinerCustomModel',
       'temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel', 'temporalRecallJudgeReasoning'
     ];
     const out = {};
@@ -129,13 +130,73 @@
     return out;
   }
 
-  function resetSettingsKeepApi() {
-    const api = getApiConfigSnapshot(settings.config);
-    const preserved = {
-      urlPacks: settings.config.urlPacks || {},
-      urlAutoExtPacks: settings.config.urlAutoExtPacks || {},
-      autoPacks: settings.config.autoPacks || ['자동추출']
+  function getDurableStateSnapshot(config) {
+    const keys = [
+      'urlPacks', 'urlDisabledEntries', 'urlAutoExtPacks', 'urlCooldownMaps',
+      'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs', 'urlTurnCounters',
+      'autoPacks', 'templates', 'activeTemplateId',
+      'refinerCustomPrompt', 'refinerUseDynamic', 'refinerTopics', 'refinerPromptVersion',
+      'prefix', 'suffix', 'oocFormat', 'oocPromptVersion',
+      'autoExtractPromptVersion', 'migrationStatus', 'localMigrationVersion'
+    ];
+    const out = {};
+    keys.forEach(k => { if (config && config[k] !== undefined) out[k] = JSON.parse(JSON.stringify(config[k])); });
+    return out;
+  }
+
+  function backupSettings(reason = 'manual') {
+    try {
+      const backups = JSON.parse(_ls.getItem('lore-injector-v5-backups') || '[]');
+      const row = { ts: Date.now(), reason, config: JSON.parse(JSON.stringify(settings.config || {})) };
+      backups.unshift(row);
+      if (backups.length > 3) backups.length = 3;
+      _ls.setItem('lore-injector-v5-backups', JSON.stringify(backups));
+      return true;
+    } catch (e) {
+      console.warn('[LoreInj:settings] backup failed:', e);
+      return false;
+    }
+  }
+
+  function getSettingsStorageHealth() {
+    const key = 'lore-injector-storage-test';
+    const health = {
+      ok: false,
+      configBytes: 0,
+      lastSaveOk: settings ? settings._lastSaveOk !== false : true,
+      lastSaveError: settings ? settings._lastSaveError || '' : '',
+      lastErrorRecord: null
     };
+    try {
+      const raw = JSON.stringify(settings.config || {});
+      health.configBytes = raw.length;
+      _ls.setItem(key, '1');
+      health.ok = _ls.getItem(key) === '1';
+      _ls.removeItem(key);
+    } catch (e) {
+      health.ok = false;
+      health.lastSaveError = e && e.message ? e.message : String(e);
+    }
+    try {
+      const savedErr = _ls.getItem('lore-injector-last-save-error');
+      health.lastErrorRecord = savedErr ? JSON.parse(savedErr) : null;
+    } catch (_) {}
+    return health;
+  }
+
+  function applyPresetKeepState(presetConfig) {
+    backupSettings('before-preset');
+    const api = getApiConfigSnapshot(settings.config);
+    const durable = getDurableStateSnapshot(settings.config);
+    settings.config = JSON.parse(JSON.stringify(defaultSettings));
+    Object.assign(settings.config, durable, api, presetConfig || {});
+    settings.save();
+  }
+
+  function resetSettingsKeepApi() {
+    backupSettings('before-reset');
+    const api = getApiConfigSnapshot(settings.config);
+    const preserved = getDurableStateSnapshot(settings.config);
     settings.config = JSON.parse(JSON.stringify(defaultSettings));
     Object.assign(settings.config, api, preserved);
     settings.save();
@@ -232,6 +293,7 @@
     autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '',
+    autoExtDeepSeekKey: '', autoExtDeepSeekThinking: true, autoExtDeepSeekReasoning: 'high',
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
@@ -262,7 +324,7 @@
     decayHalfLife: C.DEFAULTS.decayHalfLife,
     embeddingModel: 'gemini-embedding-001', autoEmbedOnExtract: true,
     aiMemoryTurns: 3, importanceGating: true, importanceThreshold: 12, pendingPromiseBoost: true,
-    oocFormat: 'default', oocPromptVersion: OOC_FORMAT_VERSION, autoExtractPromptVersion: AUTO_EXTRACT_PROMPT_VERSION, rerankEnabled: false, rerankModel: 'gemini-3-flash-preview',
+    oocFormat: 'default', oocPromptVersion: OOC_FORMAT_VERSION, autoExtractPromptVersion: AUTO_EXTRACT_PROMPT_VERSION, rerankEnabled: false, rerankModel: 'gemini-3-flash-preview', rerankCustomModel: '',
     rerankPrompt: C.DEFAULTS.rerankPrompt,
 
     refinerEnabled: false, refinerAutoMode: false, refinerPassKeyword: 'PASS',
@@ -278,8 +340,26 @@
   const settings = {
     config: JSON.parse(JSON.stringify(defaultSettings)),
     _lastSaveTime: 0,
+    _lastSaveOk: true,
+    _lastSaveError: '',
     save: function() {
-      try { this._lastSaveTime = Date.now(); _ls.setItem('lore-injector-v5', JSON.stringify(this.config)); } catch(e) {}
+      try {
+        const payload = JSON.stringify(this.config);
+        _ls.setItem('lore-injector-v5', payload);
+        this._lastSaveTime = Date.now();
+        this._lastSaveOk = true;
+        this._lastSaveError = '';
+        try { _ls.removeItem('lore-injector-last-save-error'); } catch (_) {}
+        return true;
+      } catch(e) {
+        this._lastSaveOk = false;
+        this._lastSaveError = e && e.message ? e.message : String(e);
+        try {
+          _ls.setItem('lore-injector-last-save-error', JSON.stringify({ ts: Date.now(), message: this._lastSaveError }));
+        } catch (_) {}
+        console.warn('[LoreInj:settings] save failed:', e);
+        return false;
+      }
     },
     load: function() {
       try {
@@ -616,6 +696,42 @@
     return C.getCurUrl();
   }
 
+  function getStableChatStateKey(url) {
+    const chatKey = getChatKey();
+    if (chatKey && chatKey.startsWith('chat:')) return chatKey;
+    const cur = url || C.getCurUrl();
+    const m = String(cur || window.location.pathname || '').match(/\/(?:chats|episodes|c)\/([a-f0-9]+)/);
+    if (m) return 'chat:' + m[1];
+    return cur;
+  }
+
+  function getLegacyStateKeys(url) {
+    const keys = [];
+    const add = (k) => { if (k && !keys.includes(k)) keys.push(k); };
+    const cur = url || C.getCurUrl();
+    add(cur);
+    add(C.getCurUrl());
+    try { add(window.location.pathname); } catch (_) {}
+    try {
+      const chatKey = getStableChatStateKey(url);
+      const chatId = chatKey && chatKey.startsWith('chat:') ? chatKey.slice(5) : '';
+      if (chatId) {
+        const maps = [settings.config.urlPacks, settings.config.urlDisabledEntries, settings.config.urlAutoExtPacks].filter(Boolean);
+        for (const map of maps) {
+          Object.keys(map || {}).forEach(k => { if (k && k.includes(chatId)) add(k); });
+        }
+      }
+    } catch (_) {}
+    return keys;
+  }
+
+  function migrateMapValueToStableKey(mapName, stableKey, legacyKey) {
+    const map = settings.config[mapName];
+    if (!map || !stableKey || !legacyKey || stableKey === legacyKey || map[stableKey] !== undefined || map[legacyKey] === undefined) return false;
+    map[stableKey] = JSON.parse(JSON.stringify(map[legacyKey]));
+    return true;
+  }
+
   function incrementTurnCounter(chatKey) { return C.incrementTurn(chatKey); }
   function recordEntryMention(chatKey, entryId) { return C.recordMention(chatKey, entryId); }
   function getTurnCounter(chatKey) {
@@ -640,7 +756,15 @@
 
   async function getAutoExtPackForUrl(url) {
     if (!settings.config.urlAutoExtPacks) settings.config.urlAutoExtPacks = {};
-    if (settings.config.urlAutoExtPacks[url]) return settings.config.urlAutoExtPacks[url];
+    const stableKey = getStableChatStateKey(url);
+    if (settings.config.urlAutoExtPacks[stableKey]) return settings.config.urlAutoExtPacks[stableKey];
+    for (const key of getLegacyStateKeys(url)) {
+      if (settings.config.urlAutoExtPacks[key]) {
+        settings.config.urlAutoExtPacks[stableKey] = settings.config.urlAutoExtPacks[key];
+        settings.save();
+        return settings.config.urlAutoExtPacks[stableKey];
+      }
+    }
     let baseName = '자동추출';
     try {
       let chatId = C.getCurrentChatId();
@@ -659,26 +783,28 @@
       if (!inDb && !existing.includes(checkName)) { finalName = checkName; break; }
       counter++;
     }
-    settings.config.urlAutoExtPacks[url] = finalName; settings.save();
+    settings.config.urlAutoExtPacks[stableKey] = finalName; settings.save();
     return finalName;
   }
   function setAutoExtPackForUrl(url, packName) {
     if (!settings.config.urlAutoExtPacks) settings.config.urlAutoExtPacks = {};
-    settings.config.urlAutoExtPacks[url] = packName; settings.save();
+    settings.config.urlAutoExtPacks[getStableChatStateKey(url)] = packName; settings.save();
   }
 
   function getUrlStateKey(url) {
-    const curUrl = url || C.getCurUrl();
+    const stableKey = getStableChatStateKey(url);
     const packsByUrl = settings.config.urlPacks || {};
-    if (packsByUrl[curUrl]) return curUrl;
-    try {
-      const chatId = C.getCurrentChatId && C.getCurrentChatId();
-      if (chatId) {
-        const found = Object.keys(packsByUrl).find(k => k && k.includes(chatId) && packsByUrl[k] && packsByUrl[k].length);
-        if (found) return found;
+    if (packsByUrl[stableKey]) return stableKey;
+    for (const key of getLegacyStateKeys(url)) {
+      if (packsByUrl[key] && packsByUrl[key].length) {
+        let changed = false;
+        changed = migrateMapValueToStableKey('urlPacks', stableKey, key) || changed;
+        changed = migrateMapValueToStableKey('urlDisabledEntries', stableKey, key) || changed;
+        if (changed) settings.save();
+        return stableKey;
       }
-    } catch (_) {}
-    return curUrl;
+    }
+    return stableKey;
   }
 
   function getActivePacksForUrl(url) {
@@ -688,7 +814,15 @@
 
   function getDisabledEntriesForUrl(url) {
     const key = getUrlStateKey(url);
-    return (settings.config.urlDisabledEntries && settings.config.urlDisabledEntries[key]) || [];
+    const map = settings.config.urlDisabledEntries || {};
+    if (map[key]) return Array.from(new Set(map[key]));
+    for (const legacyKey of getLegacyStateKeys(url)) {
+      if (map[legacyKey] && map[legacyKey].length) {
+        if (migrateMapValueToStableKey('urlDisabledEntries', key, legacyKey)) settings.save();
+        return Array.from(new Set(map[key] || map[legacyKey] || []));
+      }
+    }
+    return [];
   }
 
   function getExtLog(chatKey) { return settings.config.urlExtLogs?.[chatKey] || []; }
@@ -751,6 +885,87 @@
     settings.config.urlPacks = up; settings.config.urlDisabledEntries = ud; settings.save();
   }
 
+  function resolveConfiguredModel(value, customValue, fallback) {
+    if (value === '_custom') return customValue || fallback;
+    return value || fallback;
+  }
+
+  function getGenerationFallbackModel(config) {
+    return (config && config.autoExtApiType) === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview';
+  }
+
+  function getApiMissingReason(config, purpose = 'generate') {
+    const cfg = config || settings.config || {};
+    if (purpose === 'embed') {
+      if ((cfg.autoExtApiType || 'key') === 'deepseek') {
+        return cfg.autoExtFirebaseEmbedKey ? '' : '임베딩용 Gemini API 키 필요.';
+      }
+      if ((cfg.autoExtApiType || 'key') === 'vertex') return cfg.autoExtVertexJson ? '' : 'Vertex JSON 필요.';
+      if ((cfg.autoExtApiType || 'key') === 'firebase') return cfg.autoExtFirebaseEmbedKey ? '' : '임베딩용 Gemini API 키 필요.';
+      return cfg.autoExtKey ? '' : 'Gemini API 키 필요.';
+    }
+    const apiType = cfg.autoExtApiType || 'key';
+    if (apiType === 'deepseek') return cfg.autoExtDeepSeekKey ? '' : 'DeepSeek API 키 필요.';
+    if (apiType === 'vertex') return cfg.autoExtVertexJson ? '' : 'Vertex JSON 필요.';
+    if (apiType === 'firebase') return cfg.autoExtFirebaseScript ? '' : 'Firebase 설정 필요.';
+    return cfg.autoExtKey ? '' : 'Gemini API 키 필요.';
+  }
+
+  function buildGenerationApiOpts(overrides = {}, costContext = null) {
+    const cfg = settings.config || {};
+    const fallback = getGenerationFallbackModel(cfg);
+    const model = resolveConfiguredModel(cfg.autoExtModel, cfg.autoExtCustomModel, fallback);
+    const opts = {
+      apiType: cfg.autoExtApiType || 'key',
+      key: cfg.autoExtKey,
+      deepSeekKey: cfg.autoExtDeepSeekKey,
+      deepSeekThinking: cfg.autoExtDeepSeekThinking !== false,
+      deepSeekReasoning: cfg.autoExtDeepSeekReasoning || 'high',
+      vertexJson: cfg.autoExtVertexJson,
+      vertexLocation: cfg.autoExtVertexLocation || 'global',
+      vertexProjectId: cfg.autoExtVertexProjectId,
+      firebaseScript: cfg.autoExtFirebaseScript,
+      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
+      model,
+      maxRetries: cfg.autoExtMaxRetries || 1,
+      responseMimeType: 'application/json',
+      costContext,
+      ...overrides
+    };
+    const m = String(opts.model || '');
+    if (opts.apiType !== 'deepseek') {
+      const reasoning = cfg.autoExtReasoning || 'medium';
+      if ((m.includes('gemini-3') || m.includes('gemini-2.0-flash-thinking')) && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
+        opts.thinkingConfig = { thinkingLevel: reasoning };
+      }
+      if (m.includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') opts.thinkingConfig.thinkingLevel = 'low';
+    }
+    return opts;
+  }
+
+  function buildEmbeddingApiOpts(overrides = {}, costContext = null) {
+    const cfg = settings.config || {};
+    const apiType = cfg.autoExtApiType || 'key';
+    const opts = {
+      apiType,
+      key: cfg.autoExtKey,
+      vertexJson: cfg.autoExtVertexJson,
+      vertexLocation: cfg.autoExtVertexLocation || 'global',
+      vertexProjectId: cfg.autoExtVertexProjectId,
+      firebaseScript: cfg.autoExtFirebaseScript,
+      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
+      model: cfg.embeddingModel || 'gemini-embedding-001',
+      costContext,
+      ...overrides
+    };
+    if (apiType === 'deepseek') {
+      opts.apiType = 'key';
+      opts.key = cfg.autoExtFirebaseEmbedKey || cfg.autoExtKey || '';
+      delete opts.deepSeekKey;
+    }
+    return opts;
+  }
+
   // R.init은 ensureHeavyRuntimeInit()에서 채팅 경로 진입 시점에만 실행한다.
 
   Object.assign(_w.__LoreInj, {
@@ -766,6 +981,8 @@
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
     getApiConfigSnapshot, resetSettingsKeepApi,
+    resolveConfiguredModel, getGenerationFallbackModel, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts,
+    getStableChatStateKey, applyPresetKeepState, backupSettings, getSettingsStorageHealth,
     runLocalMigration, getMigrationStatus, ensureHeavyRuntimeInit,
     __settingsLoaded: true
   });

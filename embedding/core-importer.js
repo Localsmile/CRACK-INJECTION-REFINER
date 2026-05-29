@@ -63,11 +63,15 @@
     if (!out.vertexProjectId && liveCfg.autoExtVertexProjectId) out.vertexProjectId = liveCfg.autoExtVertexProjectId;
     if (!out.firebaseScript && liveCfg.autoExtFirebaseScript) out.firebaseScript = liveCfg.autoExtFirebaseScript;
     if (!out.firebaseEmbedKey && liveCfg.autoExtFirebaseEmbedKey) out.firebaseEmbedKey = liveCfg.autoExtFirebaseEmbedKey;
+    if (!out.deepSeekKey && liveCfg.autoExtDeepSeekKey) out.deepSeekKey = liveCfg.autoExtDeepSeekKey;
+    if (out.deepSeekThinking === undefined) out.deepSeekThinking = liveCfg.autoExtDeepSeekThinking !== false;
+    if (!out.deepSeekReasoning && liveCfg.autoExtDeepSeekReasoning) out.deepSeekReasoning = liveCfg.autoExtDeepSeekReasoning;
 
-    if (out.model === '_custom') out.model = out.customModel || out.autoExtCustomModel || liveCfg.autoExtCustomModel || 'gemini-3-flash-preview';
+    const fallbackModel = out.apiType === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview';
+    if (out.model === '_custom') out.model = out.customModel || out.autoExtCustomModel || liveCfg.autoExtCustomModel || fallbackModel;
     if (!out.model) out.model = liveCfg.autoExtModel === '_custom'
-      ? (liveCfg.autoExtCustomModel || 'gemini-3-flash-preview')
-      : (liveCfg.autoExtModel || 'gemini-3-flash-preview');
+      ? (liveCfg.autoExtCustomModel || fallbackModel)
+      : (liveCfg.autoExtModel || fallbackModel);
 
     if (out.apiType === 'firebase' && !out.firebaseScript) {
       throw new Error('Firebase 모드: firebaseScript 설정이 지식 변환 호출에 전달되지 않았습니다.');
@@ -77,6 +81,9 @@
     }
     if (out.apiType === 'vertex' && !out.vertexJson) {
       throw new Error('Vertex 모드: 서비스 계정 JSON이 비어 있습니다.');
+    }
+    if (out.apiType === 'deepseek' && !out.deepSeekKey && !out.key) {
+      throw new Error('DeepSeek 모드: API 키가 비어 있습니다.');
     }
     return out;
   }

@@ -35,11 +35,14 @@
           };
           const cfg = settings.config || {};
           const apiType = cfg.autoExtApiType || 'key';
-          const apiReady = apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
+          const apiReady = apiType === 'deepseek' ? !!cfg.autoExtDeepSeekKey : apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
           const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
+          const storageHealth = _w.__LoreInj.getSettingsStorageHealth ? _w.__LoreInj.getSettingsStorageHealth() : { ok: true, configBytes: 0 };
           chip('API', apiReady ? '설정됨' : '미설정', apiReady);
           const packValue = chip('활성 로어팩', activePacks.length ? activePacks.length + '개' : '없음', activePacks.length > 0);
           const entryValue = chip('사용 가능한 로어', '확인 중', true);
+          chip('설정 저장', settings._lastSaveOk === false ? '실패' : '정상', settings._lastSaveOk !== false);
+          chip('저장 공간', storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', storageHealth.ok);
           chip('자동 대화 정리', cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', !!cfg.autoExtEnabled);
           chip('의미 검색', cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', !!cfg.embeddingEnabled);
           db.entries.toArray().then(entries => {
@@ -61,7 +64,8 @@
             btn.appendChild(nm); btn.appendChild(ds);
             btn.onclick = () => {
               if (!confirm('[' + preset.name + '] 프리셋 적용?')) return;
-              settings.config = JSON.parse(JSON.stringify(_w.__LoreInj.defaultSettings)); Object.assign(settings.config, preset.config); settings.save();
+              if (_w.__LoreInj.applyPresetKeepState) _w.__LoreInj.applyPresetKeepState(preset.config);
+              else { settings.config = JSON.parse(JSON.stringify(_w.__LoreInj.defaultSettings)); Object.assign(settings.config, preset.config); settings.save(); }
               m.replaceContentPanel((p) => p.addText('새로고침 필요함.'), '설정 갱신 필요');
             };
             row.appendChild(btn);

@@ -10,6 +10,9 @@
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   function buildGenerationApiOpts(overrides = {}, costContext = null) {
+    if (typeof _w.__LoreInj.buildGenerationApiOpts === 'function') {
+      return _w.__LoreInj.buildGenerationApiOpts(overrides, costContext);
+    }
     const cfg = settings.config || {};
     const model = cfg.autoExtModel === '_custom'
       ? cfg.autoExtCustomModel

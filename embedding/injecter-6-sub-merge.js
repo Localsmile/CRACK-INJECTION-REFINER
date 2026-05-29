@@ -119,7 +119,7 @@
           runBtn.onclick = async () => {
             runBtn.disabled = true; runBtn.textContent = '검색 중...';
             try {
-              const _url = C.getCurUrl(); const activePacks = settings.config.urlPacks?.[_url] || [];
+              const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
               const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
               if (entries.length < 2) { runStatus.textContent = '활성 엔트리 2개 미만.'; runStatus.style.color = '#d66'; return; }
               const embs = await db.embeddings.where('entryId').anyOf(entries.map(e => e.id)).toArray();
@@ -251,11 +251,15 @@
               const prompt = '다음은 중복으로 판단된 로어 엔트리들이다. 하나의 로어 JSON으로 병합하라.\n' +
                 '원칙:\n1. 핵심 정보는 누락하지 않는다. 각 입력 엔트리를 체크리스트처럼 대조해 이름/관계/상태/약속/사건/원인/미해결 훅을 모두 보존한다\n2. 불필요한 반복·수식어만 제거한다. 서로 다른 사실을 요약 편의상 삭제하지 않는다\n3. summary는 {full, compact, micro} 객체로 병합한다. full은 ' + state.maxChars + '자 이내 self-contained, compact는 관계/상태/훅 보존, micro는 안정 회상 핸들+현재 상태\n4. eventHistory/callHistory/callState/timeline/entities/detail은 합집합으로 통합한다. 충돌하는 상태는 최신 timeline/lastUpdated를 우선하되 과거 상태는 eventHistory에 남긴다\n5. embed_text에는 이름/별칭/관계어/사건 원인/이해관계/장소/미해결 훅을 포함한다\n6. triggers는 필수 키워드만 유지하되 양쪽 인물명과 고유명사는 보존한다 (최대 12개)\n7. type은 가장 구체적인 것 유지. 타입이 다르면 summary.full에 각 타입의 역할을 설명한다\n8. 출력은 순수 JSON 객체 하나만. 입력에 없던 설정을 창작하지 않는다.\n\n' +
                 '입력:\n' + JSON.stringify(clean, null, 2);
-              const res = await C.callGeminiApi(prompt, {
-                apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson,
-                vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-                firebaseScript: settings.config.autoExtFirebaseScript, model: settings.config.autoExtModel, maxRetries: 2
-              });
+              const res = await C.callGeminiApi(prompt, _w.__LoreInj.buildGenerationApiOpts
+                ? _w.__LoreInj.buildGenerationApiOpts({ model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel, maxRetries: 2 }, { feature: 'merge', chatKey: 'global' })
+                : {
+                  apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
+                  deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
+                  vertexJson: settings.config.autoExtVertexJson,
+                  vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+                  firebaseScript: settings.config.autoExtFirebaseScript, model: settings.config.autoExtModel, maxRetries: 2
+                });
               if (!res.text) throw new Error('LLM 응답 없음: ' + (res.error || ''));
               let txt = res.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
               const m1 = txt.match(/\{[\s\S]*\}/); if (m1) txt = m1[0];
@@ -299,9 +303,11 @@
                 state.groups = state.groups.filter((_, i) => i !== gi);
                 let embedMsg = '';
                 try {
-                  const apiType = settings.config.autoExtApiType || 'key';
-                  const apiOpts = { apiType, key: settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-                  const hasApi = apiType === 'vertex' ? !!settings.config.autoExtVertexJson : apiType === 'firebase' ? !!settings.config.autoExtFirebaseEmbedKey : !!settings.config.autoExtKey;
+                  const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+                    ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
+                    : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+                  const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
+                  const hasApi = !miss;
                   if (hasApi) { await C.ensureEmbedding(finalEntry, apiOpts); embedMsg = '임베딩 재생성 완료.'; }
                   else { embedMsg = 'API 미설정 — 파일 탭에서 수동 임베딩 필요.'; }
                 } catch(embErr) { embedMsg = '임베딩 재생성 실패: ' + (embErr.message || embErr); }
