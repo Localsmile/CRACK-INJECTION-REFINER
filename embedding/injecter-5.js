@@ -15,11 +15,258 @@
     C, db, _ls, settings, OOC_FORMATS,
     parseJsonLoose,
     getChatKey, incrementTurnCounter, recordEntryMention,
+    getTurnCounter,
     getCooldownMap, setCooldownLastTurn,
     addInjLog, runAutoExtract
   } = _w.__LoreInj;
 
   const MAX_INPUT_CHARS = 2000;
+  const CLEANUP_KEY = 'lore-injection-cleanup-v1';
+  const CLEANUP_MAX_ITEMS = 160;
+  const CLEANUP_RECONCILE_LIMIT = 40;
+  const CLEANUP_LOG_LIMIT = 90;
+  let _cleanupTimer = null;
+  let _cleanupRunning = false;
+
+  function cleanupHash(text) {
+    try { return C.simpleHash(String(text || '')); } catch (_) { return String(String(text || '').length); }
+  }
+
+  function loadCleanupState() {
+    try {
+      const raw = _ls.getItem(CLEANUP_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && Array.isArray(parsed.items)) return parsed;
+    } catch (_) {}
+    return { version: 1, items: [] };
+  }
+
+  function saveCleanupState(state) {
+    try {
+      const now = Date.now();
+      const items = Array.isArray(state.items) ? state.items.slice() : [];
+      const live = items.filter(it => it && it.status !== 'done' && it.status !== 'stale' && it.status !== 'failed');
+      const done = items
+        .filter(it => it && !live.includes(it))
+        .filter(it => !it.completedAt || now - it.completedAt < 7 * 24 * 60 * 60 * 1000)
+        .slice(-40);
+      const kept = live.slice(-CLEANUP_MAX_ITEMS).concat(done);
+      _ls.setItem(CLEANUP_KEY, JSON.stringify({ version: 1, updatedAt: now, items: kept }));
+      return true;
+    } catch (e) {
+      console.warn('[Lore] cleanup state save failed:', e);
+      return false;
+    }
+  }
+
+  function getCrackUtilSafe() {
+    try { return _w.CrackUtil || (typeof CrackUtil !== 'undefined' ? CrackUtil : null); } catch (_) { return null; }
+  }
+
+  function currentChatIdSafe() {
+    try { return C.getCurrentChatId && C.getCurrentChatId(); } catch (_) { return null; }
+  }
+
+  async function fetchRawLogs(chatId, maxCount, naturalOrder) {
+    try {
+      const CU = getCrackUtilSafe();
+      if (!CU || !CU.chatRoom || !chatId) return [];
+      const logs = await CU.chatRoom().extractLogs(chatId, { maxCount: maxCount || CLEANUP_LOG_LIMIT, naturalOrder: naturalOrder !== false });
+      if (logs instanceof Error || !Array.isArray(logs)) return [];
+      return logs;
+    } catch (_) { return []; }
+  }
+
+  async function getMessageById(chatId, messageId) {
+    try {
+      const CU = getCrackUtilSafe();
+      if (CU && CU.chatRoom && typeof CU.chatRoom().getMessage === 'function') {
+        const msg = await CU.chatRoom().getMessage(chatId, messageId);
+        if (msg && !(msg instanceof Error)) return msg;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  async function patchUserMessage(chatId, messageId, nextText) {
+    let token = '';
+    try {
+      const CU = getCrackUtilSafe();
+      token = CU && CU.cookie ? CU.cookie().getAuthToken() : '';
+    } catch (_) {}
+    if (!token || !chatId || !messageId) return { ok: false, status: 0, error: 'auth_or_id_missing' };
+    try {
+      const res = await fetch(`https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatId}/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+          'platform': 'web',
+          'wrtn-locale': 'ko-KR'
+        },
+        body: JSON.stringify({ message: nextText })
+      });
+      const body = await res.text().catch(() => '');
+      return { ok: res.ok, status: res.status, body: body.slice(0, 300) };
+    } catch (e) {
+      return { ok: false, status: 0, error: e && e.message ? e.message : String(e) };
+    }
+  }
+
+  function buildInjectedMessage(originalText, injectedText, position) {
+    return position === 'before' ? injectedText + '\n\n' + originalText : originalText + '\n\n' + injectedText;
+  }
+
+  function cleanInjectedContent(currentText, item) {
+    const cur = String(currentText || '');
+    const original = String(item.originalText || '');
+    const injected = String(item.injectedText || '');
+    const full = item.finalText || buildInjectedMessage(original, injected, item.position);
+    if (cur === full) return { ok: true, text: original, mode: 'exact' };
+    if (!original || !injected) return { ok: false, reason: 'missing_text' };
+    if (!cur.includes(original) || !cur.includes(injected)) return { ok: false, reason: 'content_changed' };
+    const before = cur;
+    let next = before.replace(injected, '');
+    next = next.replace(/\n{3,}/g, '\n\n').trim();
+    if (next === original || cleanupHash(next) === item.originalHash) return { ok: true, text: next, mode: 'block' };
+    return { ok: false, reason: 'unsafe_partial' };
+  }
+
+  function countUserTurnsAfter(logs, item) {
+    if (!Array.isArray(logs) || !logs.length) return null;
+    const full = item.finalText || buildInjectedMessage(item.originalText, item.injectedText, item.position);
+    let idx = -1;
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const log = logs[i];
+      if (!log || log.role !== 'user') continue;
+      if ((item.messageId && log.id === item.messageId) || log.content === full) { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    let count = 0;
+    for (let i = idx + 1; i < logs.length; i++) if (logs[i] && logs[i].role === 'user') count++;
+    return count;
+  }
+
+  async function reconcileCleanupItem(item, logs) {
+    if (!item || item.messageId) return false;
+    const full = item.finalText || buildInjectedMessage(item.originalText, item.injectedText, item.position);
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const log = logs[i];
+      if (log && log.role === 'user' && log.content === full && log.id) {
+        item.messageId = log.id;
+        item.status = 'tracked';
+        item.linkedAt = Date.now();
+        return true;
+      }
+    }
+    item.linkAttempts = (item.linkAttempts || 0) + 1;
+    item.lastLinkAttemptAt = Date.now();
+    if (item.linkAttempts >= 12 && Date.now() - (item.createdAt || 0) > 10 * 60 * 1000) {
+      item.status = 'stale';
+      item.completedAt = Date.now();
+    }
+    return false;
+  }
+
+  async function runInjectionCleanup(reason) {
+    if (settings.config.injectionCleanupEnabled === false) return;
+    if (_cleanupRunning) return;
+    const chatId = currentChatIdSafe();
+    const chatKey = getChatKey();
+    if (!chatId || !chatKey) return;
+    _cleanupRunning = true;
+    try {
+      const state = loadCleanupState();
+      const items = state.items.filter(it => it && (it.chatId === chatId || it.chatKey === chatKey) && it.status !== 'done' && it.status !== 'failed' && it.status !== 'stale');
+      if (!items.length) return;
+      const logs = await fetchRawLogs(chatId, Math.max(CLEANUP_RECONCILE_LIMIT, CLEANUP_LOG_LIMIT), true);
+      let changed = false;
+      for (const item of items) {
+        if (!item.messageId) changed = (await reconcileCleanupItem(item, logs)) || changed;
+      }
+      const currentTurn = getTurnCounter(chatKey);
+      let cleaned = 0;
+      for (const item of items) {
+        if (cleaned >= 3) break;
+        if (!item.messageId || item.status === 'stale') continue;
+        const configuredTurns = Math.max(1, parseInt(item.cleanupAfterTurns || settings.config.injectionCleanupTurns || 8, 10) || 8);
+        const serverTurns = countUserTurnsAfter(logs, item);
+        const fallbackExpired = currentTurn && item.turn && (currentTurn - item.turn) >= configuredTurns;
+        if (!(serverTurns != null ? serverTurns >= configuredTurns : fallbackExpired)) continue;
+
+        const cur = await getMessageById(item.chatId || chatId, item.messageId);
+        const currentText = cur && typeof cur.content === 'string' ? cur.content : null;
+        if (!cur || cur.role !== 'user' || currentText == null) {
+          item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
+          item.lastCleanupAttemptAt = Date.now();
+          changed = true;
+          continue;
+        }
+        const clean = cleanInjectedContent(currentText, item);
+        if (!clean.ok) {
+          item.status = 'failed';
+          item.failReason = clean.reason || 'unsafe';
+          item.completedAt = Date.now();
+          changed = true;
+          addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_skip_' + item.failReason, note: '삽입 흔적 정리 건너뜀' });
+          continue;
+        }
+        const patched = await patchUserMessage(item.chatId || chatId, item.messageId, clean.text);
+        item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
+        item.lastCleanupAttemptAt = Date.now();
+        if (patched.ok) {
+          item.status = 'done';
+          item.completedAt = Date.now();
+          item.cleanedMode = clean.mode;
+          cleaned++;
+          addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_done', note: `${configuredTurns}턴 지난 삽입 흔적 정리`, messageId: item.messageId });
+        } else if (item.cleanupAttempts >= 5) {
+          item.status = 'failed';
+          item.failReason = patched.error || ('http_' + patched.status);
+          item.completedAt = Date.now();
+          addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_failed', note: '삽입 흔적 정리 실패', status: patched.status });
+        }
+        changed = true;
+      }
+      if (changed) saveCleanupState(state);
+      if (items.some(it => it && !it.messageId && it.status !== 'stale')) scheduleInjectionCleanup('pending-reconcile', 10000);
+    } finally {
+      _cleanupRunning = false;
+    }
+  }
+
+  function scheduleInjectionCleanup(reason, delayMs) {
+    if (settings.config.injectionCleanupEnabled === false) return;
+    if (_cleanupTimer) clearTimeout(_cleanupTimer);
+    _cleanupTimer = setTimeout(() => {
+      _cleanupTimer = null;
+      runInjectionCleanup(reason).catch(e => console.warn('[Lore] cleanup failed:', e));
+    }, Math.max(250, delayMs || 2500));
+  }
+
+  function queueInjectionCleanup(chatKey, chatId, originalText, injectedText, finalText, turnCounter, position) {
+    if (settings.config.injectionCleanupEnabled === false) return;
+    const cleanupTurns = Math.max(1, parseInt(settings.config.injectionCleanupTurns || 8, 10) || 8);
+    if (!chatId || !originalText || !injectedText || !finalText) return;
+    const now = Date.now();
+    const state = loadCleanupState();
+    const item = {
+      id: cleanupHash([chatId, turnCounter, now, finalText].join('|')),
+      chatKey, chatId, messageId: null,
+      turn: turnCounter, cleanupAfterTurns: cleanupTurns,
+      createdAt: now, status: 'pending',
+      position: position === 'after' ? 'after' : 'before',
+      originalText, injectedText, finalText,
+      originalHash: cleanupHash(originalText),
+      injectedHash: cleanupHash(injectedText),
+      finalHash: cleanupHash(finalText),
+      linkAttempts: 0, cleanupAttempts: 0
+    };
+    state.items.push(item);
+    saveCleanupState(state);
+    scheduleInjectionCleanup('link-after-send', 3500);
+  }
 
   function summaryOfEntry(e) {
     const s = e && e.summary;
@@ -211,6 +458,7 @@
     if (!settings.config.enabled) return userInput;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const turnCounter = incrementTurnCounter(chatKey);
+    scheduleInjectionCleanup('turn-start', 2500);
     if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
 
     const activePacksArr = typeof _w.__LoreInj.getActivePacksForUrl === 'function'
@@ -631,12 +879,20 @@
       }
     });
 
-    return config.position === 'before' ? injected + '\n\n' + userInput : userInput + '\n\n' + injected;
+    const finalMessage = buildInjectedMessage(userInput, injected, config.position);
+    try {
+      queueInjectionCleanup(chatKey, currentChatIdSafe(), userInput, injected, finalMessage, turnCounter, config.position);
+    } catch (e) {
+      console.warn('[Lore] cleanup queue failed:', e);
+    }
+    return finalMessage;
   }
 
   if (_w.__loreRegister) _w.__loreRegister(inject);
 
-  Object.assign(_w.__LoreInj, { inject, __injectLoaded: true });
+  scheduleInjectionCleanup('module-load', 4000);
+
+  Object.assign(_w.__LoreInj, { inject, runInjectionCleanup, __injectLoaded: true });
   console.log('[LoreInj:5] inject loaded & registered');
   } catch(fatal) {
     console.error('[LoreInj:5] FATAL — inject 등록 실패:', fatal, fatal?.stack);

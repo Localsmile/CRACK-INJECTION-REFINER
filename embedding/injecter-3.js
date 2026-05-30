@@ -330,6 +330,7 @@
     enabled: true, position: 'before',
     prefix: OOC_FORMATS.default.prefix, suffix: OOC_FORMATS.default.suffix,
     scanRange: 5, scanOffset: 2, maxEntries: 3, cooldownEnabled: true, cooldownTurns: 3,
+    injectionCleanupEnabled: true, injectionCleanupTurns: 8,
     statusBadgeEnabled: true,
     strictMatch: true, similarityMatch: true, activeProject: '',
 
