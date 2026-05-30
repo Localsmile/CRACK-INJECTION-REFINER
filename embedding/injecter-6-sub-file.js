@@ -17,6 +17,8 @@
   const DB_TABLES = ['packs', 'entries', 'embeddings', 'workingMemory', 'encounters', 'entryVersions', 'snapshots'];
   const LS_KEYS = ['lore-turn-counters', 'lore-last-mention', 'lore-api-cost-log', 'lore-api-cost-cumulative', 'lore-local-migration-version', 'lore-local-migration-status'];
   const SECRET_SETTING_KEYS = ['autoExtKey', 'autoExtVertexJson', 'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtDeepSeekKey'];
+  const PAGE_SETTING_KEYS = ['urlPacks', 'urlDisabledEntries', 'urlAutoExtPacks', 'urlCooldownMaps', 'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs'];
+  const PAGE_LS_KEYS = ['lore-turn-counters', 'lore-last-mention'];
 
   function clonePlain(v) {
     return JSON.parse(JSON.stringify(v == null ? null : v));
@@ -89,6 +91,133 @@
     }
   }
 
+  function uniqueName(base, used) {
+    const root = String(base || '가져온 백업').trim() || '가져온 백업';
+    if (!used.has(root)) return root;
+    const first = root + ' (가져옴)';
+    if (!used.has(first)) return first;
+    let n = 2;
+    while (used.has(root + ' (가져옴 ' + n + ')')) n++;
+    return root + ' (가져옴 ' + n + ')';
+  }
+
+  function mergeObjectMap(current, incoming, mode) {
+    const cur = current && typeof current === 'object' && !Array.isArray(current) ? clonePlain(current) : {};
+    const inc = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? clonePlain(incoming) : {};
+    if (mode === 'backup') return inc;
+    if (mode === 'add_missing') {
+      for (const [k, v] of Object.entries(inc)) if (cur[k] === undefined) cur[k] = v;
+    }
+    return cur;
+  }
+
+  function applySettingsPolicy(importedSettings, replace, opts) {
+    const includeSecrets = !!opts.includeSecrets;
+    const settingsMode = opts.settingsMode || (opts.importSettings ? 'backup' : 'keep');
+    const pageMode = opts.pageMode || (replace ? 'backup' : 'add_missing');
+    const imported = sanitizeSettings(importedSettings, includeSecrets);
+    if (!includeSecrets) SECRET_SETTING_KEYS.forEach(k => { imported[k] = settings.config[k] || ''; });
+    if (replace) {
+      settings.config = Object.assign(clonePlain(_w.__LoreInj.defaultSettings || {}), imported);
+      settings.save();
+      return;
+    }
+    if (settingsMode === 'backup') {
+      for (const [k, v] of Object.entries(imported)) {
+        if (PAGE_SETTING_KEYS.includes(k)) continue;
+        settings.config[k] = v;
+      }
+    }
+    for (const key of PAGE_SETTING_KEYS) {
+      if (imported[key] === undefined) continue;
+      settings.config[key] = mergeObjectMap(settings.config[key], imported[key], pageMode);
+    }
+    settings.save();
+  }
+
+  function applyLocalStoragePolicy(localStorageData, replace, opts) {
+    if (!localStorageData || typeof localStorageData !== 'object') return;
+    const includeSecrets = !!opts.includeSecrets;
+    const pageMode = opts.pageMode || (replace ? 'backup' : 'add_missing');
+    for (const [key, value] of Object.entries(localStorageData)) {
+      if (!includeSecrets && key === 'lore-injector-v5') continue;
+      try {
+        if (!replace && PAGE_LS_KEYS.includes(key) && pageMode !== 'backup') {
+          const cur = JSON.parse(_ls.getItem(key) || '{}');
+          const inc = JSON.parse(String(value || '{}'));
+          _ls.setItem(key, JSON.stringify(mergeObjectMap(cur, inc, pageMode)));
+        } else if (replace || pageMode === 'backup' || !PAGE_LS_KEYS.includes(key)) {
+          _ls.setItem(key, String(value));
+        }
+      } catch (_) {}
+    }
+  }
+
+  async function deletePackData(packName) {
+    if (!packName) return;
+    try {
+      const es = await db.entries.where('packName').equals(packName).toArray();
+      for (const e of es) if (e && e.id != null) await db.embeddings.where('entryId').equals(e.id).delete();
+      await db.entries.where('packName').equals(packName).delete();
+      await db.packs.delete(packName);
+    } catch (_) {}
+  }
+
+  async function analyzeBackupConflicts(backup) {
+    const data = normalizeBackup(backup);
+    const sourceDb = data.db || {};
+    const packs = Array.isArray(sourceDb.packs) ? sourceDb.packs.filter(p => p && p.name) : [];
+    const entries = Array.isArray(sourceDb.entries) ? sourceDb.entries.filter(e => e && e.name) : [];
+    const existingPacks = await db.packs.toArray();
+    const existingPackNames = new Set(existingPacks.map(p => p.name).filter(Boolean));
+    const backupPackNames = new Set(packs.map(p => p.name));
+    for (const e of entries) if (e.packName) backupPackNames.add(e.packName);
+    const usedNames = new Set(existingPackNames);
+    const packConflicts = [];
+    const packPlan = {};
+    for (const name of Array.from(backupPackNames).sort()) {
+      const hasConflict = existingPackNames.has(name);
+      const targetName = hasConflict ? uniqueName(name, usedNames) : name;
+      usedNames.add(targetName);
+      packPlan[name] = { action: hasConflict ? 'rename' : 'merge', targetName };
+      if (hasConflict) {
+        const incomingCount = entries.filter(e => (e.packName || '가져온 백업') === name).length;
+        const existingCount = await db.entries.where('packName').equals(name).count();
+        packConflicts.push({ name, targetName, incomingCount, existingCount });
+      }
+    }
+    let entryConflicts = 0;
+    for (const e of entries) {
+      const pn = e.packName || '가져온 백업';
+      if (!existingPackNames.has(pn)) continue;
+      const ex = await db.entries.where('packName').equals(pn).and(x => x.name === e.name).first();
+      if (ex) entryConflicts++;
+    }
+    const settingKeys = data.settings && typeof data.settings === 'object' ? Object.keys(data.settings) : [];
+    const pageSettingConflicts = PAGE_SETTING_KEYS.filter(k => data.settings && data.settings[k] && settings.config[k]);
+    const localStorageKeys = data.localStorage && typeof data.localStorage === 'object' ? Object.keys(data.localStorage) : [];
+    return {
+      data,
+      summary: {
+        packs: backupPackNames.size,
+        entries: entries.length,
+        embeddings: Array.isArray(sourceDb.embeddings) ? sourceDb.embeddings.length : 0,
+        packConflicts: packConflicts.length,
+        entryConflicts,
+        settingKeys: settingKeys.length,
+        pageSettingConflicts: pageSettingConflicts.length,
+        localStorageKeys: localStorageKeys.length
+      },
+      packConflicts,
+      defaultPlan: {
+        packPlan,
+        entryConflictMode: 'add_new',
+        settingsMode: 'keep',
+        pageMode: 'add_missing'
+      }
+    };
+  }
+
   async function importFullBackup(backup, mode, opts = {}) {
     const replace = mode === 'replace';
     const includeSecrets = !!opts.includeSecrets;
@@ -96,21 +225,30 @@
     const data = normalizeBackup(backup);
     const sourceDb = data.db || {};
     const idMap = {};
+    const conflictPlan = opts.conflictPlan || {};
+    const packPlan = conflictPlan.packPlan || {};
+    const entryConflictMode = conflictPlan.entryConflictMode || 'add_new';
 
     if (replace) await clearKnownTables();
 
-    if (data.settings && (replace || opts.importSettings)) {
-      const importedSettings = sanitizeSettings(data.settings, includeSecrets);
-      if (!includeSecrets) SECRET_SETTING_KEYS.forEach(k => { importedSettings[k] = settings.config[k] || ''; });
-      if (replace) settings.config = Object.assign(clonePlain(_w.__LoreInj.defaultSettings || {}), importedSettings);
-      else settings.config = Object.assign(settings.config, importedSettings);
-      settings.save();
-    }
+    if (data.settings && (replace || opts.importSettings || conflictPlan.settingsMode)) applySettingsPolicy(data.settings, replace, { ...opts, settingsMode: conflictPlan.settingsMode, pageMode: conflictPlan.pageMode });
 
     const packs = Array.isArray(sourceDb.packs) ? sourceDb.packs : [];
+    if (!replace) {
+      for (const p of Object.values(packPlan)) {
+        if (p && p.action === 'replace' && p.targetName) await deletePackData(p.targetName);
+      }
+    }
     for (const p of packs) {
       if (!p || !p.name) continue;
-      try { await db.packs.put(p); } catch (_) {}
+      const plan = !replace ? (packPlan[p.name] || { action: 'merge', targetName: p.name }) : { action: 'merge', targetName: p.name };
+      if (plan.action === 'skip') continue;
+      const targetName = plan.targetName || p.name;
+      try {
+        const cp = clonePlain(p);
+        cp.name = targetName;
+        if (replace || plan.action !== 'merge' || !(await db.packs.get(targetName))) await db.packs.put(cp);
+      } catch (_) {}
     }
 
     const entries = Array.isArray(sourceDb.entries) ? sourceDb.entries : [];
@@ -120,6 +258,12 @@
       const oldId = raw.id;
       const e = clonePlain(raw);
       if (!e.packName) e.packName = '가져온 백업';
+      const plan = !replace ? (packPlan[e.packName] || { action: 'merge', targetName: e.packName }) : { action: 'merge', targetName: e.packName };
+      if (plan.action === 'skip') {
+        if (oldId != null) idMap[oldId] = null;
+        continue;
+      }
+      e.packName = plan.targetName || e.packName;
       touchedPacks.add(e.packName);
       if (!e.triggers) e.triggers = [e.name];
       if (C.normalizeLoreEntry) Object.assign(e, C.normalizeLoreEntry(e, { source: 'backup_import' }));
@@ -130,9 +274,18 @@
         delete e.id;
         const ex = await db.entries.where('packName').equals(e.packName).and(x => x.name === e.name).first();
         if (ex) {
-          await db.entries.update(ex.id, e);
-          if (oldId != null) idMap[oldId] = ex.id;
-          try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch (_) {}
+          if (entryConflictMode === 'update') {
+            await db.entries.update(ex.id, e);
+            if (oldId != null) idMap[oldId] = ex.id;
+            try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch (_) {}
+          } else if (entryConflictMode === 'keep') {
+            if (oldId != null) idMap[oldId] = null;
+          } else {
+            const names = new Set((await db.entries.where('packName').equals(e.packName).toArray()).map(x => x.name));
+            e.name = uniqueName(e.name, names);
+            const newId = await db.entries.add(e);
+            if (oldId != null) idMap[oldId] = newId;
+          }
         } else {
           const newId = await db.entries.add(e);
           if (oldId != null) idMap[oldId] = newId;
@@ -175,15 +328,111 @@
       else await db.packs.update(p.name, { entryCount: count });
     }
 
-    if (data.localStorage && typeof data.localStorage === 'object') {
-      for (const [key, value] of Object.entries(data.localStorage)) {
-        if (!includeSecrets && key === 'lore-injector-v5') continue;
-        try { _ls.setItem(key, String(value)); } catch (_) {}
-      }
-    }
+    applyLocalStoragePolicy(data.localStorage, replace, { ...opts, includeSecrets, pageMode: conflictPlan.pageMode });
 
     settings.load();
     return { packs: allPacks.length, entries: entries.length, embeddings: embeddings.length, mode };
+  }
+
+  function showBackupImportDialog(analysis) {
+    return new Promise((resolve) => {
+      const plan = clonePlain(analysis.defaultPlan || {});
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;';
+      const modal = document.createElement('div');
+      modal.style.cssText = 'width:min(760px,100%);max-height:min(760px,92vh);overflow:auto;background:#202020;color:#ddd;border:1px solid #555;border-radius:8px;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:16px;box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+      overlay.appendChild(modal);
+      const h = document.createElement('div'); h.textContent = '백업 병합 확인'; h.style.cssText = 'font-size:18px;font-weight:700;color:#eee;margin-bottom:8px;'; modal.appendChild(h);
+      const s = analysis.summary || {};
+      const summary = document.createElement('div');
+      summary.textContent = `로어팩 ${s.packs || 0}개, 로어 ${s.entries || 0}개, 검색 준비 ${s.embeddings || 0}개. 이름 충돌 로어팩 ${s.packConflicts || 0}개, 같은 이름 로어 ${s.entryConflicts || 0}개.`;
+      summary.style.cssText = 'font-size:12px;color:#aaa;line-height:1.5;margin-bottom:12px;';
+      modal.appendChild(summary);
+
+      const makeSection = (title, desc) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'border:1px solid #3b3b3b;border-radius:6px;background:#181818;padding:12px;margin:10px 0;';
+        const t = document.createElement('div'); t.textContent = title; t.style.cssText = 'font-size:14px;font-weight:700;color:#ddd;margin-bottom:4px;'; box.appendChild(t);
+        if (desc) { const d = document.createElement('div'); d.textContent = desc; d.style.cssText = 'font-size:11px;color:#888;line-height:1.45;margin-bottom:10px;'; box.appendChild(d); }
+        modal.appendChild(box);
+        return box;
+      };
+      const makeSelect = (items, value, onChange) => {
+        const sel = document.createElement('select');
+        sel.style.cssText = 'width:100%;padding:7px;border:1px solid #444;border-radius:4px;background:#101010;color:#ddd;font-size:12px;box-sizing:border-box;';
+        items.forEach(([v, label]) => { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); });
+        sel.value = value;
+        sel.onchange = () => onChange(sel.value);
+        return sel;
+      };
+
+      const packBox = makeSection('로어팩 이름 충돌', '같은 이름의 로어팩은 기본적으로 새 이름으로 가져옴. 기존 로어팩을 자동으로 덮어쓰지 않음.');
+      if (!analysis.packConflicts || !analysis.packConflicts.length) {
+        const none = document.createElement('div'); none.textContent = '겹치는 로어팩 이름 없음.'; none.style.cssText = 'font-size:12px;color:#888;'; packBox.appendChild(none);
+      } else {
+        analysis.packConflicts.forEach((pc) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 150px minmax(120px,180px);gap:8px;align-items:end;margin-top:8px;';
+          if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) row.style.gridTemplateColumns = '1fr';
+          const nameWrap = document.createElement('div');
+          const nl = document.createElement('div'); nl.textContent = pc.name + ` (현재 ${pc.existingCount || 0}개 / 백업 ${pc.incomingCount || 0}개)`; nl.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;word-break:break-all;'; nameWrap.appendChild(nl);
+          const input = document.createElement('input'); input.value = pc.targetName || (pc.name + ' (가져옴)'); input.style.cssText = 'width:100%;padding:7px;border:1px solid #444;border-radius:4px;background:#101010;color:#ddd;font-size:12px;box-sizing:border-box;';
+          input.oninput = () => { if (!plan.packPlan[pc.name]) plan.packPlan[pc.name] = {}; plan.packPlan[pc.name].targetName = input.value.trim() || pc.targetName || pc.name; };
+          nameWrap.appendChild(input);
+          const action = makeSelect([
+            ['rename', '새 이름으로 가져오기'],
+            ['merge', '기존 팩에 병합'],
+            ['replace', '기존 팩 교체'],
+            ['skip', '가져오지 않기']
+          ], plan.packPlan?.[pc.name]?.action || 'rename', (v) => {
+            if (!plan.packPlan[pc.name]) plan.packPlan[pc.name] = {};
+            plan.packPlan[pc.name].action = v;
+            input.disabled = v !== 'rename';
+            input.style.opacity = input.disabled ? '.55' : '1';
+            if (v === 'merge' || v === 'replace') plan.packPlan[pc.name].targetName = pc.name;
+            else if (v === 'skip') plan.packPlan[pc.name].targetName = pc.name;
+            else plan.packPlan[pc.name].targetName = input.value.trim() || pc.targetName || pc.name;
+          });
+          const spacer = document.createElement('div'); spacer.appendChild(action);
+          row.appendChild(nameWrap); row.appendChild(spacer);
+          packBox.appendChild(row);
+          action.onchange();
+        });
+      }
+
+      const entryBox = makeSection('같은 이름 로어 처리', '기존 로어팩에 병합할 때 같은 이름의 로어가 있으면 어떻게 처리할지 선택함.');
+      entryBox.appendChild(makeSelect([
+        ['add_new', '새 항목으로 추가'],
+        ['keep', '현재 로어 유지'],
+        ['update', '백업 로어로 갱신']
+      ], plan.entryConflictMode || 'add_new', (v) => { plan.entryConflictMode = v; }));
+
+      const settingsBox = makeSection('설정 가져오기', '전역 설정과 채팅별 설정은 별도로 처리함. 기본값은 현재 전역 설정 유지, 없는 채팅별 설정만 추가.');
+      const settingsGrid = document.createElement('div'); settingsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+      if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) settingsGrid.style.gridTemplateColumns = '1fr';
+      const g1 = document.createElement('div'); const l1 = document.createElement('div'); l1.textContent = '전역 설정'; l1.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;'; g1.appendChild(l1);
+      g1.appendChild(makeSelect([['keep', '현재 설정 유지'], ['backup', '백업 설정 사용']], plan.settingsMode || 'keep', (v) => { plan.settingsMode = v; }));
+      const g2 = document.createElement('div'); const l2 = document.createElement('div'); l2.textContent = '채팅별 설정'; l2.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;'; g2.appendChild(l2);
+      g2.appendChild(makeSelect([['add_missing', '없는 채팅만 추가'], ['current', '현재 값 유지'], ['backup', '백업 값 사용']], plan.pageMode || 'add_missing', (v) => { plan.pageMode = v; }));
+      settingsGrid.appendChild(g1); settingsGrid.appendChild(g2); settingsBox.appendChild(settingsGrid);
+
+      const buttons = document.createElement('div'); buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;';
+      const cancel = document.createElement('button'); cancel.textContent = '취소'; cancel.style.cssText = 'padding:8px 14px;border:1px solid #555;background:#181818;color:#ccc;border-radius:4px;cursor:pointer;';
+      const ok = document.createElement('button'); ok.textContent = '가져오기 실행'; ok.style.cssText = 'padding:8px 14px;border:1px solid #286;background:#173421;color:#8ed6a7;border-radius:4px;cursor:pointer;font-weight:700;';
+      cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
+      ok.onclick = () => {
+        for (const [name, p] of Object.entries(plan.packPlan || {})) {
+          if (p.action === 'rename' && !String(p.targetName || '').trim()) {
+            alert('새 로어팩 이름을 입력해야 함: ' + name);
+            return;
+          }
+        }
+        document.body.removeChild(overlay);
+        resolve(plan);
+      };
+      buttons.appendChild(cancel); buttons.appendChild(ok); modal.appendChild(buttons);
+      document.body.appendChild(overlay);
+    });
   }
 
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
@@ -260,7 +509,6 @@
           };
           const includeSecretsCb = mkCheck('API 키 포함', false);
           const includeLogsCb = mkCheck('비용/로그 포함', true);
-          const importSettingsCb = mkCheck('설정도 가져오기', true);
           nd.appendChild(optRow);
 
           const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
@@ -288,7 +536,13 @@
             const file = ev.target.files && ev.target.files[0]; if (!file) return;
             try {
               const data = JSON.parse(await file.text());
-              const report = await importFullBackup(data, importMode, { includeSecrets: includeSecretsCb.checked, importSettings: importSettingsCb.checked });
+              let conflictPlan = null;
+              if (importMode === 'merge') {
+                const analysis = await analyzeBackupConflicts(data);
+                conflictPlan = await showBackupImportDialog(analysis);
+                if (!conflictPlan) return;
+              }
+              const report = await importFullBackup(data, importMode, { includeSecrets: includeSecretsCb.checked, importSettings: importMode === 'replace', conflictPlan });
               alert('백업 가져오기 완료: ' + report.mode + ' / 로어 ' + report.entries + '개 / 임베딩 ' + report.embeddings + '개');
               m.replaceContentPanel(renderPackUI, '파일 관리');
             } catch (e) {
@@ -297,6 +551,8 @@
             importFile.value = '';
           };
           row.appendChild(exportBtn); row.appendChild(importMergeBtn); row.appendChild(importReplaceBtn); row.appendChild(importFile); nd.appendChild(row);
+          const mergeDesc = document.createElement('div'); mergeDesc.textContent = '백업 병합: 현재 데이터는 유지하고, 겹치는 로어팩/설정은 가져오기 전에 처리 방식을 고름.'; mergeDesc.style.cssText = 'font-size:10px;color:#8a9;line-height:1.45;margin-top:8px;'; nd.appendChild(mergeDesc);
+          const replaceDesc = document.createElement('div'); replaceDesc.textContent = '백업 교체: 현재 로컬 DB를 백업 파일 기준으로 바꿈. 실행 전 내부 백업을 남김.'; replaceDesc.style.cssText = 'font-size:10px;color:#b88;line-height:1.45;margin-top:3px;'; nd.appendChild(replaceDesc);
           const warn = document.createElement('div'); warn.textContent = 'API 키 포함 파일은 공유 금지. 교체 복원은 현재 로컬 DB를 백업 파일 기준으로 바꿈.'; warn.style.cssText = 'font-size:10px;color:#a87;line-height:1.4;margin-top:8px;'; nd.appendChild(warn);
         }});
 
