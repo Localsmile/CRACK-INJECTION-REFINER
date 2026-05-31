@@ -435,6 +435,20 @@
     });
   }
 
+  Object.assign(_w.__LoreInj, {
+    backupTools: {
+      schema: BACKUP_SCHEMA,
+      version: BACKUP_VERSION,
+      exportFullBackup,
+      normalizeBackup,
+      analyzeBackupConflicts,
+      importFullBackup,
+      showBackupImportDialog,
+      downloadJson,
+      safeFileName
+    }
+  });
+
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   _w.__LoreInj.registerSubMenu('file', function(modal) {
@@ -492,68 +506,6 @@
             } catch (err) { alert('JSON 파싱 실패: ' + err.message); }
           };
           manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
-        }});
-
-        panel.addBoxedField('', '', { onInit: (nd) => {
-          C.setFullWidth(nd);
-          const title = document.createElement('div'); title.textContent = '전체 백업/복원'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-          const desc = document.createElement('div'); desc.textContent = '설정, 로어팩, 로어, 검색 준비, 채팅별 활성 상태를 파일로 저장/복원함.'; desc.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:10px;'; nd.appendChild(desc);
-
-          const optRow = document.createElement('div'); optRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;';
-          const mkCheck = (label, checked) => {
-            const wrap = document.createElement('label'); wrap.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;';
-            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!checked;
-            wrap.appendChild(cb); wrap.appendChild(document.createTextNode(label));
-            optRow.appendChild(wrap);
-            return cb;
-          };
-          const includeSecretsCb = mkCheck('API 키 포함', false);
-          const includeLogsCb = mkCheck('비용/로그 포함', true);
-          nd.appendChild(optRow);
-
-          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
-          const B = 'padding:7px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid #444;background:#111;color:#ccc;font-weight:bold;';
-          const exportBtn = document.createElement('button'); exportBtn.textContent = '전체 내보내기'; exportBtn.style.cssText = B + 'border-color:#285;color:#6c9;';
-          exportBtn.onclick = async () => {
-            exportBtn.disabled = true; const orig = exportBtn.textContent; exportBtn.textContent = '준비 중...';
-            try {
-              const data = await exportFullBackup({ includeSecrets: includeSecretsCb.checked, includeLogs: includeLogsCb.checked });
-              const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-              downloadJson('crack-lore-backup-' + stamp + '.json', data);
-            } catch (e) { alert('내보내기 실패: ' + e.message); }
-            exportBtn.textContent = orig; exportBtn.disabled = false;
-          };
-          const importFile = document.createElement('input'); importFile.type = 'file'; importFile.accept = '.json,application/json'; importFile.style.display = 'none';
-          const importMergeBtn = document.createElement('button'); importMergeBtn.textContent = '백업 병합'; importMergeBtn.style.cssText = B + 'border-color:#258;color:#8bc;';
-          const importReplaceBtn = document.createElement('button'); importReplaceBtn.textContent = '백업 교체'; importReplaceBtn.style.cssText = B + 'border-color:#833;color:#e88;';
-          let importMode = 'merge';
-          importMergeBtn.onclick = () => { importMode = 'merge'; importFile.click(); };
-          importReplaceBtn.onclick = () => {
-            if (!confirm('현재 설정/로어를 백업 파일 내용으로 교체함. 작업 전 내부 백업은 남기지만 신중히 진행할 것.')) return;
-            importMode = 'replace'; importFile.click();
-          };
-          importFile.onchange = async (ev) => {
-            const file = ev.target.files && ev.target.files[0]; if (!file) return;
-            try {
-              const data = JSON.parse(await file.text());
-              let conflictPlan = null;
-              if (importMode === 'merge') {
-                const analysis = await analyzeBackupConflicts(data);
-                conflictPlan = await showBackupImportDialog(analysis);
-                if (!conflictPlan) return;
-              }
-              const report = await importFullBackup(data, importMode, { includeSecrets: includeSecretsCb.checked, importSettings: importMode === 'replace', conflictPlan });
-              alert('백업 가져오기 완료: ' + report.mode + ' / 로어 ' + report.entries + '개 / 임베딩 ' + report.embeddings + '개');
-              m.replaceContentPanel(renderPackUI, '파일 관리');
-            } catch (e) {
-              alert('백업 가져오기 실패: ' + e.message);
-            }
-            importFile.value = '';
-          };
-          row.appendChild(exportBtn); row.appendChild(importMergeBtn); row.appendChild(importReplaceBtn); row.appendChild(importFile); nd.appendChild(row);
-          const mergeDesc = document.createElement('div'); mergeDesc.textContent = '백업 병합: 현재 데이터는 유지하고, 겹치는 로어팩/설정은 가져오기 전에 처리 방식을 고름.'; mergeDesc.style.cssText = 'font-size:10px;color:#8a9;line-height:1.45;margin-top:8px;'; nd.appendChild(mergeDesc);
-          const replaceDesc = document.createElement('div'); replaceDesc.textContent = '백업 교체: 현재 로컬 DB를 백업 파일 기준으로 바꿈. 실행 전 내부 백업을 남김.'; replaceDesc.style.cssText = 'font-size:10px;color:#b88;line-height:1.45;margin-top:3px;'; nd.appendChild(replaceDesc);
-          const warn = document.createElement('div'); warn.textContent = 'API 키 포함 파일은 공유 금지. 교체 복원은 현재 로컬 DB를 백업 파일 기준으로 바꿈.'; warn.style.cssText = 'font-size:10px;color:#a87;line-height:1.4;margin-top:8px;'; nd.appendChild(warn);
         }});
 
         panel.addBoxedField('', '', { onInit: async (nd) => {

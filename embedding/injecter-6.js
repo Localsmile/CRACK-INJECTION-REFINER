@@ -22,11 +22,12 @@
     extract: 40,
     merge: 50,
     snapshot: 60,
-    refiner: 70,
-    log: 80,
-    session: 90,
-    api: 100,
-    help: 110
+    backup: 70,
+    refiner: 80,
+    log: 90,
+    session: 100,
+    api: 110,
+    help: 120
   };
 
   function stableMenuQueue(queue, prefix) {

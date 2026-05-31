@@ -61,7 +61,7 @@
     }
   } else {
     const _deadline = Date.now() + 15000;
-    const _subs = ['__interceptorLoaded','__constLoaded','__settingsLoaded','__extractLoaded','__injectLoaded','__subMainLoaded','__subLoreLoaded','__subMergeLoaded','__subSnapshotLoaded','__subFileLoaded','__subExtractLoaded','__subRefinerLoaded','__subLogLoaded','__subSessionLoaded','__subApiLoaded','__subHelpLoaded'];
+    const _subs = ['__interceptorLoaded','__constLoaded','__settingsLoaded','__extractLoaded','__injectLoaded','__subMainLoaded','__subLoreLoaded','__subMergeLoaded','__subSnapshotLoaded','__subFileLoaded','__subBackupLoaded','__subExtractLoaded','__subRefinerLoaded','__subLogLoaded','__subSessionLoaded','__subApiLoaded','__subHelpLoaded'];
     while (Date.now() < _deadline) {
       const L = _w.__LoreInj;
       if (L && _subs.every(k => L[k])) break;

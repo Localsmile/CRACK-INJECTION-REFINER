@@ -40,6 +40,7 @@
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-merge.js
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-snapshot.js
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-file.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-backup.js
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-extract.js
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-refiner.js
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-log.js
@@ -80,7 +81,7 @@
   const POLL_MS = 50;
   const deadline = Date.now() + TIMEOUT_MS;
   const requiredCore = ['__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded', '__injectLoaded', '__inject6Loaded'];
-  const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
+  const requiredSubs = ['__subMainLoaded', '__subLoreLoaded', '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subBackupLoaded', '__subExtractLoaded', '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded', '__subHelpLoaded'];
   const requiredAll = requiredCore.concat(requiredSubs);
   let settled = false;
 
