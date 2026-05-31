@@ -14,6 +14,7 @@
   const B = _w.__LoreInj.backupTools;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
+  const DEFAULT_BACKUP_SERVER_URL = 'https://crack-lore-backup-sync.localai0301.workers.dev';
   let serverSession = null;
   let activePassword = '';
 
@@ -33,8 +34,12 @@
     return String(url || '').trim().replace(/\/+$/, '');
   }
 
+  function getServerUrl() {
+    return cleanUrl(getCfg().backupServerUrl || DEFAULT_BACKUP_SERVER_URL);
+  }
+
   function assertServerInput(url, userId, password, needPassword) {
-    if (!cleanUrl(url)) throw new Error('서버 주소를 입력해야 함.');
+    if (!cleanUrl(url)) throw new Error('서버 주소를 확인해야 함.');
     if (!String(userId || '').trim()) throw new Error('ID를 입력해야 함.');
     if (needPassword && !String(password || '')) throw new Error('비밀번호를 입력해야 함.');
   }
@@ -110,7 +115,7 @@
   }
 
   async function serverFetch(path, body, token) {
-    const url = cleanUrl(getCfg().backupServerUrl);
+    const url = getServerUrl();
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = 'Bearer ' + token;
     const res = await fetch(url + path, { method: 'POST', headers, body: JSON.stringify(body || {}) });
@@ -256,12 +261,23 @@
       const title = document.createElement('div'); title.textContent = '서버 연결'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
       addText(nd, '수동 동기화 전용. 비밀번호는 저장하지 않음. 서버에는 암호화된 백업만 저장됨.');
       const cfg = getCfg();
-      const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 160px 160px;gap:8px;margin-top:10px;';
+      const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;';
       if (typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches) grid.style.gridTemplateColumns = '1fr';
-      const urlInput = makeInput(cfg.backupServerUrl || '', 'https://worker.example.workers.dev');
       const idInput = makeInput(cfg.backupServerId || '', 'ID');
       const pwInput = makeInput('', '비밀번호', 'password');
-      grid.appendChild(urlInput); grid.appendChild(idInput); grid.appendChild(pwInput); nd.appendChild(grid);
+      grid.appendChild(idInput); grid.appendChild(pwInput); nd.appendChild(grid);
+
+      const advanced = document.createElement('details');
+      advanced.style.cssText = 'margin-top:8px;border:1px solid #292929;border-radius:4px;padding:8px;background:#101010;';
+      const summary = document.createElement('summary');
+      summary.textContent = '직접 서버 주소 사용';
+      summary.style.cssText = 'cursor:pointer;font-size:11px;color:#888;';
+      const urlInput = makeInput(cfg.backupServerUrl || '', DEFAULT_BACKUP_SERVER_URL);
+      urlInput.style.marginTop = '8px';
+      advanced.appendChild(summary);
+      advanced.appendChild(urlInput);
+      nd.appendChild(advanced);
+
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;';
       const checkBtn = makeBtn('ID 확인', 'border-color:#555;color:#bbb;');
       const regBtn = makeBtn('계정 만들기', 'border-color:#285;color:#6c9;');
@@ -269,15 +285,15 @@
       const status = addText(nd, serverSession ? ('로그인됨: ' + serverSession.userId) : '로그인 안 됨.');
       const persist = () => saveCfg({ backupServerUrl: cleanUrl(urlInput.value), backupServerId: idInput.value.trim() });
       checkBtn.onclick = async () => {
-        try { persist(); assertServerInput(urlInput.value, idInput.value, '', false); const res = await apiCheckId(idInput.value.trim()); alert(res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.'); }
+        try { persist(); assertServerInput(getServerUrl(), idInput.value, '', false); const res = await apiCheckId(idInput.value.trim()); alert(res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.'); }
         catch (e) { alert('ID 확인 실패: ' + e.message); }
       };
       regBtn.onclick = async () => {
-        try { persist(); assertServerInput(urlInput.value, idInput.value, pwInput.value, true); await apiRegister(idInput.value.trim(), pwInput.value); await apiLogin(idInput.value.trim(), pwInput.value); status.textContent = '로그인됨: ' + idInput.value.trim(); alert('계정 생성 완료.'); }
+        try { persist(); assertServerInput(getServerUrl(), idInput.value, pwInput.value, true); await apiRegister(idInput.value.trim(), pwInput.value); await apiLogin(idInput.value.trim(), pwInput.value); status.textContent = '로그인됨: ' + idInput.value.trim(); alert('계정 생성 완료.'); }
         catch (e) { alert('계정 생성 실패: ' + e.message); }
       };
       loginBtn.onclick = async () => {
-        try { persist(); assertServerInput(urlInput.value, idInput.value, pwInput.value, true); await apiLogin(idInput.value.trim(), pwInput.value); status.textContent = '로그인됨: ' + idInput.value.trim(); alert('로그인 완료.'); }
+        try { persist(); assertServerInput(getServerUrl(), idInput.value, pwInput.value, true); await apiLogin(idInput.value.trim(), pwInput.value); status.textContent = '로그인됨: ' + idInput.value.trim(); alert('로그인 완료.'); }
         catch (e) { alert('로그인 실패: ' + e.message); }
       };
       btns.appendChild(checkBtn); btns.appendChild(regBtn); btns.appendChild(loginBtn); nd.appendChild(btns);
