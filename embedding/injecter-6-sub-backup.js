@@ -30,18 +30,45 @@
     settings.save();
   }
 
-  function cleanUrl(url) {
-    return String(url || '').trim().replace(/\/+$/, '');
-  }
-
   function getServerUrl() {
-    return cleanUrl(getCfg().backupServerUrl || DEFAULT_BACKUP_SERVER_URL);
+    return DEFAULT_BACKUP_SERVER_URL;
   }
 
-  function assertServerInput(url, userId, password, needPassword) {
-    if (!cleanUrl(url)) throw new Error('서버 주소를 확인해야 함.');
+  function assertServerInput(userId, password, needPassword) {
     if (!String(userId || '').trim()) throw new Error('ID를 입력해야 함.');
     if (needPassword && !String(password || '')) throw new Error('비밀번호를 입력해야 함.');
+  }
+
+  function restoreStoredSession() {
+    const cfg = getCfg();
+    if (serverSession && serverSession.token) return;
+    if (!cfg.backupServerId || !cfg.backupServerToken || !cfg.backupServerPassword) return;
+    if (cfg.backupServerTokenExpiresAt && Number(cfg.backupServerTokenExpiresAt) < Date.now()) return;
+    serverSession = {
+      userId: cfg.backupServerId,
+      token: cfg.backupServerToken,
+      expiresAt: Number(cfg.backupServerTokenExpiresAt || 0)
+    };
+    activePassword = cfg.backupServerPassword || '';
+  }
+
+  function persistSession(userId, password, token, expiresAt) {
+    saveCfg({
+      backupServerId: userId,
+      backupServerPassword: password,
+      backupServerToken: token,
+      backupServerTokenExpiresAt: expiresAt || 0
+    });
+  }
+
+  function clearSession() {
+    serverSession = null;
+    activePassword = '';
+    saveCfg({
+      backupServerPassword: '',
+      backupServerToken: '',
+      backupServerTokenExpiresAt: 0
+    });
   }
 
   function b64url(bytes) {
@@ -142,6 +169,7 @@
     const data = await serverFetch('/api/login', { id: userId, authSecret });
     serverSession = { userId, token: data.token, expiresAt: data.expiresAt || 0 };
     activePassword = password;
+    persistSession(userId, password, data.token, data.expiresAt || 0);
     return data;
   }
 
@@ -205,6 +233,7 @@
   }
 
   function renderBackupUI(panel) {
+    restoreStoredSession();
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div'); title.textContent = '파일 백업'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
@@ -258,59 +287,42 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      const title = document.createElement('div'); title.textContent = '서버 연결'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '수동 동기화 전용. 비밀번호는 저장하지 않음. 서버에는 암호화된 백업만 저장됨.');
+      const title = document.createElement('div'); title.textContent = '서버 동기화'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
+      addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 수동 저장/가져오기만 지원함.');
       const cfg = getCfg();
-      const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;';
+      const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid #292929;border-radius:6px;background:#111;padding:10px;margin-top:10px;';
+      const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
       if (typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches) grid.style.gridTemplateColumns = '1fr';
       const idInput = makeInput(cfg.backupServerId || '', 'ID');
-      const pwInput = makeInput('', '비밀번호', 'password');
-      grid.appendChild(idInput); grid.appendChild(pwInput); nd.appendChild(grid);
-
-      const advanced = document.createElement('details');
-      advanced.style.cssText = 'margin-top:8px;border:1px solid #292929;border-radius:4px;padding:8px;background:#101010;';
-      const summary = document.createElement('summary');
-      summary.textContent = '직접 서버 주소 사용';
-      summary.style.cssText = 'cursor:pointer;font-size:11px;color:#888;';
-      const urlInput = makeInput(cfg.backupServerUrl || '', DEFAULT_BACKUP_SERVER_URL);
-      urlInput.style.marginTop = '8px';
-      advanced.appendChild(summary);
-      advanced.appendChild(urlInput);
-      nd.appendChild(advanced);
-
-      const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;';
+      const pwInput = makeInput(cfg.backupServerPassword || '', '비밀번호', 'password');
+      grid.appendChild(idInput); grid.appendChild(pwInput); accountBox.appendChild(grid);
+      const status = document.createElement('div');
+      status.style.cssText = 'font-size:12px;color:#888;line-height:1.45;margin-top:8px;';
+      accountBox.appendChild(status);
+      const accountBtns = document.createElement('div'); accountBtns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;';
       const checkBtn = makeBtn('ID 확인', 'border-color:#555;color:#bbb;');
       const regBtn = makeBtn('계정 만들기', 'border-color:#285;color:#6c9;');
       const loginBtn = makeBtn('로그인', 'border-color:#258;color:#8bc;');
-      const status = addText(nd, serverSession ? ('로그인됨: ' + serverSession.userId) : '로그인 안 됨.');
-      const persist = () => saveCfg({ backupServerUrl: cleanUrl(urlInput.value), backupServerId: idInput.value.trim() });
-      checkBtn.onclick = async () => {
-        try { persist(); assertServerInput(getServerUrl(), idInput.value, '', false); const res = await apiCheckId(idInput.value.trim()); alert(res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.'); }
-        catch (e) { alert('ID 확인 실패: ' + e.message); }
-      };
-      regBtn.onclick = async () => {
-        try { persist(); assertServerInput(getServerUrl(), idInput.value, pwInput.value, true); await apiRegister(idInput.value.trim(), pwInput.value); await apiLogin(idInput.value.trim(), pwInput.value); status.textContent = '로그인됨: ' + idInput.value.trim(); alert('계정 생성 완료.'); }
-        catch (e) { alert('계정 생성 실패: ' + e.message); }
-      };
-      loginBtn.onclick = async () => {
-        try { persist(); assertServerInput(getServerUrl(), idInput.value, pwInput.value, true); await apiLogin(idInput.value.trim(), pwInput.value); status.textContent = '로그인됨: ' + idInput.value.trim(); alert('로그인 완료.'); }
-        catch (e) { alert('로그인 실패: ' + e.message); }
-      };
-      btns.appendChild(checkBtn); btns.appendChild(regBtn); btns.appendChild(loginBtn); nd.appendChild(btns);
-    }});
-
-    panel.addBoxedField('', '', { onInit: (nd) => {
-      C.setFullWidth(nd);
-      const title = document.createElement('div'); title.textContent = '서버 백업'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '서버 백업은 ID당 10개까지 저장됨. 10개가 차면 기존 백업을 삭제한 뒤 저장해야 함. 1년 지난 백업은 서버에서 자동 삭제 대상.');
+      const logoutBtn = makeBtn('로그아웃', 'border-color:#833;color:#e88;');
+      accountBtns.appendChild(checkBtn); accountBtns.appendChild(regBtn); accountBtns.appendChild(loginBtn); accountBtns.appendChild(logoutBtn); accountBox.appendChild(accountBtns);
+      nd.appendChild(accountBox);
       const listBox = document.createElement('div'); listBox.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:6px;'; nd.appendChild(listBox);
       let selected = null;
       let lastItems = [];
 
+      const setStatus = () => {
+        restoreStoredSession();
+        status.textContent = serverSession ? ('로그인됨: ' + serverSession.userId) : '로그인 안 됨.';
+        logoutBtn.style.display = serverSession ? '' : 'none';
+        loginBtn.style.display = serverSession ? 'none' : '';
+      };
+
       const renderList = async () => {
+        restoreStoredSession();
+        setStatus();
         listBox.textContent = '';
         if (!serverSession || !activePassword) {
-          addText(listBox, '로그인 후 목록을 볼 수 있음.', 'font-size:12px;color:#777;padding:10px;');
+          addText(listBox, '로그인하면 현재 계정의 서버 백업 목록이 표시됨.', 'font-size:12px;color:#777;padding:10px;');
           return;
         }
         try {
@@ -338,6 +350,27 @@
         } catch (e) {
           addText(listBox, '목록 불러오기 실패: ' + e.message, 'font-size:12px;color:#d88;padding:10px;');
         }
+      };
+
+      const persistId = () => saveCfg({ backupServerId: idInput.value.trim() });
+      checkBtn.onclick = async () => {
+        try { persistId(); assertServerInput(idInput.value, '', false); const res = await apiCheckId(idInput.value.trim()); alert(res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.'); }
+        catch (e) { alert('ID 확인 실패: ' + e.message); }
+      };
+      regBtn.onclick = async () => {
+        try { persistId(); assertServerInput(idInput.value, pwInput.value, true); await apiRegister(idInput.value.trim(), pwInput.value); await apiLogin(idInput.value.trim(), pwInput.value); setStatus(); await renderList(); alert('계정 생성 완료.'); }
+        catch (e) { alert('계정 생성 실패: ' + e.message); }
+      };
+      loginBtn.onclick = async () => {
+        try { persistId(); assertServerInput(idInput.value, pwInput.value, true); await apiLogin(idInput.value.trim(), pwInput.value); setStatus(); await renderList(); alert('로그인 완료.'); }
+        catch (e) { alert('로그인 실패: ' + e.message); }
+      };
+      logoutBtn.onclick = async () => {
+        clearSession();
+        pwInput.value = '';
+        selected = null;
+        setStatus();
+        await renderList();
       };
 
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;';
