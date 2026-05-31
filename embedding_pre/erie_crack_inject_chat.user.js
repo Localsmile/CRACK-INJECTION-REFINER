@@ -1,4 +1,4 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Chat)
 // @namespace   에리의 크랙 로어 인젝터
 // @version     1.4.0-test.70
@@ -7,47 +7,47 @@
 // @match       https://crack.wrtn.ai/stories/*/episodes/*
 // @match       https://crack.wrtn.ai/characters/*/chats/*
 // @match       https://crack.wrtn.ai/u/*/c/*
-// @updateURL   https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding_pre/erie_crack_inject_chat.user.js
-// @downloadURL https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding_pre/erie_crack_inject_chat.user.js
+// @updateURL   https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding_pre/erie_crack_inject_chat.user.js
+// @downloadURL https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding_pre/erie_crack_inject_chat.user.js
 // @require     https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/vendor/toastify-injection.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/vendor/crack-shared-core.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/vendor/chasm-shared-core.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/vendor/decentralized-modal.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-ui.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-kernel.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-platform.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-memory.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-format.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-search.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-embedding.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-pricing.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/core-importer.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/refiner-prompts.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/refiner-dom.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/refiner-core.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/refiner-queue.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/refiner-observer.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/refiner.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-1.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-2.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-3.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-4.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-5.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-main.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-lore.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-merge.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-snapshot.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-file.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-backup.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-extract.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-refiner.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-log.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-session.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-api.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-sub-help.js
-// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260523/embedding/injecter-6-ui.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/vendor/toastify-injection.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/vendor/crack-shared-core.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/vendor/chasm-shared-core.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/vendor/decentralized-modal.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-ui.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-kernel.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-platform.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-memory.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-format.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-search.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-embedding.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-pricing.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/core-importer.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/refiner-prompts.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/refiner-dom.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/refiner-core.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/refiner-queue.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/refiner-observer.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/refiner.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-1.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-2.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-3.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-4.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-5.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-main.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-lore.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-merge.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-snapshot.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-file.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-backup.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-extract.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-refiner.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-log.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-session.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-api.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-sub-help.js
+// @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260531-backup-sync/embedding/injecter-6-ui.js
 // @grant       GM_addStyle
 // @grant       GM_xmlhttpRequest
 // @grant       unsafeWindow
@@ -116,4 +116,5 @@
 
   check();
 })();
+
 
