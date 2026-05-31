@@ -217,6 +217,34 @@
     return div;
   }
 
+  function setInlineStatus(el, text, tone) {
+    if (!el) return;
+    el.textContent = text || '';
+    el.style.color = tone || '#888';
+  }
+
+  function setButtonBusy(btn, label) {
+    if (!btn) return () => {};
+    const oldText = btn.textContent;
+    const oldOpacity = btn.style.opacity;
+    btn.disabled = true;
+    btn.textContent = label || '처리 중';
+    btn.style.opacity = '.65';
+    return () => {
+      btn.disabled = false;
+      btn.textContent = oldText;
+      btn.style.opacity = oldOpacity || '';
+    };
+  }
+
+  function setButtonsDisabled(buttons, disabled) {
+    (buttons || []).forEach(btn => {
+      if (!btn) return;
+      btn.disabled = !!disabled;
+      btn.style.opacity = disabled ? '.65' : '';
+    });
+  }
+
   function formatTime(ts) {
     if (!ts) return '-';
     try { return new Date(ts).toLocaleString(); } catch (_) { return String(ts); }
@@ -307,8 +335,28 @@
       accountBtns.appendChild(checkBtn); accountBtns.appendChild(regBtn); accountBtns.appendChild(loginBtn); accountBtns.appendChild(logoutBtn); accountBox.appendChild(accountBtns);
       nd.appendChild(accountBox);
       const listBox = document.createElement('div'); listBox.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:6px;'; nd.appendChild(listBox);
+      const workStatus = addText(nd, '', 'font-size:12px;color:#888;line-height:1.45;margin-top:8px;min-height:18px;');
       let selected = null;
       let lastItems = [];
+      let serverBusy = false;
+      const serverButtons = [];
+
+      const beginServerWork = (btn, busyLabel, statusText) => {
+        if (serverBusy) {
+          setInlineStatus(workStatus, '다른 서버 작업 처리 중. 잠시 뒤 다시 시도할 것.', '#d8a');
+          return null;
+        }
+        serverBusy = true;
+        setInlineStatus(workStatus, statusText || '서버 작업 처리 중...', '#8bc');
+        setButtonsDisabled(serverButtons, true);
+        const restoreBtn = setButtonBusy(btn, busyLabel);
+        return (finalText, finalTone) => {
+          restoreBtn();
+          setButtonsDisabled(serverButtons, false);
+          serverBusy = false;
+          if (finalText) setInlineStatus(workStatus, finalText, finalTone || '#8a9');
+        };
+      };
 
       const setStatus = () => {
         restoreStoredSession();
@@ -322,14 +370,17 @@
         setStatus();
         listBox.textContent = '';
         if (!serverSession || !activePassword) {
+          setInlineStatus(workStatus, '로그인 필요.', '#888');
           addText(listBox, '로그인하면 현재 계정의 서버 백업 목록이 표시됨.', 'font-size:12px;color:#777;padding:10px;');
           return;
         }
+        setInlineStatus(workStatus, '서버 백업 목록 불러오는 중...', '#8bc');
         try {
           const res = await apiList();
           lastItems = res.items || [];
           if (!lastItems.length) {
             addText(listBox, '서버 백업 없음.', 'font-size:12px;color:#777;padding:10px;');
+            setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 없음.', '#8a9');
             return;
           }
           for (const item of lastItems) {
@@ -347,30 +398,63 @@
             };
             listBox.appendChild(row);
           }
+          setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 ' + lastItems.length + '개.', '#8a9');
         } catch (e) {
           addText(listBox, '목록 불러오기 실패: ' + e.message, 'font-size:12px;color:#d88;padding:10px;');
+          setInlineStatus(workStatus, '목록 불러오기 실패: ' + e.message, '#d88');
         }
       };
 
       const persistId = () => saveCfg({ backupServerId: idInput.value.trim() });
       checkBtn.onclick = async () => {
-        try { persistId(); assertServerInput(idInput.value, '', false); const res = await apiCheckId(idInput.value.trim()); alert(res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.'); }
-        catch (e) { alert('ID 확인 실패: ' + e.message); }
+        const done = beginServerWork(checkBtn, '확인 중...', 'ID 중복 확인 중...');
+        if (!done) return;
+        try {
+          persistId();
+          assertServerInput(idInput.value, '', false);
+          const res = await apiCheckId(idInput.value.trim());
+          const msg = res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.';
+          done(msg, res.available ? '#8a9' : '#d8a');
+          alert(msg);
+        } catch (e) { done('ID 확인 실패: ' + e.message, '#d88'); alert('ID 확인 실패: ' + e.message); }
       };
       regBtn.onclick = async () => {
-        try { persistId(); assertServerInput(idInput.value, pwInput.value, true); await apiRegister(idInput.value.trim(), pwInput.value); await apiLogin(idInput.value.trim(), pwInput.value); setStatus(); await renderList(); alert('계정 생성 완료.'); }
-        catch (e) { alert('계정 생성 실패: ' + e.message); }
+        const done = beginServerWork(regBtn, '생성 중...', '계정 생성 중...');
+        if (!done) return;
+        try {
+          persistId();
+          assertServerInput(idInput.value, pwInput.value, true);
+          await apiRegister(idInput.value.trim(), pwInput.value);
+          setInlineStatus(workStatus, '계정 생성 완료. 로그인 처리 중...', '#8bc');
+          await apiLogin(idInput.value.trim(), pwInput.value);
+          setStatus();
+          await renderList();
+          done('계정 생성 및 로그인 완료.', '#8a9');
+          alert('계정 생성 완료.');
+        } catch (e) { done('계정 생성 실패: ' + e.message, '#d88'); alert('계정 생성 실패: ' + e.message); }
       };
       loginBtn.onclick = async () => {
-        try { persistId(); assertServerInput(idInput.value, pwInput.value, true); await apiLogin(idInput.value.trim(), pwInput.value); setStatus(); await renderList(); alert('로그인 완료.'); }
-        catch (e) { alert('로그인 실패: ' + e.message); }
+        const done = beginServerWork(loginBtn, '로그인 중...', '로그인 중...');
+        if (!done) return;
+        try {
+          persistId();
+          assertServerInput(idInput.value, pwInput.value, true);
+          await apiLogin(idInput.value.trim(), pwInput.value);
+          setStatus();
+          await renderList();
+          done('로그인 완료.', '#8a9');
+          alert('로그인 완료.');
+        } catch (e) { done('로그인 실패: ' + e.message, '#d88'); alert('로그인 실패: ' + e.message); }
       };
       logoutBtn.onclick = async () => {
+        const done = beginServerWork(logoutBtn, '로그아웃 중...', '로그아웃 처리 중...');
+        if (!done) return;
         clearSession();
         pwInput.value = '';
         selected = null;
         setStatus();
         await renderList();
+        done('로그아웃 완료.', '#8a9');
       };
 
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;';
@@ -379,45 +463,75 @@
       const mergeBtn = makeBtn('서버에서 병합', 'border-color:#258;color:#8bc;');
       const replaceBtn = makeBtn('서버 백업으로 교체', 'border-color:#833;color:#e88;');
       const deleteBtn = makeBtn('선택 백업 삭제', 'border-color:#833;color:#e88;');
-      refreshBtn.onclick = renderList;
+      serverButtons.push(checkBtn, regBtn, loginBtn, logoutBtn, refreshBtn, uploadBtn, mergeBtn, replaceBtn, deleteBtn);
+      refreshBtn.onclick = async () => {
+        const done = beginServerWork(refreshBtn, '불러오는 중...', '서버 백업 목록 불러오는 중...');
+        if (!done) return;
+        await renderList();
+        done(workStatus.textContent || '목록 갱신 완료.', workStatus.style.color || '#8a9');
+      };
       uploadBtn.onclick = async () => {
+        const done = beginServerWork(uploadBtn, '저장 중...', '서버 저장 준비 중...');
+        if (!done) return;
         try {
           if (!serverSession || !activePassword) throw new Error('먼저 로그인해야 함.');
+          setInlineStatus(workStatus, '서버 저장 가능 여부 확인 중...', '#8bc');
           const list = await apiList();
           if ((list.items || []).length >= 10) throw new Error('서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.');
+          setInlineStatus(workStatus, '현재 백업 만드는 중...', '#8bc');
           const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true });
           const meta = backupSummary(data);
+          setInlineStatus(workStatus, '백업 암호화 중...', '#8bc');
           const payload = await encryptJson(data, serverSession.userId, activePassword);
           const encryptedMeta = await encryptJson(meta, serverSession.userId, activePassword);
+          setInlineStatus(workStatus, '서버에 업로드 중...', '#8bc');
           await apiUpload('backup-' + new Date().toISOString().slice(0, 19), payload, encryptedMeta);
-          alert('서버 저장 완료.');
           await renderList();
-        } catch (e) { alert('서버 저장 실패: ' + e.message); }
+          done('서버 저장 완료.', '#8a9');
+          alert('서버 저장 완료.');
+        } catch (e) { done('서버 저장 실패: ' + e.message, '#d88'); alert('서버 저장 실패: ' + e.message); }
       };
       const pullSelected = async (mode) => {
         if (!selected) throw new Error('가져올 서버 백업을 선택해야 함.');
+        setInlineStatus(workStatus, '서버 백업 내려받는 중...', '#8bc');
         const res = await apiDownload(selected.backupId);
+        setInlineStatus(workStatus, '백업 복호화 중...', '#8bc');
         const data = await decryptJson(res.payload, serverSession.userId, activePassword);
+        setInlineStatus(workStatus, mode === 'replace' ? '교체 복원 처리 중...' : '병합 처리 중...', '#8bc');
         return importBackupWithMode(data, mode, false);
       };
       mergeBtn.onclick = async () => {
-        try { const report = await pullSelected('merge'); if (report) alert('서버 병합 완료: 로어 ' + report.entries + '개'); }
-        catch (e) { alert('서버 병합 실패: ' + e.message); }
+        const done = beginServerWork(mergeBtn, '병합 중...', '서버 병합 준비 중...');
+        if (!done) return;
+        try {
+          const report = await pullSelected('merge');
+          if (report) { done('서버 병합 완료. 로어 ' + report.entries + '개.', '#8a9'); alert('서버 병합 완료: 로어 ' + report.entries + '개'); }
+          else done('서버 병합 취소됨.', '#d8a');
+        } catch (e) { done('서버 병합 실패: ' + e.message, '#d88'); alert('서버 병합 실패: ' + e.message); }
       };
       replaceBtn.onclick = async () => {
         if (!confirm('현재 로컬 데이터를 선택한 서버 백업 기준으로 교체함.')) return;
-        try { const report = await pullSelected('replace'); if (report) alert('서버 교체 복원 완료: 로어 ' + report.entries + '개'); }
-        catch (e) { alert('서버 교체 복원 실패: ' + e.message); }
+        const done = beginServerWork(replaceBtn, '교체 중...', '서버 교체 복원 준비 중...');
+        if (!done) return;
+        try {
+          const report = await pullSelected('replace');
+          if (report) { done('서버 교체 복원 완료. 로어 ' + report.entries + '개.', '#8a9'); alert('서버 교체 복원 완료: 로어 ' + report.entries + '개'); }
+          else done('서버 교체 복원 취소됨.', '#d8a');
+        } catch (e) { done('서버 교체 복원 실패: ' + e.message, '#d88'); alert('서버 교체 복원 실패: ' + e.message); }
       };
       deleteBtn.onclick = async () => {
+        const done = beginServerWork(deleteBtn, '삭제 중...', '서버 백업 삭제 준비 중...');
+        if (!done) return;
         try {
           if (!selected) throw new Error('삭제할 서버 백업을 선택해야 함.');
-          if (!confirm('선택한 서버 백업을 삭제함. 로컬 데이터는 삭제되지 않음.')) return;
+          if (!confirm('선택한 서버 백업을 삭제함. 로컬 데이터는 삭제되지 않음.')) { done('서버 백업 삭제 취소됨.', '#d8a'); return; }
+          setInlineStatus(workStatus, '서버 백업 삭제 중...', '#8bc');
           await apiDelete(selected.backupId);
           selected = null;
-          alert('서버 백업 삭제 완료.');
           await renderList();
-        } catch (e) { alert('서버 삭제 실패: ' + e.message); }
+          done('서버 백업 삭제 완료.', '#8a9');
+          alert('서버 백업 삭제 완료.');
+        } catch (e) { done('서버 삭제 실패: ' + e.message, '#d88'); alert('서버 삭제 실패: ' + e.message); }
       };
       btns.appendChild(refreshBtn); btns.appendChild(uploadBtn); btns.appendChild(mergeBtn); btns.appendChild(replaceBtn); btns.appendChild(deleteBtn); nd.appendChild(btns);
       setTimeout(renderList, 0);
