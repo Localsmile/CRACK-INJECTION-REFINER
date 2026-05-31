@@ -121,6 +121,24 @@
     return JSON.parse(dec.decode(data));
   }
 
+  function localizeServerError(message, status) {
+    const msg = String(message || '').trim();
+    const lower = msg.toLowerCase();
+    if (!msg) return status ? ('서버 요청 실패. HTTP ' + status) : '서버 요청 실패.';
+    if (lower.includes('id must use 3-80 letters')) return 'ID는 3~80자의 영문, 숫자, 마침표, 밑줄, 하이픈만 사용할 수 있음.';
+    if (lower === 'id already exists') return '이미 사용 중인 ID.';
+    if (lower === 'login failed') return 'ID 또는 비밀번호가 맞지 않음.';
+    if (lower === 'login required') return '로그인이 필요함. 다시 로그인할 것.';
+    if (lower === 'invalid auth secret') return '로그인 정보 생성에 실패함. ID와 비밀번호를 다시 확인할 것.';
+    if (lower === 'invalid encrypted payload') return '백업 암호화 데이터 형식이 올바르지 않음.';
+    if (lower.includes('backup limit reached')) return '서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.';
+    if (lower === 'backup not found') return '선택한 서버 백업을 찾을 수 없음. 목록을 새로고침할 것.';
+    if (lower === 'post required') return '서버 요청 방식이 올바르지 않음.';
+    if (lower.includes('d1 binding db missing')) return '서버 DB 연결이 설정되지 않음.';
+    if (lower.startsWith('http ')) return '서버 요청 실패. ' + msg;
+    return msg;
+  }
+
   function backupSummary(backup) {
     const db = backup && backup.db || {};
     const packs = Array.isArray(db.packs) ? db.packs : [];
@@ -150,7 +168,7 @@
     const text = await res.text();
     try { data = text ? JSON.parse(text) : null; } catch (_) { data = { message: text }; }
     if (!res.ok || !data || data.ok === false) {
-      throw new Error((data && (data.error || data.message)) || ('HTTP ' + res.status));
+      throw new Error(localizeServerError((data && (data.error || data.message)) || ('HTTP ' + res.status), res.status));
     }
     return data;
   }
