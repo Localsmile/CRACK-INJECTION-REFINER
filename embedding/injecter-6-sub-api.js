@@ -137,11 +137,11 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
-      title.textContent = '추출 프롬프트';
+      title.textContent = 'Gemini 추출 프롬프트';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       const note = document.createElement('div');
-      note.textContent = '자동/수동 추출과 지식 변환에서 쓰는 템플릿. 기본 템플릿은 직접 수정 안 됨.';
+      note.textContent = 'Gemini 계열 추출 템플릿. 기본 템플릿은 직접 수정 안 됨.';
       note.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;';
       nd.appendChild(note);
 
@@ -204,42 +204,30 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
-      title.textContent = 'DeepSeek 전용 JSON 지시';
+      title.textContent = 'DeepSeek 추출 프롬프트';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       const note = document.createElement('div');
-      note.textContent = 'DeepSeek JSON mode에서만 추가 적용됨. 기본 추출 템플릿은 유지하고 출력 구조만 안정화함.';
+      note.textContent = 'DeepSeek JSON object 규격용 전체 템플릿. Gemini 템플릿과 별도로 저장됨.';
       note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:8px;';
       nd.appendChild(note);
-
-      const detail = document.createElement('details');
-      detail.style.cssText = 'border:1px solid #333;border-radius:4px;background:#111;padding:8px;';
-      const summary = document.createElement('summary');
-      summary.textContent = '세부 지시문 열기';
-      summary.style.cssText = 'cursor:pointer;color:#ccc;font-size:12px;font-weight:bold;';
-      detail.appendChild(summary);
-      const body = document.createElement('div');
-      body.style.cssText = 'margin-top:10px;';
-      detail.appendChild(body);
-      nd.appendChild(detail);
-
       const defaults = _w.__LoreInj.defaultSettings || {};
-      addPromptArea(body, '시스템 지시', settings.config.deepSeekJsonSystemPrompt || defaults.deepSeekJsonSystemPrompt || '', (v) => {
-        settings.config.deepSeekJsonSystemPrompt = v;
+      addPromptArea(nd, '새 로어 추출 전체 프롬프트', settings.config.deepSeekPromptWithoutDb || defaults.deepSeekPromptWithoutDb || '', (v) => {
+        settings.config.deepSeekPromptWithoutDb = v;
         settings.save();
-      }, { height: 95, reset: () => defaults.deepSeekJsonSystemPrompt || '' });
-      addPromptArea(body, '추출 출력 지시', settings.config.deepSeekExtractJsonPrompt || defaults.deepSeekExtractJsonPrompt || '', (v) => {
-        settings.config.deepSeekExtractJsonPrompt = v;
+      }, { height: 190, reset: () => defaults.deepSeekPromptWithoutDb || '' });
+      addPromptArea(nd, '기존 로어 참고 전체 프롬프트', settings.config.deepSeekPromptWithDb || defaults.deepSeekPromptWithDb || '', (v) => {
+        settings.config.deepSeekPromptWithDb = v;
         settings.save();
-      }, { height: 90, reset: () => defaults.deepSeekExtractJsonPrompt || '' });
-      addPromptArea(body, '중요 장면 출력 지시', settings.config.deepSeekTemporalJsonPrompt || defaults.deepSeekTemporalJsonPrompt || '', (v) => {
-        settings.config.deepSeekTemporalJsonPrompt = v;
+      }, { height: 230, reset: () => defaults.deepSeekPromptWithDb || '' });
+      addPromptArea(nd, '중요 장면 전체 프롬프트', settings.config.deepSeekTemporalExtractPrompt || defaults.deepSeekTemporalExtractPrompt || '', (v) => {
+        settings.config.deepSeekTemporalExtractPrompt = v;
         settings.save();
-      }, { height: 90, reset: () => defaults.deepSeekTemporalJsonPrompt || '' });
-      addPromptArea(body, '지식 변환 출력 지시', settings.config.deepSeekImportJsonPrompt || defaults.deepSeekImportJsonPrompt || '', (v) => {
-        settings.config.deepSeekImportJsonPrompt = v;
+      }, { height: 190, reset: () => defaults.deepSeekTemporalExtractPrompt || '' });
+      addPromptArea(nd, '지식 변환 전체 프롬프트', settings.config.deepSeekImportPrompt || defaults.deepSeekImportPrompt || '', (v) => {
+        settings.config.deepSeekImportPrompt = v;
         settings.save();
-      }, { height: 90, reset: () => defaults.deepSeekImportJsonPrompt || '' });
+      }, { height: 190, reset: () => defaults.deepSeekImportPrompt || '' });
     }});
 
     panel.addBoxedField('', '', { onInit: (nd) => {

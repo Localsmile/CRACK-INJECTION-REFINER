@@ -128,10 +128,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 
   function providerOutputMode(baseText, apiOpts, kind) {
     if (!(apiOpts && apiOpts.apiType === 'deepseek')) return baseText;
-    const extra = kind === 'temporal'
-      ? (settings.config.deepSeekTemporalJsonPrompt || '')
-      : (settings.config.deepSeekExtractJsonPrompt || '');
-    return deepSeekObjectOutputMode(baseText, '{"entries":[]}') + '\n- Top-level object shape must be exactly {"entries":[...]}.\n' + extra;
+    return deepSeekObjectOutputMode(baseText, '{"entries":[]}') + '\n- Top-level object shape must be exactly {"entries":[...]}.';
   }
 
   function normalizeEntryForMerge(entry, turn) {
@@ -508,7 +505,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
     const finalPrompt = isDeepSeek ? `${prompt}
 
-DeepSeek json reminder:
+Structured output reminder:
 - Return exactly one valid json object.
 - The top-level shape is {"entries":[...]}.
 - No markdown, no prose, no comments, no trailing text.` : prompt;
@@ -595,7 +592,10 @@ DEDUP RULE:
     const isManual = !!opts.isManual;
     const msgCount = opts.msgCount || 0;
     const skipEmbedding = !!opts.skipEmbedding;
-    const promptTpl = settings.config.temporalExtractPrompt || DEFAULT_TEMPORAL_EXTRACT_PROMPT;
+    const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
+    const promptTpl = isDeepSeekTemporal
+      ? (settings.config.deepSeekTemporalExtractPrompt || _w.__LoreInj.DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT || DEFAULT_TEMPORAL_EXTRACT_PROMPT)
+      : (settings.config.temporalExtractPrompt || DEFAULT_TEMPORAL_EXTRACT_PROMPT);
     const baseTemporalSchema = settings.config.temporalExtractSchema || DEFAULT_TEMPORAL_EXTRACT_SCHEMA;
     const schema = `${baseTemporalSchema}
 
@@ -618,7 +618,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         }
       } catch (_) {}
 
-      const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
       const outputModeText = providerOutputMode(_patchOn ? TEMPORAL_OUTPUT_MODE_PATCH : TEMPORAL_OUTPUT_MODE_FULL, apiOpts, 'temporal');
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
@@ -1060,7 +1059,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (pName) personaPrefix = `[User Persona: "${pName}"] All "user" role messages are from this character. Use "${pName}" as the character name, NOT "user".\n\n`;
     }
     const tpl = settings.getActiveTemplate();
-    const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
+    const isDeepSeekExtract = apiType === 'deepseek';
+    const promptTpl = isDeepSeekExtract
+      ? (settings.config.autoExtIncludeDb
+          ? (settings.config.deepSeekPromptWithDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
+          : (settings.config.deepSeekPromptWithoutDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
+      : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
     const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
     const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
     const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
@@ -1177,7 +1181,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       } catch(e) {}
     }
     const tpl = settings.getActiveTemplate();
-    const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
+    const promptTpl = isDeepSeek
+      ? (settings.config.autoExtIncludeDb
+          ? (settings.config.deepSeekPromptWithDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
+          : (settings.config.deepSeekPromptWithoutDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
+      : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
 
     const _batchModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let _batchTotalElapsedMs = 0, _batchTotalUsd = 0;

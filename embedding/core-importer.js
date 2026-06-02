@@ -67,7 +67,7 @@
     if (out.deepSeekThinking === undefined) out.deepSeekThinking = liveCfg.autoExtDeepSeekThinking !== false;
     if (!out.deepSeekReasoning && liveCfg.autoExtDeepSeekReasoning) out.deepSeekReasoning = liveCfg.autoExtDeepSeekReasoning;
     if (!out.deepSeekJsonSystemPrompt && liveCfg.deepSeekJsonSystemPrompt) out.deepSeekJsonSystemPrompt = liveCfg.deepSeekJsonSystemPrompt;
-    if (!out.deepSeekImportJsonPrompt && liveCfg.deepSeekImportJsonPrompt) out.deepSeekImportJsonPrompt = liveCfg.deepSeekImportJsonPrompt;
+    if (!out.deepSeekImportPrompt && liveCfg.deepSeekImportPrompt) out.deepSeekImportPrompt = liveCfg.deepSeekImportPrompt;
 
     const fallbackModel = out.apiType === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview';
     if (out.model === '_custom') out.model = out.customModel || out.autoExtCustomModel || liveCfg.autoExtCustomModel || fallbackModel;
@@ -157,16 +157,21 @@
 
   const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.<br>Convert the following source material into structured lore entries for an RP memory system.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.<br>4. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.<br>5. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>6. summary and inject must both be produced.<br>   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.<br>   - summary.compact: preserve entity, state, relationship, and unresolved hooks.<br>   - summary.micro: stable recall handle + current state only; never a vague teaser.<br>   - inject.full/compact/micro: short text intended for direct OOC injection.<br>7. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.<br>8. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.<br>9. Extract timeline, entities, state, imp/sur/emo for every entry when inferable. imp/sur/emo are 1-10.<br>10. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>11. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
 
-  function adaptImportPromptForProvider(prompt, apiOpts) {
+  function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
     if (!apiOpts || apiOpts.apiType !== 'deepseek') return prompt;
-    const extra = String(apiOpts.deepSeekImportJsonPrompt || '').trim();
+    const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
+    if (fullPrompt) {
+      return fullPrompt
+        .replace('{source}', values.source || '')
+        .replace('{schema}', values.schema || '')
+        .replace('{maxEntries}', String(values.maxEntries || DEFAULTS.importMaxEntries));
+    }
     return String(prompt || '')
       .replace('JSON ONLY. Output a valid JSON array. No markdown.', 'JSON ONLY. Output one valid JSON object with top-level shape {"entries":[...]}. No markdown.')
-      + '\n\nDeepSeek JSON import output:\n'
+      + '\n\nStructured output:\n'
       + '- Top-level object shape must be exactly {"entries":[...]}.\n'
       + '- Put every converted lore entry inside entries.\n'
-      + '- If no useful lore exists, return exactly {"entries":[]}.\n'
-      + (extra ? '\n' + extra : '');
+      + '- If no useful lore exists, return exactly {"entries":[]}.';
   }
 
   async function importFromText(text, packName, apiOpts, opts = {}) {
@@ -195,7 +200,11 @@
       const chunk = chunks[ci];
       const schemaText = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n');
       const promptTpl = IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n');
-      const prompt = adaptImportPromptForProvider(promptTpl.replace('{source}', chunk).replace('{schema}', schemaText).replace('{maxEntries}', String(maxEntries)), safeApiOpts);
+      const prompt = adaptImportPromptForProvider(
+        promptTpl.replace('{source}', chunk).replace('{schema}', schemaText).replace('{maxEntries}', String(maxEntries)),
+        safeApiOpts,
+        { source: chunk, schema: schemaText, maxEntries }
+      );
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let gotEntries = 0;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;

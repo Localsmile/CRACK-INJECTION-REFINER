@@ -339,7 +339,7 @@
       if (ToastCallback) ToastCallback(isDeepSeekRefiner ? '에리가 딥식이로 응답 검수 중' : '에리가 응답 검수 중', '#258');
       if (isDeepSeekRefiner) {
         apiOpts.responseMimeType = 'application/json';
-        prompt += '\n\nDeepSeek JSON mode instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
+        prompt += '\n\nStructured output instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
       }
 
       // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)

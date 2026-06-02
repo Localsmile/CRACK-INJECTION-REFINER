@@ -9,6 +9,18 @@
   const VER = '1.4.0-test.48';
   const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0-test.47-outputMode';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-context-lore';
+  function toJsonObjectPrompt(prompt, opts = {}) {
+    const empty = opts.empty || '{"entries":[]}';
+    const eventOnly = !!opts.eventOnly;
+    return String(prompt || '')
+      .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if nothing new\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape {"entries":[...]}. Return exactly ' + empty + ' if nothing new.')
+      .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if no meaningful event occurred\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape {"entries":[...]}. Return exactly ' + empty + ' if no meaningful event occurred.')
+      .replace(/Output ONLY a valid JSON array/g, 'Output exactly one valid JSON object with top-level shape {"entries":[...]}')
+      .replace(/Empty array \[\]/g, empty)
+      .replace(/Schema:\n\{schema\}/g, 'Schema for each object inside entries:\n{schema}')
+      .replace(/CRITICAL RULES:\n/g, 'CRITICAL RULES:\n0. STRUCTURE: The response must be one JSON object with an "entries" array. Every extracted ' + (eventOnly ? 'timeline_event' : 'lore entry or patch operation') + ' goes inside entries.\n')
+      .replace(/RATE: PG-13 ~ NC-21 \(Private Sessions, Unlimited RP\)/g, 'RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)\n- Preserve adult/private relationship facts when they are continuity-relevant. Do not censor, moralize, or replace explicit scene facts with vague euphemisms. Summarize them neutrally and compactly.');
+  }
   const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `You are a Lore Archivist for RP.
 Analyze the following conversation log and extract NEW established lore, character developments, relationship changes, and promises/contracts.
 
@@ -497,6 +509,37 @@ Conversation Log:
 {context}`
   ];
 
+  const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
+  const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB);
+  const DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT = toJsonObjectPrompt(DEFAULT_TEMPORAL_EXTRACT_PROMPT, { eventOnly: true });
+  const DEFAULT_DEEPSEEK_IMPORT_PROMPT = `You are a Lore Structurer for AI RP.
+Convert the following source material into structured lore entries for an RP memory system.
+
+RULES:
+1. JSON ONLY. Output exactly one valid JSON object with top-level shape {"entries":[...]}. No markdown, prose, comments, or trailing text.
+2. Use the ORIGINAL LANGUAGE of the source. Korean source -> Korean output.
+3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.
+4. Preserve adult/private relationship facts when they are continuity-relevant. Do not censor, moralize, or replace explicit scene facts with vague euphemisms. Summarize them neutrally and compactly.
+5. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.
+6. For relationships, use bidirectional compound triggers: A&&B and B&&A.
+7. summary and inject must both be produced.
+   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.
+   - summary.compact: preserve entity, state, relationship, and unresolved hooks.
+   - summary.micro: stable recall handle + current state only; never a vague teaser.
+   - inject.full/compact/micro: short text intended for direct OOC injection.
+8. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.
+9. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.
+10. Extract timeline, entities, state, imp/sur/emo for every entry when inferable. imp/sur/emo are 1-10.
+11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.
+12. Maximum {maxEntries} entries.
+13. If no useful lore exists, return exactly {"entries":[]}.
+
+Schema for each object inside entries:
+{schema}
+
+Source Material:
+{source}`;
+
   const OOC_FORMATS = {
     default: {name: 'OOC (기본)', prefix: '<ooc_lore_context>\nEstablished continuity for the current RP scene. Use these facts naturally as background. Preserve current relationships, states, promises, honorifics, and unresolved hooks. Do not quote this block verbatim.', suffix: '\n</ooc_lore_context>', desc: '현재 로어/시간축 프롬프트에 맞춘 기본값'},
     system: {name: 'System 태그', prefix: '[System: Established world/character facts for this scene. Do not repeat verbatim.]', suffix: '[/System]', desc: 'System 지시 잘 따르는 모델'},
@@ -510,12 +553,16 @@ Conversation Log:
     VER, OOC_FORMAT_VERSION, OOC_FORMATS,
     DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
     DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB,
+    DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
+    DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
     AUTO_EXTRACT_PROMPT_VERSION,
     LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB,
     DEFAULT_AUTO_EXTRACT_SCHEMA,
     DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA,
     DEFAULT_TEMPORAL_EXTRACT_PROMPT,
+    DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
     DEFAULT_TEMPORAL_EXTRACT_SCHEMA,
+    DEFAULT_DEEPSEEK_IMPORT_PROMPT,
     DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
     DEFAULT_TEMPORAL_RECALL_JUDGE_SCHEMA,
     __constLoaded: true
