@@ -501,6 +501,12 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       .slice(0, max);
   }
 
+  const DEEPSEEK_JSON_MAX_OUTPUT_TOKENS = 65536;
+
+  function deepSeekJsonMaxOutput(apiOpts) {
+    return Math.max(Number(apiOpts && apiOpts.maxOutputTokens) || 0, DEEPSEEK_JSON_MAX_OUTPUT_TOKENS);
+  }
+
   async function callGeminiJsonWithRepair(prompt, apiOpts, repairHint) {
     const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
     const finalPrompt = isDeepSeek ? `${prompt}
@@ -526,7 +532,7 @@ Structured output reminder:
       res = await C.callGeminiApi(retryPrompt, {
           ...apiOpts,
           maxRetries: 0,
-          maxOutputTokens: isDeepSeek ? Math.max(Number(apiOpts.maxOutputTokens) || 0, 8192) : null,
+          maxOutputTokens: isDeepSeek ? deepSeekJsonMaxOutput(apiOpts) : null,
           responseMimeType: 'application/json'
       });
       parsed = parseJsonLoose(res && res.text);
@@ -634,7 +640,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         responseMimeType: 'application/json',
         maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
         timeoutMs: apiOpts.timeoutMs || (isDeepSeekTemporal ? 150000 : 120000),
-        maxOutputTokens: _patchOn ? (apiOpts.maxOutputTokens || (isDeepSeekTemporal ? 4096 : 4096)) : (isDeepSeekTemporal ? 8192 : null),
+        maxOutputTokens: isDeepSeekTemporal ? deepSeekJsonMaxOutput(apiOpts) : (_patchOn ? (apiOpts.maxOutputTokens || 4096) : null),
         costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' }
       };
       const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
@@ -1083,7 +1089,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
         timeoutMs: apiType === 'deepseek' ? 150000 : 120000,
-        maxOutputTokens: _patchOn ? (apiType === 'deepseek' ? 8192 : 4096) : (apiType === 'deepseek' ? 8192 : null),
+        maxOutputTokens: apiType === 'deepseek' ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       }, { feature: 'autoExtract', chatKey: chatKey || 'global' }) : {
         apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1094,7 +1100,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
         timeoutMs: apiType === 'deepseek' ? 150000 : 120000,
-        maxOutputTokens: _patchOn ? (apiType === 'deepseek' ? 8192 : 4096) : (apiType === 'deepseek' ? 8192 : null),
+        maxOutputTokens: apiType === 'deepseek' ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       });
       const _extT0 = Date.now();
@@ -1224,7 +1230,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           const apiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
             maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
+            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
             apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1234,7 +1240,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
             maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
+            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           });
           const _bt0 = Date.now();
@@ -1268,7 +1274,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
               maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-              maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : (isDeepSeek ? 8192 : null),
+              maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
               apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1278,7 +1284,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
               maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-              maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : (isDeepSeek ? 8192 : null),
+              maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             });
             const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true });
@@ -1314,7 +1320,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               const retryApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
                 model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
                 maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
+                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
                 costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
               }, { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }) : {
                 apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1324,7 +1330,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
                 firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
                 model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
                 maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
+                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
                 costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
               });
               const _rt0 = Date.now();
