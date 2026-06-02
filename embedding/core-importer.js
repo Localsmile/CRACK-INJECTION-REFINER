@@ -67,6 +67,12 @@
     if (out.deepSeekThinking === undefined) out.deepSeekThinking = liveCfg.autoExtDeepSeekThinking !== false;
     if (!out.deepSeekReasoning && liveCfg.autoExtDeepSeekReasoning) out.deepSeekReasoning = liveCfg.autoExtDeepSeekReasoning;
     if (!out.deepSeekJsonSystemPrompt && liveCfg.deepSeekJsonSystemPrompt) out.deepSeekJsonSystemPrompt = liveCfg.deepSeekJsonSystemPrompt;
+    if (!out.deepSeekImportPrompt && _w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.getActiveTemplate) {
+      try {
+        const activeTpl = _w.__LoreInj.settings.getActiveTemplate();
+        if (activeTpl && activeTpl.deepSeekImportPrompt) out.deepSeekImportPrompt = activeTpl.deepSeekImportPrompt;
+      } catch (_) {}
+    }
     if (!out.deepSeekImportPrompt && liveCfg.deepSeekImportPrompt) out.deepSeekImportPrompt = liveCfg.deepSeekImportPrompt;
 
     const fallbackModel = out.apiType === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview';

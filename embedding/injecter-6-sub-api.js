@@ -134,6 +134,8 @@
   }
 
   function renderPromptSettings(panel) {
+    if (settings.ensureDeepSeekTemplateFields && settings.ensureDeepSeekTemplateFields()) settings.save();
+    let renderDeepSeekOptions = null;
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
@@ -141,7 +143,7 @@
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       const note = document.createElement('div');
-      note.textContent = 'Gemini 계열 추출 템플릿. 기본 템플릿은 직접 수정 안 됨.';
+      note.textContent = '템플릿 선택은 Gemini와 DeepSeek 프롬프트 세트에 함께 적용됨. 기본 템플릿은 직접 수정 안 됨.';
       note.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;';
       nd.appendChild(note);
 
@@ -176,8 +178,9 @@
         taSchema.value = activeTpl.schema; taSchema.disabled = activeTpl.isDefault;
         ta1.value = activeTpl.promptWithoutDb; ta1.disabled = activeTpl.isDefault;
         ta2.value = activeTpl.promptWithDb; ta2.disabled = activeTpl.isDefault;
+        if (renderDeepSeekOptions) renderDeepSeekOptions();
       };
-      newTplBtn.onclick = () => { const name = prompt('새 템플릿 이름:'); if (!name) return; const newId = 'tpl_' + Date.now(); const active = settings.getActiveTemplate(); settings.config.templates.push({ id: newId, name, isDefault: false, schema: active.schema, promptWithoutDb: active.promptWithoutDb, promptWithDb: active.promptWithDb }); settings.config.activeTemplateId = newId; settings.save(); renderTplOptions(); };
+      newTplBtn.onclick = () => { const name = prompt('새 템플릿 이름:'); if (!name) return; const newId = 'tpl_' + Date.now(); const active = settings.getActiveTemplate(); settings.config.templates.push({ id: newId, name, isDefault: false, schema: active.schema, promptWithoutDb: active.promptWithoutDb, promptWithDb: active.promptWithDb, deepSeekPromptWithoutDb: active.deepSeekPromptWithoutDb, deepSeekPromptWithDb: active.deepSeekPromptWithDb, deepSeekTemporalExtractPrompt: active.deepSeekTemporalExtractPrompt, deepSeekImportPrompt: active.deepSeekImportPrompt }); settings.config.activeTemplateId = newId; settings.save(); renderTplOptions(); };
       tplResetBtn.onclick = () => {
         const activeTpl = settings.getActiveTemplate();
         if (activeTpl.isDefault) { alert('기본 템플릿은 수정 불가.'); return; }
@@ -189,6 +192,10 @@
         settings.config.templates[idx].schema = defaultTpl.schema;
         settings.config.templates[idx].promptWithoutDb = defaultTpl.promptWithoutDb;
         settings.config.templates[idx].promptWithDb = defaultTpl.promptWithDb;
+        settings.config.templates[idx].deepSeekPromptWithoutDb = defaultTpl.deepSeekPromptWithoutDb;
+        settings.config.templates[idx].deepSeekPromptWithDb = defaultTpl.deepSeekPromptWithDb;
+        settings.config.templates[idx].deepSeekTemporalExtractPrompt = defaultTpl.deepSeekTemporalExtractPrompt;
+        settings.config.templates[idx].deepSeekImportPrompt = defaultTpl.deepSeekImportPrompt;
         settings.save(); renderTplOptions();
       };
       tplSelect.onchange = () => { settings.config.activeTemplateId = tplSelect.value; settings.save(); renderTplOptions(); };
@@ -208,26 +215,40 @@
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       const note = document.createElement('div');
-      note.textContent = 'DeepSeek JSON object 규격용 전체 템플릿. Gemini 템플릿과 별도로 저장됨.';
+      note.textContent = '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출, 중요 장면 추출, 지식 변환에 사용함.';
       note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:8px;';
       nd.appendChild(note);
       const defaults = _w.__LoreInj.defaultSettings || {};
-      addPromptArea(nd, '새 로어 추출 전체 프롬프트', settings.config.deepSeekPromptWithoutDb || defaults.deepSeekPromptWithoutDb || '', (v) => {
-        settings.config.deepSeekPromptWithoutDb = v;
-        settings.save();
+      const saveDeepSeekTpl = (key, val) => {
+        const id = settings.config.activeTemplateId || 'default';
+        const idx = (settings.config.templates || []).findIndex(t => t.id === id);
+        if (idx !== -1 && !settings.config.templates[idx].isDefault) {
+          settings.config.templates[idx][key] = val;
+          settings.save();
+        }
+      };
+      const ds1 = addPromptArea(nd, '새 로어 추출 전체 프롬프트', '', (v) => {
+        saveDeepSeekTpl('deepSeekPromptWithoutDb', v);
       }, { height: 190, reset: () => defaults.deepSeekPromptWithoutDb || '' });
-      addPromptArea(nd, '기존 로어 참고 전체 프롬프트', settings.config.deepSeekPromptWithDb || defaults.deepSeekPromptWithDb || '', (v) => {
-        settings.config.deepSeekPromptWithDb = v;
-        settings.save();
+      const ds2 = addPromptArea(nd, '기존 로어 참고 전체 프롬프트', '', (v) => {
+        saveDeepSeekTpl('deepSeekPromptWithDb', v);
       }, { height: 230, reset: () => defaults.deepSeekPromptWithDb || '' });
-      addPromptArea(nd, '중요 장면 전체 프롬프트', settings.config.deepSeekTemporalExtractPrompt || defaults.deepSeekTemporalExtractPrompt || '', (v) => {
-        settings.config.deepSeekTemporalExtractPrompt = v;
-        settings.save();
+      const ds3 = addPromptArea(nd, '중요 장면 전체 프롬프트', '', (v) => {
+        saveDeepSeekTpl('deepSeekTemporalExtractPrompt', v);
       }, { height: 190, reset: () => defaults.deepSeekTemporalExtractPrompt || '' });
-      addPromptArea(nd, '지식 변환 전체 프롬프트', settings.config.deepSeekImportPrompt || defaults.deepSeekImportPrompt || '', (v) => {
-        settings.config.deepSeekImportPrompt = v;
-        settings.save();
+      const ds4 = addPromptArea(nd, '지식 변환 전체 프롬프트', '', (v) => {
+        saveDeepSeekTpl('deepSeekImportPrompt', v);
       }, { height: 190, reset: () => defaults.deepSeekImportPrompt || '' });
+      renderDeepSeekOptions = () => {
+        const activeTpl = settings.getActiveTemplate();
+        if (!activeTpl) return;
+        ds1.value = activeTpl.deepSeekPromptWithoutDb || defaults.deepSeekPromptWithoutDb || '';
+        ds2.value = activeTpl.deepSeekPromptWithDb || defaults.deepSeekPromptWithDb || '';
+        ds3.value = activeTpl.deepSeekTemporalExtractPrompt || defaults.deepSeekTemporalExtractPrompt || '';
+        ds4.value = activeTpl.deepSeekImportPrompt || defaults.deepSeekImportPrompt || '';
+        ds1.disabled = ds2.disabled = ds3.disabled = ds4.disabled = !!activeTpl.isDefault;
+      };
+      renderDeepSeekOptions();
     }});
 
     panel.addBoxedField('', '', { onInit: (nd) => {

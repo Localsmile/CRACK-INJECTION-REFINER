@@ -366,7 +366,16 @@
     temporalRecallJudgeSchema: DEFAULT_TEMPORAL_RECALL_JUDGE_SCHEMA,
 
     activeTemplateId: 'default',
-    templates: [{ id: 'default', name: '기본 프롬프트', isDefault: true, schema: DEFAULT_AUTO_EXTRACT_SCHEMA, promptWithoutDb: DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB, promptWithDb: DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB }],
+    templates: [{
+      id: 'default', name: '기본 프롬프트', isDefault: true,
+      schema: DEFAULT_AUTO_EXTRACT_SCHEMA,
+      promptWithoutDb: DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
+      promptWithDb: DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB,
+      deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
+      deepSeekPromptWithDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
+      deepSeekTemporalExtractPrompt: DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
+      deepSeekImportPrompt: DEFAULT_DEEPSEEK_IMPORT_PROMPT
+    }],
     autoPacks: ['자동추출'], urlPacks: {}, urlDisabledEntries: {},
     urlTurnCounters: {}, urlCooldownMaps: {}, urlAutoExtPacks: {}, urlExtLogs: {}, urlInjLogs: {},
 
@@ -427,7 +436,12 @@
                 dT.schema = DEFAULT_AUTO_EXTRACT_SCHEMA;
                 dT.promptWithoutDb = DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB;
                 dT.promptWithDb = DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;
+                dT.deepSeekPromptWithoutDb = DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB;
+                dT.deepSeekPromptWithDb = DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB;
+                dT.deepSeekTemporalExtractPrompt = DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT;
+                dT.deepSeekImportPrompt = DEFAULT_DEEPSEEK_IMPORT_PROMPT;
               }
+              this.ensureDeepSeekTemplateFields();
             }
             try {
               const oldOocPrefix = '**OOC: Reference — factual background data. Incorporate naturally, never repeat verbatim.';
@@ -471,6 +485,10 @@
             this.save();
             if (migrated) console.log('[LoreInj:3] auto-extract prompt 마이그레이션:', migrated, '템플릿');
           }
+        } catch (e) {}
+
+        try {
+          if (this.ensureDeepSeekTemplateFields()) this.save();
         } catch (e) {}
 
         const refSaved = _ls.getItem('speech-refiner-v1');
@@ -517,6 +535,25 @@
       const id = this.config.activeTemplateId || 'default';
       const t = (this.config.templates || []).find(x => x.id === id);
       return t || this.config.templates[0];
+    },
+    ensureDeepSeekTemplateFields: function() {
+      if (!Array.isArray(this.config.templates)) return false;
+      const fallbacks = {
+        deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
+        deepSeekPromptWithDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
+        deepSeekTemporalExtractPrompt: DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
+        deepSeekImportPrompt: DEFAULT_DEEPSEEK_IMPORT_PROMPT
+      };
+      let changed = false;
+      for (const tpl of this.config.templates) {
+        if (!tpl || typeof tpl !== 'object') continue;
+        for (const key of Object.keys(fallbacks)) {
+          if (tpl[key]) continue;
+          tpl[key] = tpl.isDefault ? fallbacks[key] : (this.config[key] || fallbacks[key]);
+          changed = true;
+        }
+      }
+      return changed;
     }
   };
 

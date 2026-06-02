@@ -583,6 +583,12 @@ DEDUP RULE:
     return prompt + '\n\n' + block;
   }
 
+  function getDeepSeekTemplatePrompt(tpl, templateKey, legacyKey, fallback) {
+    if (tpl && tpl[templateKey]) return tpl[templateKey];
+    if (settings.config && settings.config[legacyKey]) return settings.config[legacyKey];
+    return fallback || '';
+  }
+
   async function runTemporalExtractPass(opts = {}) {
     if (settings.config.temporalExtractEnabled === false) return { count: 0, skipped: true };
     const context = opts.context || '';
@@ -593,8 +599,9 @@ DEDUP RULE:
     const msgCount = opts.msgCount || 0;
     const skipEmbedding = !!opts.skipEmbedding;
     const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
+    const activeTpl = settings.getActiveTemplate ? settings.getActiveTemplate() : null;
     const promptTpl = isDeepSeekTemporal
-      ? (settings.config.deepSeekTemporalExtractPrompt || _w.__LoreInj.DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT || DEFAULT_TEMPORAL_EXTRACT_PROMPT)
+      ? getDeepSeekTemplatePrompt(activeTpl, 'deepSeekTemporalExtractPrompt', 'deepSeekTemporalExtractPrompt', _w.__LoreInj.DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT || DEFAULT_TEMPORAL_EXTRACT_PROMPT)
       : (settings.config.temporalExtractPrompt || DEFAULT_TEMPORAL_EXTRACT_PROMPT);
     const baseTemporalSchema = settings.config.temporalExtractSchema || DEFAULT_TEMPORAL_EXTRACT_SCHEMA;
     const schema = `${baseTemporalSchema}
@@ -1062,8 +1069,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const isDeepSeekExtract = apiType === 'deepseek';
     const promptTpl = isDeepSeekExtract
       ? (settings.config.autoExtIncludeDb
-          ? (settings.config.deepSeekPromptWithDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
-          : (settings.config.deepSeekPromptWithoutDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
+          ? getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithDb', 'deepSeekPromptWithDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
+          : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
       : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
     const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
     const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
@@ -1183,8 +1190,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const tpl = settings.getActiveTemplate();
     const promptTpl = isDeepSeek
       ? (settings.config.autoExtIncludeDb
-          ? (settings.config.deepSeekPromptWithDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
-          : (settings.config.deepSeekPromptWithoutDb || _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
+          ? getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithDb', 'deepSeekPromptWithDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
+          : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
       : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
 
     const _batchModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
