@@ -361,17 +361,23 @@ Entries:
     const {
       key = '', model = 'deepseek-v4-flash', maxRetries = 1, responseMimeType,
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null,
-      deepSeekThinking = true, deepSeekReasoning = 'high'
+      deepSeekThinking = true, deepSeekReasoning = 'high', deepSeekJsonSystemPrompt = ''
     } = opts;
     if (!key) return { text: null, status: 0, error: 'DeepSeek API 키 누락', retries: 0 };
     const url = 'https://api.deepseek.com/chat/completions';
     const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key };
+    const jsonMode = !!(responseMimeType && String(responseMimeType).includes('json'));
+    const jsonSystemPrompt = String(deepSeekJsonSystemPrompt || '').trim()
+      || 'You are a strict JSON API. Return only one valid json object that matches the requested shape. Do not output markdown fences, explanations, comments, or trailing text. If there is no useful result, return the empty object shape requested by the user.';
+    const messages = [];
+    if (jsonMode) messages.push({ role: 'system', content: jsonSystemPrompt });
+    messages.push({ role: 'user', content: String(prompt || '') });
     const bodyObj = {
       model,
-      messages: [{ role: 'user', content: String(prompt || '') }],
+      messages,
       stream: false
     };
-    if (responseMimeType && String(responseMimeType).includes('json')) bodyObj.response_format = { type: 'json_object' };
+    if (jsonMode) bodyObj.response_format = { type: 'json_object' };
     if (maxOutputTokens != null) bodyObj.max_tokens = maxOutputTokens;
     const thinkingOn = deepSeekThinking !== false;
     bodyObj.thinking = { type: thinkingOn ? 'enabled' : 'disabled' };
@@ -394,14 +400,19 @@ Entries:
           }
         } else {
           const json = await r.json();
-          const msg = json.choices && json.choices[0] && json.choices[0].message;
+          const choice = json.choices && json.choices[0];
+          const msg = choice && choice.message;
           const text = msg && msg.content != null ? String(msg.content) : null;
+          const finishReason = choice && choice.finish_reason;
+          const reasoning = msg && msg.reasoning_content != null ? String(msg.reasoning_content) : '';
           const usage = json.usage || null;
           const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
           const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
           const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
-          if (text) return { text, status: r.status, error: null, retries: attempt, cost };
-          lastError = 'DeepSeek 응답 파싱 실패';
+          if (text) return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
+          lastError = finishReason === 'length'
+            ? 'DeepSeek 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
+            : ('DeepSeek 최종 응답이 비어 있음' + (reasoning ? ' (reasoning_content만 반환됨)' : '') + (finishReason ? ' [' + finishReason + ']' : ''));
         }
       } catch (e) { lastError = e.message; }
       if (attempt < maxRetries) {
@@ -416,14 +427,15 @@ Entries:
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
-      deepSeekKey = '', deepSeekThinking = false, deepSeekReasoning = 'high',
+      deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 
     if (apiType === 'deepseek') {
       return await callDeepSeekApi(prompt, {
         key: deepSeekKey || key, model, maxRetries, responseMimeType, costContext, signal,
-        timeoutMs, maxOutputTokens, deepSeekThinking, deepSeekReasoning
+        timeoutMs, maxOutputTokens, deepSeekThinking, deepSeekReasoning,
+        deepSeekJsonSystemPrompt: opts.deepSeekJsonSystemPrompt
       });
     }
 

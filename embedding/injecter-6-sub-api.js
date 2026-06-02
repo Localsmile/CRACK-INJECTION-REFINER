@@ -204,6 +204,47 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
+      title.textContent = 'DeepSeek 전용 JSON 지시';
+      title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
+      nd.appendChild(title);
+      const note = document.createElement('div');
+      note.textContent = 'DeepSeek JSON mode에서만 추가 적용됨. 기본 추출 템플릿은 유지하고 출력 구조만 안정화함.';
+      note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:8px;';
+      nd.appendChild(note);
+
+      const detail = document.createElement('details');
+      detail.style.cssText = 'border:1px solid #333;border-radius:4px;background:#111;padding:8px;';
+      const summary = document.createElement('summary');
+      summary.textContent = '세부 지시문 열기';
+      summary.style.cssText = 'cursor:pointer;color:#ccc;font-size:12px;font-weight:bold;';
+      detail.appendChild(summary);
+      const body = document.createElement('div');
+      body.style.cssText = 'margin-top:10px;';
+      detail.appendChild(body);
+      nd.appendChild(detail);
+
+      const defaults = _w.__LoreInj.defaultSettings || {};
+      addPromptArea(body, '시스템 지시', settings.config.deepSeekJsonSystemPrompt || defaults.deepSeekJsonSystemPrompt || '', (v) => {
+        settings.config.deepSeekJsonSystemPrompt = v;
+        settings.save();
+      }, { height: 95, reset: () => defaults.deepSeekJsonSystemPrompt || '' });
+      addPromptArea(body, '추출 출력 지시', settings.config.deepSeekExtractJsonPrompt || defaults.deepSeekExtractJsonPrompt || '', (v) => {
+        settings.config.deepSeekExtractJsonPrompt = v;
+        settings.save();
+      }, { height: 90, reset: () => defaults.deepSeekExtractJsonPrompt || '' });
+      addPromptArea(body, '중요 장면 출력 지시', settings.config.deepSeekTemporalJsonPrompt || defaults.deepSeekTemporalJsonPrompt || '', (v) => {
+        settings.config.deepSeekTemporalJsonPrompt = v;
+        settings.save();
+      }, { height: 90, reset: () => defaults.deepSeekTemporalJsonPrompt || '' });
+      addPromptArea(body, '지식 변환 출력 지시', settings.config.deepSeekImportJsonPrompt || defaults.deepSeekImportJsonPrompt || '', (v) => {
+        settings.config.deepSeekImportJsonPrompt = v;
+        settings.save();
+      }, { height: 90, reset: () => defaults.deepSeekImportJsonPrompt || '' });
+    }});
+
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      const title = document.createElement('div');
       title.textContent = '후보 재정렬/응답 교정 프롬프트';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
@@ -265,9 +306,9 @@
             testBtn.disabled = true; testResult.textContent = '테스트 중...';
             try {
               const testModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : (settings.config.autoExtModel || (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : 'gemini-3-flash-preview'));
-              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: false, costContext: { feature: 'apiTest', chatKey: 'global' } });
-              testResult.textContent = r.text ? '✅ 성공: ' + r.text.trim().slice(0, 50) : '❌ 실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
-            } catch(e) { testResult.textContent = '❌ 오류: ' + e.message; testResult.style.color = '#d66'; }
+              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', costContext: { feature: 'apiTest', chatKey: 'global' } });
+              testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
+            } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = '#d66'; }
             testBtn.disabled = false;
           };
           testRow.appendChild(testBtn); testRow.appendChild(testResult); nd.appendChild(testRow);

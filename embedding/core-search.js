@@ -291,16 +291,20 @@
     };
     const listText = truncated.map((s, i) => (i + 1) + '. [' + s.entry.type + '] ' + s.entry.name + ': ' + summaryOf(s.entry).slice(0, 100)).join('\n');
     const promptTpl = cfg.rerankPrompt || apiOpts?.rerankPrompt || DEFAULTS.rerankPrompt || '';
+    const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
     const prompt = promptTpl
       ? promptTpl
           .replace('{context}', recentText)
           .replace('{query}', query || '')
           .replace('{candidates}', listText)
-        + '\n\nReturn either {"scores":[5,4,...]} or [{"i":1,"s":5},...] as JSON only.'
+        + (isDeepSeek
+          ? '\n\nReturn exactly one JSON object: {"scores":[5,4,...]}. No markdown.'
+          : '\n\nReturn either {"scores":[5,4,...]} or [{"i":1,"s":5},...] as JSON only.')
       : '명시적 답변 제외: 오직 JSON만 출력.\n장면과 직접 관련성 기준 5점 척도 (5=핵심, 1=무관).\n\n입력:\n' + query + '\n\n최근 대화:\n' + recentText + '\n\n후보:\n' + listText + '\n\n출력: {"scores":[5,4,...]}';
     try {
       const res = await callGeminiApi(prompt, Object.assign({}, apiOpts, { model: (apiOpts && apiOpts.model) || 'gemini-3-flash-preview', responseMimeType: 'application/json', maxOutputTokens: 256, thinkingLevel: 'minimal', maxRetries: 1 }));
-      const data = JSON.parse(res.text);
+      const raw = String(res && res.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const data = JSON.parse(raw);
       let llmScores = null;
       if (Array.isArray(data.scores)) {
         llmScores = data.scores;

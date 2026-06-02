@@ -313,14 +313,16 @@
                    || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : (config.autoExtModel || _fallbackModel));
     let _refElapsedMs = 0, _refCost = null;
     try {
+      const _isDeepSeekConfig = (config.autoExtApiType || 'key') === 'deepseek';
       const apiOpts = _w.__LoreInj && _w.__LoreInj.buildGenerationApiOpts
-        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: 60000, maxOutputTokens: 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
+        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: _isDeepSeekConfig ? 90000 : 60000, maxOutputTokens: _isDeepSeekConfig ? 4096 : 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
         : {
           apiType: config.autoExtApiType || 'key',
           key: config.autoExtKey,
           deepSeekKey: config.autoExtDeepSeekKey,
           deepSeekThinking: config.autoExtDeepSeekThinking !== false,
           deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
+          deepSeekJsonSystemPrompt: config.deepSeekJsonSystemPrompt || '',
           vertexJson: config.autoExtVertexJson,
           vertexLocation: config.autoExtVertexLocation || 'global',
           vertexProjectId: config.autoExtVertexProjectId,
@@ -328,17 +330,14 @@
           firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
           model: _refModel,
           maxRetries: 1,
-          timeoutMs: 60000,
-          maxOutputTokens: 2048,
+          timeoutMs: _isDeepSeekConfig ? 90000 : 60000,
+          maxOutputTokens: _isDeepSeekConfig ? 4096 : 2048,
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
       const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';
       Core.showStatusBadge(isDeepSeekRefiner ? '에리가 딥식이에게 묻는 중' : '에리가 잼민이에게 묻는 중');
       if (ToastCallback) ToastCallback(isDeepSeekRefiner ? '에리가 딥식이로 응답 검수 중' : '에리가 응답 검수 중', '#258');
       if (isDeepSeekRefiner) {
-        // Refiner is a short single-turn checker. Thinking mode adds latency and can
-        // trigger provider-side reasoning_content errors in some DeepSeek V4 paths.
-        apiOpts.deepSeekThinking = false;
         apiOpts.responseMimeType = 'application/json';
         prompt += '\n\nDeepSeek JSON mode instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
       }

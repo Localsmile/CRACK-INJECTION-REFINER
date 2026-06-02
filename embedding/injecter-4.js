@@ -113,6 +113,27 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   }
 ]`;
 
+  function deepSeekObjectOutputMode(text, emptyObject) {
+    return String(text || '')
+      .replace(/Output must be one JSON array\. Never return a bare object\./g, 'Output must be one JSON object. Never return a bare array.')
+      .replace(/If nothing changed at all, return exactly \[\]\./g, 'If nothing changed at all, return exactly ' + emptyObject + '.')
+      .replace(/If the conversation only repeats already stored scene memories, output \[\]\./g, 'If the conversation only repeats already stored scene memories, return exactly ' + emptyObject + '.')
+      .replace(/For unchanged existing entries, output nothing\./g, 'For unchanged existing entries, add nothing to entries.')
+      .replace(/For unchanged existing scene memories, output nothing\./g, 'For unchanged existing scene memories, add nothing to entries.')
+      .replace(/For each NEW lore, output the complete entry object\./g, 'For each NEW lore, put the complete entry object inside entries.')
+      .replace(/For each UPDATED existing entry, output the complete updated entry object/g, 'For each UPDATED existing entry, put the complete updated entry object inside entries')
+      .replace(/For each NEW important scene, output the complete timeline_event object\./g, 'For each NEW important scene, put the complete timeline_event object inside entries.')
+      .replace(/For each UPDATED existing scene, output the complete updated timeline_event object/g, 'For each UPDATED existing scene, put the complete updated timeline_event object inside entries');
+  }
+
+  function providerOutputMode(baseText, apiOpts, kind) {
+    if (!(apiOpts && apiOpts.apiType === 'deepseek')) return baseText;
+    const extra = kind === 'temporal'
+      ? (settings.config.deepSeekTemporalJsonPrompt || '')
+      : (settings.config.deepSeekExtractJsonPrompt || '');
+    return deepSeekObjectOutputMode(baseText, '{"entries":[]}') + '\n- Top-level object shape must be exactly {"entries":[...]}.\n' + extra;
+  }
+
   function normalizeEntryForMerge(entry, turn) {
     if (C.normalizeLoreEntry) return C.normalizeLoreEntry(entry, { turn, source: 'auto_extracted' });
     return entry;
@@ -487,14 +508,13 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
     const finalPrompt = isDeepSeek ? `${prompt}
 
-DEEPSEEK JSON MODE COMPATIBILITY:
-- response_format=json_object is active, so return a single JSON object, not a bare array.
-- Use exactly this wrapper shape: {"entries":[...]}.
-- Put all add/patch/full entry objects inside entries.
-- If there is no change, return exactly {"entries":[]}.` : prompt;
+DeepSeek json reminder:
+- Return exactly one valid json object.
+- The top-level shape is {"entries":[...]}.
+- No markdown, no prose, no comments, no trailing text.` : prompt;
     let res = await C.callGeminiApi(finalPrompt, apiOpts);
     let parsed = parseJsonLoose(res && res.text);
-    const shouldRepair = !parsed && apiOpts && apiOpts.maxOutputTokens;
+    const shouldRepair = !parsed && apiOpts && (isDeepSeek || apiOpts.maxOutputTokens);
     if (shouldRepair) {
       const firstCost = res && res.cost;
       const safeRepairHint = isDeepSeek
@@ -598,17 +618,17 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         }
       } catch (_) {}
 
-      const outputModeText = _patchOn ? TEMPORAL_OUTPUT_MODE_PATCH : TEMPORAL_OUTPUT_MODE_FULL;
+      const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
+      const outputModeText = providerOutputMode(_patchOn ? TEMPORAL_OUTPUT_MODE_PATCH : TEMPORAL_OUTPUT_MODE_FULL, apiOpts, 'temporal');
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
-      const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
       const temporalApiOpts = {
         ...apiOpts,
         responseMimeType: 'application/json',
         maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
-        timeoutMs: apiOpts.timeoutMs || 120000,
-        maxOutputTokens: _patchOn ? (apiOpts.maxOutputTokens || (isDeepSeekTemporal ? 2048 : 4096)) : null,
+        timeoutMs: apiOpts.timeoutMs || (isDeepSeekTemporal ? 150000 : 120000),
+        maxOutputTokens: _patchOn ? (apiOpts.maxOutputTokens || (isDeepSeekTemporal ? 4096 : 4096)) : (isDeepSeekTemporal ? 8192 : null),
         costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' }
       };
       const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
@@ -1042,7 +1062,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const tpl = settings.getActiveTemplate();
     const promptTpl = settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
     const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
-    const outputModeText = settings.config.autoExtIncludeDb ? (_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL) : '';
+    const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
     const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
@@ -1051,8 +1071,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const apiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
-        timeoutMs: 120000,
-        maxOutputTokens: _patchOn ? 4096 : null,
+        timeoutMs: apiType === 'deepseek' ? 150000 : 120000,
+        maxOutputTokens: _patchOn ? (apiType === 'deepseek' ? 8192 : 4096) : (apiType === 'deepseek' ? 8192 : null),
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       }, { feature: 'autoExtract', chatKey: chatKey || 'global' }) : {
         apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1062,12 +1082,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
-        timeoutMs: 120000,
-        maxOutputTokens: _patchOn ? 4096 : null,
+        timeoutMs: apiType === 'deepseek' ? 150000 : 120000,
+        maxOutputTokens: _patchOn ? (apiType === 'deepseek' ? 8192 : 4096) : (apiType === 'deepseek' ? 8192 : null),
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       });
       const _extT0 = Date.now();
-      const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Do not output a single object. Wrap patch/add items in an array.');
+      const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
       _extElapsedMs = Date.now() - _extT0;
       _extCost = (res && res.cost) || null;
       apiLog = res ? { status: res.status, error: res.error, retries: res.retries } : null;
@@ -1122,7 +1142,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const isDeepSeek = apiType === 'deepseek';
     const requestedAttempts = opts.maxAttempts || 3;
     const maxAttempts = Math.max(1, requestedAttempts);
-    const batchTimeoutMs = isDeepSeek ? 60000 : 90000;
+    const batchTimeoutMs = isDeepSeek ? 150000 : 90000;
     const batchInnerRetries = 0;
     const maxRecoveryRounds = Math.max(0, Number(opts.maxRecoveryRounds != null ? opts.maxRecoveryRounds : 2));
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
@@ -1179,7 +1199,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         }
       }
       const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
-      const outputModeText = settings.config.autoExtIncludeDb ? (_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL) : '';
+      const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
       const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0;
@@ -1189,7 +1209,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           const apiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
             maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : null,
+            maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
             apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1199,11 +1219,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
             model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
             maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : null,
+            maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
             costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
           });
           const _bt0 = Date.now();
-          const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Do not output a single object. Wrap patch/add items in an array.');
+          const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
           _batchTotalElapsedMs += Date.now() - _bt0;
           if (res && res.cost) {
             if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
@@ -1233,7 +1253,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
               maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-              maxOutputTokens: _patchOn ? (isDeepSeek ? 2048 : 4096) : null,
+              maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : (isDeepSeek ? 8192 : null),
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
               apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1243,7 +1263,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
               maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-              maxOutputTokens: _patchOn ? (isDeepSeek ? 2048 : 4096) : null,
+              maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : (isDeepSeek ? 8192 : null),
               costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
             });
             const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true });
@@ -1279,7 +1299,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               const retryApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
                 model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
                 maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: _patchOn ? (isDeepSeek ? 4096 : 4096) : null,
+                maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
                 costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
               }, { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }) : {
                 apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1289,11 +1309,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
                 firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
                 model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
                 maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: _patchOn ? 4096 : null,
+                maxOutputTokens: _patchOn ? (isDeepSeek ? 8192 : 4096) : (isDeepSeek ? 8192 : null),
                 costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
               });
               const _rt0 = Date.now();
-              const { res, parsed } = await callGeminiJsonWithRepair(prompt, retryApiOpts, 'Return one JSON array only. No markdown fences. No explanation.');
+              const { res, parsed } = await callGeminiJsonWithRepair(prompt, retryApiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
               _batchTotalElapsedMs += Date.now() - _rt0;
               if (res && res.cost) {
                 if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
