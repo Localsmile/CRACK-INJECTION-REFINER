@@ -1168,6 +1168,22 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     return 'repairable';
   }
 
+  function shouldRetryThinkingOff(message) {
+    const s = String(message || '').toLowerCase();
+    return /비어 있음|empty|reasoning_content만|응답 없음/.test(s);
+  }
+
+  function splitBatchIfUseful(batches, index, minMessages) {
+    const msgs = batches[index];
+    if (!Array.isArray(msgs) || msgs.length < Math.max(4, minMessages || 20)) return false;
+    const half = Math.ceil(msgs.length / 2);
+    const left = msgs.slice(0, half);
+    const right = msgs.slice(half);
+    if (left.length < 2 || right.length < 2) return false;
+    batches.splice(index, 1, left, right);
+    return true;
+  }
+
   async function waitBatchRetry(kind, attempt) {
     if (kind === 'fatal' || kind === 'deterministic') return false;
     const base = kind === 'transient' ? 2500 : 900;
@@ -1357,6 +1373,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const _batchModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let _batchTotalElapsedMs = 0, _batchTotalUsd = 0;
     let _batchHasUnknown = false, _batchHasEstimated = false, _batchCostKnown = false;
+    let dynamicSplitUsed = false;
 
     for (let bi = startBatchIndex; bi < batches.length; bi++) {
       const msgs = batches[bi];
@@ -1377,11 +1394,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
       const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
-      let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0;
+      let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0; let lastFailureKind = ''; let forceThinkingOff = false;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;
         try {
           const apiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtract', chatKey);
+          if (forceThinkingOff && isDeepSeek) apiOpts.deepSeekThinking = false;
           const _bt0 = Date.now();
           const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
           _batchTotalElapsedMs += Date.now() - _bt0;
@@ -1393,6 +1411,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (!res || !res.text) {
             lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')';
             const kind = classifyBatchFailure(lastErr);
+            lastFailureKind = kind;
+            if (isDeepSeek && shouldRetryThinkingOff(lastErr)) forceThinkingOff = true;
             if (kind === 'fatal') throw new Error(lastErr);
             if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
             continue;
@@ -1401,6 +1421,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (!parsed) {
             lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet;
             const kind = classifyBatchFailure(lastErr);
+            lastFailureKind = kind;
             if (attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
             continue;
           }
@@ -1415,10 +1436,19 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         } catch (e) {
           lastErr = '예외: ' + (e.message || String(e));
           const kind = classifyBatchFailure(lastErr);
+          lastFailureKind = kind;
           if (kind === 'fatal') throw e;
           if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
         }
       }
+      if (!ok && lastFailureKind === 'deterministic' && splitBatchIfUseful(batches, bi, 20)) {
+        dynamicSplitUsed = true;
+        report.totalBatches = batches.length;
+        report.batchResults.push({ batch: bi + 1, status: 'split', attempts, error: lastErr, into: 2 });
+        bi--;
+        continue;
+      }
+      let splitCurrentBatch = false;
       const finalizeBatchResult = async (currentRound = 0) => {
       if (ok) {
         if (status === 'empty') report.empty++; else report.ok++;
@@ -1453,11 +1483,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           extBadgeShow('에리가 실패 배치 ' + (bi + 1) + '/' + batches.length + ' 재시도 ' + rr + '/' + maxRecoveryRounds);
           const waitMs = Math.min(12000, 1500 * rr) + Math.random() * 500;
           await new Promise(r => setTimeout(r, waitMs));
-          status = 'failed'; lastErr = ''; rawSnippet = ''; attempts = 0; mergedCount = 0;
+          status = 'failed'; lastErr = ''; rawSnippet = ''; attempts = 0; mergedCount = 0; lastFailureKind = ''; forceThinkingOff = false;
           for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
             attempts++;
             try {
               const retryApiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtractRetry', chatKey);
+              if (forceThinkingOff && isDeepSeek) retryApiOpts.deepSeekThinking = false;
               const _rt0 = Date.now();
               const { res, parsed } = await callGeminiJsonWithRepair(prompt, retryApiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
               _batchTotalElapsedMs += Date.now() - _rt0;
@@ -1469,6 +1500,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               if (!res || !res.text) {
                 lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')';
                 const kind = classifyBatchFailure(lastErr);
+                lastFailureKind = kind;
+                if (isDeepSeek && shouldRetryThinkingOff(lastErr)) forceThinkingOff = true;
                 if (kind === 'fatal') throw new Error(lastErr);
                 if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
                 continue;
@@ -1477,6 +1510,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               if (!parsed) {
                 lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet;
                 const kind = classifyBatchFailure(lastErr);
+                lastFailureKind = kind;
                 if (attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
                 continue;
               }
@@ -1491,9 +1525,19 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             } catch (e) {
               lastErr = '예외: ' + (e.message || String(e));
               const kind = classifyBatchFailure(lastErr);
+              lastFailureKind = kind;
               if (kind === 'fatal') throw e;
               if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
             }
+          }
+          if (!ok && lastFailureKind === 'deterministic' && splitBatchIfUseful(batches, bi, 20)) {
+            dynamicSplitUsed = true;
+            splitCurrentBatch = true;
+            report.totalBatches = batches.length;
+            if (report.failed > 0) report.failed--;
+            report.batchResults.push({ batch: bi + 1, status: 'split_after_retry', attempts, error: lastErr, recoveryRound: rr, into: 2 });
+            bi--;
+            break;
           }
           if (ok) {
             if (report.failed > 0) report.failed--;
@@ -1504,7 +1548,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
         }
       }
-      if (bi + 1 < batches.length) {
+      if (splitCurrentBatch) continue;
+      if (!dynamicSplitUsed && bi + 1 < batches.length) {
         saveBatchCheckpoint(chatKey, {
           version: 1,
           updatedAt: Date.now(),
