@@ -180,11 +180,26 @@
             const overlap = settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5;
             bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '비용 계산 중...';
             bStatus.textContent = '전체 로그 확인 중'; bStatus.style.color = '#4a9';
+            let resume = false;
             try {
               const est = await estimateBatchRunCost(turnsPerBatch, overlap);
+              let resumeText = '';
+              if (typeof _w.__LoreInj.getBatchCheckpointInfo === 'function') {
+                try {
+                  const cp = await _w.__LoreInj.getBatchCheckpointInfo({ turnsPerBatch, overlap });
+                  if (cp && cp.valid && cp.nextBatchIndex > 0 && cp.nextBatchIndex < cp.totalBatches) {
+                    const when = cp.updatedAt ? new Date(cp.updatedAt).toLocaleString() : '이전 실행';
+                    resume = confirm('중단된 배치 작업이 있음.\n\n' + when + '\n진행 위치: ' + cp.nextBatchIndex + '/' + cp.totalBatches + '\n\n이어하기를 선택하면 완료된 배치는 다시 호출하지 않음.\n\n이어하기?');
+                    resumeText = resume ? '이어하기: ' + cp.nextBatchIndex + '/' + cp.totalBatches + '부터\n' : '처음부터 다시 실행\n';
+                  } else if (cp && cp.exists && !cp.valid) {
+                    resumeText = '기존 이어하기 정보는 현재 대화/설정과 달라 사용하지 않음.\n';
+                  }
+                } catch (_) {}
+              }
               const costText = est.usd == null ? '계산 불가' : ('$' + Number(est.usd).toFixed(4) + ' 이상');
               const ok = confirm(
                 '전체 로그를 배치로 분석함.\n\n' +
+                resumeText +
                 '대화 ' + est.logs + '개 / 예상 배치 ' + est.batches + '개\n' +
                 '모델: ' + est.model + '\n' +
                 '예상 입력 ' + est.inputTokens.toLocaleString() + ' 토큰 / 예상 출력 ' + est.expectedOutputTokens.toLocaleString() + ' 토큰\n' +
@@ -207,6 +222,7 @@
               const report = await _w.__LoreInj.runBatchExtract({
                 turnsPerBatch,
                 overlap,
+                resume,
                 maxAttempts: settings.config.batchExtMaxAttempts || 3,
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);

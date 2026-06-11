@@ -1191,6 +1191,113 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     throw new Error('API 설정 모듈 미로드. 페이지 새로고침 후 다시 시도해야 함.');
   }
 
+  const BATCH_CHECKPOINT_PREFIX = 'lore-batch-checkpoint:';
+
+  function batchCheckpointKey(chatKey) {
+    return BATCH_CHECKPOINT_PREFIX + (chatKey || 'global');
+  }
+
+  function batchMessageId(m, index) {
+    if (!m) return 'missing:' + index;
+    const id = m.id || m.messageId || m._id || m.serverId || m.turnId;
+    if (id) return String(id);
+    const text = String(m.message || m.content || '');
+    const sig = [m.role || '', text.length, text.slice(0, 24), text.slice(-24)].join('|');
+    return 'fallback:' + index + ':' + (C.simpleHash ? C.simpleHash(sig) : sig);
+  }
+
+  function buildBatchPlan(allMsgs, turnsPerBatch, overlap) {
+    const totalMsgs = allMsgs.length;
+    const batchMsgSize = Math.max(2, turnsPerBatch * 2);
+    const overlapMsgs = Math.max(0, overlap * 2);
+    const step = Math.max(1, batchMsgSize - overlapMsgs);
+    const batches = [];
+    for (let i = 0; i < totalMsgs; i += step) {
+      const slice = allMsgs.slice(i, i + batchMsgSize);
+      if (slice.length < 2) break;
+      batches.push(slice);
+      if (i + batchMsgSize >= totalMsgs) break;
+    }
+    return { totalMsgs, batchMsgSize, overlapMsgs, step, batches };
+  }
+
+  function buildBatchLogFingerprint(allMsgs, plan) {
+    const lastIndex = Math.max(0, allMsgs.length - 1);
+    const first = allMsgs[0] || null;
+    const last = allMsgs[lastIndex] || null;
+    return {
+      first: batchMessageId(first, 0),
+      last: batchMessageId(last, lastIndex),
+      count: allMsgs.length,
+      batchMsgSize: plan.batchMsgSize,
+      overlapMsgs: plan.overlapMsgs,
+      totalBatches: plan.batches.length
+    };
+  }
+
+  function buildBatchSettingsHash(turnsPerBatch, overlap, apiType) {
+    const model = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
+    const payload = {
+      turnsPerBatch,
+      overlap,
+      apiType,
+      model,
+      includeDb: !!settings.config.autoExtIncludeDb,
+      patchMode: settings.config.autoExtPatchMode !== false,
+      temporal: settings.config.temporalExtractEnabled !== false,
+      template: settings.config.activeTemplateName || ''
+    };
+    const text = JSON.stringify(payload);
+    return C.simpleHash ? C.simpleHash(text) : text;
+  }
+
+  function sameJson(a, b) {
+    return JSON.stringify(a || null) === JSON.stringify(b || null);
+  }
+
+  function loadBatchCheckpoint(chatKey) {
+    try {
+      const raw = _ls.getItem(batchCheckpointKey(chatKey));
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) { return null; }
+  }
+
+  function saveBatchCheckpoint(chatKey, payload) {
+    try { _ls.setItem(batchCheckpointKey(chatKey), JSON.stringify(payload)); } catch (_) {}
+  }
+
+  function clearBatchCheckpoint(chatKey) {
+    try { _ls.removeItem(batchCheckpointKey(chatKey)); } catch (_) {}
+  }
+
+  function checkpointMatches(cp, fingerprint, settingsHash) {
+    return !!(cp && cp.version === 1 && cp.settingsHash === settingsHash && sameJson(cp.logFingerprint, fingerprint));
+  }
+
+  async function getBatchCheckpointInfo(opts = {}) {
+    const turnsPerBatch = opts.turnsPerBatch || 50;
+    const overlap = opts.overlap !== undefined ? opts.overlap : 5;
+    const apiType = settings.config.autoExtApiType || 'key';
+    const chatKey = getChatKey();
+    const cp = loadBatchCheckpoint(chatKey);
+    if (!cp) return { exists: false, valid: false };
+    const allMsgs = await C.fetchLogs(99999);
+    if (!allMsgs || !allMsgs.length) return { exists: true, valid: false, reason: '대화 기록 없음' };
+    const plan = buildBatchPlan(allMsgs, turnsPerBatch, overlap);
+    const fingerprint = buildBatchLogFingerprint(allMsgs, plan);
+    const settingsHash = buildBatchSettingsHash(turnsPerBatch, overlap, apiType);
+    const valid = checkpointMatches(cp, fingerprint, settingsHash);
+    return {
+      exists: true,
+      valid,
+      reason: valid ? '' : '대화 기록 또는 배치 설정이 달라짐',
+      nextBatchIndex: Number(cp.nextBatchIndex) || 0,
+      totalBatches: plan.batches.length,
+      updatedAt: cp.updatedAt || 0,
+      report: cp.partialReport || null
+    };
+  }
+
   async function runBatchExtract(opts = {}) {
     const turnsPerBatch = opts.turnsPerBatch || 50;
     const overlap = opts.overlap !== undefined ? opts.overlap : 5;
@@ -1210,19 +1317,28 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     extBadgeShow('에리가 전체 로그 가져오는 중');
     const allMsgs = await C.fetchLogs(99999);
     if (!allMsgs || !allMsgs.length) { extBadgeHide(); throw new Error('대화 기록 없음'); }
-    const totalMsgs = allMsgs.length;
-    const batchMsgSize = Math.max(2, turnsPerBatch * 2);
-    const overlapMsgs = Math.max(0, overlap * 2);
-    const step = Math.max(1, batchMsgSize - overlapMsgs);
-    const batches = [];
-    for (let i = 0; i < totalMsgs; i += step) {
-      const slice = allMsgs.slice(i, i + batchMsgSize);
-      if (slice.length < 2) break;
-      batches.push(slice);
-      if (i + batchMsgSize >= totalMsgs) break;
-    }
+    const plan = buildBatchPlan(allMsgs, turnsPerBatch, overlap);
+    const totalMsgs = plan.totalMsgs;
+    const batches = plan.batches;
 
     const report = { totalBatches: batches.length, totalMsgs, ok: 0, failed: 0, empty: 0, entriesAdded: 0, batchResults: [] };
+    const checkpointFingerprint = buildBatchLogFingerprint(allMsgs, plan);
+    const checkpointSettingsHash = buildBatchSettingsHash(turnsPerBatch, overlap, apiType);
+    const existingCheckpoint = loadBatchCheckpoint(chatKey);
+    let startBatchIndex = 0;
+    if (opts.resume === true && checkpointMatches(existingCheckpoint, checkpointFingerprint, checkpointSettingsHash)) {
+      const savedReport = existingCheckpoint.partialReport || {};
+      startBatchIndex = Math.max(0, Math.min(Number(existingCheckpoint.nextBatchIndex) || 0, batches.length));
+      Object.assign(report, {
+        ok: Number(savedReport.ok) || 0,
+        failed: Number(savedReport.failed) || 0,
+        empty: Number(savedReport.empty) || 0,
+        entriesAdded: Number(savedReport.entriesAdded) || 0,
+        batchResults: Array.isArray(savedReport.batchResults) ? savedReport.batchResults : []
+      });
+    } else {
+      clearBatchCheckpoint(chatKey);
+    }
 
     let personaPrefix = '';
     if (settings.config.autoExtIncludePersona) {
@@ -1242,7 +1358,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     let _batchTotalElapsedMs = 0, _batchTotalUsd = 0;
     let _batchHasUnknown = false, _batchHasEstimated = false, _batchCostKnown = false;
 
-    for (let bi = 0; bi < batches.length; bi++) {
+    for (let bi = startBatchIndex; bi < batches.length; bi++) {
       const msgs = batches[bi];
       extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 분석 중');
       if (onProgress) { try { onProgress({ phase: 'batch', index: bi + 1, total: batches.length }); } catch(_){} }
@@ -1388,7 +1504,26 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
         }
       }
+      if (bi + 1 < batches.length) {
+        saveBatchCheckpoint(chatKey, {
+          version: 1,
+          updatedAt: Date.now(),
+          nextBatchIndex: bi + 1,
+          logFingerprint: checkpointFingerprint,
+          settingsHash: checkpointSettingsHash,
+          partialReport: {
+            totalBatches: report.totalBatches,
+            totalMsgs: report.totalMsgs,
+            ok: report.ok,
+            failed: report.failed,
+            empty: report.empty,
+            entriesAdded: report.entriesAdded,
+            batchResults: report.batchResults
+          }
+        });
+      }
     }
+    clearBatchCheckpoint(chatKey);
 
     addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: report.entriesAdded, msgs: totalMsgs, isManual: true, status: '전체 추출 완료 (성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / ' + report.totalBatches + '개 배치, 병합 ' + report.entriesAdded + '건)', model: _batchModel, elapsedMs: _batchTotalElapsedMs, cost: { usd: _batchCostKnown ? _batchTotalUsd : null, estimated: _batchHasEstimated, hasUnknown: _batchHasUnknown, isBatchAggregate: true } });
 
@@ -1418,7 +1553,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
   }
 
   Object.assign(_w.__LoreInj, {
-    mergeExtractedData, runAutoExtract, runBatchExtract, runTemporalExtractPass,
+    mergeExtractedData, runAutoExtract, runBatchExtract, runTemporalExtractPass, getBatchCheckpointInfo,
     extBadgeShow, extBadgeHide,
     __extractLoaded: true
   });
