@@ -51,9 +51,19 @@
   async function exportFullBackup(opts = {}) {
     const includeSecrets = !!opts.includeSecrets;
     const includeLogs = opts.includeLogs !== false;
+    const includeEmbeddings = opts.includeEmbeddings !== false;
     const tables = {};
+    let embeddingsExpectedCount = 0;
     for (const name of DB_TABLES) {
-      try { tables[name] = db[name] ? await db[name].toArray() : []; }
+      try {
+        const rows = db[name] ? await db[name].toArray() : [];
+        if (name === 'embeddings') {
+          embeddingsExpectedCount = rows.length;
+          tables[name] = includeEmbeddings ? rows : [];
+        } else {
+          tables[name] = rows;
+        }
+      }
       catch (_) { tables[name] = []; }
     }
     const localStorageData = {};
@@ -70,6 +80,8 @@
       exportedAt: Date.now(),
       appVersion: _w.__LoreInj && _w.__LoreInj.VER || '',
       includeSecrets,
+      embeddingsExcluded: !includeEmbeddings,
+      embeddingsExpectedCount,
       settings: sanitizeSettings(settings.config, includeSecrets),
       localStorage: localStorageData,
       db: tables
@@ -331,7 +343,14 @@
     applyLocalStoragePolicy(data.localStorage, replace, { ...opts, includeSecrets, pageMode: conflictPlan.pageMode });
 
     settings.load();
-    return { packs: allPacks.length, entries: entries.length, embeddings: embeddings.length, mode };
+    return {
+      packs: allPacks.length,
+      entries: entries.length,
+      embeddings: embeddings.length,
+      importedPacks: Array.from(touchedPacks).filter(Boolean),
+      embeddingsExcluded: !!data.embeddingsExcluded,
+      mode
+    };
   }
 
   function showBackupImportDialog(analysis) {

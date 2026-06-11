@@ -330,6 +330,13 @@ Entries:
     } catch (e) { return false; }
   }
 
+  function estimateTextTokens(text) {
+    const s = String(text || '');
+    const cjk = (s.match(/[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/g) || []).length;
+    const other = Math.max(0, s.length - cjk);
+    return Math.max(0, Math.ceil(cjk / 1.5 + other / 4));
+  }
+
   function trackGenerationCost(model, usageMeta, promptText, outText, costContext, opts = {}) {
     const core = _w.__LoreCore;
     if (!core || typeof core.recordApiCost !== 'function') return null;
@@ -343,8 +350,8 @@ Entries:
         inTok = Number(usageMeta.prompt_tokens) || 0;
         outTok = Number(usageMeta.completion_tokens) || 0;
       } else {
-        inTok = Math.ceil(String(promptText || '').length / 4);
-        outTok = Math.ceil(String(outText || '').length / 4);
+        inTok = estimateTextTokens(promptText);
+        outTok = estimateTextTokens(outText);
         estimated = true;
       }
       return core.recordApiCost({
@@ -451,11 +458,11 @@ Entries:
           inTok = Number(usageMeta.promptTokenCount) || 0;
           outTok = (Number(usageMeta.candidatesTokenCount) || 0) + (Number(usageMeta.thoughtsTokenCount) || 0);
         } else {
-          inTok = Math.ceil(String(promptText || '').length / 4);
-          outTok = Math.ceil(String(outText || '').length / 4);
+          inTok = estimateTextTokens(promptText);
+          outTok = estimateTextTokens(outText);
           estimated = true;
         }
-        return trackGenerationCost(model, { promptTokenCount: inTok, candidatesTokenCount: outTok }, promptText, outText, ctx);
+        return trackGenerationCost(model, estimated ? null : { promptTokenCount: inTok, candidatesTokenCount: outTok }, promptText, outText, ctx);
       } catch (_) { return null; }
     };
     const isVertex = apiType === 'vertex';

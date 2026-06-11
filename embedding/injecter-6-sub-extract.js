@@ -13,32 +13,41 @@
     if (typeof _w.__LoreInj.buildGenerationApiOpts === 'function') {
       return _w.__LoreInj.buildGenerationApiOpts(overrides, costContext);
     }
+    throw new Error('API 설정 모듈 미로드. 페이지 새로고침 후 다시 시도해야 함.');
+  }
+
+  function estimateTextTokens(text) {
+    const s = String(text || '');
+    const cjk = (s.match(/[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/g) || []).length;
+    const other = Math.max(0, s.length - cjk);
+    return Math.max(0, Math.ceil(cjk / 1.5 + other / 4));
+  }
+
+  async function estimateBatchRunCost(turnsPerBatch, overlap) {
+    const logs = C.fetchLogs ? await C.fetchLogs(99999) : [];
+    const arr = Array.isArray(logs) ? logs : [];
+    const step = Math.max(1, Number(turnsPerBatch) || 50);
+    const ov = Math.max(0, Number(overlap) || 0);
+    let inputTokens = 0;
+    let batches = 0;
+    for (let i = 0; i < arr.length; i += step) {
+      const start = Math.max(0, i - ov);
+      const part = arr.slice(start, i + step);
+      if (!part.length) continue;
+      batches++;
+      inputTokens += estimateTextTokens(JSON.stringify(part));
+    }
     const cfg = settings.config || {};
-    const model = cfg.autoExtModel === '_custom'
-      ? cfg.autoExtCustomModel
-      : cfg.autoExtModel;
-    const opts = {
-      apiType: cfg.autoExtApiType || 'key',
-      key: cfg.autoExtKey,
-      vertexJson: cfg.autoExtVertexJson,
-      vertexLocation: cfg.autoExtVertexLocation || 'global',
-      vertexProjectId: cfg.autoExtVertexProjectId,
-      firebaseScript: cfg.autoExtFirebaseScript,
-      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
-      model: model || 'gemini-3-flash-preview',
-      maxRetries: cfg.autoExtMaxRetries || 1,
-      responseMimeType: 'application/json',
-      costContext,
-      ...overrides
-    };
-    const reasoning = cfg.autoExtReasoning || 'medium';
-    if (String(opts.model || '').includes('gemini-3') && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
-      opts.thinkingConfig = { thinkingLevel: reasoning };
-    }
-    if (String(opts.model || '').includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') {
-      opts.thinkingConfig.thinkingLevel = 'low';
-    }
-    return opts;
+    const model = cfg.autoExtApiType === 'deepseek'
+      ? (cfg.deepSeekExtractModel || cfg.deepSeekRefineModel || cfg.autoExtModel || 'deepseek-v4-flash')
+      : (cfg.autoExtModel === '_custom' ? cfg.autoExtCustomModel : (cfg.autoExtModel || 'gemini-3-flash-preview'));
+    const expectedOutputTokens = Math.max(1024, Math.ceil(inputTokens * 0.25));
+    let usd = null;
+    try {
+      const core = _w.__LoreCore;
+      if (core && typeof core.computeCost === 'function') usd = core.computeCost(model, inputTokens, expectedOutputTokens, inputTokens);
+    } catch (_) {}
+    return { logs: arr.length, batches, inputTokens, expectedOutputTokens, model, usd };
   }
   
   _w.__LoreInj.registerSubMenu('extract', function(modal) {
@@ -166,15 +175,38 @@
           bBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:none;font-weight:bold;width:100%;margin-top:6px;';
           const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.5;';
           bBtn.onclick = async () => {
-            if (!confirm('전체 로그를 배치로 분석함. API 비용 큼. 계속?')) return;
             settings.save();
-            bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 중...';
+            const turnsPerBatch = settings.config.batchExtTurnsPerBatch || 50;
+            const overlap = settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5;
+            bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '비용 계산 중...';
+            bStatus.textContent = '전체 로그 확인 중'; bStatus.style.color = '#4a9';
+            try {
+              const est = await estimateBatchRunCost(turnsPerBatch, overlap);
+              const costText = est.usd == null ? '계산 불가' : ('$' + Number(est.usd).toFixed(4) + ' 이상');
+              const ok = confirm(
+                '전체 로그를 배치로 분석함.\n\n' +
+                '대화 ' + est.logs + '개 / 예상 배치 ' + est.batches + '개\n' +
+                '모델: ' + est.model + '\n' +
+                '예상 입력 ' + est.inputTokens.toLocaleString() + ' 토큰 / 예상 출력 ' + est.expectedOutputTokens.toLocaleString() + ' 토큰\n' +
+                '예상 비용: ' + costText + '\n\n' +
+                '실제 비용은 모델 응답 길이와 재시도 횟수에 따라 달라짐. 계속?'
+              );
+              if (!ok) { bStatus.textContent = '취소됨'; bStatus.style.color = '#888'; return; }
+            } catch (e) {
+              if (!confirm('비용 추정 실패: ' + (e.message || e) + '\n그래도 전체 배치 추출을 실행할까?')) {
+                bStatus.textContent = '취소됨'; bStatus.style.color = '#888'; return;
+              }
+            } finally {
+              bBtn.textContent = orig;
+              bBtn.disabled = false;
+            }
+            bBtn.disabled = true; bBtn.textContent = '실행 중...';
             bStatus.textContent = '전체 로그 가져오는 중'; bStatus.style.color = '#4a9';
             const start = Date.now();
             try {
               const report = await _w.__LoreInj.runBatchExtract({
-                turnsPerBatch: settings.config.batchExtTurnsPerBatch || 50,
-                overlap: settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5,
+                turnsPerBatch,
+                overlap,
                 maxAttempts: settings.config.batchExtMaxAttempts || 3,
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);
@@ -183,7 +215,7 @@
               });
               const sec = Math.floor((Date.now() - start) / 1000);
               let msg = '완료 (' + sec + '초) — ' + report.totalBatches + '개 배치 / 성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / 병합 ' + report.entriesAdded + '건';
-              if (report.failed > 0) { msg += ' ⚠️ 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
+              if (report.failed > 0) { msg += ' / 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
               else { bStatus.style.color = '#4a9'; }
               bStatus.textContent = msg;
             } catch(e) {

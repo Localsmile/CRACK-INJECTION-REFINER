@@ -151,6 +151,8 @@
       exportedAt: backup.exportedAt,
       appVersion: backup.appVersion || '',
       includeSecrets: !!backup.includeSecrets,
+      embeddingsExcluded: !!backup.embeddingsExcluded,
+      embeddingsExpectedCount: Number(backup.embeddingsExpectedCount || 0),
       packs: Array.from(packNames).sort(),
       entryCount: entries.length,
       embeddingCount: Array.isArray(db.embeddings) ? db.embeddings.length : 0,
@@ -278,6 +280,35 @@
     return B.importFullBackup(data, mode, { includeSecrets, importSettings: mode === 'replace', conflictPlan });
   }
 
+  async function reembedImportedPacks(report, data, onProgress) {
+    if (!report || !data || !data.embeddingsExcluded) return { count: 0, skipped: 'not-needed' };
+    const packs = Array.from(new Set((report.importedPacks || []).filter(Boolean)));
+    if (!packs.length) return { count: 0, skipped: 'no-pack' };
+    const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
+    if (miss) return { count: 0, skipped: miss };
+    if (typeof C.embedPack !== 'function') return { count: 0, skipped: '임베딩 기능을 찾을 수 없음.' };
+    const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
+      : {
+          apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'),
+          key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey,
+          vertexJson: settings.config.autoExtVertexJson,
+          vertexLocation: settings.config.autoExtVertexLocation || 'global',
+          vertexProjectId: settings.config.autoExtVertexProjectId,
+          firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+          model: settings.config.embeddingModel || 'gemini-embedding-001'
+        };
+    let count = 0;
+    for (let i = 0; i < packs.length; i++) {
+      const packName = packs[i];
+      if (onProgress) onProgress(packName, i + 1, packs.length);
+      count += await C.embedPack(packName, apiOpts, (done, total) => {
+        if (onProgress) onProgress(packName + ' ' + done + '/' + total, i + 1, packs.length);
+      });
+    }
+    return { count };
+  }
+
   function renderBackupUI(panel) {
     restoreStoredSession();
     panel.addBoxedField('', '', { onInit: (nd) => {
@@ -306,7 +337,7 @@
       exportBtn.onclick = async () => {
         exportBtn.disabled = true; const orig = exportBtn.textContent; exportBtn.textContent = '준비 중...';
         try {
-          const data = await B.exportFullBackup({ includeSecrets: includeSecretsCb.checked, includeLogs: includeLogsCb.checked });
+          const data = await B.exportFullBackup({ includeSecrets: includeSecretsCb.checked, includeLogs: includeLogsCb.checked, includeEmbeddings: true });
           const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
           B.downloadJson('crack-lore-backup-' + stamp + '.json', data);
         } catch (e) { alert('파일 저장 실패: ' + e.message); }
@@ -408,7 +439,8 @@
             row.type = 'button';
             row.style.cssText = 'width:100%;text-align:left;border:1px solid #333;background:#111;color:#ccc;border-radius:4px;padding:8px;cursor:pointer;';
             const label = meta ? ((meta.packs || []).slice(0, 4).join(', ') || '로어팩 없음') : (item.title || item.backupId);
-            row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개 / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
+            const embLabel = meta && meta.embeddingsExcluded ? ' / 검색 준비 제외' : '';
+            row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
             row.onclick = () => {
               selected = item;
               Array.from(listBox.children).forEach(x => x.style.borderColor = '#333');
@@ -497,7 +529,7 @@
           const list = await apiList();
           if ((list.items || []).length >= 10) throw new Error('서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.');
           setInlineStatus(workStatus, '현재 백업 만드는 중...', '#8bc');
-          const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true });
+          const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true, includeEmbeddings: false });
           const meta = backupSummary(data);
           setInlineStatus(workStatus, '백업 암호화 중...', '#8bc');
           const payload = await encryptJson(data, serverSession.userId, activePassword);
@@ -516,14 +548,27 @@
         setInlineStatus(workStatus, '백업 복호화 중...', '#8bc');
         const data = await decryptJson(res.payload, serverSession.userId, activePassword);
         setInlineStatus(workStatus, mode === 'replace' ? '교체 복원 처리 중...' : '병합 처리 중...', '#8bc');
-        return importBackupWithMode(data, mode, false);
+        const report = await importBackupWithMode(data, mode, false);
+        if (report && data.embeddingsExcluded) {
+          setInlineStatus(workStatus, '검색 준비 다시 만드는 중...', '#8bc');
+          const emb = await reembedImportedPacks(report, data, (packName, idx, total) => {
+            setInlineStatus(workStatus, '검색 준비 다시 만드는 중: ' + packName + ' (' + idx + '/' + total + ')', '#8bc');
+          });
+          report.reembedded = emb.count || 0;
+          report.reembedSkipped = emb.skipped || '';
+        }
+        return report;
       };
       mergeBtn.onclick = async () => {
         const done = beginServerWork(mergeBtn, '병합 중...', '서버 병합 준비 중...');
         if (!done) return;
         try {
           const report = await pullSelected('merge');
-          if (report) { done('서버 병합 완료. 로어 ' + report.entries + '개.', '#8a9'); alert('서버 병합 완료: 로어 ' + report.entries + '개'); }
+          if (report) {
+            const tail = report.reembedSkipped && report.reembedSkipped !== 'not-needed' ? ' / 검색 준비 건너뜀: ' + report.reembedSkipped : ' / 검색 준비 ' + (report.reembedded || 0) + '개';
+            done('서버 병합 완료. 로어 ' + report.entries + '개' + tail + '.', '#8a9');
+            alert('서버 병합 완료: 로어 ' + report.entries + '개' + tail);
+          }
           else done('서버 병합 취소됨.', '#d8a');
         } catch (e) { done('서버 병합 실패: ' + e.message, '#d88'); alert('서버 병합 실패: ' + e.message); }
       };
@@ -533,7 +578,11 @@
         if (!done) return;
         try {
           const report = await pullSelected('replace');
-          if (report) { done('서버 교체 복원 완료. 로어 ' + report.entries + '개.', '#8a9'); alert('서버 교체 복원 완료: 로어 ' + report.entries + '개'); }
+          if (report) {
+            const tail = report.reembedSkipped && report.reembedSkipped !== 'not-needed' ? ' / 검색 준비 건너뜀: ' + report.reembedSkipped : ' / 검색 준비 ' + (report.reembedded || 0) + '개';
+            done('서버 교체 복원 완료. 로어 ' + report.entries + '개' + tail + '.', '#8a9');
+            alert('서버 교체 복원 완료: 로어 ' + report.entries + '개' + tail);
+          }
           else done('서버 교체 복원 취소됨.', '#d8a');
         } catch (e) { done('서버 교체 복원 실패: ' + e.message, '#d88'); alert('서버 교체 복원 실패: ' + e.message); }
       };

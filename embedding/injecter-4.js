@@ -529,12 +529,18 @@ Structured output reminder:
       const retryPrompt = finalPrompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n' + (isDeepSeek
         ? '- Return only one complete JSON object in this exact shape: {"entries":[...]}.\n- If there is no change, return exactly {"entries":[]}.\n'
         : '- Return only one complete JSON array.\n- If there is no change, return exactly [].\n') + safeRepairHint;
-      res = await C.callGeminiApi(retryPrompt, {
-          ...apiOpts,
-          maxRetries: 0,
-          maxOutputTokens: isDeepSeek ? deepSeekJsonMaxOutput(apiOpts) : null,
-          responseMimeType: 'application/json'
-      });
+      const repairOpts = {
+        ...apiOpts,
+        maxRetries: 0,
+        maxOutputTokens: isDeepSeek ? deepSeekJsonMaxOutput(apiOpts) : null,
+        responseMimeType: 'application/json'
+      };
+      if (isDeepSeek) {
+        repairOpts.deepSeekThinking = false;
+      } else if (String(repairOpts.model || '').includes('gemini-3')) {
+        repairOpts.thinkingConfig = { thinkingLevel: String(repairOpts.model || '').includes('pro') ? 'low' : 'minimal' };
+      }
+      res = await C.callGeminiApi(retryPrompt, repairOpts);
       parsed = parseJsonLoose(res && res.text);
       if (res && firstCost && res.cost) {
         const retryCost = res.cost;
@@ -1152,6 +1158,39 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     }
   }
 
+  function classifyBatchFailure(message) {
+    const s = String(message || '').toLowerCase();
+    if (!s) return 'transient';
+    if (/401|403|invalid api key|api 키|insufficient balance|잔액|billing|quota/.test(s)) return 'fatal';
+    if (/max_tokens|context|truncated|잘림|length/.test(s)) return 'deterministic';
+    if (/json 파싱|invalid json|parse|응답 스니핏/.test(s)) return 'repairable';
+    if (/timeout|timed out|429|500|502|503|504|network|fetch|비어 있음|응답 없음/.test(s)) return 'transient';
+    return 'repairable';
+  }
+
+  async function waitBatchRetry(kind, attempt) {
+    if (kind === 'fatal' || kind === 'deterministic') return false;
+    const base = kind === 'transient' ? 2500 : 900;
+    const waitMs = Math.min(30000, base * Math.pow(2, Math.max(0, attempt))) + Math.random() * 700;
+    await new Promise(r => setTimeout(r, waitMs));
+    return true;
+  }
+
+  function buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, feature, chatKey) {
+    const model = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
+    if (typeof _w.__LoreInj.buildGenerationApiOpts === 'function') {
+      return _w.__LoreInj.buildGenerationApiOpts({
+        model,
+        maxRetries: 0,
+        responseMimeType: 'application/json',
+        timeoutMs: batchTimeoutMs,
+        maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
+        costContext: { feature, chatKey: chatKey || 'global' }
+      }, { feature, chatKey: chatKey || 'global' });
+    }
+    throw new Error('API 설정 모듈 미로드. 페이지 새로고침 후 다시 시도해야 함.');
+  }
+
   async function runBatchExtract(opts = {}) {
     const turnsPerBatch = opts.turnsPerBatch || 50;
     const overlap = opts.overlap !== undefined ? opts.overlap : 5;
@@ -1160,7 +1199,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const requestedAttempts = opts.maxAttempts || 3;
     const maxAttempts = Math.max(1, requestedAttempts);
     const batchTimeoutMs = isDeepSeek ? 150000 : 90000;
-    const batchInnerRetries = 0;
     const maxRecoveryRounds = Math.max(0, Number(opts.maxRecoveryRounds != null ? opts.maxRecoveryRounds : 2));
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
@@ -1227,22 +1265,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;
         try {
-          const apiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-            model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-            costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-          }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
-            apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-            deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-            vertexJson: settings.config.autoExtVertexJson,
-            vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-            firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-            model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-            costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-          });
+          const apiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtract', chatKey);
           const _bt0 = Date.now();
           const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
           _batchTotalElapsedMs += Date.now() - _bt0;
@@ -1251,9 +1274,20 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             else _batchHasUnknown = true;
             if (res.cost.estimated) _batchHasEstimated = true;
           }
-          if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
+          if (!res || !res.text) {
+            lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')';
+            const kind = classifyBatchFailure(lastErr);
+            if (kind === 'fatal') throw new Error(lastErr);
+            if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
+            continue;
+          }
           rawSnippet = String(res.text).slice(0, 200);
-          if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
+          if (!parsed) {
+            lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet;
+            const kind = classifyBatchFailure(lastErr);
+            if (attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
+            continue;
+          }
           const parsedItems = normalizeExtractItems(parsed);
           if (parsedItems.length > 0) {
             mergedCount = await mergeExtractedData(parsedItems, _url);
@@ -1262,7 +1296,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           } else {
             status = 'empty'; ok = true;
           }
-        } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
+        } catch (e) {
+          lastErr = '예외: ' + (e.message || String(e));
+          const kind = classifyBatchFailure(lastErr);
+          if (kind === 'fatal') throw e;
+          if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
+        }
       }
       const finalizeBatchResult = async (currentRound = 0) => {
       if (ok) {
@@ -1271,22 +1310,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         // Phase 11: per-batch temporal pass so batch extraction also harvests timeline events.
         if (settings.config.temporalExtractEnabled !== false) {
           try {
-            const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-              model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-              maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-              maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-              costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-            }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
-              apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-              deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-              vertexJson: settings.config.autoExtVertexJson,
-              vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-              firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-              model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-              maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-              maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-              costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-            });
+            const tApiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtract', chatKey);
             const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true });
             if (tres && tres.count) {
               report.entriesAdded += tres.count;
@@ -1317,22 +1341,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
             attempts++;
             try {
-              const retryApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-                maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-                costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
-              }, { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }) : {
-                apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-                deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-                vertexJson: settings.config.autoExtVertexJson,
-                vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-                firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-                maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-                costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
-              });
+              const retryApiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtractRetry', chatKey);
               const _rt0 = Date.now();
               const { res, parsed } = await callGeminiJsonWithRepair(prompt, retryApiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
               _batchTotalElapsedMs += Date.now() - _rt0;
@@ -1341,9 +1350,20 @@ ${TEMPORAL_PATCH_SCHEMA}`;
                 else _batchHasUnknown = true;
                 if (res.cost.estimated) _batchHasEstimated = true;
               }
-              if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
+              if (!res || !res.text) {
+                lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')';
+                const kind = classifyBatchFailure(lastErr);
+                if (kind === 'fatal') throw new Error(lastErr);
+                if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
+                continue;
+              }
               rawSnippet = String(res.text).slice(0, 200);
-              if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
+              if (!parsed) {
+                lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet;
+                const kind = classifyBatchFailure(lastErr);
+                if (attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
+                continue;
+              }
               const parsedItems = normalizeExtractItems(parsed);
               if (parsedItems.length > 0) {
                 mergedCount = await mergeExtractedData(parsedItems, _url);
@@ -1352,7 +1372,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               } else {
                 status = 'empty_retry'; ok = true;
               }
-            } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
+            } catch (e) {
+              lastErr = '예외: ' + (e.message || String(e));
+              const kind = classifyBatchFailure(lastErr);
+              if (kind === 'fatal') throw e;
+              if (kind === 'deterministic' || attempt >= maxAttempts - 1 || !(await waitBatchRetry(kind, attempt))) break;
+            }
           }
           if (ok) {
             if (report.failed > 0) report.failed--;
