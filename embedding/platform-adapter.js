@@ -61,6 +61,22 @@
     return null;
   }
 
+  async function findLastAssistantMessage(chatId, opts) {
+    const mode = opts && opts.messageIdOnly ? 'messageId' : 'bot';
+    try {
+      const CU = crackUtil();
+      if (!CU || !CU.chatRoom || !chatId) return null;
+      const room = CU.chatRoom();
+      let msg = null;
+      if (mode === 'messageId' && typeof room.findLastMessageId === 'function') {
+        msg = await room.findLastMessageId(chatId, 'assistant');
+      } else if (typeof room.findLastBotMessage === 'function') {
+        msg = await room.findLastBotMessage(chatId);
+      }
+      return msg && !(msg instanceof Error) ? msg : null;
+    } catch (_) { return null; }
+  }
+
   function getAuthToken() {
     try {
       const CU = crackUtil();
@@ -84,7 +100,9 @@
         body: JSON.stringify({ message: nextText })
       });
       const body = await res.text().catch(() => '');
-      return { ok: res.ok, status: res.status, body: body.slice(0, 300) };
+      let json = null;
+      try { json = body ? JSON.parse(body) : null; } catch (_) {}
+      return { ok: res.ok, status: res.status, body: body.slice(0, 300), json };
     } catch (e) {
       return { ok: false, status: 0, error: e && e.message ? e.message : String(e) };
     }
@@ -134,6 +152,7 @@
     getChatUrlKey,
     getRecentMessages,
     getMessageById,
+    findLastAssistantMessage,
     patchMessage,
     getAuthToken,
     fetchPersonaName,

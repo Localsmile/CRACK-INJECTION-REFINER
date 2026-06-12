@@ -185,8 +185,9 @@
     const chatRoomId = Core.getCurrentChatId();
     if (!chatRoomId) { Core.hideStatusBadge(); return; }
     const url = Core.getCurUrl();
+    const platform = _w.__LorePlatform || null;
     let targetLog = null;
-    try { targetLog = await CrackUtil.chatRoom().findLastBotMessage(chatRoomId); } catch (_) {}
+    try { targetLog = platform && platform.findLastAssistantMessage ? await platform.findLastAssistantMessage(chatRoomId) : null; } catch (_) {}
     const targetMsgId = targetLog && !(targetLog instanceof Error) ? targetLog.id : '';
     const releaseRefineLock = _acquireRefineLock(chatRoomId, targetMsgId, assistantText);
     if (!releaseRefineLock) {
@@ -424,27 +425,13 @@
           try {
             const _cid = Core.getCurrentChatId();
             if (!_cid) throw new Error('채팅방 ID 없음');
-            const lastBot = targetLog && !(targetLog instanceof Error) ? targetLog : await CrackUtil.chatRoom().findLastBotMessage(_cid);
+            const lastBot = targetLog && !(targetLog instanceof Error) ? targetLog : (platform && platform.findLastAssistantMessage ? await platform.findLastAssistantMessage(_cid) : null);
             if (lastBot && !(lastBot instanceof Error)) {
-              const token = CrackUtil.cookie().getAuthToken();
-              const editUrl = `https://crack-api.wrtn.ai/crack-gen/v3/chats/${_cid}/messages/${lastBot.id}`;
-              const editResult = await Core.gmFetch(editUrl, {
-                method: 'PATCH',
-                headers: {
-                  'Accept': 'application/json, text/plain, */*',
-                  'Authorization': 'Bearer ' + token,
-                  'Content-Type': 'application/json',
-                  'platform': 'web',
-                  'wrtn-locale': 'ko-KR'
-                },
-                body: JSON.stringify({ message: newText })
-              });
-
-              let editText = '';
-              let editJson = null;
-              try { editText = editResult.text ? await editResult.text() : ''; } catch (_) {}
-              try { editJson = editText ? JSON.parse(editText) : null; } catch (_) {}
-              const serverOk = !!(editResult.ok && (!editJson || editJson.result === 'SUCCESS'));
+              const patchResult = platform && platform.patchMessage
+                ? await platform.patchMessage(_cid, lastBot.id, newText)
+                : { ok: false, status: 0, error: 'platform_missing' };
+              const editJson = patchResult.json || null;
+              const serverOk = !!(patchResult.ok && (!editJson || editJson.result === 'SUCCESS'));
               const serverText = (editJson && editJson.data && typeof editJson.data.content === 'string') ? editJson.data.content : newText;
               const serverMessageId = (editJson && editJson.data && (editJson.data._id || editJson.data.id)) || lastBot.id;
 
@@ -514,10 +501,10 @@
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(serverText).slice(0, 80) : (serverText || '').slice(0, 80);
                 if (newFingerprint) { _loadChat(_currentChatKey()).add(newFingerprint); saveProcessedFingerprints(); }
                 if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
-                console.log('[Refiner] PATCH 성공. id=', serverMessageId, 'status=', editResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
+                console.log('[Refiner] PATCH 성공. id=', serverMessageId, 'status=', patchResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
               } else {
-                console.error('[Refiner] PATCH 실패. status=', editResult.status, 'body=', (editText || '').slice(0, 300));
-                if (ToastCallback) ToastCallback(`에리: 서버 수정 실패 (${editResult.status})`, '#a55');
+                console.error('[Refiner] PATCH 실패. status=', patchResult.status, 'body=', (patchResult.body || '').slice(0, 300));
+                if (ToastCallback) ToastCallback(`에리: 서버 수정 실패 (${patchResult.status})`, '#a55');
               }
             } else {
               if (ToastCallback) ToastCallback('에리: 대상 메시지 못 찾음, 로그에 보관', '#a55');

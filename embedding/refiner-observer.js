@@ -25,6 +25,10 @@
   }
 
   function isChatPath() {
+    const platform = _w.__LorePlatform;
+    if (platform && typeof platform.isChatPath === 'function') {
+      try { return !!platform.isChatPath(); } catch (_) {}
+    }
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
     if (typeof fn === 'function') {
       try { return !!fn(); } catch (_) {}
@@ -47,7 +51,10 @@
     if (!chatId) { R.Core && R.Core.hideStatusBadge(); setRefinerState('idle', 'no chat id'); return; }
 
     try {
-      const lastLog = await CrackUtil.chatRoom().findLastMessageId(chatId, "assistant");
+      const platform = _w.__LorePlatform;
+      const lastLog = platform && platform.findLastAssistantMessage
+        ? await platform.findLastAssistantMessage(chatId, { messageIdOnly: true })
+        : null;
       if (!lastLog || lastLog instanceof Error) return;
 
       const msgId = lastLog.id || (lastLog.content ? lastLog.content.slice(0, 40) : '');

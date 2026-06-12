@@ -50,7 +50,10 @@
               txt.textContent = `${phases[phaseIdx]} (${sec}초)`;
             }, 1500);
             try {
-              const lastBot = await CrackUtil.chatRoom().findLastBotMessage(cid);
+              const platform = _w.__LorePlatform;
+              const lastBot = platform && platform.findLastAssistantMessage
+                ? await platform.findLastAssistantMessage(cid)
+                : null;
               if (!lastBot || lastBot instanceof Error || !lastBot.content) throw new Error('마지막 AI 응답 없음');
               await R.manualRefine(lastBot.content, lastBot.id);
               clearInterval(tick);
