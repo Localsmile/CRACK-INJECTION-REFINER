@@ -24,38 +24,33 @@
         };
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const title = document.createElement('div'); title.textContent = '현재 상태'; title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-          const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;'; nd.appendChild(grid);
-          const chip = (label, value, ok) => {
-            const c = document.createElement('div');
-            c.style.cssText = 'border:1px solid #333;border-radius:6px;padding:8px 10px;background:#111;min-width:0;';
-            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:10px;color:#888;margin-bottom:4px;';
-            const v = document.createElement('div'); v.textContent = value; v.style.cssText = 'font-size:12px;font-weight:bold;color:' + (ok ? '#4a9' : '#da8') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-            c.appendChild(l); c.appendChild(v); grid.appendChild(c); return v;
-          };
+          nd.appendChild(C.createSectionTitle('현재 상태'));
           const cfg = settings.config || {};
           const apiType = cfg.autoExtApiType || 'key';
           const apiReady = apiType === 'deepseek' ? !!cfg.autoExtDeepSeekKey : apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
           const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
           const storageHealth = _w.__LoreInj.getSettingsStorageHealth ? _w.__LoreInj.getSettingsStorageHealth() : { ok: true, configBytes: 0 };
-          chip('API', apiReady ? '설정됨' : '미설정', apiReady);
-          const packValue = chip('활성 로어팩', activePacks.length ? activePacks.length + '개' : '없음', activePacks.length > 0);
-          const entryValue = chip('사용 가능한 로어', '확인 중', true);
-          chip('설정 저장', settings._lastSaveOk === false ? '실패' : '정상', settings._lastSaveOk !== false);
-          chip('저장 공간', storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', storageHealth.ok);
-          chip('자동 대화 정리', cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', !!cfg.autoExtEnabled);
-          chip('의미 검색', cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', !!cfg.embeddingEnabled);
+          const metrics = C.createMetricGrid([
+            { key: 'api', label: 'API', value: apiReady ? '설정됨' : '미설정', ok: apiReady },
+            { key: 'pack', label: '활성 로어팩', value: activePacks.length ? activePacks.length + '개' : '없음', ok: activePacks.length > 0 },
+            { key: 'entry', label: '사용 가능한 로어', value: '확인 중', ok: true },
+            { key: 'save', label: '설정 저장', value: settings._lastSaveOk === false ? '실패' : '정상', ok: settings._lastSaveOk !== false },
+            { key: 'storage', label: '저장 공간', value: storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', ok: storageHealth.ok },
+            { key: 'extract', label: '자동 대화 정리', value: cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', ok: !!cfg.autoExtEnabled },
+            { key: 'semantic', label: '의미 검색', value: cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', ok: !!cfg.embeddingEnabled }
+          ]);
+          nd.appendChild(metrics.grid);
           db.entries.toArray().then(entries => {
             const active = new Set(activePacks);
             const usable = active.size ? entries.filter(e => active.has(e.packName)).length : 0;
-            entryValue.textContent = usable + '개';
-            entryValue.style.color = usable ? '#4a9' : '#da8';
-            if (activePacks.length) packValue.textContent = activePacks.join(', ');
-          }).catch(() => { entryValue.textContent = '확인 실패'; entryValue.style.color = '#d66'; });
+            metrics.nodes.entry.textContent = usable + '개';
+            metrics.nodes.entry.style.color = usable ? '#4a9' : '#da8';
+            if (activePacks.length) metrics.nodes.pack.textContent = activePacks.join(', ');
+          }).catch(() => { metrics.nodes.entry.textContent = '확인 실패'; metrics.nodes.entry.style.color = '#d66'; });
         }});
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const t = document.createElement('div'); t.textContent = '빠른 설정'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
+          nd.appendChild(C.createSectionTitle('빠른 설정'));
           const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
           for (const [key, preset] of Object.entries(PRESETS)) {
             const btn = document.createElement('button'); btn.style.cssText = 'padding:10px 14px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid #333;background:#1a1a1a;color:#ccc;display:flex;flex-direction:column;gap:4px;text-align:left;flex:1;min-width:110px;';
@@ -78,28 +73,22 @@
           nd.appendChild(C.createToggleRow('로어 인젝션 활성화', '대화에 설정 정보를 자동 삽입함.', settings.config.enabled, (v) => { settings.config.enabled = v; settings.save(); }));
 
           nd.appendChild(C.createToggleRow('적응형 로어 압축', '주입 공간 부족 시 텍스트를 자동으로 짧게 줄임.', settings.config.useCompressedFormat !== false, (v) => { settings.config.useCompressedFormat = v; settings.save(); }));
-          const cmpWrap = document.createElement('div'); cmpWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-left:10px;';
-          const cmpLbl = document.createElement('div'); cmpLbl.textContent = '압축 모드'; cmpLbl.style.cssText = 'font-size:12px;color:#aaa;';
-          const cmpSel = document.createElement('select'); cmpSel.style.cssText = 'width:120px;padding:4px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;';
-          [{v:'auto', l:'자동 (공간 맞춤)'}, {v:'full', l:'길게'}, {v:'compact', l:'짧게'}, {v:'micro', l:'아주 짧게'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; cmpSel.appendChild(opt); });
-          cmpSel.value = settings.config.compressionMode || 'auto';
-          cmpSel.onchange = () => { settings.config.compressionMode = cmpSel.value; settings.save(); };
-          cmpWrap.appendChild(cmpLbl); cmpWrap.appendChild(cmpSel); nd.appendChild(cmpWrap);
+          nd.appendChild(C.createSelectRow('압축 모드', settings.config.compressionMode || 'auto', [
+            { value: 'auto', label: '자동 (공간 맞춤)' },
+            { value: 'full', label: '길게' },
+            { value: 'compact', label: '짧게' },
+            { value: 'micro', label: '아주 짧게' }
+          ], (v) => { settings.config.compressionMode = v; settings.save(); }, { width: '160px' }).row);
         }});
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const t = document.createElement('div'); t.textContent = '검색 & 감지'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(t);
+          nd.appendChild(C.createSectionTitle('검색 & 감지'));
           nd.appendChild(C.createToggleRow('의미로 찾기', '단어가 달라도 관련 로어 찾음. API/검색 준비 필요.', settings.config.embeddingEnabled, (v) => { settings.config.embeddingEnabled = v; settings.save(); }));
-          const emRow = document.createElement('div'); emRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
-          const emL = document.createElement('div'); emL.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
-          const eml1 = document.createElement('div'); eml1.textContent = '의미 검색 모델'; eml1.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
-          emL.appendChild(eml1);
-          const emSel = document.createElement('select'); emSel.style.cssText = 'width:200px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
-          [{v:'gemini-embedding-001',l:'gemini-embedding-001'},{v:'gemini-embedding-2-preview',l:'gemini-embedding-2-preview'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; emSel.appendChild(opt); });
-          emSel.value = settings.config.embeddingModel || 'gemini-embedding-001';
-          emSel.onchange = () => { settings.config.embeddingModel = emSel.value; settings.save(); alert('모델 변경됨. 기존 로어 검색 준비 재실행 필요.'); };
-          emRow.appendChild(emL); emRow.appendChild(emSel); nd.appendChild(emRow);
+          nd.appendChild(C.createSelectRow('의미 검색 모델', settings.config.embeddingModel || 'gemini-embedding-001', [
+            { value: 'gemini-embedding-001', label: 'gemini-embedding-001' },
+            { value: 'gemini-embedding-2-preview', label: 'gemini-embedding-2-preview' }
+          ], (v) => { settings.config.embeddingModel = v; settings.save(); alert('모델 변경됨. 기존 로어 검색 준비 재실행 필요.'); }, { width: '220px' }).row);
 
           nd.appendChild(C.createToggleRow('추출 후 검색 준비', '새 로어를 의미 검색용으로 자동 준비함.', settings.config.autoEmbedOnExtract !== false, (v) => { settings.config.autoEmbedOnExtract = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('오래된 정보도 가끔 넣기', '직접 관련이 약해도 중요한 과거 정보를 주기적으로 넣음.', settings.config.periodicRecallEnabled !== false, (v) => { settings.config.periodicRecallEnabled = v; settings.config.decayEnabled = v; settings.save(); }));
@@ -108,29 +97,22 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;';
-          const left = document.createElement('div'); left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
-          const t = document.createElement('div'); t.textContent = '주입 위치'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
-          const d = document.createElement('div'); d.textContent = '메시지 기준 로어 삽입 위치.'; d.style.cssText = 'font-size:11px;color:#888;';
-          left.appendChild(t); left.appendChild(d);
-          const right = document.createElement('div'); right.style.cssText = 'display:flex;gap:6px;';
-          const b1 = document.createElement('button'), b2 = document.createElement('button');
-          const updateBtns = () => { const isB = settings.config.position === 'before'; b1.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${isB ? '#285' : '#444'};background:${isB ? '#285' : 'transparent'};color:${isB ? '#fff' : '#ccc'};`; b2.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${!isB ? '#285' : '#444'};background:${!isB ? '#285' : 'transparent'};color:${!isB ? '#fff' : '#ccc'};`; };
-          b1.textContent = '메시지 앞'; b1.onclick = () => { settings.config.position = 'before'; settings.save(); updateBtns(); };
-          b2.textContent = '메시지 뒤'; b2.onclick = () => { settings.config.position = 'after'; settings.save(); updateBtns(); };
-          updateBtns(); right.appendChild(b1); right.appendChild(b2); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
+          nd.appendChild(C.createSegmentedRow('주입 위치', '메시지 기준 로어 삽입 위치.', settings.config.position || 'after', [
+            { value: 'before', label: '메시지 앞' },
+            { value: 'after', label: '메시지 뒤' }
+          ], (v) => { settings.config.position = v; settings.save(); }));
         }});
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const tr = document.createElement('div'); tr.textContent = '추가 정보 주입'; tr.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(tr);
+          nd.appendChild(C.createSectionTitle('추가 정보 주입'));
           nd.appendChild(C.createToggleRow('호칭 정보', '캐릭터 간 호칭 정보 함께 전달함.', settings.config.honorificMatrixEnabled !== false, (v) => { settings.config.honorificMatrixEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('첫 만남/재회 관리', '첫 만남/재회 여부 자동 전달함.', settings.config.firstEncounterWarning !== false, (v) => { settings.config.firstEncounterWarning = v; settings.save(); }));
         }});
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const t1 = document.createElement('div'); t1.textContent = '출력 포맷'; t1.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(t1);
+          nd.appendChild(C.createSectionTitle('출력 포맷'));
           const oocSel = document.createElement('select'); oocSel.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
           for (const [k, v] of Object.entries(OOC_FORMATS)) { const opt = document.createElement('option'); opt.value = k; opt.textContent = v.name + ' — ' + v.desc; oocSel.appendChild(opt); }
           oocSel.value = settings.config.oocFormat || 'custom';
@@ -145,9 +127,8 @@
             pInp.disabled = oocSel.value !== 'custom'; sInp.disabled = oocSel.value !== 'custom';
             pInp.style.opacity = oocSel.value !== 'custom' ? '0.6' : '1'; sInp.style.opacity = oocSel.value !== 'custom' ? '0.6' : '1';
           };
-          const applyDefaultBtn = document.createElement('button');
-          applyDefaultBtn.textContent = '새 기본값 적용';
-          applyDefaultBtn.style.cssText = 'padding:7px 10px;margin:0 0 12px 0;background:#164c38;color:#bfffe4;border:1px solid #287a59;border-radius:4px;font-size:12px;font-weight:bold;cursor:pointer;';
+          const applyDefaultBtn = C.createActionButton('새 기본값 적용', 'success');
+          applyDefaultBtn.style.margin = '0 0 12px 0';
           applyDefaultBtn.onclick = () => {
             const fmt = OOC_FORMATS.default;
             oocSel.value = 'default';
@@ -168,7 +149,7 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const resetBtn = document.createElement('button'); resetBtn.textContent = '모든 설정 초기화 (DB 유지)'; resetBtn.style.cssText = 'width:100%;padding:10px;margin-top:20px;background:#833;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;';
+          const resetBtn = C.createActionButton('모든 설정 초기화 (DB 유지)', 'danger'); resetBtn.style.width = '100%'; resetBtn.style.marginTop = '20px'; resetBtn.style.padding = '10px';
           resetBtn.onclick = () => {
             if (!confirm('설정 초기화? API 설정값과 DB/로어팩 활성화는 유지됨.')) return;
             if (_w.__LoreInj.resetSettingsKeepApi) _w.__LoreInj.resetSettingsKeepApi();

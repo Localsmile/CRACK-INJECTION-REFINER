@@ -75,6 +75,13 @@
   }
 
   // 설정 UI 헬퍼
+  const UI = {
+    field: 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;',
+    sectionTitle: 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;',
+    subtle: 'font-size:11px;color:#888;line-height:1.4;word-break:keep-all;',
+    label: 'font-size:13px;color:#ccc;font-weight:bold;'
+  };
+
   function setFullWidth(node) {
     const p = node.parentElement;
     if (p) {
@@ -115,6 +122,127 @@
     right.appendChild(swLabel); right.appendChild(sw);
     wrap.appendChild(left); wrap.appendChild(right);
     return wrap;
+  }
+
+  function createSectionTitle(title, desc) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom:10px;';
+    const t = document.createElement('div');
+    t.textContent = title;
+    t.style.cssText = UI.sectionTitle;
+    wrap.appendChild(t);
+    if (desc) {
+      const d = document.createElement('div');
+      d.textContent = desc;
+      d.style.cssText = UI.subtle + 'margin-top:-2px;';
+      wrap.appendChild(d);
+    }
+    return wrap;
+  }
+
+  function createMetricGrid(items) {
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;';
+    const nodes = {};
+    (items || []).forEach((item) => {
+      const c = document.createElement('div');
+      c.style.cssText = 'border:1px solid #333;border-radius:6px;padding:8px 10px;background:#111;min-width:0;';
+      const l = document.createElement('div');
+      l.textContent = item.label || '';
+      l.style.cssText = 'font-size:10px;color:#888;margin-bottom:4px;';
+      const v = document.createElement('div');
+      v.textContent = item.value || '';
+      v.style.cssText = 'font-size:12px;font-weight:bold;color:' + (item.ok ? '#4a9' : '#da8') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      c.appendChild(l);
+      c.appendChild(v);
+      grid.appendChild(c);
+      if (item.key) nodes[item.key] = v;
+    });
+    return { grid, nodes };
+  }
+
+  function createSelectRow(label, value, options, onChange, opts) {
+    opts = opts || {};
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+    const l = document.createElement('div');
+    l.textContent = label;
+    l.style.cssText = UI.label;
+    left.appendChild(l);
+    if (opts.desc) {
+      const d = document.createElement('div');
+      d.textContent = opts.desc;
+      d.style.cssText = UI.subtle;
+      left.appendChild(d);
+    }
+    const sel = document.createElement('select');
+    sel.style.cssText = UI.field + 'width:' + (opts.width || '200px') + ';';
+    (options || []).forEach((opt) => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      sel.appendChild(o);
+    });
+    sel.value = value;
+    sel.onchange = () => { if (typeof onChange === 'function') onChange(sel.value, sel); };
+    row.appendChild(left);
+    row.appendChild(sel);
+    return { row, select: sel };
+  }
+
+  function createSegmentedRow(label, desc, value, options, onChange) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;gap:10px;';
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+    const t = document.createElement('div');
+    t.textContent = label;
+    t.style.cssText = UI.label;
+    const d = document.createElement('div');
+    d.textContent = desc || '';
+    d.style.cssText = UI.subtle;
+    left.appendChild(t);
+    if (desc) left.appendChild(d);
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
+    const buttons = [];
+    const update = () => {
+      buttons.forEach((btn) => {
+        const on = btn.__value === value;
+        btn.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${on ? '#285' : '#444'};background:${on ? '#285' : 'transparent'};color:${on ? '#fff' : '#ccc'};`;
+      });
+    };
+    (options || []).forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.textContent = opt.label;
+      btn.__value = opt.value;
+      btn.onclick = () => {
+        value = opt.value;
+        if (typeof onChange === 'function') onChange(value);
+        update();
+      };
+      buttons.push(btn);
+      right.appendChild(btn);
+    });
+    update();
+    wrap.appendChild(left);
+    wrap.appendChild(right);
+    return wrap;
+  }
+
+  function createActionButton(label, tone) {
+    const btn = document.createElement('button');
+    const styles = {
+      primary: 'background:#258;color:#fff;border:1px solid #258;',
+      success: 'background:#164c38;color:#bfffe4;border:1px solid #287a59;',
+      danger: 'background:#833;color:#fff;border:1px solid #833;',
+      ghost: 'background:transparent;color:#ccc;border:1px solid #444;'
+    };
+    btn.textContent = label;
+    btn.style.cssText = 'padding:7px 10px;border-radius:4px;font-size:12px;font-weight:bold;cursor:pointer;' + (styles[tone || 'ghost'] || styles.ghost);
+    return btn;
   }
 
   function createApiInput(config, prefix, nd, onChange) {
@@ -217,7 +345,8 @@
 
   Object.assign(C, {
     showStatusBadge, hideStatusBadge,
-    setFullWidth, createToggleRow, createApiInput,
+    UI, setFullWidth, createToggleRow, createSectionTitle, createMetricGrid,
+    createSelectRow, createSegmentedRow, createActionButton, createApiInput,
     __uiLoaded: true
   });
   console.log('[LoreCore:ui] loaded');
