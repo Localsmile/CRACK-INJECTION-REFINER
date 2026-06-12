@@ -7,6 +7,9 @@
   if (_w.__LoreInj.__subExtractLoaded) return;
   
   const { C, db, settings, getAutoExtPackForUrl, setAutoExtPackForUrl, setPackEnabled } = _w.__LoreInj;
+  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;min-height:34px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:8px 10px;font-size:12px;box-sizing:border-box;';
+  const BTN_BASE = 'min-height:34px;padding:7px 12px;font-size:12px;border-radius:8px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
+  const TONE = { muted: 'var(--li-muted,#748196)', soft: 'var(--li-text-soft,#a9b6c7)', text: 'var(--li-text,#e7edf5)', ok: '#78d5a8', warn: '#e7b56f', danger: '#ef6b6b' };
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   function requireGenerationApiOpts(overrides = {}, costContext = null) {
@@ -66,9 +69,9 @@
           const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const makeInput = (label, key, defaultVal) => {
             const f = document.createElement('div'); f.style.flex = '1';
-            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
             const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal;
-            i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+            i.style.cssText = FIELD_STYLE;
             const saveNum = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } };
             i.oninput = saveNum; i.onchange = saveNum;
             f.appendChild(l); f.appendChild(i); return f;
@@ -76,7 +79,7 @@
           row1.appendChild(makeInput('자동 정리 주기', 'autoExtTurns', 8)); row1.appendChild(makeInput('읽을 최근 대화', 'autoExtScanRange', 6)); row1.appendChild(makeInput('최근 제외', 'autoExtOffset', 5)); row1.appendChild(makeInput('중요 장면 최대', 'temporalMaxEventsPerPass', 5));
           nd.appendChild(row1);
 
-          const injTitle = document.createElement('div'); injTitle.textContent = '삽입 옵션'; injTitle.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:12px 0 6px;padding-top:10px;border-top:1px solid #333;'; nd.appendChild(injTitle);
+          const injTitle = document.createElement('div'); injTitle.textContent = '삽입 옵션'; injTitle.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;margin:12px 0 6px;padding-top:10px;border-top:1px solid var(--li-line,#2f3b4f);'; nd.appendChild(injTitle);
           nd.appendChild(C.createToggleRow('삽입 쿨타임 사용', '같은 로어가 너무 자주 들어가지 않게 막음.', settings.config.cooldownEnabled !== false, (v) => { settings.config.cooldownEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('오래된 정보도 가끔 넣기', '직접 관련이 약해도 중요한 과거 정보를 주기적으로 넣음.', settings.config.periodicRecallEnabled !== false, (v) => { settings.config.periodicRecallEnabled = v; settings.config.decayEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('삽입 흔적 자동 정리', '지난 로어 참조문을 나중에 걷어내 대화 기록을 깔끔하게 유지함.', settings.config.injectionCleanupEnabled !== false, (v) => { settings.config.injectionCleanupEnabled = v; settings.save(); }));
@@ -88,22 +91,22 @@
   
           const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
           const f3 = document.createElement('div'); f3.style.flex = '1';
-          const l3 = document.createElement('div'); l3.textContent = '저장할 로어팩'; l3.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+          const l3 = document.createElement('div'); l3.textContent = '저장할 로어팩'; l3.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
           const inputWrap = document.createElement('div'); inputWrap.style.cssText = 'display:flex;gap:6px;';
           const i3 = document.createElement('input'); i3.type = 'text';
           getAutoExtPackForUrl(C.getCurUrl()).then(name => i3.value = name);
-          i3.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+          i3.style.cssText = 'flex:1;' + FIELD_STYLE;
           const savePackName = () => { const val = i3.value || '자동추출'; settings.config.autoExtPack = val; setAutoExtPackForUrl(C.getCurUrl(), val); };
           i3.oninput = savePackName; i3.onchange = savePackName;
-          const s3 = document.createElement('select'); s3.style.cssText = 'width:100px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+          const s3 = document.createElement('select'); s3.style.cssText = FIELD_STYLE + 'width:110px;';
           db.packs.toArray().then(packs => { const opt = document.createElement('option'); opt.value = ''; opt.textContent = '기존 선택'; s3.appendChild(opt); packs.forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; s3.appendChild(o); }); });
           s3.onchange = () => { if (s3.value) { i3.value = s3.value; settings.config.autoExtPack = s3.value; setAutoExtPackForUrl(C.getCurUrl(), s3.value); s3.value = ''; } };
           inputWrap.appendChild(i3); inputWrap.appendChild(s3); f3.appendChild(l3); f3.appendChild(inputWrap);
           row2.appendChild(f3); nd.appendChild(row2);
   
           const btnRun = document.createElement('button'); btnRun.textContent = '수동 추출 실행';
-          btnRun.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;width:100%;margin-top:10px;';
-          const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.4;'; btnStatus.textContent = '';
+          btnRun.style.cssText = BTN_BASE + 'width:100%;margin-top:10px;color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.14);';
+          const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-top:8px;text-align:center;line-height:1.5;'; btnStatus.textContent = '';
           btnRun.onclick = async () => {
             if (!confirm('수동 추출 시작?')) return;
             settings.save();
@@ -112,7 +115,7 @@
             const startMs = Date.now();
             btnRun.textContent = '에리가 추출 중...';
             btnStatus.textContent = '에리가 대화 분석 중';
-            btnStatus.style.color = '#4a9';
+            btnStatus.style.color = TONE.ok;
             const tick = setInterval(() => {
               const sec = Math.floor((Date.now() - startMs) / 1000);
               btnStatus.textContent = `에리가 대화 분석 중 (${sec}초)`;
@@ -122,12 +125,12 @@
               clearInterval(tick);
               const sec = Math.floor((Date.now() - startMs) / 1000);
               btnStatus.textContent = `에리: 완료 (${sec}초)`;
-              btnStatus.style.color = '#4a9';
+              btnStatus.style.color = TONE.ok;
               setTimeout(() => { btnStatus.textContent = ''; }, 4000);
             } catch(e) {
               clearInterval(tick);
-              btnStatus.textContent = '에리: 실패 — ' + (e.message || e).slice(0, 50);
-              btnStatus.style.color = '#d66';
+              btnStatus.textContent = '에리: 실패 - ' + (e.message || e).slice(0, 50);
+              btnStatus.style.color = TONE.danger;
             } finally {
               btnRun.textContent = origText;
               btnRun.disabled = false;
@@ -140,11 +143,11 @@
         // === 과거 장면 불러오기 판단 ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const jt = document.createElement('div'); jt.textContent = '과거 장면 불러오기 판단'; jt.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:6px;'; nd.appendChild(jt);
-          const jd = document.createElement('div'); jd.textContent = '사용 여부와 호출 범위만 여기서 조절함. 모델/생각 깊이는 API 설정에서 관리함.'; jd.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(jd);
+          const jt = document.createElement('div'); jt.textContent = '과거 장면 불러오기 판단'; jt.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;'; nd.appendChild(jt);
+          const jd = document.createElement('div'); jd.textContent = '사용 여부와 호출 범위만 여기서 조절함. 모델/생각 깊이는 API 설정에서 관리함.'; jd.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:10px;line-height:1.5;'; nd.appendChild(jd);
           nd.appendChild(C.createToggleRow('AI로 참고 장면 고르기', '규칙 판단 뒤 AI가 필요한 과거 장면 한 번 더 고름.', settings.config.temporalRecallJudgeEnabled, (v) => { settings.config.temporalRecallJudgeEnabled = v; settings.save(); }));
           const jrow = document.createElement('div'); jrow.style.cssText = 'display:flex;gap:12px;margin-top:10px;';
-          const jmkNum = (label, key, defaultVal, min, max) => { const f = document.createElement('div'); f.style.flex = '1'; const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal; if (min !== undefined) i.min = min; if (max !== undefined) i.max = max; i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;'; const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } }; i.oninput = save; i.onchange = save; f.appendChild(l); f.appendChild(i); return f; };
+          const jmkNum = (label, key, defaultVal, min, max) => { const f = document.createElement('div'); f.style.flex = '1'; const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;'; const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal; if (min !== undefined) i.min = min; if (max !== undefined) i.max = max; i.style.cssText = FIELD_STYLE; const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } }; i.oninput = save; i.onchange = save; f.appendChild(l); f.appendChild(i); return f; };
           jrow.appendChild(jmkNum('응답 제한 시간(ms)', 'temporalRecallJudgeTimeoutMs', 8000, 1000, 60000));
           jrow.appendChild(jmkNum('검토할 장면 수', 'temporalRecallJudgeCandidateLimit', 6, 1, 30));
           nd.appendChild(jrow);
@@ -153,15 +156,15 @@
         // === 전체 로그 일괄 추출 ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const bTitle = document.createElement('div'); bTitle.textContent = '전체 로그 일괄 추출'; bTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(bTitle);
-          const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 배치로 나눠 정리함. API 비용 큼. 초기 정리용.'; bDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(bDesc);
+          const bTitle = document.createElement('div'); bTitle.textContent = '전체 로그 일괄 추출'; bTitle.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:8px;'; nd.appendChild(bTitle);
+          const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 배치로 나눠 정리함. API 비용 큼. 초기 정리용.'; bDesc.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:10px;line-height:1.5;'; nd.appendChild(bDesc);
   
           const bRow = document.createElement('div'); bRow.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const mkNum = (label, getter, setter, defaultVal) => {
             const f = document.createElement('div'); f.style.flex = '1';
-            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
             const i = document.createElement('input'); i.type = 'number'; const cur = getter(); i.value = (cur !== undefined && cur !== null) ? cur : defaultVal;
-            i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+            i.style.cssText = FIELD_STYLE;
             const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { setter(v); settings.save(); } };
             i.oninput = save; i.onchange = save;
             f.appendChild(l); f.appendChild(i); return f;
@@ -172,14 +175,14 @@
           nd.appendChild(bRow);
   
           const bBtn = document.createElement('button'); bBtn.textContent = '전체 일괄 추출 실행';
-          bBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:none;font-weight:bold;width:100%;margin-top:6px;';
-          const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.5;';
+          bBtn.style.cssText = BTN_BASE + 'width:100%;margin-top:6px;color:#fff;background:var(--li-accent,#5aa7ff);border-color:transparent;';
+          const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-top:8px;text-align:center;line-height:1.5;';
           bBtn.onclick = async () => {
             settings.save();
             const turnsPerBatch = settings.config.batchExtTurnsPerBatch || 50;
             const overlap = settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5;
             bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '비용 계산 중...';
-            bStatus.textContent = '전체 로그 확인 중'; bStatus.style.color = '#4a9';
+            bStatus.textContent = '전체 로그 확인 중'; bStatus.style.color = TONE.ok;
             let resume = false;
             try {
               const est = await estimateBatchRunCost(turnsPerBatch, overlap);
@@ -206,17 +209,17 @@
                 '예상 비용: ' + costText + '\n\n' +
                 '실제 비용은 모델 응답 길이와 재시도 횟수에 따라 달라짐. 계속?'
               );
-              if (!ok) { bStatus.textContent = '취소됨'; bStatus.style.color = '#888'; return; }
+              if (!ok) { bStatus.textContent = '취소됨'; bStatus.style.color = TONE.muted; return; }
             } catch (e) {
               if (!confirm('비용 추정 실패: ' + (e.message || e) + '\n그래도 전체 배치 추출을 실행할까?')) {
-                bStatus.textContent = '취소됨'; bStatus.style.color = '#888'; return;
+                bStatus.textContent = '취소됨'; bStatus.style.color = TONE.muted; return;
               }
             } finally {
               bBtn.textContent = orig;
               bBtn.disabled = false;
             }
             bBtn.disabled = true; bBtn.textContent = '실행 중...';
-            bStatus.textContent = '전체 로그 가져오는 중'; bStatus.style.color = '#4a9';
+            bStatus.textContent = '전체 로그 가져오는 중'; bStatus.style.color = TONE.ok;
             const start = Date.now();
             try {
               const report = await _w.__LoreInj.runBatchExtract({
@@ -230,13 +233,13 @@
                 }
               });
               const sec = Math.floor((Date.now() - start) / 1000);
-              let msg = '완료 (' + sec + '초) — ' + report.totalBatches + '개 배치 / 성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / 병합 ' + report.entriesAdded + '건';
-              if (report.failed > 0) { msg += ' / 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
-              else { bStatus.style.color = '#4a9'; }
+              let msg = '완료 (' + sec + '초) - ' + report.totalBatches + '개 배치 / 성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / 병합 ' + report.entriesAdded + '건';
+              if (report.failed > 0) { msg += ' / 실패 상세는 로그 탭'; bStatus.style.color = TONE.warn; }
+              else { bStatus.style.color = TONE.ok; }
               bStatus.textContent = msg;
             } catch(e) {
-              bStatus.textContent = '실패 — ' + (e.message || String(e)).slice(0, 80);
-              bStatus.style.color = '#d66';
+              bStatus.textContent = '실패 - ' + (e.message || String(e)).slice(0, 80);
+              bStatus.style.color = TONE.danger;
             } finally {
               bBtn.textContent = orig; bBtn.disabled = false;
             }
@@ -245,21 +248,21 @@
           nd.appendChild(bStatus);
         }});
   
-        // === 지식 변환 (URL/텍스트 → 로어) ===
+        // === 지식 변환 (URL/텍스트 - 로어) ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:8px;';
-          nd.innerHTML = '<div style="font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;">지식 변환 (URL/텍스트 → 로어)</div>';
+          const S = FIELD_STYLE + 'margin-bottom:8px;';
+          nd.innerHTML = '<div style="font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:8px;">지식 변환 (URL/텍스트 - 로어)</div>';
           const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S; nd.appendChild(urlInp);
           const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S; nd.appendChild(nameInp);
-          const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
-          const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
+          const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
+          const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.14);';
           urlBtn.onclick = async () => {
             if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; }
             urlBtn.disabled = true; urlBtn.textContent = '변환중...';
             const startMs = Date.now();
             let phaseMsg = '에리가 URL 본문 가져오는 중';
-            const setBusy = (msg, color = '#4a9') => {
+            const setBusy = (msg, color = TONE.ok) => {
               phaseMsg = msg;
               rDiv.textContent = msg;
               rDiv.style.color = color;
@@ -282,40 +285,40 @@
                       const methodLabel = ({ 'gm-direct': 'GM 직접 요청', 'fetch': '브라우저 fetch', 'proxy': '공용 프록시' })[ev.method] || ev.method;
                       const suffix = ev.method === 'proxy' ? ` #${ev.attempt}/${ev.total}` : '';
                       const sec = Math.max(1, Math.floor((ev.timeoutMs || 15000) / 1000));
-                      setBusy(`에리가 URL 가져오는 중 · ${methodLabel}${suffix} (최대 ${sec}초)`);
+                      setBusy(`에리가 URL 가져오는 중 - ${methodLabel}${suffix} (최대 ${sec}초)`);
                       break;
                     }
                     case 'fetch:done':
-                      setBusy(`에리가 URL 본문 받음 · ${((ev.bytes || 0) / 1024).toFixed(1)}KB`);
+                      setBusy(`에리가 URL 본문 받음 - ${((ev.bytes || 0) / 1024).toFixed(1)}KB`);
                       break;
                     case 'parse':
                       setBusy('에리가 HTML 정리 중');
                       break;
                     case 'fetch:fail':
-                      setBusy('URL 가져오기 실패 — 모든 경로 컷', '#d66');
+                      setBusy('URL 가져오기 실패 - 모든 경로 컷', TONE.danger);
                       break;
                     case 'chunk':
-                      setBusy(`에리가 URL 내용을 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
+                      setBusy(`에리가 URL 내용을 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} - 시도 ${ev.attempt}/${ev.maxAttempts}`);
                       break;
                   }
                 }
               });
               const rpt = C.__lastImportReport;
-              let msg = '✅ ' + cnt + '개 생성';
+              let msg = '완료: ' + cnt + '개 생성';
               if (rpt) {
                 if (rpt.failed > 0) {
                   const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || '';
-                  msg += ' ⚠️ 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
+                  msg += ' / 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
                 } else if (cnt === 0 && rpt.empty === rpt.chunks) {
-                  msg = '⚠️ 0개 — 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
+                  msg = '0개 - 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
                 }
               }
               rDiv.textContent = msg;
-              rDiv.style.color = cnt > 0 ? '#4a9' : '#da8';
+              rDiv.style.color = cnt > 0 ? TONE.ok : TONE.warn;
               if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
             } catch (e) {
-              rDiv.textContent = '❌ ' + (e.message || String(e));
-              rDiv.style.color = '#d66';
+              rDiv.textContent = '실패: ' + (e.message || String(e));
+              rDiv.style.color = TONE.danger;
             } finally {
               clearInterval(tick);
               try { C.hideStatusBadge(); } catch (_) {}
@@ -323,17 +326,17 @@
             }
           };
           nd.appendChild(urlBtn); nd.appendChild(rDiv);
-          const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:#ccc;font-weight:bold;margin-top:16px;margin-bottom:8px;">텍스트 → 로어 팩</div>'; nd.appendChild(t2);
+          const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;margin-top:16px;margin-bottom:8px;">텍스트 - 로어 팩</div>'; nd.appendChild(t2);
           const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + 'height:100px;resize:vertical;'; nd.appendChild(ta);
           const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S; nd.appendChild(nameInp2);
-          const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
-          const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
+          const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
+          const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.14);';
           tBtn.onclick = async () => {
             if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; }
             tBtn.disabled = true; tBtn.textContent = '변환중...';
             const startMs = Date.now();
             let phaseMsg = '에리가 텍스트를 로어로 변환 중';
-            const setBusy = (msg, color = '#4a9') => {
+            const setBusy = (msg, color = TONE.ok) => {
               phaseMsg = msg;
               rDiv2.textContent = msg;
               rDiv2.style.color = color;
@@ -348,26 +351,26 @@
               const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), requireGenerationApiOpts({}, { feature: 'textImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
                 onProgress: (ev) => {
                   if (ev && ev.phase === 'chunk') {
-                    setBusy(`에리가 텍스트를 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
+                    setBusy(`에리가 텍스트를 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} - 시도 ${ev.attempt}/${ev.maxAttempts}`);
                   }
                 }
               });
               const rpt = C.__lastImportReport;
-              let msg = '✅ ' + cnt + '개 생성';
+              let msg = '완료: ' + cnt + '개 생성';
               if (rpt) {
                 if (rpt.failed > 0) {
                   const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || '';
-                  msg += ' ⚠️ 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
+                  msg += ' / 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
                 } else if (cnt === 0 && rpt.empty === rpt.chunks) {
-                  msg = '⚠️ 0개 — 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
+                  msg = '0개 - 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
                 }
               }
               rDiv2.textContent = msg;
-              rDiv2.style.color = cnt > 0 ? '#4a9' : '#da8';
+              rDiv2.style.color = cnt > 0 ? TONE.ok : TONE.warn;
               if (cnt > 0) await setPackEnabled(nameInp2.value.trim(), true);
             } catch (e) {
-              rDiv2.textContent = '❌ ' + (e.message || String(e));
-              rDiv2.style.color = '#d66';
+              rDiv2.textContent = '실패: ' + (e.message || String(e));
+              rDiv2.style.color = TONE.danger;
             } finally {
               clearInterval(tick);
               try { C.hideStatusBadge(); } catch (_) {}
