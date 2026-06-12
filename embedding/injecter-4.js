@@ -113,22 +113,36 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   }
 ]`;
 
-  function deepSeekObjectOutputMode(text, emptyObject) {
-    return String(text || '')
-      .replace(/Output must be one JSON array\. Never return a bare object\./g, 'Output must be one JSON object. Never return a bare array.')
-      .replace(/If nothing changed at all, return exactly \[\]\./g, 'If nothing changed at all, return exactly ' + emptyObject + '.')
-      .replace(/If the conversation only repeats already stored scene memories, output \[\]\./g, 'If the conversation only repeats already stored scene memories, return exactly ' + emptyObject + '.')
-      .replace(/For unchanged existing entries, output nothing\./g, 'For unchanged existing entries, add nothing to entries.')
-      .replace(/For unchanged existing scene memories, output nothing\./g, 'For unchanged existing scene memories, add nothing to entries.')
-      .replace(/For each NEW lore, output the complete entry object\./g, 'For each NEW lore, put the complete entry object inside entries.')
-      .replace(/For each UPDATED existing entry, output the complete updated entry object/g, 'For each UPDATED existing entry, put the complete updated entry object inside entries')
-      .replace(/For each NEW important scene, output the complete timeline_event object\./g, 'For each NEW important scene, put the complete timeline_event object inside entries.')
-      .replace(/For each UPDATED existing scene, output the complete updated timeline_event object/g, 'For each UPDATED existing scene, put the complete updated timeline_event object inside entries');
+  function buildObjectOutputContract(kind, patchMode) {
+    const isTemporal = kind === 'temporal';
+    const noun = isTemporal ? 'important scene memory' : 'lore';
+    const unchanged = isTemporal
+      ? '- If the conversation only repeats already stored scene memories, return exactly {"entries":[]}.\n'
+      : '';
+    if (patchMode) {
+      return `OUTPUT MODE: SAVE ONLY CHANGES
+- Output exactly one JSON object: {"entries":[...]}.
+- If nothing changed at all, return exactly {"entries":[]}.
+${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided as compact digests with stable "id".
+- For unchanged existing ${isTemporal ? 'scene memories' : 'entries'}, add nothing to entries.
+- For an existing ${isTemporal ? 'scene memory' : 'entry'}, do NOT re-output the full object.
+- Put {"op":"patch","id":...} inside entries only when something changed.
+- For brand-new ${noun}, put {"op":"add","entry":{...}} inside entries.
+- Keep patch fields tiny; prefer append.* for new facts and set.* only for changed fields.`;
+    }
+    return `OUTPUT MODE: FULL UPDATED ENTRIES
+- Output exactly one JSON object: {"entries":[...]}.
+- If nothing changed at all, return exactly {"entries":[]}.
+${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided as compact digests with stable "id".
+- For unchanged existing ${isTemporal ? 'scene memories' : 'entries'}, add nothing to entries.
+- For each NEW ${noun}, put the complete object inside entries.
+- For each UPDATED existing ${isTemporal ? 'scene memory' : 'entry'}, put the complete updated object inside entries and keep the same "name" when possible.
+- Do NOT use add/patch op format in this mode.`;
   }
 
-  function providerOutputMode(baseText, apiOpts, kind) {
-    if (!(apiOpts && apiOpts.apiType === 'deepseek')) return baseText;
-    return deepSeekObjectOutputMode(baseText, '{"entries":[]}') + '\n- Top-level object shape must be exactly {"entries":[...]}.';
+  function buildOutputModeText(baseText, apiOpts, kind, patchMode) {
+    if (apiOpts && apiOpts.apiType === 'deepseek') return buildObjectOutputContract(kind, patchMode);
+    return baseText;
   }
 
   function normalizeEntryForMerge(entry, turn) {
@@ -637,7 +651,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         }
       } catch (_) {}
 
-      const outputModeText = providerOutputMode(_patchOn ? TEMPORAL_OUTPUT_MODE_PATCH : TEMPORAL_OUTPUT_MODE_FULL, apiOpts, 'temporal');
+      const outputModeText = buildOutputModeText(_patchOn ? TEMPORAL_OUTPUT_MODE_PATCH : TEMPORAL_OUTPUT_MODE_FULL, apiOpts, 'temporal', _patchOn);
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
@@ -1087,7 +1101,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
       : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
     const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
-    const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
+    const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn) : '';
     const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
@@ -1393,7 +1407,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         }
       }
       const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
-      const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
+      const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn) : '';
       const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0; let lastFailureKind = ''; let forceThinkingOff = false;
