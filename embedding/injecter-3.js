@@ -829,16 +829,17 @@
     return true;
   }
 
-  function incrementTurnCounter(chatKey) { return C.incrementTurn(chatKey); }
-  function recordEntryMention(chatKey, entryId) { return C.recordMention(chatKey, entryId); }
+  function getServerTurnCounterFromLogs(logs, includePendingUser) {
+    if (!Array.isArray(logs) || !logs.length) return 0;
+    let count = 0;
+    for (const log of logs) if (log && log.role === 'user') count++;
+    return count + (includePendingUser ? 1 : 0);
+  }
   function getTurnCounter(chatKey) {
-    const c = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    return c[chatKey] || 0;
+    return 0;
   }
   function setTurnCounter(chatKey, val) {
-    const c = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    c[chatKey] = val;
-    _ls.setItem('lore-turn-counters', JSON.stringify(c));
+    return false;
   }
   function getCooldownMap(chatKey) {
     if (!settings.config.urlCooldownMaps) settings.config.urlCooldownMaps = {};
@@ -1095,7 +1096,8 @@
     C, R, db, _ls,
     defaultSettings, settings,
     parseJsonLoose, createSnapshot, restoreSnapshot, convertLegacyEventToTimeline,
-    getChatKey, incrementTurnCounter, recordEntryMention,
+    getChatKey,
+    getServerTurnCounterFromLogs,
     getTurnCounter, setTurnCounter,
     getCooldownMap, setCooldownLastTurn,
     getAutoExtPackForUrl, setAutoExtPackForUrl,

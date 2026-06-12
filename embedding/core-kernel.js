@@ -54,6 +54,11 @@
       first_encounter: 8, promise: 5, event: 4,
       scene: 2, default: 6
     },
+    decayHalfLifeHours: {
+      identity: 72, character: 72, relationship: 36,
+      first_encounter: 36, promise: 24, event: 18,
+      scene: 8, default: 24
+    },
     aiMemoryTurns: 3,
     embeddingEnabled: false,
     embeddingModel: 'gemini-embedding-001',
@@ -737,18 +742,11 @@ Entries:
   }
 
   function incrementTurn(url) {
-    const counters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    counters[url] = (counters[url] || 0) + 1;
-    _ls.setItem('lore-turn-counters', JSON.stringify(counters));
-    return counters[url];
+    return 0;
   }
 
   function recordMention(url, entryId) {
-    const all = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
-    if (!all[url]) all[url] = {};
-    const counters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    all[url][entryId] = counters[url] || 0;
-    _ls.setItem('lore-last-mention', JSON.stringify(all));
+    return false;
   }
 
   // 네임스페이스 초기화

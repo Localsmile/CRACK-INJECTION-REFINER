@@ -125,15 +125,24 @@
     const timelineNoCuePenalty = periodicRecallEnabled ? (cfg.timelineNoCuePenalty != null ? cfg.timelineNoCuePenalty : (DEFAULTS.timelineNoCuePenalty || 0.35)) : 0;
     const timelineRecallLimit = cfg.timelineRecallPoolLimit || Math.max(8, (cfg.maxEntries || 4) * 3);
 
-    // decay fallback: entry.lastMentionedTurn 없으면 localStorage 'lore-last-mention' 맵 조회
-    let lastMentionMap = null;
-    if (decayEnabled && cfg.chatKey) {
-      try {
-        const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage || localStorage;
-        const all = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
-        lastMentionMap = all[cfg.chatKey] || null;
-      } catch (e) {}
-    }
+    const halfLifeHours = cfg.decayHalfLifeHours || DEFAULTS.decayHalfLifeHours || {};
+    const hoursSinceMention = (entry) => {
+      const at = Number(entry && entry.lastMentionedAt) || 0;
+      if (!at) return null;
+      return Math.max(0, (Date.now() - at) / 3600000);
+    };
+    const timeReinjectionScore = (entry) => {
+      const hours = hoursSinceMention(entry);
+      if (hours == null) return null;
+      const type = entry && entry.type || 'default';
+      const halfLife = Math.max(1, Number(halfLifeHours[type] || halfLifeHours.default || 24));
+      const aiMemHours = Math.max(1, Number(cfg.aiMemoryHours || 6));
+      if (hours <= aiMemHours) return 0;
+      const overLimit = hours - aiMemHours;
+      const needsReinjection = 1 - Math.exp(-overLimit * Math.LN2 / halfLife);
+      const relevanceDecay = Math.exp(-hours * Math.LN2 / (halfLife * 4));
+      return needsReinjection * relevanceDecay;
+    };
 
     const enabled = (entries || []).filter(e => e && e.enabled !== false);
 
@@ -221,20 +230,22 @@
       let matched = tHit ? tHit.matched : '';
 
       const serverTurnsSinceMention = e.lastMentionedMsgId ? userTurnsBetweenLogs(recentMsgs, e.lastMentionedMsgId) : null;
-      // 언급 시점 해석: 서버 메시지 ID 우선, 없으면 entry/localStorage turn fallback
-      let lmt = e.lastMentionedTurn != null
-        ? e.lastMentionedTurn
-        : (lastMentionMap && lastMentionMap[e.id] != null ? lastMentionMap[e.id] : null);
-      // 방어: 저장된 lmt가 현재 카운터보다 크면(세션 리셋/데이터 불일치) 미언급으로 취급
-      if (lmt != null && turnCounter != null && lmt > turnCounter) lmt = null;
-      // 재주입 필요도 (최근 언급된 엔트리에 약한 가산)
-      if (decayEnabled && (serverTurnsSinceMention != null || (turnCounter != null && lmt != null))) {
-        const turnsSince = serverTurnsSinceMention != null ? serverTurnsSinceMention : (turnCounter - lmt);
-        const reScore = calcReinjectionScore(turnsSince, e.type, cfg, e);
-        score = score * (1 + reScore * 0.5);
+      let legacyTurnsSince = null;
+      if (serverTurnsSinceMention == null && e.lastMentionedTurn != null && turnCounter != null && e.lastMentionedTurn <= turnCounter) {
+        legacyTurnsSince = Math.max(0, turnCounter - e.lastMentionedTurn);
+      }
+      const timeScore = serverTurnsSinceMention == null && legacyTurnsSince == null ? timeReinjectionScore(e) : null;
+      const mentionReScore = timeScore != null
+        ? timeScore
+        : ((serverTurnsSinceMention != null || legacyTurnsSince != null)
+            ? calcReinjectionScore(serverTurnsSinceMention != null ? serverTurnsSinceMention : legacyTurnsSince, e.type, cfg, e)
+            : null);
+      // 재주입 필요도: 서버 메시지 ID 우선, 구버전 턴 필드 보조, 로그 창 밖이면 시간 기반.
+      if (decayEnabled && mentionReScore != null) {
+        score = score * (1 + mentionReScore * 0.5);
       }
       // 신규(미언급) 엔트리 최초 등장 기회 — 소폭 가점
-      if (decayEnabled && lmt == null && (tScore > 0 || eScore > 0)) {
+      if (decayEnabled && !e.lastMentionedMsgId && e.lastMentionedTurn == null && !e.lastMentionedAt && (tScore > 0 || eScore > 0)) {
         score = score * 1.15;
       }
 
@@ -253,7 +264,7 @@
         components.relationshipGraph = C.relationshipGraphScore ? C.relationshipGraphScore(e, activeNames) : 0;
         components.temporal = C.temporalRecencyScore ? C.temporalRecencyScore(e, turnCounter || 0) : 0;
         components.unresolved = C.unresolvedPriorityScore ? C.unresolvedPriorityScore(e) : 0;
-        components.maintenance = periodicRecallEnabled && C.maintenanceRecallScore ? C.maintenanceRecallScore(e, turnCounter || 0, cfg) : 0;
+        components.maintenance = periodicRecallEnabled ? (mentionReScore || 0) : 0;
         score += components.activeEntity * activeEntityWeight;
         score += components.relationshipGraph * relationshipGraphWeight;
         score += components.temporal * temporalWeight;

@@ -14,8 +14,8 @@
   const {
     C, db, _ls, settings, OOC_FORMATS,
     parseJsonLoose,
-    getChatKey, incrementTurnCounter, recordEntryMention,
-    getTurnCounter,
+    getChatKey,
+    getTurnCounter, getServerTurnCounterFromLogs,
     getCooldownMap, setCooldownLastTurn,
     addInjLog, runAutoExtract
   } = _w.__LoreInj;
@@ -521,8 +521,7 @@
   async function inject(userInput) {
     if (!settings.config.enabled) return userInput;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const localTurnCounter = incrementTurnCounter(chatKey);
-    let turnCounter = localTurnCounter;
+    let turnCounter = getTurnCounter(chatKey);
     scheduleInjectionCleanup('turn-start', 2500);
 
     const activePacksArr = typeof _w.__LoreInj.getActivePacksForUrl === 'function'
@@ -552,7 +551,9 @@
 
     const fetchCount = Math.max(20, (settings.config.scanRange || 6) * 3);
     const recentMsgs = await C.fetchLogs(fetchCount);
-    const serverTurnCounter = Array.isArray(recentMsgs) && recentMsgs.length ? userTurnIndexFromLogs(recentMsgs) + 1 : 0;
+    const serverTurnCounter = getServerTurnCounterFromLogs
+      ? getServerTurnCounterFromLogs(recentMsgs, true)
+      : (Array.isArray(recentMsgs) && recentMsgs.length ? userTurnIndexFromLogs(recentMsgs) + 1 : 0);
     if (serverTurnCounter > 0) turnCounter = serverTurnCounter;
     const lastServerUserMsgId = getLastUserMessageId(recentMsgs);
     if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
@@ -902,7 +903,6 @@
 
     try {
       for (const e of allIncluded) {
-        recordEntryMention(chatKey, e.id);
         setCooldownLastTurn(chatKey, e.id, { turnIndex: turnCounter, messageId: lastServerUserMsgId || '', at: Date.now() });
         try { await db.entries.update(e.id, { lastMentionedTurn: turnCounter, lastMentionedMsgId: lastServerUserMsgId || '', lastMentionedAt: Date.now() }); } catch(_) {}
       }

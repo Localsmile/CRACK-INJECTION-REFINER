@@ -52,7 +52,7 @@
           title.textContent = '현재 세션 상태';
           title.style.cssText = 'font-size:14px;color:' + COLOR.text + ';font-weight:800;';
           const sub = document.createElement('div');
-          sub.textContent = '현재 턴 ' + turnCounter + ' / 활성 로어팩 ' + (urlPacks.length || 0) + '개';
+          sub.textContent = '서버 기준 상태 / 활성 로어팩 ' + (urlPacks.length || 0) + '개';
           sub.style.cssText = 'font-size:11px;color:' + COLOR.soft + ';margin-top:4px;';
           titleWrap.appendChild(title);
           titleWrap.appendChild(sub);
@@ -66,14 +66,6 @@
               const curUrl = C.getCurUrl();
               if(settings.config.urlCooldownMaps) delete settings.config.urlCooldownMaps[chatKey];
 
-              const lastMention = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
-              delete lastMention[chatKey];
-              _ls.setItem('lore-last-mention', JSON.stringify(lastMention));
-
-              const turnCounters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-              delete turnCounters[chatKey];
-              _ls.setItem('lore-turn-counters', JSON.stringify(turnCounters));
-
               _ls.removeItem('lore-recent-injections:' + chatKey);
               _ls.removeItem('lore-fe-recent-' + chatKey);
 
@@ -81,7 +73,7 @@
               if (packs.length) {
                 const entries = await db.entries.where('packName').anyOf(packs).toArray();
                 for (const e of entries) {
-                  try { await db.entries.update(e.id, { lastMentionedTurn: 0 }); } catch(_) {}
+                  try { await db.entries.update(e.id, { lastMentionedTurn: 0, lastMentionedMsgId: '', lastMentionedAt: 0 }); } catch(_) {}
                 }
               }
 
@@ -126,7 +118,6 @@
             return;
           }
   
-          const lastMentionMap = JSON.parse(_ls.getItem('lore-last-mention') || '{}')[chatKey] || {};
           const statusList = [];
   
           for (const e of allEntries) {
@@ -137,19 +128,22 @@
               cooldownRem = Math.max(0, settings.config.cooldownTurns - elap);
             }
   
-            const lastMent = lastMentionMap[e.id] || 0;
-            const turnsSince = turnCounter - lastMent;
+            const lastAt = Number(e.lastMentionedAt || 0);
+            const hoursSince = lastAt ? Math.max(0, (Date.now() - lastAt) / 3600000) : null;
+            const turnsSince = e.lastMentionedTurn && turnCounter ? Math.max(0, turnCounter - e.lastMentionedTurn) : 0;
             let reinjScore = 0;
             if (settings.config.decayEnabled) {
-               reinjScore = C.calcReinjectionScore(turnsSince, e.type, settings.config);
+               reinjScore = turnsSince > 0
+                 ? C.calcReinjectionScore(turnsSince, e.type, settings.config)
+                 : (hoursSince != null ? Math.min(1, hoursSince / 24) : 0);
             }
   
-            if (cooldownRem > 0 || reinjScore > 0.1 || turnsSince > 0) {
+            if (cooldownRem > 0 || reinjScore > 0.1 || turnsSince > 0 || e.lastMentionedMsgId) {
               const evTurn = e.eventTurn || e.timeline?.eventTurn || e.createdTurn || 0;
               const gap = evTurn ? Math.max(0, turnCounter - evTurn) : null;
               statusList.push({
                 id: e.id, name: e.name, type: e.type, pack: e.packName,
-                cooldownRem, turnsSince, reinjScore,
+                cooldownRem, turnsSince, hoursSince, reinjScore,
                 eventTurn: evTurn, gap,
                 entities: (C.inferEntryEntities ? C.inferEntryEntities(e) : (e.entities || [])).slice(0, 4)
               });
@@ -199,15 +193,11 @@
             const resetBtn = document.createElement('button');
             resetBtn.textContent = '리셋';
             resetBtn.style.cssText = BTN_GHOST;
-            resetBtn.onclick = () => {
+            resetBtn.onclick = async () => {
               if (settings.config.urlCooldownMaps?.[chatKey]) {
                 delete settings.config.urlCooldownMaps[chatKey][st.id];
               }
-              const allMentions = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
-              if (allMentions[chatKey] && allMentions[chatKey][st.id]) {
-                delete allMentions[chatKey][st.id];
-                _ls.setItem('lore-last-mention', JSON.stringify(allMentions));
-              }
+              try { await db.entries.update(st.id, { lastMentionedTurn: 0, lastMentionedMsgId: '', lastMentionedAt: 0 }); } catch (_) {}
               settings.save();
               m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
             };
