@@ -89,6 +89,15 @@
   const { C, R, settings } = _w.__LoreInj;
   const VER = _w.__LoreInj.VER;
 
+  function openLoreSettings() {
+    const shell = _w.__LoreInj && _w.__LoreInj.__LoreSettingsShell;
+    if (shell && typeof shell.open === 'function') {
+      shell.open();
+      return;
+    }
+    MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+  }
+
   // ModalManager 해결
   const MM = await waitForModalManager(10000);
   if (!MM) {
@@ -200,7 +209,7 @@
           clonedElement.setAttribute('href', 'javascript: void(0)');
           clonedElement.onclick = (event) => {
             event.preventDefault(); event.stopPropagation();
-            MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+            openLoreSettings();
           };
           item.parentElement?.append(clonedElement);
           break;
@@ -223,7 +232,7 @@
         const textNode = buttonCloned.getElementsByTagName('p');
         mount.target.insertBefore(buttonCloned, mount.before || mount.target.childNodes[0] || null); textNode[0].innerText = 'Lore';
         buttonCloned.removeAttribute('onClick');
-        buttonCloned.addEventListener('click', () => { MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light'); });
+        buttonCloned.addEventListener('click', openLoreSettings);
       }
     } catch(e) {}
   }

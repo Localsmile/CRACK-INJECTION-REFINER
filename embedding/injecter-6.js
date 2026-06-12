@@ -55,9 +55,12 @@
   }
 
   function mountQueuedMenus(modal) {
-    if (!modal || typeof modal.createMenu !== 'function') return;
     const menuQ = stableMenuQueue(_w.__LoreInj.__menuQueue || [], 'm');
     const subQ = stableMenuQueue(_w.__LoreInj.__subMenuQueue || [], 's');
+    if (_w.__LoreInj.__LoreSettingsShell && typeof _w.__LoreInj.__LoreSettingsShell.mountQueues === 'function') {
+      _w.__LoreInj.__LoreSettingsShell.mountQueues(menuQ, subQ, MENU_GROUPS, KEY_TO_GROUP);
+    }
+    if (!modal || typeof modal.createMenu !== 'function') return;
     const registered = _w.__LoreInj.__registeredMenuKeys = _w.__LoreInj.__registeredMenuKeys || new Set();
     const groupMenus = {};
     const makeGroupMenu = (groupKey) => {
