@@ -34,10 +34,11 @@
       _statusBadge = document.createElement('div');
       _statusBadge.id = 'lore-status-badge';
       // z-index는 host 모달(흐히 999999)을 넘기도록 정수 상한구간으로 설정.
-      _statusBadge.style.cssText = 'position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 118px);right:20px;z-index:2147483646;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:8px 16px;font-size:12px;color:#ccc;box-shadow:0 4px 12px rgba(0,0,0,0.4);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .3s;opacity:0;pointer-events:none;';
+      _statusBadge.style.cssText = 'position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 118px);right:18px;z-index:2147483646;background:rgba(8,17,29,.94);border:1px solid var(--li-line,#2f3b4f);border-radius:999px;padding:8px 14px;font-size:12px;color:var(--li-text,#e7edf5);box-shadow:0 12px 30px rgba(0,0,0,.38);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .25s;opacity:0;pointer-events:none;max-width:min(360px,calc(100vw - 36px));';
       _statusDot = document.createElement('span');
-      _statusDot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-pulse 1s infinite;flex-shrink:0;';
+      _statusDot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:rgb(120,213,168);animation:lore-pulse 1s infinite;flex-shrink:0;';
       _statusLabel = document.createElement('span');
+      _statusLabel.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       _statusBadge.appendChild(_statusDot);
       _statusBadge.appendChild(_statusLabel);
     }
@@ -76,7 +77,7 @@
 
   // 설정 UI 헬퍼
   const UI = {
-    field: 'width:100%;min-height:34px;padding:7px 9px;border:1px solid var(--li-line,#2f3b4f);border-radius:7px;background:#0b111c;color:var(--li-text,#e7edf5);font-size:12px;box-sizing:border-box;outline:none;',
+    field: 'width:100%;min-height:34px;padding:7px 9px;border:1px solid var(--li-line,#2f3b4f);border-radius:7px;background:rgb(11,17,28);color:var(--li-text,#e7edf5);font-size:12px;box-sizing:border-box;outline:none;',
     sectionTitle: 'font-size:14px;color:var(--li-text,#e7edf5);font-weight:800;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--li-line,#2f3b4f);letter-spacing:0;',
     subtle: 'font-size:11px;color:var(--li-text-soft,#a9b6c7);line-height:1.45;word-break:keep-all;',
     label: 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:800;letter-spacing:0;'
@@ -111,7 +112,7 @@
     const sw = document.createElement('div');
     sw.style.cssText = `width:38px;height:22px;border-radius:999px;cursor:pointer;background:${isChecked ? 'var(--li-accent,#5aa7ff)' : '#303a4d'};position:relative;flex-shrink:0;border:1px solid ${isChecked ? 'rgba(90,167,255,.65)' : 'rgba(148,163,184,.22)'};`;
     const dot = document.createElement('div');
-    dot.style.cssText = `width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${isChecked ? '19px' : '3px'};transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.35);`;
+    dot.style.cssText = `width:16px;height:16px;border-radius:50%;background:white;position:absolute;top:2px;left:${isChecked ? '19px' : '3px'};transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.35);`;
     sw.appendChild(dot);
     sw.onclick = () => {
       isChecked = !isChecked; onChange(isChecked);
@@ -147,7 +148,7 @@
     const nodes = {};
     (items || []).forEach((item) => {
       const c = document.createElement('div');
-      c.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:10px 12px;background:#0c1320;min-width:0;';
+      c.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:10px 12px;background:rgb(12,19,32);min-width:0;';
       const l = document.createElement('div');
       l.textContent = item.label || '';
       l.style.cssText = 'font-size:10px;color:var(--li-muted,#748196);margin-bottom:5px;';
@@ -237,8 +238,8 @@
     const btn = document.createElement('button');
     const styles = {
       primary: 'background:var(--li-accent-bg,#143456);color:var(--li-text,#e7edf5);border:1px solid rgba(90,167,255,.65);',
-      success: 'background:#143729;color:#bfffe4;border:1px solid #2c7a5f;',
-      danger: 'background:#3a171b;color:#ffc9c9;border:1px solid #8f333f;',
+      success: 'background:rgb(20,55,41);color:rgb(191,255,228);border:1px solid rgb(44,122,95);',
+      danger: 'background:rgb(58,23,27);color:rgb(255,201,201);border:1px solid rgb(143,51,63);',
       ghost: 'background:transparent;color:var(--li-text-soft,#a9b6c7);border:1px solid var(--li-line,#2f3b4f);'
     };
     btn.textContent = label;
@@ -255,7 +256,7 @@
     const projKey = prefix + 'VertexProjectId';
     const fbScriptKey = prefix + 'FirebaseScript';
     const fbEmbKey = prefix + 'FirebaseEmbedKey';
-    const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+    const S = UI.field;
     const typeRow = document.createElement('div');
     typeRow.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;';
     const btnKey = document.createElement('button');
@@ -265,7 +266,7 @@
     const vertexArea = document.createElement('div');
     const firebaseArea = document.createElement('div');
     const curMode = () => config[apiTypeKey] || 'key';
-    const sty = (on) => `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${on ? '#285' : '#444'};background:${on ? '#285' : 'transparent'};color:${on ? '#fff' : '#ccc'};`;
+    const sty = (on) => `min-height:32px;padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;font-weight:800;border:1px solid ${on ? 'rgba(90,167,255,.65)' : 'var(--li-line,#2f3b4f)'};background:${on ? 'var(--li-accent-bg,#143456)' : 'transparent'};color:${on ? 'var(--li-text,#e7edf5)' : 'var(--li-text-soft,#a9b6c7)'};`;
     const updateBtns = () => {
       const m = curMode();
       btnKey.style.cssText = sty(m === 'key');
@@ -319,10 +320,10 @@
     const pd = document.createElement('div'); pd.style.flex = '1'; pd.appendChild(projInput);
     locRow.appendChild(ld); locRow.appendChild(pd);
     vertexArea.appendChild(locRow); nd.appendChild(vertexArea);
-    // firebase 모드 — firebaseConfig 덩어리 붙여넣기 + 임베딩용 Gemini 키
+    // firebase 모드: firebaseConfig 덩어리 붙여넣기 + 임베딩용 Gemini 키
     const fbNote = document.createElement('div');
     fbNote.textContent = 'Firebase SDK. Firebase 콘솔 > 프로젝트 설정 > 웹 앱의 firebaseConfig = {...} 덩어리를 그대로 붙여넣으면 됨';
-    fbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:6px;line-height:1.4;';
+    fbNote.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:6px;line-height:1.45;';
     firebaseArea.appendChild(fbNote);
     const fbTa = document.createElement('textarea');
     fbTa.value = config[fbScriptKey] || '';
@@ -332,7 +333,7 @@
     firebaseArea.appendChild(fbTa);
     const fbEmbNote = document.createElement('div');
     fbEmbNote.textContent = '의미 검색용 Gemini API Key. Firebase 방식은 검색 준비용 별도 키 필요. Google AI Studio에서 무료 키 발급 가능.';
-    fbEmbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;line-height:1.4;';
+    fbEmbNote.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:4px;line-height:1.45;';
     firebaseArea.appendChild(fbEmbNote);
     const fbEmbInput = document.createElement('input'); fbEmbInput.type = 'text';
     fbEmbInput.value = config[fbEmbKey] || ''; fbEmbInput.placeholder = 'AIzaSy...';

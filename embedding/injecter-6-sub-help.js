@@ -6,6 +6,12 @@
   if (_w.__LoreInj.__subHelpLoaded) return;
 
   const { C } = _w.__LoreInj;
+  const TONE = {
+    muted: 'var(--li-muted,#748196)',
+    soft: 'var(--li-text-soft,#a9b6c7)',
+    text: 'var(--li-text,#e7edf5)',
+    ok: '#78d5a8'
+  };
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   const HELP_QUICK_START = {
@@ -149,30 +155,30 @@
             C.setFullWidth(nd);
 
             const head = document.createElement('div');
-            head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:2px 0;';
+            head.style.cssText = 'display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 0;';
 
             const arrow = document.createElement('span');
-            arrow.textContent = '▶';
-            arrow.style.cssText = 'font-size:11px;color:#888;width:10px;';
+            arrow.textContent = '열기';
+            arrow.style.cssText = 'font-size:11px;color:' + TONE.muted + ';width:28px;font-weight:800;';
 
             const tt = document.createElement('div');
             tt.textContent = title || '도움말';
-            tt.style.cssText = 'font-size:13px;color:#4a9;font-weight:bold;flex:1;';
+            tt.style.cssText = 'font-size:13px;color:' + TONE.text + ';font-weight:900;flex:1;';
 
             head.appendChild(arrow);
             head.appendChild(tt);
 
             const body = document.createElement('div');
-            body.style.cssText = 'display:none;padding:10px 2px 4px 2px;border-top:1px dashed #333;margin-top:6px;width:100%;box-sizing:border-box;';
+            body.style.cssText = 'display:none;padding:10px 2px 4px 38px;border-top:1px dashed var(--li-line,#2f3b4f);margin-top:8px;width:100%;box-sizing:border-box;';
 
             (sections || []).forEach(s => {
               const lbl = document.createElement('div');
               lbl.textContent = s.label || '내용';
-              lbl.style.cssText = 'font-size:11px;color:#888;font-weight:bold;margin-top:10px;margin-bottom:3px;letter-spacing:.5px;';
+              lbl.style.cssText = 'font-size:11px;color:' + TONE.ok + ';font-weight:900;margin-top:10px;margin-bottom:3px;letter-spacing:0;';
 
               const txt = document.createElement('div');
               txt.textContent = s.text || '';
-              txt.style.cssText = 'font-size:12px;color:#ccc;line-height:1.75;word-break:keep-all;white-space:pre-line;';
+              txt.style.cssText = 'font-size:12px;color:' + TONE.soft + ';line-height:1.75;word-break:keep-all;white-space:pre-line;';
 
               body.appendChild(lbl);
               body.appendChild(txt);
@@ -181,7 +187,7 @@
             head.onclick = () => {
               const open = body.style.display !== 'none';
               body.style.display = open ? 'none' : 'block';
-              arrow.textContent = open ? '▶' : '▼';
+              arrow.textContent = open ? '열기' : '접기';
             };
 
             nd.appendChild(head);
@@ -194,11 +200,11 @@
 
           const t = document.createElement('div');
           t.textContent = HELP_QUICK_START.title || '빠른 시작';
-          t.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:6px;';
+          t.style.cssText = 'font-size:15px;color:' + TONE.text + ';font-weight:900;margin-bottom:6px;';
 
           const d = document.createElement('div');
           d.textContent = HELP_QUICK_START.text || '';
-          d.style.cssText = 'font-size:12px;color:#ccc;line-height:1.8;word-break:keep-all;white-space:pre-line;';
+          d.style.cssText = 'font-size:12px;color:' + TONE.soft + ';line-height:1.8;word-break:keep-all;white-space:pre-line;';
 
           nd.appendChild(t);
           nd.appendChild(d);

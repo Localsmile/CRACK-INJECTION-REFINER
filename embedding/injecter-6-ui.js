@@ -34,7 +34,7 @@
     const btn = document.createElement('button');
     btn.id = 'lore-inj-boot-error';
     btn.textContent = 'Lore Injector 로딩 진단';
-    btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:#833;color:#fff;border:0;border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.35);';
+    btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:rgba(58,23,27,.94);color:#ffc9c9;border:1px solid rgba(239,107,107,.55);border-radius:9px;padding:8px 10px;font-size:12px;font-weight:800;box-shadow:0 12px 28px rgba(0,0,0,.38);';
     btn.onclick = () => {
       const L = _w.__LoreInj || {};
       const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], menuOrder: L.__menuOrder || null, route: L.route || null };
