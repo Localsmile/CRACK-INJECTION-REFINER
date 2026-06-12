@@ -109,18 +109,90 @@
     _w.__LoreInj.setupSubMenus(modal);
   }
 
+  function installProductShellStyle() {
+    if (document.getElementById('lore-inj-shell-style')) return;
+    const css = `
+      .decentral-color-container {
+        --decentral-text: #111827;
+        --decentral-text-inverted: #ffffff;
+        --decentral-text-formal: #667085;
+        --decentral-background: #ffffff;
+        --decentral-background-menu: #f7f8fa;
+        --decentral-hover: #eef2f6;
+        --decentral-border: #d0d5dd;
+        --decentral-active-item: #2563eb;
+        --decentral-active-text: #1d4ed8;
+        --decentral-background-active-item: #eff6ff;
+        --decentral-text-background: #ffffff;
+        --decentral-text-border: #d0d5dd;
+        --decentral-switch-background: #ffffff;
+        --decentral-switch-inactive: #98a2b3;
+      }
+      .decentral-color-container[theme="dark"] {
+        --decentral-text: #f2f4f7;
+        --decentral-text-inverted: #0b0f14;
+        --decentral-text-formal: #98a2b3;
+        --decentral-background: #171a1f;
+        --decentral-background-menu: #111419;
+        --decentral-hover: #242933;
+        --decentral-border: #333945;
+        --decentral-active-item: #4f8cff;
+        --decentral-active-text: #8bb5ff;
+        --decentral-background-active-item: #1a2942;
+        --decentral-text-background: #101318;
+        --decentral-text-border: #333945;
+        --decentral-switch-background: #101318;
+        --decentral-switch-inactive: #4b5563;
+      }
+      .decentral-modal {
+        max-width: min(960px, calc(100vw - 28px)) !important;
+        border-radius: 10px !important;
+      }
+      .decentral-menu-element,
+      .decentral-sub-menu-element,
+      .decentral-mobile-menu-element,
+      .decentral-mobile-sub-menu-element {
+        letter-spacing: 0 !important;
+      }
+      .lore-launcher-button {
+        min-width: 0;
+        height: 30px;
+        padding: 0 10px;
+        border-radius: 7px;
+        border: 1px solid rgba(148, 163, 184, .35);
+        background: rgba(15, 23, 42, .72);
+        color: #e5e7eb;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .lore-launcher-button:hover {
+        background: rgba(30, 41, 59, .9);
+        border-color: rgba(148, 163, 184, .55);
+      }
+      .lore-launcher-button p {
+        margin: 0;
+        white-space: nowrap;
+      }
+    `;
+    const style = document.createElement('style');
+    style.id = 'lore-inj-shell-style';
+    style.textContent = css;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   // === DOM 진입점 ===
-  // 1) 좌측 설정 메뉴에 "결정화 캐즘" 링크 추가
+  // 1) 좌측 설정 메뉴에 Lore Injector 링크 추가
   function __updateModalMenu() {
     const modalEl = document.getElementById('web-modal');
-    if (modalEl && !document.getElementById('chasm-decentral-menu')) {
+    if (modalEl && !document.getElementById('lore-injector-settings-menu')) {
       const itemFound = modalEl.getElementsByTagName('a');
       for (let item of itemFound) {
         if (item.getAttribute('href') === '/setting') {
           const clonedElement = item.cloneNode(true);
-          clonedElement.id = 'chasm-decentral-menu';
+          clonedElement.id = 'lore-injector-settings-menu';
           const textElement = clonedElement.getElementsByTagName('span')[0];
-          if (textElement) textElement.innerText = '결정화 캐즘';
+          if (textElement) textElement.innerText = 'Lore Injector';
           clonedElement.setAttribute('href', 'javascript: void(0)');
           clonedElement.onclick = (event) => {
             event.preventDefault(); event.stopPropagation();
@@ -133,9 +205,9 @@
     }
   }
 
-  // 2) 채팅창 상단 패널에 "🔥 Chasm Tools" 버튼 삽입
+  // 2) 채팅창 상단 패널에 Lore 버튼 삽입
   async function injectBannerButton() {
-    const selected = document.getElementsByClassName('burner-button');
+    const selected = document.getElementsByClassName('lore-launcher-button');
     if (selected && selected.length > 0) return;
     try {
       const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
@@ -147,9 +219,10 @@
         const top = topList[topList.length - 1];
         if (!top) return;
         const buttonCloned = document.createElement('button');
-        buttonCloned.innerHTML = '<p></p>'; buttonCloned.style.cssText = 'margin-right: 10px'; buttonCloned.className = 'burner-button';
+        buttonCloned.innerHTML = '<p></p>'; buttonCloned.style.cssText = 'margin-right: 10px'; buttonCloned.className = 'lore-launcher-button';
+        buttonCloned.title = 'Lore Injector';
         const textNode = buttonCloned.getElementsByTagName('p');
-        top.insertBefore(buttonCloned, top.childNodes[0]); textNode[0].innerText = '🔥  Chasm Tools';
+        top.insertBefore(buttonCloned, top.childNodes[0]); textNode[0].innerText = 'Lore';
         buttonCloned.removeAttribute('onClick');
         buttonCloned.addEventListener('click', () => { MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light'); });
       }
@@ -181,9 +254,10 @@
     setInterval(doInjection, 2000);
   }
 
+  installProductShellStyle();
   document.getElementById('lore-inj-gear-btn')?.remove();
   __doModalMenuInit();
 
   Object.assign(_w.__LoreInj, { __uiLoaded: true });
-  console.log('[LoreInj:6-ui] UI loaded (Chasm Tools banner attached)');
+  console.log('[LoreInj:6-ui] UI loaded (Lore launcher attached)');
 })();
