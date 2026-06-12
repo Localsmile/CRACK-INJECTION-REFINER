@@ -8,7 +8,6 @@
   "modules": [
     "embedding/vendor/toastify-injection.js",
     "embedding/vendor/crack-shared-core.js",
-    "embedding/vendor/chasm-shared-core.js",
     "embedding/env-compat.js",
     "embedding/platform-adapter.js",
     "embedding/core-ui.js",

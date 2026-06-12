@@ -38,11 +38,11 @@ class ToastifyInjector {
     const rootNode = toastifies[0];
     if (rootNode.childNodes.length > 0) {
       if (
-        rootNode.getElementsByClassName("chasm-toastify-track").length !=
+        rootNode.getElementsByClassName("lore-toastify-track").length !=
         rootNode.childNodes.length
       ) {
         for (const element of Array.from(
-          rootNode.getElementsByClassName("chasm-toastify-track")
+          rootNode.getElementsByClassName("lore-toastify-track")
         )) {
           if (element.hasAttribute("completed")) {
             element.removeAttribute("completed");
@@ -52,7 +52,7 @@ class ToastifyInjector {
       }
     }
     for (const element of rootNode.getElementsByClassName(
-      "chasm-toastify-track"
+      "lore-toastify-track"
     )) {
       if (element.expireAt < current && element.hasAttribute("completed")) {
         element.removeAttribute("completed");
@@ -64,12 +64,12 @@ class ToastifyInjector {
   }
   #init() {
     GM_addStyle(`
-        .chasm-toastify-track {
+        .lore-toastify-track {
             transform: translateY(-200%);
             transition: transform 0.4s;
         }
 
-        .chasm-toastify-track[completed="true"] {
+        .lore-toastify-track[completed="true"] {
             transform: translateY(0);
             transition: transform 0.4s;
         }
@@ -100,7 +100,7 @@ class ToastifyInjector {
 
     const wrapperNode = document.createElement("div");
     wrapperNode.className =
-      "Toastify__toast-container Toastify__toast-container--top-center chasm-toastify-track";
+      "Toastify__toast-container Toastify__toast-container--top-center lore-toastify-track";
     wrapperNode.style.cssText =
       "background: transparent; min-width: 461px; min-height: 0px; height: fit-content; border-radius: 10px; justify-content: center; left: auto; justify-self: center;";
     wrapperNode.append(containerNode);

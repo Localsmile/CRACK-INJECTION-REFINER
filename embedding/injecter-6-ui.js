@@ -191,10 +191,9 @@
       if (_menuDebounceTimer) return;
       _menuDebounceTimer = setTimeout(() => { _menuDebounceTimer = 0; __updateModalMenu(); }, 200);
     };
-    if (typeof GenericUtil !== 'undefined' && GenericUtil.attachObserver) {
-      GenericUtil.attachObserver(document, _debouncedUpdateMenu);
-    } else {
-      const observer = new MutationObserver(_debouncedUpdateMenu);
+    const Observer = window.MutationObserver || window.WebKitMutationObserver;
+    if (Observer && document.body) {
+      const observer = new Observer(_debouncedUpdateMenu);
       observer.observe(document.body, { childList: true, subtree: true });
     }
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', doInjection); window.addEventListener('load', doInjection); } else { doInjection(); }
