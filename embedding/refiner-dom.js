@@ -823,19 +823,19 @@
 
     const box = document.createElement('div');
     box.id = 'refiner-reload-action';
-    box.style.cssText = 'position:fixed;right:18px;bottom:90px;z-index:999999;background:#1a1a1a;color:#ddd;border:1px solid #444;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);padding:12px;max-width:320px;font-size:12px;line-height:1.45;';
+    box.style.cssText = 'position:fixed;right:18px;bottom:90px;z-index:999999;background:rgba(8,17,29,.96);color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:10px;box-shadow:0 18px 44px rgba(0,0,0,.42);padding:12px;max-width:min(340px,calc(100vw - 36px));font-size:12px;line-height:1.5;';
     const text = document.createElement('div');
     text.textContent = message || '서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.';
-    text.style.cssText = 'margin-bottom:10px;color:#ddd;';
+    text.style.cssText = 'margin-bottom:10px;color:var(--li-text-soft,#a9b6c7);';
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
     const close = document.createElement('button');
     close.textContent = '닫기';
-    close.style.cssText = 'padding:7px 10px;border:0;border-radius:5px;background:#444;color:#ddd;cursor:pointer;';
+    close.style.cssText = 'min-height:32px;padding:7px 11px;border:1px solid var(--li-line,#2f3b4f);border-radius:7px;background:transparent;color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
     close.onclick = () => box.remove();
     const reload = document.createElement('button');
     reload.textContent = '새로고침';
-    reload.style.cssText = 'padding:7px 10px;border:0;border-radius:5px;background:#285;color:white;font-weight:bold;cursor:pointer;';
+    reload.style.cssText = 'min-height:32px;padding:7px 11px;border:1px solid rgba(120,213,168,.55);border-radius:7px;background:rgba(120,213,168,.16);color:#78d5a8;font-weight:800;cursor:pointer;';
     reload.onclick = () => location.reload();
     row.appendChild(close); row.appendChild(reload);
     box.appendChild(text); box.appendChild(row);
@@ -847,41 +847,41 @@
   function showRefineConfirm(reason, refinedText, onConfirm, onCancel) {
     const overlay = document.createElement('div');
     overlay.id = 'refiner-confirm-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:999999;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:999999;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;';
 
     const box = document.createElement('div');
-    box.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:8px;width:100%;max-width:400px;padding:20px;box-shadow:0 10px 25px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:12px;';
+    box.style.cssText = 'background:linear-gradient(180deg,#101a2a,#0a111d);border:1px solid var(--li-line,#2f3b4f);border-radius:14px;width:100%;max-width:440px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;gap:12px;';
 
     const title = document.createElement('div');
     title.textContent = 'AI 응답 교정 제안';
-    title.style.cssText = 'font-size:16px;font-weight:bold;color:#4a9;margin-bottom:4px;';
+    title.style.cssText = 'font-size:16px;font-weight:900;color:var(--li-text,#e7edf5);margin-bottom:4px;';
 
     const reasonTitle = document.createElement('div');
     reasonTitle.textContent = '교정 이유:';
-    reasonTitle.style.cssText = 'font-size:12px;color:#aaa;font-weight:bold;';
+    reasonTitle.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:900;';
     const reasonText = document.createElement('div');
     reasonText.textContent = reason;
-    reasonText.style.cssText = 'font-size:13px;color:#ccc;background:#222;padding:8px;border-radius:4px;';
+    reasonText.style.cssText = 'font-size:13px;color:var(--li-text-soft,#a9b6c7);background:rgba(7,13,23,.68);border:1px solid var(--li-line,#2f3b4f);padding:9px 10px;border-radius:9px;line-height:1.5;';
 
     const refTitle = document.createElement('div');
     refTitle.textContent = '수정된 응답:';
-    refTitle.style.cssText = 'font-size:12px;color:#aaa;font-weight:bold;margin-top:8px;';
+    refTitle.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:900;margin-top:8px;';
 
     const refTa = document.createElement('textarea');
     refTa.value = refinedText;
-    refTa.style.cssText = 'width:100%;height:100px;background:#0a0a0a;color:#fff;border:1px solid #444;border-radius:4px;padding:8px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;';
+    refTa.style.cssText = 'width:100%;height:110px;background:#08111d;color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:9px 10px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5;';
 
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:12px;';
 
     const btnCancel = document.createElement('button');
     btnCancel.textContent = '원본 유지';
-    btnCancel.style.cssText = 'padding:10px 16px;border-radius:6px;border:none;background:#444;color:#ccc;cursor:pointer;font-weight:bold;';
+    btnCancel.style.cssText = 'min-height:36px;padding:8px 14px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:transparent;color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
     btnCancel.onclick = () => { document.body.removeChild(overlay); onCancel(); };
 
     const btnConfirm = document.createElement('button');
     btnConfirm.textContent = '교정본 변경';
-    btnConfirm.style.cssText = 'padding:10px 16px;border-radius:6px;border:none;background:#285;color:#fff;cursor:pointer;font-weight:bold;';
+    btnConfirm.style.cssText = 'min-height:36px;padding:8px 14px;border-radius:8px;border:1px solid rgba(120,213,168,.55);background:rgba(120,213,168,.16);color:#78d5a8;cursor:pointer;font-weight:800;';
     btnConfirm.onclick = () => { document.body.removeChild(overlay); onConfirm(refTa.value); };
 
     btnRow.appendChild(btnCancel); btnRow.appendChild(btnConfirm);
