@@ -30,10 +30,12 @@
     help: 120
   };
   const MENU_GROUPS = {
-    memory: { label: '로어 관리', order: 20, keys: ['lore', 'file', 'merge', 'snapshot', 'backup'], desc: '로어 목록, 파일 가져오기, 전체 백업, 중복 정리를 관리함.' },
-    automation: { label: '자동화', order: 40, keys: ['extract', 'refiner'], desc: '대화 정리, 지식 변환, 응답 교정 흐름을 관리함.' },
-    api: { label: 'API / 프롬프트', order: 60, keys: ['api'], desc: 'API 연결, 모델 선택, 프롬프트 템플릿을 관리함.' },
-    diagnostics: { label: '진단 / 도움말', order: 80, keys: ['log', 'session', 'help'], desc: '실행 로그, 세션 상태, 사용 도움말을 확인함.' }
+    overview: { label: '대시보드', order: 10, keys: ['main'], desc: '현재 상태와 핵심 설정을 한 화면에서 확인함.' },
+    memory: { label: '로어', order: 20, keys: ['lore', 'merge'], desc: '로어 목록, 중복 정리, 병합 작업을 관리함.' },
+    transfer: { label: '백업 / 이동', order: 30, keys: ['file', 'backup', 'snapshot'], desc: '파일 가져오기, 전체 백업, 서버 백업, 스냅샷 복원을 관리함.' },
+    automation: { label: '자동화 / 교정', order: 40, keys: ['extract', 'refiner'], desc: '대화 정리, 지식 변환, 응답 교정 흐름을 관리함.' },
+    api: { label: 'API / 프롬프트', order: 50, keys: ['api'], desc: 'API 연결, 모델 선택, 프롬프트 템플릿을 관리함.' },
+    diagnostics: { label: '진단 / 도움말', order: 60, keys: ['log', 'session', 'help'], desc: '실행 로그, 세션 상태, 사용 도움말을 확인함.' }
   };
   const KEY_TO_GROUP = Object.entries(MENU_GROUPS).reduce((acc, [groupKey, group]) => {
     group.keys.forEach(key => { acc[key] = groupKey; });
