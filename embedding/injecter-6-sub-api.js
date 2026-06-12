@@ -8,17 +8,27 @@
   const { C, settings } = _w.__LoreInj;
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
-  // Firebase 사전 워밍업 — 첨 실호출의 SDK import + initializeApp 비용을 백그라운드로 분리. 실패해도 조용히 넘김.
+  // Firebase 사전 워밍업: 첫 실호출의 SDK import + initializeApp 비용을 백그라운드로 분리.
   if (settings.config.autoExtApiType === 'firebase' && settings.config.autoExtFirebaseScript && C.warmupFirebase) {
     C.warmupFirebase(settings.config.autoExtFirebaseScript, settings.config.autoExtModel || 'gemini-3-flash-preview').catch(() => {});
   }
 
-  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;min-height:34px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:8px 10px;font-size:12px;box-sizing:border-box;';
+  const BTN_BASE = 'min-height:30px;padding:5px 10px;font-size:11px;border-radius:7px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
+  const TONE = {
+    muted: 'var(--li-muted,#748196)',
+    soft: 'var(--li-text-soft,#a9b6c7)',
+    text: 'var(--li-text,#e7edf5)',
+    accent: 'var(--li-accent,#5aa7ff)',
+    ok: '#78d5a8',
+    warn: '#e7b56f',
+    danger: '#ef6b6b'
+  };
 
   function addSelect(nd, label, value, groups, onChange, opts = {}) {
     const l = document.createElement('div');
     l.textContent = label;
-    l.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;';
+    l.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;';
     nd.appendChild(l);
     const sel = document.createElement('select');
     sel.style.cssText = FIELD_STYLE;
@@ -57,12 +67,12 @@
     row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:12px 0 4px;';
     const l = document.createElement('div');
     l.textContent = label;
-    l.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;';
+    l.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:900;';
     row.appendChild(l);
     if (opts.reset) {
       const btn = document.createElement('button');
       btn.textContent = '기본값 복구';
-      btn.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:3px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
+      btn.style.cssText = BTN_BASE + 'min-height:24px;padding:3px 7px;font-size:10px;color:' + TONE.accent + ';border-color:rgba(90,167,255,.45);';
       row.appendChild(btn);
       btn.onclick = () => {
         if (!confirm(label + ' 기본값 복구?')) return;
@@ -82,7 +92,7 @@
   function addSimpleInput(nd, label, value, onChange, opts = {}) {
     const l = document.createElement('div');
     l.textContent = label;
-    l.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;';
+    l.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;';
     nd.appendChild(l);
     const inp = document.createElement('input');
     inp.type = opts.type || 'text';
@@ -141,19 +151,19 @@
       nd.appendChild(C.createSectionTitle('Gemini 추출 프롬프트', '템플릿 선택은 Gemini와 DeepSeek 프롬프트 세트에 함께 적용됨. 기본 템플릿은 직접 수정 안 됨.'));
 
       const tplHeader = document.createElement('div'); tplHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
-      const tplTitle = document.createElement('div'); tplTitle.textContent = '템플릿'; tplTitle.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;';
+      const tplTitle = document.createElement('div'); tplTitle.textContent = '템플릿'; tplTitle.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:900;';
       const newTplBtn = C.createActionButton('+ 새 템플릿', 'primary'); newTplBtn.style.fontSize = '11px'; newTplBtn.style.padding = '3px 8px';
       tplHeader.appendChild(tplTitle); tplHeader.appendChild(newTplBtn); nd.appendChild(tplHeader);
 
       const tplSelectWrap = document.createElement('div'); tplSelectWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;align-items:center;';
-      const tplSelect = document.createElement('select'); tplSelect.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
-      const tplRenameBtn = document.createElement('button'); tplRenameBtn.textContent = '이름 변경'; tplRenameBtn.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
-      const tplDelBtn = document.createElement('button'); tplDelBtn.textContent = '삭제'; tplDelBtn.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #d66;color:#d66;cursor:pointer;';
-      const tplResetBtn = document.createElement('button'); tplResetBtn.textContent = '초기화'; tplResetBtn.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:3px;background:transparent;border:1px solid #285;color:#4a9;cursor:pointer;margin-left:auto;';
+      const tplSelect = document.createElement('select'); tplSelect.style.cssText = 'flex:1;' + FIELD_STYLE;
+      const tplRenameBtn = document.createElement('button'); tplRenameBtn.textContent = '이름 변경'; tplRenameBtn.style.cssText = BTN_BASE + 'color:' + TONE.accent + ';border-color:rgba(90,167,255,.45);';
+      const tplDelBtn = document.createElement('button'); tplDelBtn.textContent = '삭제'; tplDelBtn.style.cssText = BTN_BASE + 'color:' + TONE.danger + ';border-color:rgba(239,107,107,.45);';
+      const tplResetBtn = document.createElement('button'); tplResetBtn.textContent = '초기화'; tplResetBtn.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);margin-left:auto;';
       tplSelectWrap.appendChild(tplSelect); tplSelectWrap.appendChild(tplRenameBtn); tplSelectWrap.appendChild(tplDelBtn); tplSelectWrap.appendChild(tplResetBtn); nd.appendChild(tplSelectWrap);
 
       const promptStyle = FIELD_STYLE + 'height:150px;font-family:monospace;resize:vertical;margin-bottom:12px;';
-      const mkLabel = (txt) => { const l = document.createElement('div'); l.textContent = txt; l.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;'; nd.appendChild(l); };
+      const mkLabel = (txt) => { const l = document.createElement('div'); l.textContent = txt; l.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:800;margin-bottom:4px;'; nd.appendChild(l); };
       mkLabel('출력 형식(JSON)');
       const taSchema = document.createElement('textarea'); taSchema.style.cssText = promptStyle; nd.appendChild(taSchema);
       mkLabel('새 로어 추출 지시문');
@@ -244,7 +254,7 @@
       addPromptArea(nd, '응답 교정 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
       const note = document.createElement('div');
       note.textContent = '응답 교정 템플릿/체크박스 선택은 AI 응답 교정 화면에서도 가능함.';
-      note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;';
+      note.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);line-height:1.5;';
       nd.appendChild(note);
     }});
   }
@@ -257,7 +267,7 @@
           C.setFullWidth(nd);
           const apiTypeLabel = (settings.config.autoExtApiType || 'key') === 'deepseek' ? 'DeepSeek' : (settings.config.autoExtApiType || 'key') === 'vertex' ? 'Vertex JSON' : (settings.config.autoExtApiType || 'key') === 'firebase' ? 'Firebase' : 'Gemini API Key';
           nd.appendChild(C.createSectionTitle('API 연결', '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면 추출이 이 연결 사용함.'));
-          const providerLabel = document.createElement('div'); providerLabel.textContent = 'API 종류'; providerLabel.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(providerLabel);
+          const providerLabel = document.createElement('div'); providerLabel.textContent = 'API 종류'; providerLabel.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;'; nd.appendChild(providerLabel);
           const providerSel = document.createElement('select'); providerSel.style.cssText = FIELD_STYLE;
           [['Gemini API Key', 'key'], ['Firebase', 'firebase'], ['Vertex JSON', 'vertex'], ['DeepSeek', 'deepseek']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; providerSel.appendChild(o); });
           providerSel.value = settings.config.autoExtApiType || 'key';
@@ -271,13 +281,13 @@
           if ((settings.config.autoExtApiType || 'key') === 'deepseek') {
             addSimpleInput(nd, 'DeepSeek API 키', settings.config.autoExtDeepSeekKey || '', (v) => { settings.config.autoExtDeepSeekKey = v; settings.save(); }, { placeholder: 'sk-...' });
             nd.appendChild(C.createToggleRow('DeepSeek 추론 사용', '끄면 빠르고 저렴하게 호출함. 켜면 V4 추론 모드 사용함.', settings.config.autoExtDeepSeekThinking !== false, (v) => { settings.config.autoExtDeepSeekThinking = v; settings.save(); }));
-            const dsl = document.createElement('div'); dsl.textContent = 'DeepSeek 추론 강도'; dsl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(dsl);
+            const dsl = document.createElement('div'); dsl.textContent = 'DeepSeek 추론 강도'; dsl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;'; nd.appendChild(dsl);
             const dss = document.createElement('select'); dss.style.cssText = FIELD_STYLE;
             [['High', 'high'], ['Max', 'max']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; dss.appendChild(o); });
             dss.value = settings.config.autoExtDeepSeekReasoning || 'high';
             dss.onchange = () => { settings.config.autoExtDeepSeekReasoning = dss.value; settings.save(); };
             nd.appendChild(dss);
-            const embNote = document.createElement('div'); embNote.textContent = '의미 검색/임베딩은 Gemini API 키 사용함.'; embNote.style.cssText = 'font-size:11px;color:#d96;margin:8px 0;line-height:1.4;'; nd.appendChild(embNote);
+            const embNote = document.createElement('div'); embNote.textContent = '의미 검색/임베딩은 Gemini API 키 사용함.'; embNote.style.cssText = 'font-size:11px;color:' + TONE.warn + ';margin:8px 0;line-height:1.5;'; nd.appendChild(embNote);
             addSimpleInput(nd, '임베딩용 Gemini API 키', settings.config.autoExtFirebaseEmbedKey || '', (v) => { settings.config.autoExtFirebaseEmbedKey = v; settings.save(); }, { placeholder: 'AIza...' });
           } else {
             C.createApiInput(settings.config, 'autoExt', nd, () => settings.save());
@@ -285,7 +295,7 @@
   
           const testRow = document.createElement('div'); testRow.style.cssText = 'margin:12px 0 16px;display:flex;gap:8px;align-items:center;';
           const testBtn = C.createActionButton('API 키 테스트', 'primary'); testBtn.style.padding = '6px 16px';
-          const testResult = document.createElement('span'); testResult.style.cssText = 'font-size:12px;color:#888;word-break:break-all;';
+          const testResult = document.createElement('span'); testResult.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);word-break:break-all;';
           testBtn.onclick = async () => {
             const apiType = settings.config.autoExtApiType || 'key';
             const missing = apiType === 'deepseek' ? !settings.config.autoExtDeepSeekKey : apiType === 'vertex' ? !settings.config.autoExtVertexJson : apiType === 'firebase' ? !settings.config.autoExtFirebaseScript : !settings.config.autoExtKey;
@@ -294,8 +304,8 @@
             try {
               const testModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : (settings.config.autoExtModel || (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : 'gemini-3-flash-preview'));
               const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', costContext: { feature: 'apiTest', chatKey: 'global' } });
-              testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
-            } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = '#d66'; }
+              testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? TONE.ok : TONE.danger;
+            } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = TONE.danger; }
             testBtn.disabled = false;
           };
           testRow.appendChild(testBtn); testRow.appendChild(testResult); nd.appendChild(testRow);
@@ -311,21 +321,21 @@
           addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
   
           if ((settings.config.autoExtApiType || 'key') !== 'deepseek') {
-            const rl = document.createElement('div'); rl.textContent = '생각 깊이'; rl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(rl);
+            const rl = document.createElement('div'); rl.textContent = '생각 깊이'; rl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;'; nd.appendChild(rl);
             const rs = document.createElement('select'); rs.style.cssText = FIELD_STYLE;
             [['Off', 'off'], ['Minimal (256)', 'minimal'], ['Low (1024)', 'low'], ['Medium (2048)', 'medium'], ['High (4096)', 'high'], ['Budget (사용자 지정)', 'budget']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; rs.appendChild(o); });
             rs.value = settings.config.autoExtReasoning || 'medium'; nd.appendChild(rs);
-            const bl = document.createElement('div'); bl.textContent = '생각 예산'; bl.style.cssText = 'font-size:11px;color:#666;margin-bottom:4px;margin-top:8px;' + (rs.value === 'budget' ? '' : 'display:none;');
+            const bl = document.createElement('div'); bl.textContent = '생각 예산'; bl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:4px;margin-top:8px;' + (rs.value === 'budget' ? '' : 'display:none;');
             const bi = document.createElement('input'); bi.type = 'number'; bi.value = settings.config.autoExtBudget || 2048; bi.style.cssText = FIELD_STYLE + (rs.value === 'budget' ? '' : 'display:none;');
             bi.onchange = () => { settings.config.autoExtBudget = parseInt(bi.value) || 2048; settings.save(); };
             rs.onchange = () => { settings.config.autoExtReasoning = rs.value; settings.save(); const isB = rs.value === 'budget'; bl.style.display = isB ? '' : 'none'; bi.style.display = isB ? '' : 'none'; };
             nd.appendChild(bl); nd.appendChild(bi);
-            const jrl = document.createElement('div'); jrl.textContent = '과거 장면 판단 생각 깊이'; jrl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(jrl);
+            const jrl = document.createElement('div'); jrl.textContent = '과거 장면 판단 생각 깊이'; jrl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;'; nd.appendChild(jrl);
             const jrs = document.createElement('select'); jrs.style.cssText = FIELD_STYLE;
             [['Minimal (권장)', 'minimal'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; jrs.appendChild(o); });
             jrs.value = settings.config.temporalRecallJudgeReasoning || 'minimal';
             nd.appendChild(jrs);
-            const proWarn = document.createElement('div'); proWarn.style.cssText = 'font-size:10px;color:#d96;margin-top:4px;display:none;'; proWarn.textContent = '주의: Pro 모델은 minimal 미지원. low 이상 권장.'; nd.appendChild(proWarn);
+            const proWarn = document.createElement('div'); proWarn.style.cssText = 'font-size:10px;color:' + TONE.warn + ';margin-top:4px;display:none;'; proWarn.textContent = '주의: Pro 모델은 minimal 미지원. low 이상 권장.'; nd.appendChild(proWarn);
             const refreshProWarn = () => { const m = judgeCtl.sel.value === '_custom' ? (judgeCtl.customInput?.value || '') : judgeCtl.sel.value; proWarn.style.display = (String(m).includes('pro') && jrs.value === 'minimal') ? '' : 'none'; };
             judgeCtl.sel.addEventListener('change', refreshProWarn);
             if (judgeCtl.customInput) judgeCtl.customInput.addEventListener('change', refreshProWarn);
