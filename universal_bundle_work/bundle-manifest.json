@@ -33,6 +33,7 @@
     "embedding/injecter-5.js",
     "embedding/injecter-6.js",
     "embedding/settings-shell.js",
+    "embedding/settings-registry.js",
     "embedding/injecter-6-sub-main.js",
     "embedding/injecter-6-sub-lore.js",
     "embedding/injecter-6-sub-merge.js",

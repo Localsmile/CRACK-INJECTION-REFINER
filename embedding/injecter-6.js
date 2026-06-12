@@ -17,6 +17,7 @@
   if (!_w.__LoreInj.__subMenuQueue) _w.__LoreInj.__subMenuQueue = [];
   const MENU_ORDER = {
     main: 10,
+    registry: 15,
     lore: 20,
     file: 30,
     extract: 40,
@@ -30,7 +31,7 @@
     help: 120
   };
   const MENU_GROUPS = {
-    overview: { label: '대시보드', order: 10, keys: ['main'], desc: '현재 상태와 핵심 설정을 한 화면에서 확인함.' },
+    overview: { label: '대시보드', order: 10, keys: ['main', 'registry'], desc: '현재 상태와 핵심 설정을 한 화면에서 확인함.' },
     memory: { label: '로어', order: 20, keys: ['lore', 'merge'], desc: '로어 목록, 중복 정리, 병합 작업을 관리함.' },
     transfer: { label: '백업 / 이동', order: 30, keys: ['file', 'backup', 'snapshot'], desc: '파일 가져오기, 전체 백업, 서버 백업, 스냅샷 복원을 관리함.' },
     automation: { label: '자동화 / 교정', order: 40, keys: ['extract', 'refiner'], desc: '대화 정리, 지식 변환, 응답 교정 흐름을 관리함.' },
