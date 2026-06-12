@@ -29,6 +29,16 @@
     api: 110,
     help: 120
   };
+  const MENU_GROUPS = {
+    memory: { label: '로어 관리', order: 20, keys: ['lore', 'file', 'merge', 'snapshot', 'backup'], desc: '로어 목록, 파일 가져오기, 전체 백업, 중복 정리를 관리함.' },
+    automation: { label: '자동화', order: 40, keys: ['extract', 'refiner'], desc: '대화 정리, 지식 변환, 응답 교정 흐름을 관리함.' },
+    api: { label: 'API / 프롬프트', order: 60, keys: ['api'], desc: 'API 연결, 모델 선택, 프롬프트 템플릿을 관리함.' },
+    diagnostics: { label: '진단 / 도움말', order: 80, keys: ['log', 'session', 'help'], desc: '실행 로그, 세션 상태, 사용 도움말을 확인함.' }
+  };
+  const KEY_TO_GROUP = Object.entries(MENU_GROUPS).reduce((acc, [groupKey, group]) => {
+    group.keys.forEach(key => { acc[key] = groupKey; });
+    return acc;
+  }, {});
 
   function stableMenuQueue(queue, prefix) {
     return (queue || [])
@@ -46,24 +56,59 @@
 
   function mountQueuedMenus(modal) {
     if (!modal || typeof modal.createMenu !== 'function') return;
-    const flatMenuAdapter = {
-      createSubMenu: (menuName, menuAction) => modal.createMenu(menuName, menuAction),
-      createMenu: (menuName, menuAction) => modal.createMenu(menuName, menuAction)
-    };
     const menuQ = stableMenuQueue(_w.__LoreInj.__menuQueue || [], 'm');
     const subQ = stableMenuQueue(_w.__LoreInj.__subMenuQueue || [], 's');
     const registered = _w.__LoreInj.__registeredMenuKeys = _w.__LoreInj.__registeredMenuKeys || new Set();
-    _w.__LoreInj.__menuOrder = { menu: menuQ.map(x => x.key), subMenu: subQ.map(x => x.key) };
+    const groupMenus = {};
+    const makeGroupMenu = (groupKey) => {
+      const group = MENU_GROUPS[groupKey] || MENU_GROUPS.diagnostics;
+      if (groupMenus[groupKey]) return groupMenus[groupKey];
+      const menu = modal.createMenu(group.label, (m) => {
+        m.replaceContentPanel((panel) => {
+          panel.addBoxedField('', '', { onInit: (nd) => {
+            if (_w.__LoreCore && _w.__LoreCore.setFullWidth) _w.__LoreCore.setFullWidth(nd);
+            const title = document.createElement('div');
+            title.textContent = group.label;
+            title.style.cssText = 'font-size:16px;font-weight:700;color:var(--decentral-text);margin-bottom:6px;';
+            const desc = document.createElement('div');
+            desc.textContent = group.desc;
+            desc.style.cssText = 'font-size:12px;color:var(--decentral-text-formal);line-height:1.55;margin-bottom:10px;';
+            const hint = document.createElement('div');
+            hint.textContent = '왼쪽 하위 메뉴에서 필요한 작업을 선택할 것.';
+            hint.style.cssText = 'font-size:12px;color:var(--decentral-active-text);line-height:1.5;';
+            nd.appendChild(title); nd.appendChild(desc); nd.appendChild(hint);
+          }});
+        }, group.label);
+      });
+      groupMenus[groupKey] = menu;
+      return menu;
+    };
+    const groupedSubQ = subQ.map(item => ({ ...item, groupKey: KEY_TO_GROUP[item.key] || 'diagnostics' }))
+      .sort((a, b) => {
+        const ga = MENU_GROUPS[a.groupKey]?.order ?? 1000;
+        const gb = MENU_GROUPS[b.groupKey]?.order ?? 1000;
+        if (ga !== gb) return ga - gb;
+        return (MENU_ORDER[a.key] ?? 10000) - (MENU_ORDER[b.key] ?? 10000);
+      });
+    _w.__LoreInj.__menuOrder = { menu: menuQ.map(x => x.key), groups: groupedSubQ.map(x => x.groupKey + ':' + x.key) };
     console.log(`[LoreInj:6] setupSubMenus: menu=${menuQ.length}, subMenu=${subQ.length}`, _w.__LoreInj.__menuOrder);
     menuQ.forEach(({ key, cb }) => {
       const regKey = 'm:' + key;
       if (registered.has(regKey)) return;
       try { cb(modal); registered.add(regKey); } catch(e) { console.error(`[LoreInj:6] 메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('menu:' + key, e); }
     });
-    subQ.forEach(({ key, cb }) => {
+    groupedSubQ.forEach(({ key, cb, groupKey }) => {
       const regKey = 's:' + key;
       if (registered.has(regKey)) return;
-      try { cb(flatMenuAdapter); registered.add(regKey); } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('submenu:' + key, e); }
+      try {
+        const parentMenu = makeGroupMenu(groupKey);
+        const groupAdapter = {
+          createSubMenu: (menuName, menuAction) => parentMenu.createSubMenu(menuName, menuAction),
+          createMenu: (menuName, menuAction) => parentMenu.createSubMenu(menuName, menuAction)
+        };
+        cb(groupAdapter);
+        registered.add(regKey);
+      } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('submenu:' + key, e); }
     });
   }
 
