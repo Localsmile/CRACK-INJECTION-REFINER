@@ -9,7 +9,6 @@
     "embedding/vendor/toastify-injection.js",
     "embedding/vendor/crack-shared-core.js",
     "embedding/vendor/chasm-shared-core.js",
-    "embedding/vendor/decentralized-modal.js",
     "embedding/platform-adapter.js",
     "embedding/core-ui.js",
     "embedding/core-kernel.js",

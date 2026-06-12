@@ -43,17 +43,6 @@
     document.body.appendChild(btn);
   }
 
-  async function waitForModalManager(timeoutMs = 10000) {
-    const until = Date.now() + timeoutMs;
-    while (Date.now() < until) {
-      const MM = (typeof ModalManager !== 'undefined') ? ModalManager
-              : (_w.ModalManager || (typeof window !== 'undefined' && window.ModalManager) || null);
-      if (MM) return MM;
-      await new Promise(r => setTimeout(r, 100));
-    }
-    return null;
-  }
-
   // 1) 로더가 노출한 ready 게이트를 먼저 기다린다 (코어 5 + 서브 11 전원 로드 확인).
   //    게이트가 없으면(구버전 로더) 기존 폴링 로직으로 폴백.
   if (_w.__LoreInjReady && typeof _w.__LoreInjReady.then === 'function') {
@@ -88,6 +77,16 @@
 
   const { C, R, settings } = _w.__LoreInj;
   const VER = _w.__LoreInj.VER;
+  const settingsShellReady = _w.__LoreInj.__settingsShellLoaded
+    && _w.__LoreInj.__LoreSettingsShell
+    && typeof _w.__LoreInj.__LoreSettingsShell.mountQueues === 'function'
+    && typeof _w.__LoreInj.__LoreSettingsShell.open === 'function';
+  if (!settingsShellReady) {
+    console.error('[LoreInj:6-ui] settings shell not ready');
+    _w.__LoreInj?.markFailed?.('ui', 'settings shell not ready');
+    await showBootErrorBadge({ ok: false, reason: 'settings shell not ready' });
+    return;
+  }
 
   function openLoreSettings() {
     const shell = _w.__LoreInj && _w.__LoreInj.__LoreSettingsShell;
@@ -95,78 +94,18 @@
       shell.open();
       return;
     }
-    MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+    console.error('[LoreInj:6-ui] settings shell missing');
+    showBootErrorBadge({ ok: false, reason: 'settings shell missing' });
   }
 
-  // ModalManager 해결
-  const MM = await waitForModalManager(10000);
-  if (!MM) {
-    console.error('[LoreInj:6-ui] ModalManager 미로드');
-    _w.__LoreInj?.markFailed?.('ui', 'ModalManager missing');
-    await showBootErrorBadge({ ok: false, reason: 'ModalManager missing' });
-    return;
-  }
-
-  // 서브모듈 등록은 ready 게이트에서 이미 보장됨 (이중 폴링 제거).
-
-  const modal = MM.getOrCreateManager('c2');
-  if (!modal || typeof modal.createMenu !== 'function') {
-    console.error('[LoreInj:6-ui] modal.createMenu 없음');
-    _w.__LoreInj?.markFailed?.('ui', 'modal.createMenu missing');
-    await showBootErrorBadge({ ok: false, reason: 'modal.createMenu missing' });
-    return;
-  }
-
-  // 메뉴 등록 함수 호출. createSubMenu 호환 처리는 injecter-6의 adapter가 담당한다.
+  // 메뉴 등록 함수 호출. 새 settings shell이 기존 callback API를 흡수한다.
   if (_w.__LoreInj.setupSubMenus) {
-    _w.__LoreInj.setupSubMenus(modal);
+    _w.__LoreInj.setupSubMenus(null);
   }
 
   function installProductShellStyle() {
     if (document.getElementById('lore-inj-shell-style')) return;
     const css = `
-      .decentral-color-container {
-        --decentral-text: #111827;
-        --decentral-text-inverted: #ffffff;
-        --decentral-text-formal: #667085;
-        --decentral-background: #ffffff;
-        --decentral-background-menu: #f7f8fa;
-        --decentral-hover: #eef2f6;
-        --decentral-border: #d0d5dd;
-        --decentral-active-item: #2563eb;
-        --decentral-active-text: #1d4ed8;
-        --decentral-background-active-item: #eff6ff;
-        --decentral-text-background: #ffffff;
-        --decentral-text-border: #d0d5dd;
-        --decentral-switch-background: #ffffff;
-        --decentral-switch-inactive: #98a2b3;
-      }
-      .decentral-color-container[theme="dark"] {
-        --decentral-text: #f2f4f7;
-        --decentral-text-inverted: #0b0f14;
-        --decentral-text-formal: #98a2b3;
-        --decentral-background: #171a1f;
-        --decentral-background-menu: #111419;
-        --decentral-hover: #242933;
-        --decentral-border: #333945;
-        --decentral-active-item: #4f8cff;
-        --decentral-active-text: #8bb5ff;
-        --decentral-background-active-item: #1a2942;
-        --decentral-text-background: #101318;
-        --decentral-text-border: #333945;
-        --decentral-switch-background: #101318;
-        --decentral-switch-inactive: #4b5563;
-      }
-      .decentral-modal {
-        max-width: min(960px, calc(100vw - 28px)) !important;
-        border-radius: 10px !important;
-      }
-      .decentral-menu-element,
-      .decentral-sub-menu-element,
-      .decentral-mobile-menu-element,
-      .decentral-mobile-sub-menu-element {
-        letter-spacing: 0 !important;
-      }
       .lore-launcher-button {
         min-width: 0;
         height: 30px;

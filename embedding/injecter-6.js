@@ -54,73 +54,26 @@
       });
   }
 
-  function mountQueuedMenus(modal) {
+  function mountQueuedMenus() {
     const menuQ = stableMenuQueue(_w.__LoreInj.__menuQueue || [], 'm');
     const subQ = stableMenuQueue(_w.__LoreInj.__subMenuQueue || [], 's');
     if (_w.__LoreInj.__LoreSettingsShell && typeof _w.__LoreInj.__LoreSettingsShell.mountQueues === 'function') {
       _w.__LoreInj.__LoreSettingsShell.mountQueues(menuQ, subQ, MENU_GROUPS, KEY_TO_GROUP);
     }
-    if (!modal || typeof modal.createMenu !== 'function') return;
-    const registered = _w.__LoreInj.__registeredMenuKeys = _w.__LoreInj.__registeredMenuKeys || new Set();
-    const groupMenus = {};
-    const makeGroupMenu = (groupKey) => {
-      const group = MENU_GROUPS[groupKey] || MENU_GROUPS.diagnostics;
-      if (groupMenus[groupKey]) return groupMenus[groupKey];
-      const menu = modal.createMenu(group.label, (m) => {
-        m.replaceContentPanel((panel) => {
-          panel.addBoxedField('', '', { onInit: (nd) => {
-            if (_w.__LoreCore && _w.__LoreCore.setFullWidth) _w.__LoreCore.setFullWidth(nd);
-            const title = document.createElement('div');
-            title.textContent = group.label;
-            title.style.cssText = 'font-size:16px;font-weight:700;color:var(--decentral-text);margin-bottom:6px;';
-            const desc = document.createElement('div');
-            desc.textContent = group.desc;
-            desc.style.cssText = 'font-size:12px;color:var(--decentral-text-formal);line-height:1.55;margin-bottom:10px;';
-            const hint = document.createElement('div');
-            hint.textContent = '왼쪽 하위 메뉴에서 필요한 작업을 선택할 것.';
-            hint.style.cssText = 'font-size:12px;color:var(--decentral-active-text);line-height:1.5;';
-            nd.appendChild(title); nd.appendChild(desc); nd.appendChild(hint);
-          }});
-        }, group.label);
-      });
-      groupMenus[groupKey] = menu;
-      return menu;
+    const groupedSubQ = subQ.map(item => ({ ...item, groupKey: KEY_TO_GROUP[item.key] || 'diagnostics' }));
+    _w.__LoreInj.__menuOrder = {
+      menu: menuQ.map(x => x.key),
+      groups: groupedSubQ.map(x => x.groupKey + ':' + x.key)
     };
-    const groupedSubQ = subQ.map(item => ({ ...item, groupKey: KEY_TO_GROUP[item.key] || 'diagnostics' }))
-      .sort((a, b) => {
-        const ga = MENU_GROUPS[a.groupKey]?.order ?? 1000;
-        const gb = MENU_GROUPS[b.groupKey]?.order ?? 1000;
-        if (ga !== gb) return ga - gb;
-        return (MENU_ORDER[a.key] ?? 10000) - (MENU_ORDER[b.key] ?? 10000);
-      });
-    _w.__LoreInj.__menuOrder = { menu: menuQ.map(x => x.key), groups: groupedSubQ.map(x => x.groupKey + ':' + x.key) };
     console.log(`[LoreInj:6] setupSubMenus: menu=${menuQ.length}, subMenu=${subQ.length}`, _w.__LoreInj.__menuOrder);
-    menuQ.forEach(({ key, cb }) => {
-      const regKey = 'm:' + key;
-      if (registered.has(regKey)) return;
-      try { cb(modal); registered.add(regKey); } catch(e) { console.error(`[LoreInj:6] 메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('menu:' + key, e); }
-    });
-    groupedSubQ.forEach(({ key, cb, groupKey }) => {
-      const regKey = 's:' + key;
-      if (registered.has(regKey)) return;
-      try {
-        const parentMenu = makeGroupMenu(groupKey);
-        const groupAdapter = {
-          createSubMenu: (menuName, menuAction) => parentMenu.createSubMenu(menuName, menuAction),
-          createMenu: (menuName, menuAction) => parentMenu.createSubMenu(menuName, menuAction)
-        };
-        cb(groupAdapter);
-        registered.add(regKey);
-      } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('submenu:' + key, e); }
-    });
   }
 
   function scheduleMenuRemount() {
     const L = _w.__LoreInj;
-    if (!L.__menuModal || L.__menuRemountTimer) return;
+    if (L.__menuRemountTimer) return;
     L.__menuRemountTimer = setTimeout(() => {
       L.__menuRemountTimer = 0;
-      mountQueuedMenus(L.__menuModal);
+      mountQueuedMenus();
     }, 100);
   }
 
@@ -138,14 +91,9 @@
 
   installMenuRegistrars();
 
-  // UI 모듈에서 호출: 로더 큐에 누적된 모든 등록을 ModalManager에 연결
-  _w.__LoreInj.setupSubMenus = function(modal) {
-    if (!modal || typeof modal.createMenu !== 'function') {
-      console.error('[LoreInj:6] modal.createMenu 없음');
-      return;
-    }
-    _w.__LoreInj.__menuModal = modal;
-    mountQueuedMenus(modal);
+  // UI 모듈에서 호출: 로더 큐에 누적된 모든 등록을 native settings shell에 연결.
+  _w.__LoreInj.setupSubMenus = function() {
+    mountQueuedMenus();
   };
 
   _w.__LoreInj.__inject6Loaded = true;
