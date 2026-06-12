@@ -118,6 +118,10 @@
     } catch (_) { return null; }
   }
 
+  async function getPlatformSummary() {
+    return null;
+  }
+
   function getLauncherMount() {
     try {
       const storyPath = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(pathname()) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(pathname());
@@ -135,11 +139,17 @@
 
   function capabilities() {
     const CU = crackUtil();
+    const chatId = getChatId();
+    const chatApi = !!(CU && CU.chatRoom);
+    const token = getAuthToken();
     return {
       hasCrackUtil: !!CU,
-      hasChatRoomApi: !!(CU && CU.chatRoom),
-      chatId: getChatId(),
-      chatPath: isChatPath()
+      hasChatRoomApi: chatApi,
+      chatId,
+      chatPath: isChatPath(),
+      canReadLogs: !!(chatApi && chatId),
+      canPatch: !!(token && chatId),
+      canReadSummary: false
     };
   }
 
@@ -154,6 +164,7 @@
     getMessageById,
     findLastAssistantMessage,
     patchMessage,
+    getPlatformSummary,
     getAuthToken,
     fetchPersonaName,
     getLauncherMount,

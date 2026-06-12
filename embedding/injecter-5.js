@@ -59,14 +59,14 @@
     }
   }
 
-  function currentChatIdSafe() {
+  function platformChatId() {
     try {
       const P = _w.__LorePlatform;
       return (P && P.getChatId && P.getChatId()) || (C.getCurrentChatId && C.getCurrentChatId());
     } catch (_) { return null; }
   }
 
-  async function fetchRawLogs(chatId, maxCount, naturalOrder) {
+  async function platformRecentMessages(chatId, maxCount, naturalOrder) {
     try {
       const P = _w.__LorePlatform;
       const logs = P && P.getRecentMessages
@@ -77,7 +77,7 @@
     } catch (_) { return []; }
   }
 
-  async function getMessageById(chatId, messageId) {
+  async function platformMessageById(chatId, messageId) {
     try {
       const P = _w.__LorePlatform;
       return P && P.getMessageById ? await P.getMessageById(chatId, messageId) : null;
@@ -85,7 +85,7 @@
     return null;
   }
 
-  async function patchUserMessage(chatId, messageId, nextText) {
+  async function platformPatchMessage(chatId, messageId, nextText) {
     try {
       const P = _w.__LorePlatform;
       return P && P.patchMessage
@@ -154,15 +154,27 @@
   async function runInjectionCleanup(reason) {
     if (settings.config.injectionCleanupEnabled === false) return;
     if (_cleanupRunning) return;
-    const chatId = currentChatIdSafe();
+    const chatId = platformChatId();
     const chatKey = getChatKey();
     if (!chatId || !chatKey) return;
+    const caps = _w.__LorePlatform && _w.__LorePlatform.capabilities ? _w.__LorePlatform.capabilities() : {};
+    if (!caps.canReadLogs || !caps.canPatch) {
+      addInjLog(chatKey, {
+        time: new Date().toLocaleTimeString(),
+        turn: getTurnCounter(chatKey),
+        matched: [],
+        count: 0,
+        reason: 'cleanup_unavailable',
+        note: caps.canReadLogs ? '삽입 흔적 정리 중단: 메시지 수정 API 사용 불가' : '삽입 흔적 정리 중단: 대화 로그 읽기 불가'
+      });
+      return;
+    }
     _cleanupRunning = true;
     try {
       const state = loadCleanupState();
       const items = state.items.filter(it => it && (it.chatId === chatId || it.chatKey === chatKey) && it.status !== 'done' && it.status !== 'failed' && it.status !== 'stale');
       if (!items.length) return;
-      const logs = await fetchRawLogs(chatId, Math.max(CLEANUP_RECONCILE_LIMIT, CLEANUP_LOG_LIMIT), true);
+      const logs = await platformRecentMessages(chatId, Math.max(CLEANUP_RECONCILE_LIMIT, CLEANUP_LOG_LIMIT), true);
       let changed = false;
       for (const item of items) {
         if (!item.messageId) changed = (await reconcileCleanupItem(item, logs)) || changed;
@@ -177,7 +189,7 @@
         const fallbackExpired = currentTurn && item.turn && (currentTurn - item.turn) >= configuredTurns;
         if (!(serverTurns != null ? serverTurns >= configuredTurns : fallbackExpired)) continue;
 
-        const cur = await getMessageById(item.chatId || chatId, item.messageId);
+        const cur = await platformMessageById(item.chatId || chatId, item.messageId);
         const currentText = cur && typeof cur.content === 'string' ? cur.content : null;
         if (!cur || cur.role !== 'user' || currentText == null) {
           item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
@@ -194,7 +206,7 @@
           addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_skip_' + item.failReason, note: '삽입 흔적 정리 건너뜀' });
           continue;
         }
-        const patched = await patchUserMessage(item.chatId || chatId, item.messageId, clean.text);
+        const patched = await platformPatchMessage(item.chatId || chatId, item.messageId, clean.text);
         item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
         item.lastCleanupAttemptAt = Date.now();
         if (patched.ok) {
@@ -866,7 +878,7 @@
 
     const finalMessage = buildInjectedMessage(userInput, injected, config.position);
     try {
-      queueInjectionCleanup(chatKey, currentChatIdSafe(), userInput, injected, finalMessage, turnCounter, config.position);
+      queueInjectionCleanup(chatKey, platformChatId(), userInput, injected, finalMessage, turnCounter, config.position);
     } catch (e) {
       console.warn('[Lore] cleanup queue failed:', e);
     }
