@@ -17,26 +17,29 @@
   if (!_w.__LoreInj.__subMenuQueue) _w.__LoreInj.__subMenuQueue = [];
   const MENU_ORDER = {
     main: 10,
-    registry: 15,
-    lore: 20,
-    file: 30,
-    extract: 40,
-    merge: 50,
-    snapshot: 60,
-    backup: 70,
-    refiner: 80,
-    log: 90,
-    session: 100,
-    api: 110,
-    help: 120
+    log: 20,
+    session: 30,
+    help: 40,
+    'memory-settings': 100,
+    lore: 110,
+    file: 120,
+    backup: 130,
+    snapshot: 140,
+    merge: 150,
+    'retrieval-settings': 200,
+    'injection-settings': 300,
+    extract: 310,
+    refiner: 320,
+    'model-settings': 400,
+    api: 410,
+    'advanced-settings': 420
   };
   const MENU_GROUPS = {
-    overview: { label: '대시보드', order: 10, keys: ['main', 'registry'], desc: '현재 상태와 핵심 설정을 한 화면에서 확인함.' },
-    memory: { label: '로어', order: 20, keys: ['lore', 'merge'], desc: '로어 목록, 중복 정리, 병합 작업을 관리함.' },
-    transfer: { label: '백업 / 이동', order: 30, keys: ['file', 'backup', 'snapshot'], desc: '파일 가져오기, 전체 백업, 서버 백업, 스냅샷 복원을 관리함.' },
-    automation: { label: '자동화 / 교정', order: 40, keys: ['extract', 'refiner'], desc: '대화 정리, 지식 변환, 응답 교정 흐름을 관리함.' },
-    api: { label: 'API / 프롬프트', order: 50, keys: ['api'], desc: 'API 연결, 모델 선택, 프롬프트 템플릿을 관리함.' },
-    diagnostics: { label: '진단 / 도움말', order: 60, keys: ['log', 'session', 'help'], desc: '실행 로그, 세션 상태, 사용 도움말을 확인함.' }
+    status: { label: 'Status', order: 10, keys: ['main', 'log', 'session', 'help'], desc: '상태, 로그, 세션 진단을 확인함.' },
+    memory: { label: 'Memory', order: 20, keys: ['memory-settings', 'lore', 'file', 'backup', 'snapshot', 'merge'], desc: '로어, 백업, 가져오기, 병합을 관리함.' },
+    retrieval: { label: 'Retrieval', order: 30, keys: ['retrieval-settings'], desc: '검색, 회수, 쿨타임 기준을 관리함.' },
+    injection: { label: 'Injection', order: 40, keys: ['injection-settings', 'extract', 'refiner'], desc: '삽입, 정리, 추출, 교정을 관리함.' },
+    models: { label: 'Models', order: 50, keys: ['model-settings', 'api', 'advanced-settings'], desc: 'API, 모델, 고급 동작을 관리함.' }
   };
   const KEY_TO_GROUP = Object.entries(MENU_GROUPS).reduce((acc, [groupKey, group]) => {
     group.keys.forEach(key => { acc[key] = groupKey; });
@@ -63,7 +66,7 @@
     if (_w.__LoreInj.__LoreSettingsShell && typeof _w.__LoreInj.__LoreSettingsShell.mountQueues === 'function') {
       _w.__LoreInj.__LoreSettingsShell.mountQueues(menuQ, subQ, MENU_GROUPS, KEY_TO_GROUP);
     }
-    const groupedSubQ = subQ.map(item => ({ ...item, groupKey: KEY_TO_GROUP[item.key] || 'diagnostics' }));
+    const groupedSubQ = subQ.map(item => ({ ...item, groupKey: KEY_TO_GROUP[item.key] || 'status' }));
     _w.__LoreInj.__menuOrder = {
       menu: menuQ.map(x => x.key),
       groups: groupedSubQ.map(x => x.groupKey + ':' + x.key)

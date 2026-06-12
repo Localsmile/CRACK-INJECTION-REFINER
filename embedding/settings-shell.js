@@ -512,7 +512,7 @@
         <aside class="lore-shell-nav">
           <div class="lore-shell-brand">
             <div class="lore-shell-brand-title">Lore Injector</div>
-            <div class="lore-shell-brand-sub">로어, 백업, 자동화, API, 진단을 작업 흐름별로 관리함</div>
+            <div class="lore-shell-brand-sub">Status, Memory, Retrieval, Injection, Models 기준으로 관리함</div>
           </div>
           <input class="lore-shell-search" type="search" placeholder="설정 검색" aria-label="설정 검색">
           <div class="lore-shell-nav-list"></div>
@@ -522,7 +522,7 @@
           <header class="lore-shell-header">
             <div class="lore-shell-title-wrap">
               <div class="lore-shell-title">설정</div>
-              <div class="lore-shell-subtitle">필요한 작업을 선택함</div>
+              <div class="lore-shell-subtitle">작업 흐름을 선택함</div>
             </div>
             <button class="lore-shell-close" type="button" title="닫기" aria-label="닫기">X</button>
           </header>

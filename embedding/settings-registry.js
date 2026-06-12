@@ -131,14 +131,14 @@
     return input;
   }
 
-  function renderSettingsRegistryPanel(panel) {
+  function renderSettingsRegistryPanel(panel, groupFilter = null) {
     panel.addBoxedField('', '', { onInit: (nd) => {
       nd.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
-      const intro = makeShell('div', '', '핵심 설정을 한 화면에서 관리함. 기존 세부 탭은 고급 작업과 목록 관리용으로 유지됨.');
+      const intro = makeShell('div', '', '자주 쓰는 설정을 작업 흐름별로 관리함. 고급 값은 필요한 경우에만 조정함.');
       intro.style.cssText = 'color:' + TONE.soft + ';font-size:12px;line-height:1.6;';
       nd.appendChild(intro);
 
-      GROUPS.forEach(group => {
+      GROUPS.filter(group => !groupFilter || group.id === groupFilter).forEach(group => {
         const defs = SETTINGS_REGISTRY.filter(d => d.group === group.id);
         const section = makeShell('section', '', '');
         section.style.cssText = 'border:1px solid ' + TONE.line + ';border-radius:10px;background:' + TONE.panel + ';padding:12px;';
@@ -172,10 +172,18 @@
     }});
   }
 
-  _w.__LoreInj.registerMenu = _w.__LoreInj.registerMenu || function() {};
-  _w.__LoreInj.registerMenu('registry', function(modal) {
-    modal.createMenu('통합 설정', (m) => {
-      m.replaceContentPanel(renderSettingsRegistryPanel, '통합 설정');
+  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
+  [
+    { key: 'memory-settings', label: '기억 설정', group: 'memory' },
+    { key: 'retrieval-settings', label: '검색 설정', group: 'retrieval' },
+    { key: 'injection-settings', label: '삽입 설정', group: 'injection' },
+    { key: 'model-settings', label: '모델 설정', group: 'models' },
+    { key: 'advanced-settings', label: '고급 설정', group: 'advanced' }
+  ].forEach(item => {
+    _w.__LoreInj.registerSubMenu(item.key, function(modal) {
+      modal.createSubMenu(item.label, (m) => {
+        m.replaceContentPanel((panel) => renderSettingsRegistryPanel(panel, item.group), item.label);
+      });
     });
   });
 
