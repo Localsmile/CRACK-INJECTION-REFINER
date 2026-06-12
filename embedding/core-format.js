@@ -188,6 +188,62 @@
     return line;
   }
 
+  function clampLine(text, max) {
+    const s = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!max || charLen(s) <= max) return s;
+    return [...s].slice(0, Math.max(0, max - 1)).join('').trim() + '…';
+  }
+
+  function formatSceneStateBlock(state, activeNames, budgetChars) {
+    if (!state || typeof state !== 'object') return '';
+    const budget = Math.max(120, Number(budgetChars || DEFAULTS.stateBlockChars || 450));
+    const active = new Set((activeNames || []).map(String).filter(Boolean));
+    const present = Array.isArray(state.presentChars) ? state.presentChars.map(String).filter(Boolean) : [];
+    present.forEach(n => active.add(n));
+    const lines = ['[현재 장면 상태]'];
+    const base = [];
+    if (state.location) base.push('장소=' + state.location);
+    if (state.timeLabel) base.push('시간=' + state.timeLabel);
+    if (present.length) base.push('등장=' + present.slice(0, 6).join(', '));
+    if (base.length) lines.push(base.join(' / '));
+
+    const rels = Array.isArray(state.relationships) ? state.relationships : [];
+    const relLines = rels
+      .filter(r => {
+        const pair = Array.isArray(r.pair) ? r.pair : [];
+        return !active.size || pair.some(p => active.has(String(p)));
+      })
+      .slice(0, 4)
+      .map(r => {
+        const pair = Array.isArray(r.pair) ? r.pair.join('-') : '';
+        return pair && r.status ? pair + ':' + r.status : (r.status || '');
+      })
+      .filter(Boolean);
+    if (relLines.length) lines.push('관계: ' + relLines.join('; '));
+
+    const honor = Array.isArray(state.honorifics) ? state.honorifics : [];
+    const honorLines = honor
+      .filter(h => !active.size || active.has(String(h.from)) || active.has(String(h.to)))
+      .slice(0, 4)
+      .map(h => h.from && h.to && h.term ? h.from + '→' + h.to + ':' + h.term : '')
+      .filter(Boolean);
+    if (honorLines.length) lines.push('호칭: ' + honorLines.join('; '));
+
+    const pending = Array.isArray(state.pending) ? state.pending : [];
+    const pendingLines = pending.slice(0, 4).map(p => p.text || p).filter(Boolean).map(x => String(x));
+    if (pendingLines.length) lines.push('미해결: ' + pendingLines.join('; '));
+
+    const facts = Array.isArray(state.facts) ? state.facts.slice(0, 6).map(String).filter(Boolean) : [];
+    if (facts.length) lines.push('고정 사실: ' + facts.join('; '));
+
+    let out = lines.filter(Boolean).map(line => clampLine(line, 180)).join('\n');
+    while (charLen(out) > budget && lines.length > 2) {
+      lines.pop();
+      out = lines.filter(Boolean).map(line => clampLine(line, 180)).join('\n');
+    }
+    return charLen(out) > budget ? clampLine(out, budget) : out;
+  }
+
   function buildTemporalRecallBlock(items, opts = {}) {
     const sourceRows = (items || [])
       .map(x => x && x.entry ? x.entry : x)
@@ -363,7 +419,7 @@
   function planInjectionBudget(opts) {
     const {
       userInput = '', maxInputChars = 2000, entries = [], activeNames = [], unmetPairs = [],
-      sceneTag = '', firstEncounterBlock = '', reunionTags = '', honorifics = '', temporalHints = '', temporalRecallBlock = '',
+      stateBlock = '', sceneTag = '', firstEncounterBlock = '', reunionTags = '', honorifics = '', temporalHints = '', temporalRecallBlock = '',
       config = {}, prefix = DEFAULTS.prefix, suffix = DEFAULTS.suffix
     } = opts || {};
     const userChars = charLen(userInput);
@@ -383,6 +439,7 @@
       return used;
     };
 
+    addSection('state', stateBlock, config.stateBlockChars || DEFAULTS.stateBlockChars || 450);
     addSection('scene', sceneTag, config.sceneTagChars || 90);
     addSection('temporalRecall', temporalRecallBlock, config.temporalRecallChars || 450);
     addSection('firstEncounter', firstEncounterBlock, config.firstEncounterChars || 240);
@@ -601,7 +658,7 @@
 
   Object.assign(C, {
     charLen, summaryTier, callStatePairs, cfFull, cfCompact, cfMicro, adaptiveFormat, bundleGroupKey,
-    entryPriority, formatEntryAtLevel, formatTimelineEventAtLevel, buildTemporalRecallBlock, buildLoreBudgetPlan, planInjectionBudget,
+    entryPriority, formatEntryAtLevel, formatTimelineEventAtLevel, formatSceneStateBlock, buildTemporalRecallBlock, buildLoreBudgetPlan, planInjectionBudget,
     formatEntryFull, formatEntryCompact, formatEntryMicro, budgetFormat, assembleInjection,
     formatFirstEncounterBlock, formatReunionTag, detectChatLanguage, getDefaultMemoryWrapper,
     __formatLoaded: true

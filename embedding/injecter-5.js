@@ -850,6 +850,16 @@
       });
     } catch(e) {}
 
+    let sceneStateBlock = '';
+    try {
+      const sceneState = C.updateSceneStateFromContext
+        ? await C.updateSceneStateFromContext(chatKey, recentMsgs, activeNames)
+        : (C.getSceneState ? await C.getSceneState(chatKey) : null);
+      sceneStateBlock = C.formatSceneStateBlock
+        ? C.formatSceneStateBlock(sceneState, activeNames, config.stateBlockChars || C.DEFAULTS.stateBlockChars || 450)
+        : '';
+    } catch(e) {}
+
     const temporalHints = (config.firstEncounterWarning !== false && C.formatTemporalHints)
       ? C.formatTemporalHints(topEntries, { currentTurn: turnCounter, activeNames, budget: Math.min(config.temporalHintChars || C.DEFAULTS.temporalHintChars || 120, 120) })
       : '';
@@ -859,6 +869,7 @@
       entries: topEntries,
       activeNames,
       unmetPairs,
+      stateBlock: sceneStateBlock,
       sceneTag,
       firstEncounterBlock,
       reunionTags,
@@ -942,6 +953,7 @@
       bundled: fmtResult.bundledCount || 0,
       sections: {
         scene: fmtResult.sections?.scene || C.charLen(sceneTag || ''),
+        state: fmtResult.sections?.state || C.charLen(sceneStateBlock || ''),
         firstEnc: fmtResult.sections?.firstEncounter || C.charLen(firstEncounterBlock || ''),
         reunion: fmtResult.sections?.reunion || C.charLen(reunionTags || ''),
         honor: fmtResult.sections?.honorifics || C.charLen(honorifics || ''),

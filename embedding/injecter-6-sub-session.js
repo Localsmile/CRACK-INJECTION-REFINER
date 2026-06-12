@@ -34,10 +34,12 @@
         const urlPacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []);
   
         let allEntries = [];
+        let sceneState = null;
         if (urlPacks.length > 0) {
           const all = await db.entries.toArray();
           allEntries = all.filter(e => urlPacks.includes(e.packName) && isEntryEnabledForUrl(e));
         }
+        try { if (C.getSceneState) sceneState = await C.getSceneState(chatKey); } catch(_) {}
   
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -102,6 +104,18 @@
             migBox.style.cssText = `margin-bottom:12px;padding:9px 10px;border-radius:9px;border:1px solid ${ok ? '#2c7a5f' : '#8f333f'};background:#0c1320;color:${COLOR.soft};font-size:11px;line-height:1.5;`;
             migBox.textContent = `마이그레이션: ${mig.message} / 엔트리 ${mig.migratedEntries || 0}개 정리 / stale embedding ${mig.staleEmbeddingsRemoved || 0}개 삭제`;
             nd.appendChild(migBox);
+          }
+
+          if (sceneState && sceneState.rev) {
+            const stateBox = document.createElement('div');
+            stateBox.style.cssText = 'margin-bottom:12px;padding:10px;border-radius:9px;border:1px solid var(--li-line,#2f3b4f);background:#0c1320;color:' + COLOR.soft + ';font-size:11px;line-height:1.55;';
+            const parts = [];
+            if (sceneState.location) parts.push('장소 ' + sceneState.location);
+            if (Array.isArray(sceneState.presentChars) && sceneState.presentChars.length) parts.push('등장 ' + sceneState.presentChars.slice(0, 5).join(', '));
+            if (Array.isArray(sceneState.pending) && sceneState.pending.length) parts.push('미해결 ' + sceneState.pending.length + '개');
+            if (Array.isArray(sceneState.facts) && sceneState.facts.length) parts.push('고정 사실 ' + sceneState.facts.length + '개');
+            stateBox.textContent = '장면 상태 rev ' + sceneState.rev + ': ' + (parts.join(' / ') || '저장된 요약 정보 있음');
+            nd.appendChild(stateBox);
           }
   
           if (!allEntries.length) {

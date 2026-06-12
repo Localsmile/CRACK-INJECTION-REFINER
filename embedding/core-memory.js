@@ -172,6 +172,78 @@
     return '[현재 장면: 장소=' + loc + ']';
   }
 
+  function blankSceneState(chatKey) {
+    return {
+      chatKey,
+      location: '',
+      timeLabel: '',
+      presentChars: [],
+      honorifics: [],
+      relationships: [],
+      pending: [],
+      facts: [],
+      updatedAt: Date.now(),
+      rev: 0
+    };
+  }
+
+  function uniqStrings(arr, limit) {
+    const out = [];
+    const seen = new Set();
+    (Array.isArray(arr) ? arr : []).forEach(v => {
+      const s = String(v || '').trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      out.push(s);
+    });
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  async function getSceneState(chatKey) {
+    const db = getDB();
+    if (!chatKey || !db.sceneStates) return blankSceneState(chatKey || '');
+    return await db.sceneStates.get(chatKey) || blankSceneState(chatKey);
+  }
+
+  async function saveSceneState(chatKey, patch, meta = {}) {
+    const db = getDB();
+    if (!chatKey || !db.sceneStates) return null;
+    const prev = await getSceneState(chatKey);
+    const next = { ...prev, ...(patch || {}) };
+    next.chatKey = chatKey;
+    next.presentChars = uniqStrings(next.presentChars, 8);
+    next.facts = uniqStrings(next.facts, 8);
+    next.pending = Array.isArray(next.pending) ? next.pending.slice(0, 8) : [];
+    next.honorifics = Array.isArray(next.honorifics) ? next.honorifics.slice(0, 12) : [];
+    next.relationships = Array.isArray(next.relationships) ? next.relationships.slice(0, 12) : [];
+    next.updatedAt = Date.now();
+    next.rev = (Number(prev.rev || 0) + 1);
+    if (meta && meta.msgId) next.lastMsgId = meta.msgId;
+    await db.sceneStates.put(next);
+    return next;
+  }
+
+  async function updateSceneStateFromContext(chatKey, recentMsgs, activeNames) {
+    if (!chatKey) return null;
+    const current = await getSceneState(chatKey);
+    const kw = extractSceneKeywords(Array.isArray(recentMsgs) ? recentMsgs : []);
+    const patch = {};
+    if (kw.locations && kw.locations.length) patch.location = kw.locations.slice(-1)[0];
+    const names = uniqStrings([...(current.presentChars || []), ...(activeNames || [])], 8);
+    if (names.length) patch.presentChars = names;
+    const facts = [];
+    const tail = Array.isArray(recentMsgs) ? recentMsgs.slice(-3).map(m => m && (m.message || m.content) || '').join(' ') : '';
+    const promiseHit = tail.match(/(?:약속|기억|잊지|다음에|나중에|반드시|해야\s*해|promise|remember|later)[^.!?\n。]{0,80}/i);
+    if (promiseHit) {
+      patch.pending = [{ kind: 'hook', text: promiseHit[0].trim() }].concat(current.pending || []).slice(0, 6);
+    }
+    const exactFacts = tail.match(/(?:\d+[^\s,.;!?。]{0,12}|[A-Z][A-Za-z0-9_-]{2,})/g);
+    if (exactFacts && exactFacts.length) facts.push(...exactFacts.slice(0, 4));
+    if (facts.length) patch.facts = uniqStrings([...(current.facts || []), ...facts], 8);
+    if (!Object.keys(patch).length) return current;
+    return await saveSceneState(chatKey, patch);
+  }
+
   // Temporal + entity graph helpers (v9)
   function _arr(x) { return Array.isArray(x) ? x.filter(Boolean).map(v => String(v).trim()).filter(Boolean) : []; }
   function _uniq(a) { return Array.from(new Set(_arr(a))); }
@@ -709,6 +781,7 @@
     detectActiveCharacters, isRelatedToActive,
     checkFirstEncounter, recordFirstEncounter, findUnmetPairs, findReunionPairs,
     getWorkingMemory, updateWorkingMemory, extractSceneKeywords, formatSceneTag,
+    getSceneState, saveSceneState, updateSceneStateFromContext,
     inferEntryEntities, normalizeTemporalGraph, temporalGap, graphOverlapScore,
     isTimelineEvent, stableTimelineEventId, normalizeTimelineEvent,
     relationshipGraphScore, unresolvedPriorityScore, maintenanceRecallScore,

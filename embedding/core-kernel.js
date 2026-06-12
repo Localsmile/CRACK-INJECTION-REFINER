@@ -9,7 +9,7 @@
 
   // 버전 / 최종 마이그레이션 타깃
   const VER = '1.4.0-test';
-  const DB_SCHEMA_VERSION = 9;
+  const DB_SCHEMA_VERSION = 10;
   const LOCAL_MIGRATION_VERSION = '1.4.0-test-pass11-local';
   const TIMELINE_EVENT_TYPE = 'timeline_event';
   const TIMELINE_SCHEMA_VERSION = 1;
@@ -37,6 +37,7 @@
   const DEFAULTS = {
     loreBudgetChars: 350,
     loreBudgetMax: 600,
+    stateBlockChars: 450,
     sceneTagChars: 90,
     firstEncounterChars: 240,
     reunionTagChars: 140,
@@ -174,6 +175,17 @@ Entries:
       workingMemory: 'url',
       encounters: '++id, &[char1+char2], lastSeenTurn',
       entryVersions: '++id, entryId, ts, turn'
+    });
+    // v10: deterministic per-chat scene state block.
+    _db.version(10).stores({
+      entries: '++id, name, type, packName, project, rootId, isCurrentArc, createdTurn, updatedTurn, lastMentionedTurn, lastMentionedMsgId, eventTurn, sceneId, arcId, realTimestamp, *entities, *subjects, *objects, *locations, *promises, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, packName, model, field, sourceHash, entryUpdatedAt, schemaVersion, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, &[char1+char2], lastSeenTurn',
+      entryVersions: '++id, entryId, ts, turn',
+      sceneStates: 'chatKey, updatedAt'
     });
     return _db;
   }
