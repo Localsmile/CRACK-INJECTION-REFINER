@@ -14,6 +14,16 @@
   let LogCallback = null;
   let ToastCallback = null;
   let GetActivePacksCallback = null;
+  const TOAST_TONE = {
+    info: 'rgba(68, 125, 190, .95)',
+    success: 'rgba(47, 145, 101, .95)',
+    warning: 'rgba(174, 130, 54, .95)',
+    error: 'rgba(184, 73, 82, .95)'
+  };
+  function showToast(message, tone) {
+    if (!ToastCallback) return;
+    ToastCallback(message, TOAST_TONE[tone] || TOAST_TONE.info);
+  }
 
   const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
   // v1.4.0-test.40 B3 fix: speech-refiner-processed 글로벌 단일 Set → 채팅별 분리.
@@ -337,7 +347,7 @@
         };
       const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';
       Core.showStatusBadge(isDeepSeekRefiner ? '에리가 딥식이에게 묻는 중' : '에리가 잼민이에게 묻는 중');
-      if (ToastCallback) ToastCallback(isDeepSeekRefiner ? '에리가 딥식이로 응답 검수 중' : '에리가 응답 검수 중', '#258');
+      showToast(isDeepSeekRefiner ? '에리가 딥식이에게 응답 검수 중' : '에리가 응답 검수 중', 'info');
       if (isDeepSeekRefiner) {
         apiOpts.responseMimeType = 'application/json';
         prompt += '\n\nStructured output instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
@@ -374,7 +384,7 @@
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.showStatusBadge('에리: 이상 없음');
         setTimeout(Core.hideStatusBadge, 2000);
-        if (ToastCallback) ToastCallback('에리: 통과', '#4a9');
+        showToast('에리: 통과', 'success');
         return;
       }
 
@@ -387,7 +397,7 @@
       } catch (e) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
-        if (ToastCallback) ToastCallback('에리: 응답 해석 실패, 원본 유지', '#a55');
+        showToast('에리: 응답 해석 실패, 원본 유지', 'error');
         return;
       }
 
@@ -395,14 +405,14 @@
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: parsed.reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.showStatusBadge('에리: 이상 없음');
         setTimeout(Core.hideStatusBadge, 2000);
-        if (ToastCallback) ToastCallback('에리: 통과', '#4a9');
+        showToast('에리: 통과', 'success');
         return;
       }
 
       if (parsed && !parsed.replacements && !parsed.refined_text) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명', isError: true, reason: parsed.reason || '(이유 없음)', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
-        if (ToastCallback) ToastCallback('에리: 응답 구조 불명', '#a55');
+        showToast('에리: 응답 구조 불명', 'error');
         return;
       }
 
@@ -500,17 +510,17 @@
                 });
                 const newFingerprint = R.stripMarkdown ? R.stripMarkdown(serverText).slice(0, 80) : (serverText || '').slice(0, 80);
                 if (newFingerprint) { _loadChat(_currentChatKey()).add(newFingerprint); saveProcessedFingerprints(); }
-                if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
+                showToast(`에리가 고침 - ${parsed.reason}`, 'success');
                 console.log('[Refiner] PATCH 성공. id=', serverMessageId, 'status=', patchResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
               } else {
                 console.error('[Refiner] PATCH 실패. status=', patchResult.status, 'body=', (patchResult.body || '').slice(0, 300));
-                if (ToastCallback) ToastCallback(`에리: 서버 수정 실패 (${patchResult.status})`, '#a55');
+                showToast(`에리: 서버 수정 실패 (${patchResult.status})`, 'error');
               }
             } else {
-              if (ToastCallback) ToastCallback('에리: 대상 메시지 못 찾음, 로그에 보관', '#a55');
+              showToast('에리: 대상 메시지 못 찾음, 로그에 보관', 'error');
             }
           } catch (e) {
-            if (ToastCallback) ToastCallback('에리: 수정 중 오류', '#a55');
+            showToast('에리: 수정 중 오류', 'error');
           }
           // 큐 다음 처리
           if (enqueueCallback) setTimeout(enqueueCallback, 100);
@@ -521,7 +531,7 @@
         } else {
           const existingPopup = document.querySelector('#refiner-confirm-overlay');
           if (existingPopup) {
-            if (ToastCallback) ToastCallback('에리: 제안을 로그에 보관함', '#258');
+            showToast('에리: 제안을 로그에 보관함', 'info');
             if (enqueueCallback) setTimeout(enqueueCallback, 100);
           } else {
             holdRefineLock = true;
@@ -537,7 +547,7 @@
     } catch (e) {
       if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'System Error: ' + e.message, isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
       Core.hideStatusBadge();
-      if (ToastCallback) ToastCallback(`에리: 교정 실패 — ${e.message}`, '#a55');
+      showToast(`에리: 교정 실패 - ${e.message}`, 'error');
     }
     } finally {
       if (!holdRefineLock) releaseRefineLock();
