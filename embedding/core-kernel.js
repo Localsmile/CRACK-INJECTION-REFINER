@@ -83,6 +83,7 @@
     prefix: '[기억]',
     suffix: '[/기억]',
     position: 'before',
+    windowExitChars: 7000,
     importChunkSize: 3000,
     importMaxEntries: 50,
     rerankPrompt: `Given the current RP conversation context, score each lore entry for INJECTION PRIORITY (1-5).

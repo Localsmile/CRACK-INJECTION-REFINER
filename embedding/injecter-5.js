@@ -115,19 +115,34 @@
     return { ok: false, reason: 'unsafe_partial' };
   }
 
-  function countUserTurnsAfter(logs, item) {
+  function messageText(log) {
+    return String((log && (log.content != null ? log.content : log.message)) || '');
+  }
+
+  function countCharsAfter(logs, item) {
     if (!Array.isArray(logs) || !logs.length) return null;
     const full = item.finalText || buildInjectedMessage(item.originalText, item.injectedText, item.position);
     let idx = -1;
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];
       if (!log || log.role !== 'user') continue;
-      if ((item.messageId && log.id === item.messageId) || log.content === full) { idx = i; break; }
+      if ((item.messageId && log.id === item.messageId) || messageText(log) === full) { idx = i; break; }
     }
     if (idx < 0) return null;
-    let count = 0;
-    for (let i = idx + 1; i < logs.length; i++) if (logs[i] && logs[i].role === 'user') count++;
-    return count;
+    let chars = 0;
+    for (let i = idx + 1; i < logs.length; i++) chars += messageText(logs[i]).length;
+    return chars;
+  }
+
+  function getWindowExitChars(item) {
+    const raw = item && item.windowExitChars != null ? item.windowExitChars : settings.config.windowExitChars;
+    const parsed = parseInt(raw, 10);
+    return Math.max(1000, Number.isFinite(parsed) && parsed > 0 ? parsed : (C.DEFAULTS && C.DEFAULTS.windowExitChars) || 7000);
+  }
+
+  function isCleanupExpiredByFallback(item) {
+    const createdAt = Number(item && item.createdAt) || 0;
+    return createdAt > 0 && Date.now() - createdAt >= 24 * 60 * 60 * 1000;
   }
 
   async function reconcileCleanupItem(item, logs) {
@@ -184,10 +199,10 @@
       for (const item of items) {
         if (cleaned >= 3) break;
         if (!item.messageId || item.status === 'stale') continue;
-        const configuredTurns = Math.max(1, parseInt(item.cleanupAfterTurns || settings.config.injectionCleanupTurns || 8, 10) || 8);
-        const serverTurns = countUserTurnsAfter(logs, item);
-        const fallbackExpired = currentTurn && item.turn && (currentTurn - item.turn) >= configuredTurns;
-        if (!(serverTurns != null ? serverTurns >= configuredTurns : fallbackExpired)) continue;
+        const configuredChars = getWindowExitChars(item);
+        const charsAfter = countCharsAfter(logs, item);
+        const fallbackExpired = isCleanupExpiredByFallback(item);
+        if (!(charsAfter != null ? charsAfter >= configuredChars : fallbackExpired)) continue;
 
         const cur = await platformMessageById(item.chatId || chatId, item.messageId);
         const currentText = cur && typeof cur.content === 'string' ? cur.content : null;
@@ -214,7 +229,7 @@
           item.completedAt = Date.now();
           item.cleanedMode = clean.mode;
           cleaned++;
-          addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_done', note: `${configuredTurns}턴 지난 삽입 흔적 정리`, messageId: item.messageId });
+          addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_done', note: '최근 창을 지난 삽입 흔적 정리', messageId: item.messageId, charsAfter: charsAfter || null });
         } else if (item.cleanupAttempts >= 5) {
           item.status = 'failed';
           item.failReason = patched.error || ('http_' + patched.status);
@@ -241,14 +256,14 @@
 
   function queueInjectionCleanup(chatKey, chatId, originalText, injectedText, finalText, turnCounter, position) {
     if (settings.config.injectionCleanupEnabled === false) return;
-    const cleanupTurns = Math.max(1, parseInt(settings.config.injectionCleanupTurns || 8, 10) || 8);
+    const windowExitChars = getWindowExitChars(null);
     if (!chatId || !originalText || !injectedText || !finalText) return;
     const now = Date.now();
     const state = loadCleanupState();
     const item = {
       id: cleanupHash([chatId, turnCounter, now, finalText].join('|')),
       chatKey, chatId, messageId: null,
-      turn: turnCounter, cleanupAfterTurns: cleanupTurns,
+      turn: turnCounter, windowExitChars,
       createdAt: now, status: 'pending',
       position: position === 'after' ? 'after' : 'before',
       originalText, injectedText, finalText,

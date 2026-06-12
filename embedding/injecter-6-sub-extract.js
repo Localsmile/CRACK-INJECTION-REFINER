@@ -86,7 +86,7 @@
           const injRow = document.createElement('div'); injRow.style.cssText = 'display:flex;gap:12px;margin:8px 0 12px;align-items:center;';
           injRow.appendChild(makeInput('삽입 쿨타임(턴)', 'cooldownTurns', 3));
           injRow.appendChild(makeInput('한 번에 넣을 로어', 'maxEntries', 3));
-          injRow.appendChild(makeInput('삽입 흔적 정리(턴)', 'injectionCleanupTurns', 8));
+          injRow.appendChild(makeInput('삽입 흔적 정리 기준(문자)', 'windowExitChars', 7000));
           nd.appendChild(injRow);
   
           const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
