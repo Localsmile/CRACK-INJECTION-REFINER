@@ -58,6 +58,36 @@
     return found ? count : null;
   }
 
+  function entryLiteralForGate(entry) {
+    if (!entry) return '';
+    const inject = entry.inject && typeof entry.inject === 'object' ? entry.inject : null;
+    return String(
+      (inject && (inject.micro || inject.state || inject.summary || inject.detail)) ||
+      entry.state ||
+      entry.summary ||
+      entry.detail ||
+      ''
+    ).trim();
+  }
+
+  function noveltyGate(entry, windowText, logs, opts) {
+    opts = opts || {};
+    if (!entry) return { allow: false, reason: 'missing_entry' };
+    if (opts.explicitRecall === true) return { allow: true, reason: 'explicit_recall' };
+    const literal = entryLiteralForGate(entry);
+    const hay = String(windowText || '').toLowerCase();
+    if (literal && hay.includes(literal.toLowerCase())) return { allow: false, reason: 'literal_present' };
+    if (entry.lastMentionedMsgId && Array.isArray(logs)) {
+      const idx = logs.findIndex(m => messageIdOf(m) === String(entry.lastMentionedMsgId));
+      if (idx >= 0) {
+        const mentionAt = Number(entry.lastMentionedAt || 0);
+        const updatedAt = Number(entry.lastUpdated || entry.ts || entry.updatedAt || 0);
+        if (!updatedAt || !mentionAt || updatedAt <= mentionAt) return { allow: false, reason: 'already_seen_in_window' };
+      }
+    }
+    return { allow: true, reason: 'new_or_changed' };
+  }
+
   // ---- 트리거 스캔 ----
   function triggerScan(userInput, recentMsgs, entries, config) {
     const cfg = config || {};
@@ -373,7 +403,7 @@
   }
 
   Object.assign(C, {
-    bigramSimilarity, buildScanPool, triggerScan, hybridSearch, smartRerank,
+    bigramSimilarity, buildScanPool, triggerScan, hybridSearch, noveltyGate, smartRerank,
     __searchLoaded: true
   });
   console.log('[LoreCore:search] loaded v1.3.9');

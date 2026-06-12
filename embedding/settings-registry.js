@@ -51,9 +51,9 @@
     { key: 'embeddingModel', type: 'text', label: '임베딩 모델', help: '의미 검색 벡터 생성에 사용할 Gemini 임베딩 모델.', group: 'models', level: 'advanced' },
     { key: 'refinerEnabled', type: 'boolean', label: '응답 교정', help: 'AI 응답을 로어 기준으로 검수하고 필요 시 수정함.', group: 'models', level: 'basic', requiresCapability: 'canPatch' },
 
-    { key: 'extractStatusBadgeEnabled', type: 'boolean', label: '상태 배지 표시', help: '추출/교정 진행 상태를 화면에 표시함.', group: 'advanced', level: 'basic' },
+    { key: 'extractStatusBadgeEnabled', type: 'boolean', label: '추출 상태 배지', help: '추출/배치/임베딩 진행 상태를 화면에 표시함.', group: 'advanced', level: 'basic' },
     { key: 'rerankEnabled', type: 'boolean', label: 'AI로 후보 다시 고르기', help: '검색된 로어 후보를 모델로 다시 정렬함. 비용과 지연이 늘어남.', group: 'advanced', level: 'advanced' },
-    { key: 'deltaSkipEnabled', type: 'boolean', label: '최근 동일 로어 생략', help: '명시적으로 켠 경우에만 최근 동일 로어 재삽입을 줄임.', group: 'advanced', level: 'advanced' }
+    { key: 'statusBadgeEnabled', type: 'boolean', label: '교정 상태 배지', help: '응답 교정 진행 상태를 화면에 표시함.', group: 'advanced', level: 'advanced' }
   ];
 
   const GROUPS = [

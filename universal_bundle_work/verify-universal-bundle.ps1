@@ -57,7 +57,6 @@ foreach ($m in $menus) {
 
 $storageKeys = @(
   'lore-injector-v5',
-  'lore-recent-injections:',
   'urlPacks',
   'urlCooldownMaps'
 )

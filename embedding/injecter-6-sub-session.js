@@ -66,7 +66,6 @@
               const curUrl = C.getCurUrl();
               if(settings.config.urlCooldownMaps) delete settings.config.urlCooldownMaps[chatKey];
 
-              _ls.removeItem('lore-recent-injections:' + chatKey);
               _ls.removeItem('lore-fe-recent-' + chatKey);
 
               const packs = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(curUrl) : (settings.config.urlPacks?.[curUrl] || []);

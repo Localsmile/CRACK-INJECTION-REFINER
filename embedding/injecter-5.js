@@ -657,11 +657,6 @@
       activeNames = C.detectActiveCharacters(recentMsgs, enabled);
     }
 
-    if (config.pendingPromiseBoost !== false) {
-      for (const s of scored) { if (s.entry.type === 'promise' && s.entry.detail?.status === 'pending') s.score = Math.max(s.score, 0.3); }
-      scored.sort((a,b) => b.score - a.score);
-    }
-
     for (const s of scored) {
       if (s.entry.rootId && !s.entry.isCurrentArc) s.score *= 0.3;
     }
@@ -729,20 +724,13 @@
       }
     }
 
-    // Delta skip: 최근 N턴 이내 동일 콘텐츠로 주입된 엔트리는 재주입 생략 (예산 확보).
-    const _deltaKey = 'lore-recent-injections:' + chatKey;
-    let _recentInj = {}; try { _recentInj = JSON.parse(_ls.getItem(_deltaKey) || '{}'); } catch(e) {}
-    const _deltaTurns = config.deltaSkipTurns != null ? config.deltaSkipTurns : 3;
-    let _deltaSkippedCount = 0;
-    // Delta skip은 기본 OFF. 명시적으로 true로 켜야 동작 (재생성 시나리오와 충돌 방지)
-    const _filteredScored = (config.deltaSkipEnabled !== true) ? scored : scored.filter(s => {
-      const rec = _recentInj[s.entry.id];
-      if (!rec) return true;
-      if (turnCounter - (rec.turn || 0) >= _deltaTurns) return true;
-      const sig = String(s.entry.lastUpdated || s.entry.ts || '');
-      if (sig !== rec.sig) return true;
-      _deltaSkippedCount++;
-      return false;
+    const windowText = (recentMsgs || []).map(m => m && (m.message || m.content) || '').join('\n').slice(-8000);
+    let noveltySkippedCount = 0;
+    const _filteredScored = scored.filter(s => {
+      const explicitRecall = !!(s.temporalRecall && (s.temporalRecall.matchedTriggers || s.temporalRecall.reason));
+      const gate = C.noveltyGate ? C.noveltyGate(s.entry, windowText, recentMsgs, { explicitRecall }) : { allow: true };
+      if (!gate.allow) noveltySkippedCount++;
+      return gate.allow;
     });
     const temporalPlan = buildTemporalInjectionPlan(_filteredScored, temporalJudgeDecision, config, { currentTurn: turnCounter });
     const temporalIds = new Set(temporalPlan.entryIds || []);
@@ -916,17 +904,6 @@
     const _injectedLen = C.charLen(injected);
     const _userLen = C.charLen(userInput);
     const _finalChars = fmtResult.finalChars || (_userLen + _injectedLen + 2);
-    // Delta skip 기록 갱신
-    try {
-      for (const e of allIncluded) {
-        _recentInj[e.id] = { turn: turnCounter, sig: String(e.lastUpdated || e.ts || '') };
-      }
-      for (const k of Object.keys(_recentInj)) {
-        if (turnCounter - (_recentInj[k].turn || 0) > 20) delete _recentInj[k];
-      }
-      _ls.setItem(_deltaKey, JSON.stringify(_recentInj));
-    } catch(e) {}
-
     addInjLog(chatKey, {
       time: new Date().toLocaleTimeString(), turn: turnCounter,
       matched: allIncluded.map(e => e.name), count: allIncluded.length,
@@ -949,7 +926,7 @@
         compressionActions: temporalPlan.compressionActions || [],
         droppedEventIds: temporalPlan.droppedEventIds || []
       },
-      deltaSkipped: _deltaSkippedCount,
+      noveltySkipped: noveltySkippedCount,
       bundled: fmtResult.bundledCount || 0,
       sections: {
         scene: fmtResult.sections?.scene || C.charLen(sceneTag || ''),

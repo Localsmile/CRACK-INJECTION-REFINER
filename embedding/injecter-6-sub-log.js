@@ -312,7 +312,7 @@
           {
             const optParts = [];
             if(i.bundled) optParts.push(`<span style="color:${COLOR.ok};">번들 ${i.bundled}</span>`);
-            if(i.deltaSkipped) optParts.push(`<span style="color:${COLOR.warn};">스킵 ${i.deltaSkipped}</span>`);
+            if(i.noveltySkipped) optParts.push(`<span style="color:${COLOR.warn};">반복 제외 ${i.noveltySkipped}</span>`);
             if(optParts.length) h += `<br><span style="font-size:10px;color:${COLOR.soft};">최적화: ${optParts.join(' / ')}</span>`;
           }
           if(i.budget) h += `<br><span style="font-size:10px;color:${COLOR.soft};">로어예산 ${i.used||0}/${i.budget}${i.level?' ('+i.level+')':''}</span>`;
