@@ -18,8 +18,23 @@
   let serverSession = null;
   let activePassword = '';
 
-  const FIELD = 'width:100%;padding:7px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
-  const BTN = 'padding:7px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid #444;background:#111;color:#ccc;font-weight:bold;';
+  const FIELD = C.UI ? C.UI.field : 'width:100%;padding:7px 8px;border:1px solid #2f3b4f;border-radius:7px;background:#0b111c;color:#e7edf5;font-size:12px;box-sizing:border-box;';
+  const BTN_BASE = 'min-height:34px;padding:7px 11px;font-size:12px;border-radius:7px;cursor:pointer;font-weight:800;letter-spacing:0;';
+  const TONE = {
+    ghost: 'border:1px solid var(--li-line,#2f3b4f);background:transparent;color:var(--li-text-soft,#a9b6c7);',
+    primary: 'border:1px solid rgba(90,167,255,.65);background:var(--li-accent-bg,#143456);color:var(--li-text,#e7edf5);',
+    success: 'border:1px solid #2c7a5f;background:#143729;color:#bfffe4;',
+    danger: 'border:1px solid #8f333f;background:#3a171b;color:#ffc9c9;'
+  };
+  const COLOR = {
+    muted: 'var(--li-muted,#748196)',
+    soft: 'var(--li-text-soft,#a9b6c7)',
+    text: 'var(--li-text,#e7edf5)',
+    accent: 'var(--li-accent,#5aa7ff)',
+    ok: '#78d5a8',
+    warn: '#e7b56f',
+    danger: '#ef6b6b'
+  };
 
   function getCfg() {
     return settings.config || {};
@@ -222,17 +237,17 @@
     return input;
   }
 
-  function makeBtn(label, color) {
+  function makeBtn(label, tone) {
     const btn = document.createElement('button');
     btn.textContent = label;
-    btn.style.cssText = BTN + (color || '');
+    btn.style.cssText = BTN_BASE + (TONE[tone || 'ghost'] || TONE.ghost);
     return btn;
   }
 
   function addText(nd, text, style) {
     const div = document.createElement('div');
     div.textContent = text;
-    div.style.cssText = style || 'font-size:11px;color:#888;line-height:1.45;margin-top:6px;';
+    div.style.cssText = style || 'font-size:11px;color:' + COLOR.soft + ';line-height:1.45;margin-top:6px;word-break:keep-all;';
     nd.appendChild(div);
     return div;
   }
@@ -240,7 +255,19 @@
   function setInlineStatus(el, text, tone) {
     if (!el) return;
     el.textContent = text || '';
-    el.style.color = tone || '#888';
+    el.style.color = tone || COLOR.soft;
+  }
+
+  function addSectionTitle(nd, titleText, descText) {
+    if (C.createSectionTitle) {
+      nd.appendChild(C.createSectionTitle(titleText, descText));
+      return;
+    }
+    const title = document.createElement('div');
+    title.textContent = titleText;
+    title.style.cssText = 'font-size:14px;color:' + COLOR.text + ';font-weight:800;margin-bottom:8px;';
+    nd.appendChild(title);
+    if (descText) addText(nd, descText);
   }
 
   function setButtonBusy(btn, label) {
@@ -313,11 +340,10 @@
     restoreStoredSession();
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      const title = document.createElement('div'); title.textContent = '파일 백업'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '설정, 로어팩, 로어, 검색 준비, 채팅별 활성 상태를 파일로 저장하거나 가져옴.');
-      const optRow = document.createElement('div'); optRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:10px 0;';
+      addSectionTitle(nd, '파일 백업', '설정, 로어팩, 로어, 검색 준비, 채팅별 활성 상태를 파일로 저장하거나 가져옴.');
+      const optRow = document.createElement('div'); optRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;';
       const mkCheck = (label, checked) => {
-        const wrap = document.createElement('label'); wrap.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;cursor:pointer;';
+        const wrap = document.createElement('label'); wrap.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px;color:' + COLOR.soft + ';cursor:pointer;';
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!checked;
         wrap.appendChild(cb); wrap.appendChild(document.createTextNode(label));
         optRow.appendChild(wrap);
@@ -328,9 +354,9 @@
       nd.appendChild(optRow);
 
       const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
-      const exportBtn = makeBtn('파일로 저장', 'border-color:#285;color:#6c9;');
-      const importMergeBtn = makeBtn('파일에서 병합', 'border-color:#258;color:#8bc;');
-      const importReplaceBtn = makeBtn('파일로 교체 복원', 'border-color:#833;color:#e88;');
+      const exportBtn = makeBtn('파일로 저장', 'success');
+      const importMergeBtn = makeBtn('파일에서 병합', 'primary');
+      const importReplaceBtn = makeBtn('파일로 교체 복원', 'danger');
       const importFile = document.createElement('input'); importFile.type = 'file'; importFile.accept = '.json,application/json'; importFile.style.display = 'none';
       let importMode = 'merge';
 
@@ -358,33 +384,32 @@
         importFile.value = '';
       };
       row.appendChild(exportBtn); row.appendChild(importMergeBtn); row.appendChild(importReplaceBtn); row.appendChild(importFile); nd.appendChild(row);
-      addText(nd, '파일에서 병합: 현재 데이터 유지, 겹치는 로어팩/설정은 가져오기 전에 처리 방식을 고름.', 'font-size:10px;color:#8a9;line-height:1.45;margin-top:8px;');
-      addText(nd, '파일로 교체 복원: 현재 로컬 DB를 백업 파일 기준으로 바꿈. 실행 전 내부 백업 남김.', 'font-size:10px;color:#b88;line-height:1.45;margin-top:3px;');
+      addText(nd, '파일에서 병합: 현재 데이터 유지, 겹치는 로어팩/설정은 가져오기 전에 처리 방식을 고름.', 'font-size:11px;color:' + COLOR.ok + ';line-height:1.45;margin-top:10px;word-break:keep-all;');
+      addText(nd, '파일로 교체 복원: 현재 로컬 DB를 백업 파일 기준으로 바꿈. 실행 전 내부 백업 남김.', 'font-size:11px;color:#e7a1a1;line-height:1.45;margin-top:3px;word-break:keep-all;');
     }});
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      const title = document.createElement('div'); title.textContent = '서버 동기화'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 수동 저장/가져오기만 지원함.');
+      addSectionTitle(nd, '서버 동기화', '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 수동 저장/가져오기만 지원함.');
       const cfg = getCfg();
-      const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid #292929;border-radius:6px;background:#111;padding:10px;margin-top:10px;';
-      const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+      const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:10px;background:#0c1320;padding:12px;margin-top:12px;';
+      const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;';
       if (typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches) grid.style.gridTemplateColumns = '1fr';
       const idInput = makeInput(cfg.backupServerId || '', 'ID');
       const pwInput = makeInput(cfg.backupServerPassword || '', '비밀번호', 'password');
       grid.appendChild(idInput); grid.appendChild(pwInput); accountBox.appendChild(grid);
       const status = document.createElement('div');
-      status.style.cssText = 'font-size:12px;color:#888;line-height:1.45;margin-top:8px;';
+      status.style.cssText = 'font-size:12px;color:' + COLOR.soft + ';line-height:1.45;margin-top:9px;';
       accountBox.appendChild(status);
-      const accountBtns = document.createElement('div'); accountBtns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;';
-      const checkBtn = makeBtn('ID 확인', 'border-color:#555;color:#bbb;');
-      const regBtn = makeBtn('계정 만들기', 'border-color:#285;color:#6c9;');
-      const loginBtn = makeBtn('로그인', 'border-color:#258;color:#8bc;');
-      const logoutBtn = makeBtn('로그아웃', 'border-color:#833;color:#e88;');
+      const accountBtns = document.createElement('div'); accountBtns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;';
+      const checkBtn = makeBtn('ID 확인', 'ghost');
+      const regBtn = makeBtn('계정 만들기', 'success');
+      const loginBtn = makeBtn('로그인', 'primary');
+      const logoutBtn = makeBtn('로그아웃', 'danger');
       accountBtns.appendChild(checkBtn); accountBtns.appendChild(regBtn); accountBtns.appendChild(loginBtn); accountBtns.appendChild(logoutBtn); accountBox.appendChild(accountBtns);
       nd.appendChild(accountBox);
       const listBox = document.createElement('div'); listBox.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:6px;'; nd.appendChild(listBox);
-      const workStatus = addText(nd, '', 'font-size:12px;color:#888;line-height:1.45;margin-top:8px;min-height:18px;');
+      const workStatus = addText(nd, '', 'font-size:12px;color:' + COLOR.soft + ';line-height:1.45;margin-top:9px;min-height:18px;word-break:keep-all;');
       let selected = null;
       let lastItems = [];
       let serverBusy = false;
@@ -392,18 +417,18 @@
 
       const beginServerWork = (btn, busyLabel, statusText) => {
         if (serverBusy) {
-          setInlineStatus(workStatus, '다른 서버 작업 처리 중. 잠시 뒤 다시 시도할 것.', '#d8a');
+          setInlineStatus(workStatus, '다른 서버 작업 처리 중. 잠시 뒤 다시 시도할 것.', COLOR.warn);
           return null;
         }
         serverBusy = true;
-        setInlineStatus(workStatus, statusText || '서버 작업 처리 중...', '#8bc');
+        setInlineStatus(workStatus, statusText || '서버 작업 처리 중...', COLOR.accent);
         setButtonsDisabled(serverButtons, true);
         const restoreBtn = setButtonBusy(btn, busyLabel);
         return (finalText, finalTone) => {
           restoreBtn();
           setButtonsDisabled(serverButtons, false);
           serverBusy = false;
-          if (finalText) setInlineStatus(workStatus, finalText, finalTone || '#8a9');
+          if (finalText) setInlineStatus(workStatus, finalText, finalTone || COLOR.ok);
         };
       };
 
@@ -419,17 +444,17 @@
         setStatus();
         listBox.textContent = '';
         if (!serverSession || !activePassword) {
-          setInlineStatus(workStatus, '로그인 필요.', '#888');
-          addText(listBox, '로그인하면 현재 계정의 서버 백업 목록이 표시됨.', 'font-size:12px;color:#777;padding:10px;');
+          setInlineStatus(workStatus, '로그인 필요.', COLOR.soft);
+          addText(listBox, '로그인하면 현재 계정의 서버 백업 목록이 표시됨.', 'font-size:12px;color:' + COLOR.muted + ';padding:10px;');
           return;
         }
-        setInlineStatus(workStatus, '서버 백업 목록 불러오는 중...', '#8bc');
+        setInlineStatus(workStatus, '서버 백업 목록 불러오는 중...', COLOR.accent);
         try {
           const res = await apiList();
           lastItems = res.items || [];
           if (!lastItems.length) {
-            addText(listBox, '서버 백업 없음.', 'font-size:12px;color:#777;padding:10px;');
-            setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 없음.', '#8a9');
+            addText(listBox, '서버 백업 없음.', 'font-size:12px;color:' + COLOR.muted + ';padding:10px;');
+            setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 없음.', COLOR.ok);
             return;
           }
           for (const item of lastItems) {
@@ -437,21 +462,21 @@
             try { meta = item.encryptedMeta ? await decryptJson(item.encryptedMeta, serverSession.userId, activePassword) : null; } catch (_) {}
             const row = document.createElement('button');
             row.type = 'button';
-            row.style.cssText = 'width:100%;text-align:left;border:1px solid #333;background:#111;color:#ccc;border-radius:4px;padding:8px;cursor:pointer;';
+            row.style.cssText = 'width:100%;text-align:left;border:1px solid var(--li-line,#2f3b4f);background:#0c1320;color:' + COLOR.soft + ';border-radius:8px;padding:9px 10px;cursor:pointer;line-height:1.45;';
             const label = meta ? ((meta.packs || []).slice(0, 4).join(', ') || '로어팩 없음') : (item.title || item.backupId);
             const embLabel = meta && meta.embeddingsExcluded ? ' / 검색 준비 제외' : '';
             row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
             row.onclick = () => {
               selected = item;
-              Array.from(listBox.children).forEach(x => x.style.borderColor = '#333');
-              row.style.borderColor = '#58a';
+              Array.from(listBox.children).forEach(x => x.style.borderColor = 'var(--li-line,#2f3b4f)');
+              row.style.borderColor = 'rgba(90,167,255,.75)';
             };
             listBox.appendChild(row);
           }
-          setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 ' + lastItems.length + '개.', '#8a9');
+          setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 ' + lastItems.length + '개.', COLOR.ok);
         } catch (e) {
-          addText(listBox, '목록 불러오기 실패: ' + e.message, 'font-size:12px;color:#d88;padding:10px;');
-          setInlineStatus(workStatus, '목록 불러오기 실패: ' + e.message, '#d88');
+          addText(listBox, '목록 불러오기 실패: ' + e.message, 'font-size:12px;color:' + COLOR.danger + ';padding:10px;');
+          setInlineStatus(workStatus, '목록 불러오기 실패: ' + e.message, COLOR.danger);
         }
       };
 
@@ -464,9 +489,9 @@
           assertServerInput(idInput.value, '', false);
           const res = await apiCheckId(idInput.value.trim());
           const msg = res.available ? '사용 가능한 ID.' : '이미 사용 중인 ID.';
-          done(msg, res.available ? '#8a9' : '#d8a');
+          done(msg, res.available ? COLOR.ok : COLOR.warn);
           alert(msg);
-        } catch (e) { done('ID 확인 실패: ' + e.message, '#d88'); alert('ID 확인 실패: ' + e.message); }
+        } catch (e) { done('ID 확인 실패: ' + e.message, COLOR.danger); alert('ID 확인 실패: ' + e.message); }
       };
       regBtn.onclick = async () => {
         const done = beginServerWork(regBtn, '생성 중...', '계정 생성 중...');
@@ -475,13 +500,13 @@
           persistId();
           assertServerInput(idInput.value, pwInput.value, true);
           await apiRegister(idInput.value.trim(), pwInput.value);
-          setInlineStatus(workStatus, '계정 생성 완료. 로그인 처리 중...', '#8bc');
+          setInlineStatus(workStatus, '계정 생성 완료. 로그인 처리 중...', COLOR.accent);
           await apiLogin(idInput.value.trim(), pwInput.value);
           setStatus();
           await renderList();
-          done('계정 생성 및 로그인 완료.', '#8a9');
+          done('계정 생성 및 로그인 완료.', COLOR.ok);
           alert('계정 생성 완료.');
-        } catch (e) { done('계정 생성 실패: ' + e.message, '#d88'); alert('계정 생성 실패: ' + e.message); }
+        } catch (e) { done('계정 생성 실패: ' + e.message, COLOR.danger); alert('계정 생성 실패: ' + e.message); }
       };
       loginBtn.onclick = async () => {
         const done = beginServerWork(loginBtn, '로그인 중...', '로그인 중...');
@@ -492,9 +517,9 @@
           await apiLogin(idInput.value.trim(), pwInput.value);
           setStatus();
           await renderList();
-          done('로그인 완료.', '#8a9');
+          done('로그인 완료.', COLOR.ok);
           alert('로그인 완료.');
-        } catch (e) { done('로그인 실패: ' + e.message, '#d88'); alert('로그인 실패: ' + e.message); }
+        } catch (e) { done('로그인 실패: ' + e.message, COLOR.danger); alert('로그인 실패: ' + e.message); }
       };
       logoutBtn.onclick = async () => {
         const done = beginServerWork(logoutBtn, '로그아웃 중...', '로그아웃 처리 중...');
@@ -504,55 +529,55 @@
         selected = null;
         setStatus();
         await renderList();
-        done('로그아웃 완료.', '#8a9');
+        done('로그아웃 완료.', COLOR.ok);
       };
 
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;';
-      const refreshBtn = makeBtn('목록 새로고침', 'border-color:#555;color:#bbb;');
-      const uploadBtn = makeBtn('서버에 저장', 'border-color:#285;color:#6c9;');
-      const mergeBtn = makeBtn('서버에서 병합', 'border-color:#258;color:#8bc;');
-      const replaceBtn = makeBtn('서버 백업으로 교체', 'border-color:#833;color:#e88;');
-      const deleteBtn = makeBtn('선택 백업 삭제', 'border-color:#833;color:#e88;');
+      const refreshBtn = makeBtn('목록 새로고침', 'ghost');
+      const uploadBtn = makeBtn('서버에 저장', 'success');
+      const mergeBtn = makeBtn('서버에서 병합', 'primary');
+      const replaceBtn = makeBtn('서버 백업으로 교체', 'danger');
+      const deleteBtn = makeBtn('선택 백업 삭제', 'danger');
       serverButtons.push(checkBtn, regBtn, loginBtn, logoutBtn, refreshBtn, uploadBtn, mergeBtn, replaceBtn, deleteBtn);
       refreshBtn.onclick = async () => {
         const done = beginServerWork(refreshBtn, '불러오는 중...', '서버 백업 목록 불러오는 중...');
         if (!done) return;
         await renderList();
-        done(workStatus.textContent || '목록 갱신 완료.', workStatus.style.color || '#8a9');
+        done(workStatus.textContent || '목록 갱신 완료.', workStatus.style.color || COLOR.ok);
       };
       uploadBtn.onclick = async () => {
         const done = beginServerWork(uploadBtn, '저장 중...', '서버 저장 준비 중...');
         if (!done) return;
         try {
           if (!serverSession || !activePassword) throw new Error('먼저 로그인해야 함.');
-          setInlineStatus(workStatus, '서버 저장 가능 여부 확인 중...', '#8bc');
+          setInlineStatus(workStatus, '서버 저장 가능 여부 확인 중...', COLOR.accent);
           const list = await apiList();
           if ((list.items || []).length >= 10) throw new Error('서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.');
-          setInlineStatus(workStatus, '현재 백업 만드는 중...', '#8bc');
+          setInlineStatus(workStatus, '현재 백업 만드는 중...', COLOR.accent);
           const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true, includeEmbeddings: false });
           const meta = backupSummary(data);
-          setInlineStatus(workStatus, '백업 암호화 중...', '#8bc');
+          setInlineStatus(workStatus, '백업 암호화 중...', COLOR.accent);
           const payload = await encryptJson(data, serverSession.userId, activePassword);
           const encryptedMeta = await encryptJson(meta, serverSession.userId, activePassword);
-          setInlineStatus(workStatus, '서버에 업로드 중...', '#8bc');
+          setInlineStatus(workStatus, '서버에 업로드 중...', COLOR.accent);
           await apiUpload('backup-' + new Date().toISOString().slice(0, 19), payload, encryptedMeta);
           await renderList();
-          done('서버 저장 완료.', '#8a9');
+          done('서버 저장 완료.', COLOR.ok);
           alert('서버 저장 완료.');
-        } catch (e) { done('서버 저장 실패: ' + e.message, '#d88'); alert('서버 저장 실패: ' + e.message); }
+        } catch (e) { done('서버 저장 실패: ' + e.message, COLOR.danger); alert('서버 저장 실패: ' + e.message); }
       };
       const pullSelected = async (mode) => {
         if (!selected) throw new Error('가져올 서버 백업을 선택해야 함.');
-        setInlineStatus(workStatus, '서버 백업 내려받는 중...', '#8bc');
+        setInlineStatus(workStatus, '서버 백업 내려받는 중...', COLOR.accent);
         const res = await apiDownload(selected.backupId);
-        setInlineStatus(workStatus, '백업 복호화 중...', '#8bc');
+        setInlineStatus(workStatus, '백업 복호화 중...', COLOR.accent);
         const data = await decryptJson(res.payload, serverSession.userId, activePassword);
-        setInlineStatus(workStatus, mode === 'replace' ? '교체 복원 처리 중...' : '병합 처리 중...', '#8bc');
+        setInlineStatus(workStatus, mode === 'replace' ? '교체 복원 처리 중...' : '병합 처리 중...', COLOR.accent);
         const report = await importBackupWithMode(data, mode, false);
         if (report && data.embeddingsExcluded) {
-          setInlineStatus(workStatus, '검색 준비 다시 만드는 중...', '#8bc');
+          setInlineStatus(workStatus, '검색 준비 다시 만드는 중...', COLOR.accent);
           const emb = await reembedImportedPacks(report, data, (packName, idx, total) => {
-            setInlineStatus(workStatus, '검색 준비 다시 만드는 중: ' + packName + ' (' + idx + '/' + total + ')', '#8bc');
+            setInlineStatus(workStatus, '검색 준비 다시 만드는 중: ' + packName + ' (' + idx + '/' + total + ')', COLOR.accent);
           });
           report.reembedded = emb.count || 0;
           report.reembedSkipped = emb.skipped || '';
@@ -566,11 +591,11 @@
           const report = await pullSelected('merge');
           if (report) {
             const tail = report.reembedSkipped && report.reembedSkipped !== 'not-needed' ? ' / 검색 준비 건너뜀: ' + report.reembedSkipped : ' / 검색 준비 ' + (report.reembedded || 0) + '개';
-            done('서버 병합 완료. 로어 ' + report.entries + '개' + tail + '.', '#8a9');
+            done('서버 병합 완료. 로어 ' + report.entries + '개' + tail + '.', COLOR.ok);
             alert('서버 병합 완료: 로어 ' + report.entries + '개' + tail);
           }
-          else done('서버 병합 취소됨.', '#d8a');
-        } catch (e) { done('서버 병합 실패: ' + e.message, '#d88'); alert('서버 병합 실패: ' + e.message); }
+          else done('서버 병합 취소됨.', COLOR.warn);
+        } catch (e) { done('서버 병합 실패: ' + e.message, COLOR.danger); alert('서버 병합 실패: ' + e.message); }
       };
       replaceBtn.onclick = async () => {
         if (!confirm('현재 로컬 데이터를 선택한 서버 백업 기준으로 교체함.')) return;
@@ -580,25 +605,25 @@
           const report = await pullSelected('replace');
           if (report) {
             const tail = report.reembedSkipped && report.reembedSkipped !== 'not-needed' ? ' / 검색 준비 건너뜀: ' + report.reembedSkipped : ' / 검색 준비 ' + (report.reembedded || 0) + '개';
-            done('서버 교체 복원 완료. 로어 ' + report.entries + '개' + tail + '.', '#8a9');
+            done('서버 교체 복원 완료. 로어 ' + report.entries + '개' + tail + '.', COLOR.ok);
             alert('서버 교체 복원 완료: 로어 ' + report.entries + '개' + tail);
           }
-          else done('서버 교체 복원 취소됨.', '#d8a');
-        } catch (e) { done('서버 교체 복원 실패: ' + e.message, '#d88'); alert('서버 교체 복원 실패: ' + e.message); }
+          else done('서버 교체 복원 취소됨.', COLOR.warn);
+        } catch (e) { done('서버 교체 복원 실패: ' + e.message, COLOR.danger); alert('서버 교체 복원 실패: ' + e.message); }
       };
       deleteBtn.onclick = async () => {
         const done = beginServerWork(deleteBtn, '삭제 중...', '서버 백업 삭제 준비 중...');
         if (!done) return;
         try {
           if (!selected) throw new Error('삭제할 서버 백업을 선택해야 함.');
-          if (!confirm('선택한 서버 백업을 삭제함. 로컬 데이터는 삭제되지 않음.')) { done('서버 백업 삭제 취소됨.', '#d8a'); return; }
-          setInlineStatus(workStatus, '서버 백업 삭제 중...', '#8bc');
+          if (!confirm('선택한 서버 백업을 삭제함. 로컬 데이터는 삭제되지 않음.')) { done('서버 백업 삭제 취소됨.', COLOR.warn); return; }
+          setInlineStatus(workStatus, '서버 백업 삭제 중...', COLOR.accent);
           await apiDelete(selected.backupId);
           selected = null;
           await renderList();
-          done('서버 백업 삭제 완료.', '#8a9');
+          done('서버 백업 삭제 완료.', COLOR.ok);
           alert('서버 백업 삭제 완료.');
-        } catch (e) { done('서버 삭제 실패: ' + e.message, '#d88'); alert('서버 삭제 실패: ' + e.message); }
+        } catch (e) { done('서버 삭제 실패: ' + e.message, COLOR.danger); alert('서버 삭제 실패: ' + e.message); }
       };
       btns.appendChild(refreshBtn); btns.appendChild(uploadBtn); btns.appendChild(mergeBtn); btns.appendChild(replaceBtn); btns.appendChild(deleteBtn); nd.appendChild(btns);
       setTimeout(renderList, 0);
