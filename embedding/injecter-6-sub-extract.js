@@ -9,7 +9,7 @@
   const { C, db, settings, getAutoExtPackForUrl, setAutoExtPackForUrl, setPackEnabled } = _w.__LoreInj;
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
-  function buildGenerationApiOpts(overrides = {}, costContext = null) {
+  function requireGenerationApiOpts(overrides = {}, costContext = null) {
     if (typeof _w.__LoreInj.buildGenerationApiOpts === 'function') {
       return _w.__LoreInj.buildGenerationApiOpts(overrides, costContext);
     }
@@ -271,7 +271,7 @@
             }, 1000);
             setBusy(phaseMsg + ' (0초)');
             try {
-              const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), buildGenerationApiOpts({}, { feature: 'urlImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
+              const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), requireGenerationApiOpts({}, { feature: 'urlImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
                 onProgress: (ev) => {
                   if (!ev) return;
                   switch (ev.phase) {
@@ -345,7 +345,7 @@
             }, 1000);
             setBusy(phaseMsg + ' (0초)');
             try {
-              const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), buildGenerationApiOpts({}, { feature: 'textImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
+              const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), requireGenerationApiOpts({}, { feature: 'textImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
                 onProgress: (ev) => {
                   if (ev && ev.phase === 'chunk') {
                     setBusy(`에리가 텍스트를 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
