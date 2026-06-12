@@ -107,24 +107,36 @@
     if (document.getElementById('lore-inj-shell-style')) return;
     const css = `
       .lore-launcher-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
         min-width: 0;
-        height: 30px;
-        padding: 0 10px;
-        border-radius: 7px;
-        border: 1px solid rgba(148, 163, 184, .35);
-        background: rgba(15, 23, 42, .72);
-        color: #e5e7eb;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, .32);
+        background: rgba(18, 19, 22, .74);
+        color: #f3f4f6;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
         line-height: 1;
+        cursor: pointer;
       }
       .lore-launcher-button:hover {
-        background: rgba(30, 41, 59, .9);
-        border-color: rgba(148, 163, 184, .55);
+        background: rgba(36, 39, 44, .92);
+        border-color: rgba(138, 180, 255, .52);
       }
-      .lore-launcher-button p {
+      .lore-launcher-button span {
         margin: 0;
         white-space: nowrap;
+      }
+      .lore-launcher-dot {
+        width: 6px;
+        height: 6px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: #8ab4ff;
+        box-shadow: 0 0 0 2px rgba(138,180,255,.16);
       }
     `;
     const style = document.createElement('style');
@@ -166,10 +178,11 @@
       const mount = platform && typeof platform.getLauncherMount === 'function' ? platform.getLauncherMount() : null;
       if (mount && mount.target) {
         const buttonCloned = document.createElement('button');
-        buttonCloned.innerHTML = '<p></p>'; buttonCloned.style.cssText = 'margin-right: 10px'; buttonCloned.className = 'lore-launcher-button';
+        buttonCloned.innerHTML = '<span class="lore-launcher-dot"></span><span>Lore</span>';
+        buttonCloned.style.cssText = 'margin-right: 10px';
+        buttonCloned.className = 'lore-launcher-button';
         buttonCloned.title = 'Lore Injector';
-        const textNode = buttonCloned.getElementsByTagName('p');
-        mount.target.insertBefore(buttonCloned, mount.before || mount.target.childNodes[0] || null); textNode[0].innerText = 'Lore';
+        mount.target.insertBefore(buttonCloned, mount.before || mount.target.childNodes[0] || null);
         buttonCloned.removeAttribute('onClick');
         buttonCloned.addEventListener('click', openLoreSettings);
       }

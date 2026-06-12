@@ -1,5 +1,5 @@
 // lore settings registry
-// One source for generated settings controls. Legacy hand-built tabs remain during migration.
+// One source for generated settings controls.
 (async function(){
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
@@ -10,12 +10,12 @@
 
   const { settings } = _w.__LoreInj;
   const TONE = {
-    text: 'var(--li-text,#e7edf5)',
-    soft: 'var(--li-text-soft,#a9b6c7)',
-    muted: 'var(--li-muted,#748196)',
-    line: 'var(--li-line,#2f3b4f)',
-    panel: '#0f1724',
-    accent: 'var(--li-accent,#5aa7ff)'
+    text: 'var(--li-text,#f3f4f6)',
+    soft: 'var(--li-text-soft,#b8bec8)',
+    muted: 'var(--li-muted,#858c98)',
+    line: 'var(--li-line,#343840)',
+    panel: 'var(--li-surface-2,#202226)',
+    accent: 'var(--li-accent,#8ab4ff)'
   };
 
   const SETTINGS_REGISTRY = [
@@ -161,7 +161,7 @@
           const control = renderControl(def, !cap.ok);
           control.style.cssText = def.type === 'boolean'
             ? 'width:18px;height:18px;accent-color:' + TONE.accent + ';'
-            : 'width:100%;max-width:360px;min-height:34px;border-radius:8px;border:1px solid ' + TONE.line + ';background:#08111d;color:' + TONE.text + ';padding:7px 9px;font-size:12px;box-sizing:border-box;';
+            : 'width:100%;max-width:360px;min-height:34px;border-radius:8px;border:1px solid ' + TONE.line + ';background:var(--li-bg,#101113);color:' + TONE.text + ';padding:7px 9px;font-size:12px;box-sizing:border-box;';
           controlWrap.appendChild(control);
           row.appendChild(meta);
           row.appendChild(controlWrap);
