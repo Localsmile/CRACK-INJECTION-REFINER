@@ -1,4 +1,4 @@
-// injecter / sub-file — 로어 관리 (파일)
+// injecter / sub-file - 로어 관리 (파일)
 // 역할: JSON 가져오기/내보내기, 팩 활성화/비활성화, 임베딩 생성, 삭제
 // 의존: injecter-3 (settings, db, C, setPackEnabled)
 (async function(){
@@ -11,6 +11,25 @@
   if (_w.__LoreInj.__subFileLoaded) return;
 
   const { C, db, settings, setPackEnabled } = _w.__LoreInj;
+  const UI = C.UI || {};
+  const FIELD_STYLE = UI.field || 'width:100%;min-height:34px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:8px 10px;box-sizing:border-box;';
+  const BTN_BASE = 'min-height:30px;padding:5px 10px;font-size:11px;border-radius:7px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
+  const TONE = {
+    muted: 'var(--li-muted,#748196)',
+    ok: '#78d5a8',
+    warn: '#e7b56f',
+    danger: '#ef6b6b'
+  };
+
+  function toggleStyle(on, w, h, dot) {
+    const dw = dot || Math.max(8, h - 4);
+    const leftOn = Math.max(2, w - dw - 2);
+    return {
+      wrap: 'width:' + w + 'px;height:' + h + 'px;border-radius:' + Math.ceil(h / 2) + 'px;background:' + (on ? 'rgba(120,213,168,.32)' : 'rgba(116,129,150,.22)') + ';border:1px solid ' + (on ? 'rgba(120,213,168,.6)' : 'var(--li-line,#2f3b4f)') + ';position:relative;cursor:pointer;flex-shrink:0;',
+      dot: 'width:' + dw + 'px;height:' + dw + 'px;border-radius:50%;background:' + (on ? TONE.ok : TONE.muted) + ';position:absolute;top:2px;left:' + (on ? leftOn : 2) + 'px;transition:left .18s,background .18s;box-shadow:0 1px 3px rgba(0,0,0,.35);'
+    };
+  }
+
   const _ls = _w.localStorage;
   const BACKUP_SCHEMA = 'crack-lore-full-backup';
   const BACKUP_VERSION = 1;
@@ -357,28 +376,28 @@
     return new Promise((resolve) => {
       const plan = clonePlain(analysis.defaultPlan || {});
       const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;';
       const modal = document.createElement('div');
-      modal.style.cssText = 'width:min(760px,100%);max-height:min(760px,92vh);overflow:auto;background:#202020;color:#ddd;border:1px solid #555;border-radius:8px;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:16px;box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+      modal.style.cssText = 'width:min(780px,100%);max-height:min(760px,92vh);overflow:auto;background:linear-gradient(180deg,#101a2a,#0a111d);color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.62);padding:18px;box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
       overlay.appendChild(modal);
-      const h = document.createElement('div'); h.textContent = '백업 병합 확인'; h.style.cssText = 'font-size:18px;font-weight:700;color:#eee;margin-bottom:8px;'; modal.appendChild(h);
+      const h = document.createElement('div'); h.textContent = '백업 병합 확인'; h.style.cssText = 'font-size:18px;font-weight:900;color:var(--li-text,#e7edf5);margin-bottom:8px;'; modal.appendChild(h);
       const s = analysis.summary || {};
       const summary = document.createElement('div');
       summary.textContent = `로어팩 ${s.packs || 0}개, 로어 ${s.entries || 0}개, 검색 준비 ${s.embeddings || 0}개. 이름 충돌 로어팩 ${s.packConflicts || 0}개, 같은 이름 로어 ${s.entryConflicts || 0}개.`;
-      summary.style.cssText = 'font-size:12px;color:#aaa;line-height:1.5;margin-bottom:12px;';
+      summary.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);line-height:1.55;margin-bottom:12px;';
       modal.appendChild(summary);
 
       const makeSection = (title, desc) => {
         const box = document.createElement('div');
-        box.style.cssText = 'border:1px solid #3b3b3b;border-radius:6px;background:#181818;padding:12px;margin:10px 0;';
-        const t = document.createElement('div'); t.textContent = title; t.style.cssText = 'font-size:14px;font-weight:700;color:#ddd;margin-bottom:4px;'; box.appendChild(t);
-        if (desc) { const d = document.createElement('div'); d.textContent = desc; d.style.cssText = 'font-size:11px;color:#888;line-height:1.45;margin-bottom:10px;'; box.appendChild(d); }
+        box.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:10px;background:rgba(7,13,23,.78);padding:13px;margin:10px 0;';
+        const t = document.createElement('div'); t.textContent = title; t.style.cssText = 'font-size:14px;font-weight:900;color:var(--li-text,#e7edf5);margin-bottom:4px;'; box.appendChild(t);
+        if (desc) { const d = document.createElement('div'); d.textContent = desc; d.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);line-height:1.5;margin-bottom:10px;'; box.appendChild(d); }
         modal.appendChild(box);
         return box;
       };
       const makeSelect = (items, value, onChange) => {
         const sel = document.createElement('select');
-        sel.style.cssText = 'width:100%;padding:7px;border:1px solid #444;border-radius:4px;background:#101010;color:#ddd;font-size:12px;box-sizing:border-box;';
+        sel.style.cssText = FIELD_STYLE + 'font-size:12px;padding:7px 9px;';
         items.forEach(([v, label]) => { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); });
         sel.value = value;
         sel.onchange = () => onChange(sel.value);
@@ -387,15 +406,15 @@
 
       const packBox = makeSection('로어팩 이름 충돌', '같은 이름의 로어팩은 기본적으로 새 이름으로 가져옴. 기존 로어팩을 자동으로 덮어쓰지 않음.');
       if (!analysis.packConflicts || !analysis.packConflicts.length) {
-        const none = document.createElement('div'); none.textContent = '겹치는 로어팩 이름 없음.'; none.style.cssText = 'font-size:12px;color:#888;'; packBox.appendChild(none);
+        const none = document.createElement('div'); none.textContent = '겹치는 로어팩 이름 없음.'; none.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);'; packBox.appendChild(none);
       } else {
         analysis.packConflicts.forEach((pc) => {
           const row = document.createElement('div');
-          row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 150px minmax(120px,180px);gap:8px;align-items:end;margin-top:8px;';
+          row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,180px);gap:8px;align-items:end;margin-top:8px;';
           if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) row.style.gridTemplateColumns = '1fr';
           const nameWrap = document.createElement('div');
-          const nl = document.createElement('div'); nl.textContent = pc.name + ` (현재 ${pc.existingCount || 0}개 / 백업 ${pc.incomingCount || 0}개)`; nl.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;word-break:break-all;'; nameWrap.appendChild(nl);
-          const input = document.createElement('input'); input.value = pc.targetName || (pc.name + ' (가져옴)'); input.style.cssText = 'width:100%;padding:7px;border:1px solid #444;border-radius:4px;background:#101010;color:#ddd;font-size:12px;box-sizing:border-box;';
+          const nl = document.createElement('div'); nl.textContent = pc.name + ` (현재 ${pc.existingCount || 0}개 / 백업 ${pc.incomingCount || 0}개)`; nl.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);margin-bottom:4px;word-break:break-all;'; nameWrap.appendChild(nl);
+          const input = document.createElement('input'); input.value = pc.targetName || (pc.name + ' (가져옴)'); input.style.cssText = FIELD_STYLE + 'font-size:12px;padding:7px 9px;';
           input.oninput = () => { if (!plan.packPlan[pc.name]) plan.packPlan[pc.name] = {}; plan.packPlan[pc.name].targetName = input.value.trim() || pc.targetName || pc.name; };
           nameWrap.appendChild(input);
           const action = makeSelect([
@@ -429,15 +448,15 @@
       const settingsBox = makeSection('설정 가져오기', '전역 설정과 채팅별 설정은 별도로 처리함. 기본값은 현재 전역 설정 유지, 없는 채팅별 설정만 추가.');
       const settingsGrid = document.createElement('div'); settingsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
       if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) settingsGrid.style.gridTemplateColumns = '1fr';
-      const g1 = document.createElement('div'); const l1 = document.createElement('div'); l1.textContent = '전역 설정'; l1.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;'; g1.appendChild(l1);
+      const g1 = document.createElement('div'); const l1 = document.createElement('div'); l1.textContent = '전역 설정'; l1.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:4px;'; g1.appendChild(l1);
       g1.appendChild(makeSelect([['keep', '현재 설정 유지'], ['backup', '백업 설정 사용']], plan.settingsMode || 'keep', (v) => { plan.settingsMode = v; }));
-      const g2 = document.createElement('div'); const l2 = document.createElement('div'); l2.textContent = '채팅별 설정'; l2.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;'; g2.appendChild(l2);
+      const g2 = document.createElement('div'); const l2 = document.createElement('div'); l2.textContent = '채팅별 설정'; l2.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:4px;'; g2.appendChild(l2);
       g2.appendChild(makeSelect([['add_missing', '없는 채팅만 추가'], ['current', '현재 값 유지'], ['backup', '백업 값 사용']], plan.pageMode || 'add_missing', (v) => { plan.pageMode = v; }));
       settingsGrid.appendChild(g1); settingsGrid.appendChild(g2); settingsBox.appendChild(settingsGrid);
 
       const buttons = document.createElement('div'); buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;';
-      const cancel = document.createElement('button'); cancel.textContent = '취소'; cancel.style.cssText = 'padding:8px 14px;border:1px solid #555;background:#181818;color:#ccc;border-radius:4px;cursor:pointer;';
-      const ok = document.createElement('button'); ok.textContent = '가져오기 실행'; ok.style.cssText = 'padding:8px 14px;border:1px solid #286;background:#173421;color:#8ed6a7;border-radius:4px;cursor:pointer;font-weight:700;';
+      const cancel = document.createElement('button'); cancel.textContent = '취소'; cancel.style.cssText = BTN_BASE + 'min-height:34px;padding:8px 14px;';
+      const ok = document.createElement('button'); ok.textContent = '가져오기 실행'; ok.style.cssText = BTN_BASE + 'min-height:34px;padding:8px 14px;background:rgba(120,213,168,.18);border-color:rgba(120,213,168,.55);color:' + TONE.ok + ';';
       cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
       ok.onclick = () => {
         for (const [name, p] of Object.entries(plan.packPlan || {})) {
@@ -475,11 +494,13 @@
       const renderPackUI = async (panel) => {
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const title = document.createElement('div'); title.textContent = '로어 가져오기'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
-          const nameInput = document.createElement('input'); nameInput.placeholder = '로어 이름'; nameInput.style.cssText = 'flex:1;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;'; row.appendChild(nameInput);
+          const title = document.createElement('div'); title.textContent = '로어 가져오기'; title.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;'; nd.appendChild(title);
+          const hint = document.createElement('div'); hint.textContent = 'JSON 파일이나 직접 입력으로 로어팩을 추가함. 같은 이름 로어는 갱신됨.'; hint.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);line-height:1.5;margin-bottom:10px;'; nd.appendChild(hint);
+          const row = document.createElement('div'); row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:8px;';
+          if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) row.style.gridTemplateColumns = '1fr';
+          const nameInput = document.createElement('input'); nameInput.placeholder = '로어팩 이름'; nameInput.style.cssText = FIELD_STYLE + 'font-size:12px;'; row.appendChild(nameInput);
           const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
-          const importBtn = document.createElement('button'); importBtn.textContent = 'JSON 파일 가져오기'; importBtn.style.cssText = 'padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;white-space:nowrap;'; importBtn.onclick = () => fileInput.click();
+          const importBtn = document.createElement('button'); importBtn.textContent = 'JSON 파일 선택'; importBtn.style.cssText = BTN_BASE + 'min-height:34px;padding:7px 14px;color:#fff;background:var(--li-accent,#5aa7ff);border-color:transparent;white-space:nowrap;'; importBtn.onclick = () => fileInput.click();
           fileInput.onchange = async (ev) => {
             const file = ev.target.files[0]; if (!file) return;
             const packName = nameInput.value.trim() || file.name.replace('.json', '');
@@ -501,10 +522,10 @@
           };
           row.appendChild(fileInput); row.appendChild(importBtn); nd.appendChild(row);
 
-          const manualLbl = document.createElement('div'); manualLbl.textContent = '또는 직접 JSON 입력'; manualLbl.style.cssText = 'font-size:12px;color:#888;margin:12px 0 4px;'; nd.appendChild(manualLbl);
-          const manualTa = document.createElement('textarea'); manualTa.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":"설명","detail":{}}]'; manualTa.style.cssText = 'width:100%;height:100px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;'; nd.appendChild(manualTa);
+          const manualLbl = document.createElement('div'); manualLbl.textContent = '직접 JSON 입력'; manualLbl.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:800;margin:12px 0 5px;'; nd.appendChild(manualLbl);
+          const manualTa = document.createElement('textarea'); manualTa.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":"설명","detail":{}}]'; manualTa.style.cssText = FIELD_STYLE + 'height:112px;font-size:12px;font-family:monospace;resize:vertical;'; nd.appendChild(manualTa);
           const manualBtnRow = document.createElement('div'); manualBtnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
-          const manualBtn = document.createElement('button'); manualBtn.textContent = '수동 추가'; manualBtn.style.cssText = 'padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:1px solid #285;font-weight:bold;';
+          const manualBtn = document.createElement('button'); manualBtn.textContent = '입력 내용 추가'; manualBtn.style.cssText = BTN_BASE + 'min-height:34px;padding:7px 14px;background:rgba(120,213,168,.18);border-color:rgba(120,213,168,.55);color:' + TONE.ok + ';';
           manualBtn.onclick = async () => {
             const pn = nameInput.value.trim() || '수동추가';
             try {
@@ -540,30 +561,31 @@
             if ((p.entryCount || 0) !== count) await db.packs.update(p.name, { entryCount: count });
             packs.push({ ...p, entryCount: count });
           }
-          if (!packs.length) { const empty = document.createElement('div'); empty.textContent = '등록된 팩이 없습니다.'; empty.style.cssText = 'color:#666;text-align:center;padding:20px;font-size:12px;'; nd.appendChild(empty); return; }
+          if (!packs.length) { const empty = document.createElement('div'); empty.textContent = '등록된 팩이 없습니다.'; empty.style.cssText = 'color:var(--li-muted,#748196);text-align:center;padding:24px;font-size:12px;border:1px dashed var(--li-line,#2f3b4f);border-radius:10px;background:rgba(7,13,23,.42);'; nd.appendChild(empty); return; }
           const curUrl = C.getCurUrl(); const enabledPacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(curUrl) : (settings.config.urlPacks?.[curUrl] || []);
           for (const pack of packs) {
-            const packDiv = document.createElement('div'); packDiv.style.cssText = 'margin-bottom:8px;border:1px solid #333;border-radius:4px;overflow:hidden;';
-            const header = document.createElement('div'); header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#111;';
-            const leftSide = document.createElement('div'); leftSide.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+            const packDiv = document.createElement('div'); packDiv.style.cssText = 'margin-bottom:8px;border:1px solid var(--li-line,#2f3b4f);border-radius:10px;overflow:hidden;background:rgba(7,13,23,.68);';
+            const header = document.createElement('div'); header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:11px 12px;gap:10px;';
+            const leftSide = document.createElement('div'); leftSide.style.cssText = 'display:flex;align-items:center;gap:9px;flex:1;min-width:0;';
             const isEnabled = enabledPacks.includes(pack.name);
-            const swWrap = document.createElement('div'); swWrap.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
-            const swLabel = document.createElement('span'); swLabel.textContent = isEnabled ? 'ON' : 'OFF'; swLabel.style.cssText = 'font-size:10px;font-weight:bold;width:20px;text-align:center;color:' + (isEnabled ? '#4a7' : '#777') + ';';
-            const sw = document.createElement('div'); sw.style.cssText = 'width:24px;height:12px;border-radius:6px;background:' + (isEnabled ? '#285' : '#444') + ';position:relative;';
-            const dot = document.createElement('div'); dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#fff;position:absolute;top:2px;left:' + (isEnabled ? '14px' : '2px') + ';transition:left .2s;';
+            const swWrap = document.createElement('div'); swWrap.style.cssText = 'display:flex;align-items:center;gap:7px;cursor:pointer;background:rgba(255,255,255,.035);padding:4px 8px;border-radius:999px;border:1px solid var(--li-line,#2f3b4f);flex-shrink:0;';
+            const swLabel = document.createElement('span'); swLabel.textContent = isEnabled ? 'ON' : 'OFF'; swLabel.style.cssText = 'font-size:10px;font-weight:900;width:22px;text-align:center;color:' + (isEnabled ? TONE.ok : TONE.muted) + ';';
+            const initialToggle = toggleStyle(isEnabled, 28, 14, 10);
+            const sw = document.createElement('div'); sw.style.cssText = initialToggle.wrap;
+            const dot = document.createElement('div'); dot.style.cssText = initialToggle.dot;
             sw.appendChild(dot); swWrap.appendChild(swLabel); swWrap.appendChild(sw);
-            swWrap.onclick = async () => { const curEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name); await setPackEnabled(pack.name, !curEnabled); const nowEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name); swLabel.textContent = nowEnabled ? 'ON' : 'OFF'; swLabel.style.color = nowEnabled ? '#4a7' : '#777'; sw.style.background = nowEnabled ? '#285' : '#444'; dot.style.left = nowEnabled ? '14px' : '2px'; };
+            swWrap.onclick = async () => { const curEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name); await setPackEnabled(pack.name, !curEnabled); const nowEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name); const st = toggleStyle(nowEnabled, 28, 14, 10); swLabel.textContent = nowEnabled ? 'ON' : 'OFF'; swLabel.style.color = nowEnabled ? TONE.ok : TONE.muted; sw.style.cssText = st.wrap; dot.style.cssText = st.dot; };
             leftSide.appendChild(swWrap);
-            const nameEl = document.createElement('span'); nameEl.textContent = pack.name + ' (' + (pack.entryCount || 0) + '개)'; nameEl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;'; leftSide.appendChild(nameEl);
+            const nameEl = document.createElement('span'); nameEl.textContent = pack.name + ' (' + (pack.entryCount || 0) + '개)'; nameEl.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; leftSide.appendChild(nameEl);
             header.appendChild(leftSide);
-            const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;';
-            const B = 'font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
+            const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
+            const B = BTN_BASE;
             const exportBtn = document.createElement('button'); exportBtn.textContent = '내보내기'; exportBtn.style.cssText = B;
             exportBtn.onclick = async () => { const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert('항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
-            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; embBtn.onclick = async () => { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) { alert(miss || 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; const cnt = await C.embedPack(pack.name, apiOpts, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = 'OK' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('실패:' + e.message); } };
-            const cleanBtn = document.createElement('button'); cleanBtn.textContent = '정리'; cleanBtn.title = 'API 호출 없이 stale embeddings 삭제'; cleanBtn.style.cssText = B + 'color:#da8;border-color:#642;';
+            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);'; embBtn.onclick = async () => { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) { alert(miss || 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; const cnt = await C.embedPack(pack.name, apiOpts, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = 'OK' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('실패:' + e.message); } };
+            const cleanBtn = document.createElement('button'); cleanBtn.textContent = '정리'; cleanBtn.title = 'API 호출 없이 stale embeddings 삭제'; cleanBtn.style.cssText = B + 'color:' + TONE.warn + ';border-color:rgba(231,181,111,.45);';
             cleanBtn.onclick = async () => { cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('stale embedding 정리 완료: ' + JSON.stringify(rpt)); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
-            const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
+            const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:' + TONE.danger + ';border-color:rgba(239,107,107,.45);';
             delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
             actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
           }
