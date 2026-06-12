@@ -1,7 +1,7 @@
 // injecter-6-sub-refiner.js: AI 응답 교정 설정 UI
 (async function(){
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const _ls = _w.localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
   const R = _w.__LoreRefiner;
   const deadline = Date.now() + 15000;
   while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));

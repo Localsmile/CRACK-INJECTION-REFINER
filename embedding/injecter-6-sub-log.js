@@ -1,7 +1,7 @@
 // injecter-6-sub-log.js: 실행 로그
 (async function(){
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const _ls = _w.localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
   const deadline = Date.now() + 15000;
   while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
   if (_w.__LoreInj.__subLogLoaded) return;

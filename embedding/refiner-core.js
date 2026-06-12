@@ -25,7 +25,7 @@
     ToastCallback(message, TOAST_TONE[tone] || TOAST_TONE.info);
   }
 
-  const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage || localStorage;
   // v1.4.0-test.40 B3 fix: speech-refiner-processed 글로벌 단일 Set → 채팅별 분리.
   //   채팅간 지문 충돌 제거. 구버전 단일 키는 'global' 버킷으로 흡수 후 삭제.
   //   버킷별 cap 50 (이전 글로벌 100 → 채팅별 50, 일반적 교정 빈도 충분).

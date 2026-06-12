@@ -2,7 +2,7 @@
 (async function(){
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const _ls = _w.localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
 
   function isChatPath() {
     const platform = _w.__LorePlatform;

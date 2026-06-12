@@ -8,6 +8,7 @@
   const C = _w.__LoreCore;
   if (!C || !C.__kernelLoaded) { console.error('[LoreCore:pricing] kernel 미로드'); return; }
   if (C.__pricingLoaded) return;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
 
   // USD per 1M tokens.
   // longIn / longOut / longThreshold가 있으면 contextLen > threshold일 때만 교체 단가 적용.
@@ -85,20 +86,20 @@
   function _loadCumul() {
     if (_cumulCache) return _cumulCache;
     try {
-      const raw = _w.localStorage.getItem(CUMUL_KEY);
+      const raw = _ls.getItem(CUMUL_KEY);
       const obj = raw ? JSON.parse(raw) : {};
       _cumulCache = (obj && typeof obj === 'object') ? obj : {};
     } catch (_) { _cumulCache = {}; }
     return _cumulCache;
   }
   function _persistCumul() {
-    try { _w.localStorage.setItem(CUMUL_KEY, JSON.stringify(_cumulCache)); } catch (_) {}
+    try { _ls.setItem(CUMUL_KEY, JSON.stringify(_cumulCache)); } catch (_) {}
   }
 
   function _loadAll() {
     if (_cache) return _cache;
     try {
-      const raw = _w.localStorage.getItem(STORAGE_KEY);
+      const raw = _ls.getItem(STORAGE_KEY);
       const arr = raw ? JSON.parse(raw) : [];
       _cache = Array.isArray(arr) ? arr : [];
     } catch (_) { _cache = []; }
@@ -106,7 +107,7 @@
   }
 
   function _persist() {
-    try { _w.localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache)); } catch (_) {}
+    try { _ls.setItem(STORAGE_KEY, JSON.stringify(_cache)); } catch (_) {}
   }
 
   function recordApiCost(ev) {
@@ -171,7 +172,7 @@
 
   function clearCumulativeCost() {
     _cumulCache = {};
-    try { _w.localStorage.removeItem(CUMUL_KEY); } catch (_) {}
+    try { _ls.removeItem(CUMUL_KEY); } catch (_) {}
   }
 
   function getCostEvents() {
@@ -180,7 +181,7 @@
 
   function clearCostEvents() {
     _cache = [];
-    try { _w.localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    try { _ls.removeItem(STORAGE_KEY); } catch (_) {}
   }
 
   Object.assign(C, {

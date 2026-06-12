@@ -19,6 +19,9 @@ Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/stories/*/e
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/characters/*/chats/*')) 'missing characters match'
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/u/*/c/*')) 'missing u/c match'
 Assert-True ($bundle.Contains('// @grant       GM_xmlhttpRequest')) 'missing GM_xmlhttpRequest grant'
+Assert-True ($bundle.Contains('// @grant       GM_getValue')) 'missing GM_getValue grant'
+Assert-True ($bundle.Contains('// @grant       GM_setValue')) 'missing GM_setValue grant'
+Assert-True ($bundle.Contains('// @grant       GM_deleteValue')) 'missing GM_deleteValue grant'
 Assert-True ($bundle.Contains('// @grant       unsafeWindow')) 'missing unsafeWindow grant'
 Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
 

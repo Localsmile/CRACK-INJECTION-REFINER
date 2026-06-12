@@ -30,12 +30,15 @@
           const apiReady = apiType === 'deepseek' ? !!cfg.autoExtDeepSeekKey : apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
           const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
           const storageHealth = _w.__LoreInj.getSettingsStorageHealth ? _w.__LoreInj.getSettingsStorageHealth() : { ok: true, configBytes: 0 };
+          const envDiag = (_w.__LoreEnv && _w.__LoreEnv.diagnostics) || {};
+          const persistLabel = envDiag.persisted === true ? '영구 저장' : (envDiag.persisted === false ? '일반 저장' : '확인 중');
           const metrics = C.createMetricGrid([
             { key: 'api', label: 'API', value: apiReady ? '설정됨' : '미설정', ok: apiReady },
             { key: 'pack', label: '활성 로어팩', value: activePacks.length ? activePacks.length + '개' : '없음', ok: activePacks.length > 0 },
             { key: 'entry', label: '사용 가능한 로어', value: '확인 중', ok: true },
             { key: 'save', label: '설정 저장', value: settings._lastSaveOk === false ? '실패' : '정상', ok: settings._lastSaveOk !== false },
             { key: 'storage', label: '저장 공간', value: storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', ok: storageHealth.ok },
+            { key: 'storageMode', label: '저장 방식', value: (envDiag.storageMode || 'localStorage') + ' / ' + persistLabel, ok: envDiag.persisted !== false },
             { key: 'extract', label: '자동 대화 정리', value: cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', ok: !!cfg.autoExtEnabled },
             { key: 'semantic', label: '의미 검색', value: cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', ok: !!cfg.embeddingEnabled }
           ]);

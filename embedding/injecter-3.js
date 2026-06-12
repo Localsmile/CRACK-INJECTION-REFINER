@@ -43,7 +43,7 @@
   } = _w.__LoreInj;
 
   const db = C.getDB();
-  const _ls = _w.localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
 
   function isChatRoute() {
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;

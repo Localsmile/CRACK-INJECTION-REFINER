@@ -30,7 +30,7 @@
     };
   }
 
-  const _ls = _w.localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
   const BACKUP_SCHEMA = 'crack-lore-full-backup';
   const BACKUP_VERSION = 1;
   const DB_TABLES = ['packs', 'entries', 'embeddings', 'workingMemory', 'encounters', 'entryVersions', 'snapshots'];

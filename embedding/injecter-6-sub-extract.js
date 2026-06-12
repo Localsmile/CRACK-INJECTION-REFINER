@@ -1,7 +1,7 @@
 // injecter-6-sub-extract.js: 자동 대화 추출 + 배치 추출 + 템플릿 + URL/텍스트 변환
 (async function(){
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-  const _ls = _w.localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
   const deadline = Date.now() + 15000;
   while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
   if (_w.__LoreInj.__subExtractLoaded) return;

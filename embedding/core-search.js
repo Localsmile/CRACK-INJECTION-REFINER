@@ -110,7 +110,7 @@
     let lastMentionMap = null;
     if (decayEnabled && cfg.chatKey) {
       try {
-        const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
+        const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage || localStorage;
         const all = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
         lastMentionMap = all[cfg.chatKey] || null;
       } catch (e) {}

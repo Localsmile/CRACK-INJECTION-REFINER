@@ -709,7 +709,7 @@ Entries:
   }
 
   // 설정/턴 유틸
-  const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
+  const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage || localStorage;
 
   function loadSettings(key, defaults) {
     try {
