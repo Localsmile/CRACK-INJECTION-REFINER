@@ -145,7 +145,23 @@
             pInp.disabled = oocSel.value !== 'custom'; sInp.disabled = oocSel.value !== 'custom';
             pInp.style.opacity = oocSel.value !== 'custom' ? '0.6' : '1'; sInp.style.opacity = oocSel.value !== 'custom' ? '0.6' : '1';
           };
-          nd.appendChild(oocSel); nd.appendChild(pInp); nd.appendChild(sInp);
+          const applyDefaultBtn = document.createElement('button');
+          applyDefaultBtn.textContent = '새 기본값 적용';
+          applyDefaultBtn.style.cssText = 'padding:7px 10px;margin:0 0 12px 0;background:#164c38;color:#bfffe4;border:1px solid #287a59;border-radius:4px;font-size:12px;font-weight:bold;cursor:pointer;';
+          applyDefaultBtn.onclick = () => {
+            const fmt = OOC_FORMATS.default;
+            oocSel.value = 'default';
+            pInp.value = fmt.prefix;
+            sInp.value = fmt.suffix;
+            settings.config.oocFormat = 'default';
+            settings.config.prefix = fmt.prefix;
+            settings.config.suffix = fmt.suffix;
+            settings.config.oocPromptVersion = _w.__LoreInj.OOC_FORMAT_VERSION || settings.config.oocPromptVersion;
+            settings.save();
+            pInp.disabled = true; sInp.disabled = true;
+            pInp.style.opacity = '0.6'; sInp.style.opacity = '0.6';
+          };
+          nd.appendChild(oocSel); nd.appendChild(pInp); nd.appendChild(sInp); nd.appendChild(applyDefaultBtn);
           const isCustom = (settings.config.oocFormat || 'custom') === 'custom';
           pInp.disabled = !isCustom; sInp.disabled = !isCustom; pInp.style.opacity = isCustom ? '1' : '0.6'; sInp.style.opacity = isCustom ? '1' : '0.6';
         }});

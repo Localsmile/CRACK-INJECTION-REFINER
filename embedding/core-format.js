@@ -342,6 +342,24 @@
     return [...text].slice(0, budget - 3).join('') + '...';
   }
 
+  function detectChatLanguage(input) {
+    const text = Array.isArray(input)
+      ? input.map(m => typeof m === 'string' ? m : (m?.message || m?.content || '')).join('\n')
+      : String(input || '');
+    const sample = text.slice(-6000);
+    const hangul = (sample.match(/[가-힣]/g) || []).length;
+    const latin = (sample.match(/[A-Za-z]/g) || []).length;
+    const meaningful = hangul + latin;
+    if (!meaningful) return 'ko';
+    return hangul / meaningful >= 0.18 ? 'ko' : 'en';
+  }
+
+  function getDefaultMemoryWrapper(lang) {
+    return String(lang || '').toLowerCase().startsWith('en')
+      ? { prefix: '[Memory]', suffix: '[/Memory]' }
+      : { prefix: '[기억]', suffix: '[/기억]' };
+  }
+
   function planInjectionBudget(opts) {
     const {
       userInput = '', maxInputChars = 2000, entries = [], activeNames = [], unmetPairs = [],
@@ -585,7 +603,7 @@
     charLen, summaryTier, callStatePairs, cfFull, cfCompact, cfMicro, adaptiveFormat, bundleGroupKey,
     entryPriority, formatEntryAtLevel, formatTimelineEventAtLevel, buildTemporalRecallBlock, buildLoreBudgetPlan, planInjectionBudget,
     formatEntryFull, formatEntryCompact, formatEntryMicro, budgetFormat, assembleInjection,
-    formatFirstEncounterBlock, formatReunionTag,
+    formatFirstEncounterBlock, formatReunionTag, detectChatLanguage, getDefaultMemoryWrapper,
     __formatLoaded: true
   });
   console.log('[LoreCore:format] loaded');

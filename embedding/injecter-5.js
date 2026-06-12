@@ -699,8 +699,11 @@
       return userInput;
     }
 
-    const pfx = config.prefix || OOC_FORMATS.default.prefix;
-    const sfx = config.suffix || OOC_FORMATS.default.suffix;
+    const wrapper = (config.oocFormat || 'default') === 'default' && C.getDefaultMemoryWrapper
+      ? C.getDefaultMemoryWrapper(C.detectChatLanguage ? C.detectChatLanguage([...(recentMsgs || []), userInput]) : 'ko')
+      : { prefix: config.prefix || OOC_FORMATS.default.prefix, suffix: config.suffix || OOC_FORMATS.default.suffix };
+    const pfx = wrapper.prefix || OOC_FORMATS.default.prefix;
+    const sfx = wrapper.suffix || OOC_FORMATS.default.suffix;
     if (C.charLen(userInput) >= MAX_INPUT_CHARS - 20) {
       addInjLog(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,

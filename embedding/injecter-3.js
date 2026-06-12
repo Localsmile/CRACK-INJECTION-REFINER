@@ -446,14 +446,21 @@
             try {
               const oldOocPrefix = '**OOC: Reference — factual background data. Incorporate naturally, never repeat verbatim.';
               const oldOocSuffix = '**';
+              const previousDefaultPrefix = '<ooc_lore_context>\nEstablished continuity for the current RP scene. Use these facts naturally as background. Preserve current relationships, states, promises, honorifics, and unresolved hooks. Do not quote this block verbatim.';
+              const previousDefaultSuffix = '\n</ooc_lore_context>';
               const savedOocVer = this.config.oocPromptVersion || '';
               if (savedOocVer !== OOC_FORMAT_VERSION) {
                 const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ');
                 const prefix = norm(this.config.prefix);
                 const suffix = norm(this.config.suffix);
-                const isDefaultish = !prefix || prefix === norm(oldOocPrefix) || prefix === norm(OOC_FORMATS.default.prefix) || this.config.oocFormat !== 'custom';
-                const suffixDefaultish = !suffix || suffix === norm(oldOocSuffix) || suffix === norm(OOC_FORMATS.default.suffix) || this.config.oocFormat !== 'custom';
-                if (isDefaultish && suffixDefaultish) {
+                const fmt = this.config.oocFormat || 'default';
+                const oldFormats = OOC_FORMATS || {};
+                const oldNamedFormat = fmt && fmt !== 'default' && fmt !== 'custom' && oldFormats[fmt];
+                const defaultishPrefix = !prefix || prefix === norm(oldOocPrefix) || prefix === norm(previousDefaultPrefix) || prefix === norm('[기억]') || prefix === norm('[Memory]');
+                const defaultishSuffix = !suffix || suffix === norm(oldOocSuffix) || suffix === norm(previousDefaultSuffix) || suffix === norm('[/기억]') || suffix === norm('[/Memory]');
+                if (oldNamedFormat) {
+                  this.config.oocFormat = 'custom';
+                } else if (fmt === 'default' || (defaultishPrefix && defaultishSuffix)) {
                   this.config.oocFormat = 'default';
                   this.config.prefix = OOC_FORMATS.default.prefix;
                   this.config.suffix = OOC_FORMATS.default.suffix;

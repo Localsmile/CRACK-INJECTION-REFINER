@@ -8,7 +8,7 @@
 
   const VER = '1.4.0-test.48';
   const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0-test.47-outputMode';
-  const OOC_FORMAT_VERSION = 'v1.4.0-ooc-context-lore';
+  const OOC_FORMAT_VERSION = 'v1.4.0-ooc-memory-label';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
     const eventOnly = !!opts.eventOnly;
@@ -541,7 +541,7 @@ Source Material:
 {source}`;
 
   const OOC_FORMATS = {
-    default: {name: 'OOC (기본)', prefix: '<ooc_lore_context>\nEstablished continuity for the current RP scene. Use these facts naturally as background. Preserve current relationships, states, promises, honorifics, and unresolved hooks. Do not quote this block verbatim.', suffix: '\n</ooc_lore_context>', desc: '현재 로어/시간축 프롬프트에 맞춘 기본값'},
+    default: {name: '기억 블록', prefix: '[기억]', suffix: '[/기억]', desc: '짧은 기본 메모리 경계'},
     system: {name: 'System 태그', prefix: '[System: Established world/character facts for this scene. Do not repeat verbatim.]', suffix: '[/System]', desc: 'System 지시 잘 따르는 모델'},
     narrator: {name: '내레이터', prefix: "(Narrator's note: The following are established facts in this story.)", suffix: '(End note)', desc: '소설/내러티브 RP'},
     minimal: {name: '최소', prefix: '/**', suffix: '**/', desc: '토큰 절약'},
