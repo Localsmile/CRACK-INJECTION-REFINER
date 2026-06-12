@@ -13,7 +13,7 @@
     C.warmupFirebase(settings.config.autoExtFirebaseScript, settings.config.autoExtModel || 'gemini-3-flash-preview').catch(() => {});
   }
 
-  const FIELD_STYLE = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
 
   function addSelect(nd, label, value, groups, onChange, opts = {}) {
     const l = document.createElement('div');
@@ -138,18 +138,11 @@
     let renderDeepSeekOptions = null;
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      const title = document.createElement('div');
-      title.textContent = 'Gemini 추출 프롬프트';
-      title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
-      nd.appendChild(title);
-      const note = document.createElement('div');
-      note.textContent = '템플릿 선택은 Gemini와 DeepSeek 프롬프트 세트에 함께 적용됨. 기본 템플릿은 직접 수정 안 됨.';
-      note.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;';
-      nd.appendChild(note);
+      nd.appendChild(C.createSectionTitle('Gemini 추출 프롬프트', '템플릿 선택은 Gemini와 DeepSeek 프롬프트 세트에 함께 적용됨. 기본 템플릿은 직접 수정 안 됨.'));
 
       const tplHeader = document.createElement('div'); tplHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
       const tplTitle = document.createElement('div'); tplTitle.textContent = '템플릿'; tplTitle.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;';
-      const newTplBtn = document.createElement('button'); newTplBtn.textContent = '+ 새 템플릿'; newTplBtn.style.cssText = 'font-size:11px;padding:3px 8px;border-radius:3px;background:#258;border:none;color:#fff;cursor:pointer;';
+      const newTplBtn = C.createActionButton('+ 새 템플릿', 'primary'); newTplBtn.style.fontSize = '11px'; newTplBtn.style.padding = '3px 8px';
       tplHeader.appendChild(tplTitle); tplHeader.appendChild(newTplBtn); nd.appendChild(tplHeader);
 
       const tplSelectWrap = document.createElement('div'); tplSelectWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;align-items:center;';
@@ -210,14 +203,7 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      const title = document.createElement('div');
-      title.textContent = 'DeepSeek 추출 프롬프트';
-      title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
-      nd.appendChild(title);
-      const note = document.createElement('div');
-      note.textContent = '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출, 중요 장면 추출, 지식 변환에 사용함.';
-      note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:8px;';
-      nd.appendChild(note);
+      nd.appendChild(C.createSectionTitle('DeepSeek 추출 프롬프트', '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출, 중요 장면 추출, 지식 변환에 사용함.'));
       const defaults = _w.__LoreInj.defaultSettings || {};
       const saveDeepSeekTpl = (key, val) => {
         const id = settings.config.activeTemplateId || 'default';
@@ -253,10 +239,7 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      const title = document.createElement('div');
-      title.textContent = '후보 재정렬/응답 교정 프롬프트';
-      title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
-      nd.appendChild(title);
+      nd.appendChild(C.createSectionTitle('후보 재정렬/응답 교정 프롬프트'));
       addPromptArea(nd, '후보 재정렬 지시문', settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt, (v) => { settings.config.rerankPrompt = v; settings.save(); }, { height: 110, reset: () => C.DEFAULTS.rerankPrompt });
       addPromptArea(nd, '응답 교정 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
       const note = document.createElement('div');
@@ -272,12 +255,8 @@
         panel.addBoxedField('', '', { onInit: (nd) => {
           ensureApiModelDefaults();
           C.setFullWidth(nd);
-          const t = document.createElement('div'); t.textContent = 'API 연결'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
-          const apiSummary = document.createElement('div');
           const apiTypeLabel = (settings.config.autoExtApiType || 'key') === 'deepseek' ? 'DeepSeek' : (settings.config.autoExtApiType || 'key') === 'vertex' ? 'Vertex JSON' : (settings.config.autoExtApiType || 'key') === 'firebase' ? 'Firebase' : 'Gemini API Key';
-          apiSummary.textContent = '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면 추출이 이 연결 사용함.';
-          apiSummary.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
-          nd.appendChild(apiSummary);
+          nd.appendChild(C.createSectionTitle('API 연결', '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면 추출이 이 연결 사용함.'));
           const providerLabel = document.createElement('div'); providerLabel.textContent = 'API 종류'; providerLabel.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(providerLabel);
           const providerSel = document.createElement('select'); providerSel.style.cssText = FIELD_STYLE;
           [['Gemini API Key', 'key'], ['Firebase', 'firebase'], ['Vertex JSON', 'vertex'], ['DeepSeek', 'deepseek']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; providerSel.appendChild(o); });
@@ -305,8 +284,7 @@
           }
   
           const testRow = document.createElement('div'); testRow.style.cssText = 'margin:12px 0 16px;display:flex;gap:8px;align-items:center;';
-          const testBtn = document.createElement('button'); testBtn.textContent = 'API 키 테스트';
-          testBtn.style.cssText = 'padding:6px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;';
+          const testBtn = C.createActionButton('API 키 테스트', 'primary'); testBtn.style.padding = '6px 16px';
           const testResult = document.createElement('span'); testResult.style.cssText = 'font-size:12px;color:#888;word-break:break-all;';
           testBtn.onclick = async () => {
             const apiType = settings.config.autoExtApiType || 'key';
@@ -322,8 +300,9 @@
           };
           testRow.appendChild(testBtn); testRow.appendChild(testResult); nd.appendChild(testRow);
   
-          const modelHead = document.createElement('div'); modelHead.textContent = '모델 선택'; modelHead.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:14px 0 8px;padding-top:10px;border-top:1px solid #333;'; nd.appendChild(modelHead);
-          const modelNote = document.createElement('div'); modelNote.textContent = 'API를 쓰는 기능별 모델을 여기서 한 번에 관리함. 프롬프트 내용은 프롬프트 관리 메뉴에서 수정함.'; modelNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;'; nd.appendChild(modelNote);
+          const modelSection = C.createSectionTitle('모델 선택', 'API를 쓰는 기능별 모델을 여기서 한 번에 관리함. 프롬프트 내용은 프롬프트 관리 메뉴에서 수정함.');
+          modelSection.style.marginTop = '14px';
+          nd.appendChild(modelSection);
           const isDeepSeekApi = (settings.config.autoExtApiType || 'key') === 'deepseek';
           const deepSeekDefault = 'deepseek-v4-flash';
           addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || (isDeepSeekApi ? deepSeekDefault : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
