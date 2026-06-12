@@ -319,7 +319,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return false;
   }
 
-  async function applyExtractPatchOp(op, packName, chatKey) {
+  async function applyExtractPatchOp(op, packName, chatKey, turnHint) {
     if (!op || op.op !== 'patch' || op.id == null) return 0;
     let existing = await db.entries.get(op.id);
     if (!existing || existing.packName !== packName) return 0;
@@ -353,7 +353,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
         const norm = String(ev.summary).trim();
         if (!norm || existing.eventHistory.some(x => x.summary === norm)) continue;
         existing.eventHistory.push({
-          turn: ev.turn || getTurnCounter(chatKey),
+          turn: ev.turn || (turnHint != null ? turnHint : getTurnCounter(chatKey)),
           summary: norm,
           imp: ev.imp || 5,
           emo: ev.emo || 5,
@@ -369,7 +369,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       for (const h of append.callHistory) {
         if (!h || !h.from || !h.to || !h.term) continue;
         existing.callHistory.push({
-          turn: h.turn || getTurnCounter(chatKey),
+          turn: h.turn || (turnHint != null ? turnHint : getTurnCounter(chatKey)),
           from: h.from,
           to: h.to,
           term: h.term,
@@ -381,14 +381,14 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     }
 
     existing.lastUpdated = Date.now();
-    try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
+    try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: turnHint != null ? turnHint : getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
     if (entryContentSignature(existing) === beforeSig) return 0;
     try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch (_) {}
     await db.entries.put(existing);
     return 1;
   }
 
-  async function applyTemporalPatchOp(op, packName, chatKey) {
+  async function applyTemporalPatchOp(op, packName, chatKey, turnHint) {
     if (!op || op.op !== 'patch' || op.id == null) return 0;
     let existing = await db.entries.get(op.id);
     const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
@@ -422,7 +422,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     }
 
     existing.lastUpdated = Date.now();
-    try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
+    try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: turnHint != null ? turnHint : getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
     if (entryContentSignature(existing) === beforeSig) return 0;
     try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch (_) {}
     await db.entries.put(existing);
@@ -657,14 +657,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (!parsed) throw new Error('시간축 JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       let patchedCount = 0;
       for (const item of normalizeExtractItems(parsed)) {
-        if (item && item.op === 'patch') patchedCount += await applyTemporalPatchOp(item, packName, chatKey);
+        if (item && item.op === 'patch') patchedCount += await applyTemporalPatchOp(item, packName, chatKey, opts.mergeOpts && opts.mergeOpts.baseTurn);
       }
       const events = normalizeTemporalCandidates(parsed, settings.config.temporalMaxEventsPerPass || 5);
       if (!events.length && patchedCount <= 0) {
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: msgCount, isManual, status: '시간축 추출 내용 없음', api: apiLog, model: _tmpModel, elapsedMs: _tmpElapsedMs, cost: _tmpCost });
         return { count: 0, empty: true };
       }
-      const addCount = events.length ? await mergeExtractedData(events, url) : 0;
+      const addCount = events.length ? await mergeExtractedData(events, url, opts.mergeOpts || null) : 0;
       const count = patchedCount + addCount;
       let embedMsg = '';
       let embedCount = 0;
@@ -701,9 +701,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     }
   }
 
-  async function mergeExtractedData(entries, url) {
+  async function mergeExtractedData(entries, url, opts = null) {
     const packName = await getAutoExtPackForUrl(url);
     const chatKey = getChatKey();
+    const mergeOpts = opts && typeof opts === 'object' ? opts : {};
+    const ctxTurn = () => mergeOpts.baseTurn != null ? Number(mergeOpts.baseTurn) || 0 : getTurnCounter(chatKey);
     let ap = [...(settings.config.autoPacks || [])];
     if (!ap.includes(packName)) { ap.push(packName); settings.config.autoPacks = ap; settings.save(); }
     const proj = settings.config.activeProject || '';
@@ -715,12 +717,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     for (const item of normalizeExtractItems(entries)) {
       if (!item) continue;
       if (item.op === 'patch') {
-        processedCount += await applyExtractPatchOp(item, packName, chatKey);
+        processedCount += await applyExtractPatchOp(item, packName, chatKey, ctxTurn());
         continue;
       }
       let e = (item.op === 'add' && item.entry) ? item.entry : item;
       if (!e.name) continue;
-      e = normalizeEntryForMerge(e, getTurnCounter(chatKey));
+      e = normalizeEntryForMerge(e, ctxTurn());
       e.gs = (e.imp || 5) + (e.sur || 5) + (e.emo || 5);
       if (settings.config.importanceGating !== false) {
         if (e.gs < (settings.config.importanceThreshold || 12)) continue;
@@ -768,7 +770,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         };
       }
       if (existing) {
-        existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
+        existing = normalizeEntryForMerge(existing, ctxTurn());
         const _beforeExistingSig = entryContentSignature(existing);
         // 서사 무결성: 덮어쓰기 전 현재 상태 백업 (append-only)
         try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge'); } catch(ex) {}
@@ -794,7 +796,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           const newS = e.state || e.detail?.current_status || e.detail?.status || null;
           if (oldS && newS && oldS !== newS) {
             const cLog = JSON.parse(_ls.getItem('lore-contradictions') || '[]');
-            cLog.unshift({ name: e.name, type: e.type, oldStatus: oldS, newStatus: newS, turn: getTurnCounter(chatKey), time: Date.now() });
+            cLog.unshift({ name: e.name, type: e.type, oldStatus: oldS, newStatus: newS, turn: ctxTurn(), time: Date.now() });
             if (cLog.length > 50) cLog.length = 50;
             _ls.setItem('lore-contradictions', JSON.stringify(cLog));
           }
@@ -812,7 +814,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           for (const d of e.callDelta) {
             if (!d.from || !d.to || !d.term) continue;
             existing.callHistory.push({
-              turn: d.turnApprox || getTurnCounter(chatKey),
+              turn: d.turnApprox || ctxTurn(),
               from: d.from, to: d.to, term: d.term,
               prevTerm: d.prevTerm || null, ts: Date.now()
             });
@@ -826,7 +828,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             const normSum = ev.summary.trim();
             if (existing.eventHistory.some(x => x.summary === normSum)) continue;
             existing.eventHistory.push({
-              turn: ev.turn || getTurnCounter(chatKey),
+              turn: ev.turn || ctxTurn(),
               summary: normSum,
               imp: ev.imp || 5,
               emo: ev.emo || 5,
@@ -944,7 +946,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
           if (parties && parties.length >= 2) {
             const [c1, c2] = parties;
-            try { await C.recordFirstEncounter(c1, c2, { turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
+            try { await C.recordFirstEncounter(c1, c2, { turnApprox: ctxTurn(), timestamp: Date.now() }); } catch(ex) {}
           }
         }
         // Narrative Anchor: 보호 필드 복원
@@ -963,7 +965,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (_tlMergeBackup.actions && _tlMergeBackup.actions.length) existing.actions = _tlMergeBackup.actions;
           if (_tlMergeBackup.when && Object.keys(_tlMergeBackup.when).length) existing.when = _tlMergeBackup.when;
         }
-        try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch(_) {}
+        try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: ctxTurn(), sceneId: chatKey }); } catch(_) {}
         if (entryContentSignature(existing) === _beforeExistingSig) {
           processedCount--;
           continue;
@@ -981,7 +983,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           for (const d of e.callDelta) {
             if (!d.from || !d.to || !d.term) continue;
             e.callHistory.push({
-              turn: d.turnApprox || getTurnCounter(chatKey),
+              turn: d.turnApprox || ctxTurn(),
               from: d.from, to: d.to, term: d.term,
               prevTerm: d.prevTerm || null, ts: Date.now()
             });
@@ -989,7 +991,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         }
         if (Array.isArray(e.eventHistory) && e.eventHistory.length > 0) {
           e.eventHistory = e.eventHistory.filter(ev => ev && ev.summary).map(ev => ({
-            turn: ev.turn || getTurnCounter(chatKey),
+            turn: ev.turn || ctxTurn(),
             summary: ev.summary.trim(),
             imp: ev.imp || 5, emo: ev.emo || 5, ts: Date.now()
           })).sort((a,b) => (a.turn||0) - (b.turn||0));
@@ -1000,7 +1002,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             e.inject.full = recent ? base + ' | 최근:' + recent : base;
           }
         }
-        try { if (C.normalizeTemporalGraph) e = C.normalizeTemporalGraph(e, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch(_) {}
+        try { if (C.normalizeTemporalGraph) e = C.normalizeTemporalGraph(e, { currentTurn: ctxTurn(), sceneId: chatKey }); } catch(_) {}
         await db.entries.put(e);
       }
     }
@@ -1427,7 +1429,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
           const parsedItems = normalizeExtractItems(parsed);
           if (parsedItems.length > 0) {
-            mergedCount = await mergeExtractedData(parsedItems, _url);
+            mergedCount = await mergeExtractedData(parsedItems, _url, { source: 'batch', baseTurn: 0 });
             report.entriesAdded += mergedCount;
             status = mergedCount > 0 ? 'ok' : 'empty'; ok = true;
           } else {
@@ -1457,7 +1459,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         if (settings.config.temporalExtractEnabled !== false) {
           try {
             const tApiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtract', chatKey);
-            const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true });
+            const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true, mergeOpts: { source: 'batch', baseTurn: 0 } });
             if (tres && tres.count) {
               report.entriesAdded += tres.count;
               report.batchResults.push({ batch: bi + 1, status: 'temporal_ok', attempts: 1, entries: tres.count });
@@ -1516,7 +1518,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               }
               const parsedItems = normalizeExtractItems(parsed);
               if (parsedItems.length > 0) {
-                mergedCount = await mergeExtractedData(parsedItems, _url);
+                mergedCount = await mergeExtractedData(parsedItems, _url, { source: 'batch', baseTurn: 0 });
                 report.entriesAdded += mergedCount;
                 status = mergedCount > 0 ? 'ok_retry' : 'empty_retry'; ok = true;
               } else {
