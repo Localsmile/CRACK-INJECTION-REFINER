@@ -5,6 +5,10 @@
   const _ls = _w.localStorage;
 
   function isChatPath() {
+    const platform = _w.__LorePlatform;
+    if (platform && typeof platform.isChatPath === 'function') {
+      try { return !!platform.isChatPath(); } catch (_) {}
+    }
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
     if (typeof fn === 'function') {
       try { return !!fn(); } catch (_) {}
@@ -210,19 +214,14 @@
     const selected = document.getElementsByClassName('lore-launcher-button');
     if (selected && selected.length > 0) return;
     try {
-      const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
-      const topPanel = document.getElementsByClassName(isStory ? 'css-1c5w7et' : 'css-l8r172');
-      if (topPanel && topPanel.length > 0) {
-        const topContainer = topPanel[0].childNodes[topPanel.length - 1]?.getElementsByTagName('div');
-        if (!topContainer || topContainer.length <= 0) return;
-        const topList = topContainer[0].children[0].children;
-        const top = topList[topList.length - 1];
-        if (!top) return;
+      const platform = _w.__LorePlatform;
+      const mount = platform && typeof platform.getLauncherMount === 'function' ? platform.getLauncherMount() : null;
+      if (mount && mount.target) {
         const buttonCloned = document.createElement('button');
         buttonCloned.innerHTML = '<p></p>'; buttonCloned.style.cssText = 'margin-right: 10px'; buttonCloned.className = 'lore-launcher-button';
         buttonCloned.title = 'Lore Injector';
         const textNode = buttonCloned.getElementsByTagName('p');
-        top.insertBefore(buttonCloned, top.childNodes[0]); textNode[0].innerText = 'Lore';
+        mount.target.insertBefore(buttonCloned, mount.before || mount.target.childNodes[0] || null); textNode[0].innerText = 'Lore';
         buttonCloned.removeAttribute('onClick');
         buttonCloned.addEventListener('click', () => { MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light'); });
       }

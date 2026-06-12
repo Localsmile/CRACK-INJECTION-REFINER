@@ -59,19 +59,19 @@
     }
   }
 
-  function getCrackUtilSafe() {
-    try { return _w.CrackUtil || (typeof CrackUtil !== 'undefined' ? CrackUtil : null); } catch (_) { return null; }
-  }
-
   function currentChatIdSafe() {
-    try { return C.getCurrentChatId && C.getCurrentChatId(); } catch (_) { return null; }
+    try {
+      const P = _w.__LorePlatform;
+      return (P && P.getChatId && P.getChatId()) || (C.getCurrentChatId && C.getCurrentChatId());
+    } catch (_) { return null; }
   }
 
   async function fetchRawLogs(chatId, maxCount, naturalOrder) {
     try {
-      const CU = getCrackUtilSafe();
-      if (!CU || !CU.chatRoom || !chatId) return [];
-      const logs = await CU.chatRoom().extractLogs(chatId, { maxCount: maxCount || CLEANUP_LOG_LIMIT, naturalOrder: naturalOrder !== false });
+      const P = _w.__LorePlatform;
+      const logs = P && P.getRecentMessages
+        ? await P.getRecentMessages({ chatId, maxCount: maxCount || CLEANUP_LOG_LIMIT, naturalOrder: naturalOrder !== false })
+        : [];
       if (logs instanceof Error || !Array.isArray(logs)) return [];
       return logs;
     } catch (_) { return []; }
@@ -79,36 +79,18 @@
 
   async function getMessageById(chatId, messageId) {
     try {
-      const CU = getCrackUtilSafe();
-      if (CU && CU.chatRoom && typeof CU.chatRoom().getMessage === 'function') {
-        const msg = await CU.chatRoom().getMessage(chatId, messageId);
-        if (msg && !(msg instanceof Error)) return msg;
-      }
+      const P = _w.__LorePlatform;
+      return P && P.getMessageById ? await P.getMessageById(chatId, messageId) : null;
     } catch (_) {}
     return null;
   }
 
   async function patchUserMessage(chatId, messageId, nextText) {
-    let token = '';
     try {
-      const CU = getCrackUtilSafe();
-      token = CU && CU.cookie ? CU.cookie().getAuthToken() : '';
-    } catch (_) {}
-    if (!token || !chatId || !messageId) return { ok: false, status: 0, error: 'auth_or_id_missing' };
-    try {
-      const res = await fetch(`https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatId}/messages/${messageId}`, {
-        method: 'PATCH',
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token,
-          'platform': 'web',
-          'wrtn-locale': 'ko-KR'
-        },
-        body: JSON.stringify({ message: nextText })
-      });
-      const body = await res.text().catch(() => '');
-      return { ok: res.ok, status: res.status, body: body.slice(0, 300) };
+      const P = _w.__LorePlatform;
+      return P && P.patchMessage
+        ? await P.patchMessage(chatId, messageId, nextText)
+        : { ok: false, status: 0, error: 'platform_missing' };
     } catch (e) {
       return { ok: false, status: 0, error: e && e.message ? e.message : String(e) };
     }

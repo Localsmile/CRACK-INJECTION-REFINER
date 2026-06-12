@@ -1,6 +1,5 @@
-// crack-lore-core / platform 모듈
-// 역할: crack.wrtn.ai 어댑터 — URL/채팅ID/로그/메모리/페르소나
-// 의존: kernel (글로벌 CrackUtil)
+// crack-lore-core / platform module
+// Role: compatibility facade over __LorePlatform for URL/chat/log/persona access.
 (function () {
   'use strict';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
@@ -8,22 +7,18 @@
   if (!C || !C.__kernelLoaded) { console.error('[LoreCore:platform] kernel 미로드'); return; }
   if (C.__platformLoaded) return;
 
-  function crackUtil() { return _w.CrackUtil || (typeof CrackUtil !== 'undefined' ? CrackUtil : null); }
-  function getCurUrl() { return _w.location.pathname; }
+  const P = _w.__LorePlatform || null;
+  function crackUtil() { return P && P.crackUtil ? P.crackUtil() : (_w.CrackUtil || (typeof CrackUtil !== 'undefined' ? CrackUtil : null)); }
+  function getCurUrl() { return P && P.pathname ? P.pathname() : _w.location.pathname; }
   function getCurrentChatId() {
-    try {
-      const CU = crackUtil();
-      return CU ? (CU.path().chatRoom() || null) : null;
-    } catch (e) { return null; }
+    try { return P && P.getChatId ? P.getChatId() : null; } catch (e) { return null; }
   }
 
   async function fetchLogs(count) {
-    const chatId = getCurrentChatId();
-    if (!chatId) return [];
     try {
-      const CU = crackUtil();
-      if (!CU) return [];
-      const items = await CU.chatRoom().extractLogs(chatId, { maxCount: count });
+      const items = P && P.getRecentMessages
+        ? await P.getRecentMessages({ maxCount: count })
+        : [];
       if (items instanceof Error || !Array.isArray(items)) return [];
       return items.map(m => ({ role: m.role, message: m.content }));
     } catch (e) { return []; }
@@ -61,18 +56,14 @@
 
   async function fetchPersonaName() {
     try {
-      const chatId = getCurrentChatId();
-      if (!chatId) return null;
-      const CU = crackUtil();
-      if (!CU) return null;
-      const persona = await CU.chatRoom().currentPersona(chatId);
-      if (persona && !(persona instanceof Error) && persona.name) return persona.name;
+      if (P && P.fetchPersonaName) return await P.fetchPersonaName();
     } catch (e) {}
     return null;
   }
 
   Object.assign(C, {
     getCurUrl, getCurrentChatId, fetchLogs, fetchAllMemories, fetchPersonaName,
+    platform: P,
     __platformLoaded: true
   });
   console.log('[LoreCore:platform] loaded');
