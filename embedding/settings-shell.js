@@ -264,6 +264,42 @@
         padding: 12px;
         margin: 0 0 12px;
       }
+      .lore-v2-content input,
+      .lore-v2-content textarea,
+      .lore-v2-content select {
+        border-color: var(--li-line) !important;
+        background: var(--li-bg) !important;
+        color: var(--li-text) !important;
+        border-radius: 8px !important;
+        outline: none !important;
+      }
+      .lore-v2-content input:focus,
+      .lore-v2-content textarea:focus,
+      .lore-v2-content select:focus {
+        border-color: var(--li-accent) !important;
+        box-shadow: 0 0 0 2px rgba(138,180,255,.12) !important;
+      }
+      .lore-v2-content button {
+        border-radius: 8px !important;
+        letter-spacing: 0 !important;
+      }
+      .lore-v2-content table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .lore-v2-content th,
+      .lore-v2-content td {
+        border-color: var(--li-line) !important;
+      }
+      .lore-v2-content pre,
+      .lore-v2-content code {
+        background: var(--li-bg);
+        color: var(--li-text-soft);
+      }
+      .lore-v2-content ::placeholder {
+        color: var(--li-muted);
+        opacity: 1;
+      }
       @media (prefers-color-scheme: light) {
         #${SHELL_ID} {
           --li-bg: #f7f7f8;

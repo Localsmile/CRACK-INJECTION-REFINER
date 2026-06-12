@@ -34,9 +34,9 @@
       _statusBadge = document.createElement('div');
       _statusBadge.id = 'lore-status-badge';
       // z-index는 host 모달(흐히 999999)을 넘기도록 정수 상한구간으로 설정.
-      _statusBadge.style.cssText = 'position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 118px);right:18px;z-index:2147483646;background:rgba(8,17,29,.94);border:1px solid var(--li-line,#2f3b4f);border-radius:999px;padding:8px 14px;font-size:12px;color:var(--li-text,#e7edf5);box-shadow:0 12px 30px rgba(0,0,0,.38);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .25s;opacity:0;pointer-events:none;max-width:min(360px,calc(100vw - 36px));';
+      _statusBadge.style.cssText = 'position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 118px);right:18px;z-index:2147483646;background:rgba(18,19,22,.94);border:1px solid var(--li-line,#343840);border-radius:999px;padding:8px 14px;font-size:12px;color:var(--li-text,#f3f4f6);box-shadow:0 12px 30px rgba(0,0,0,.32);display:flex;align-items:center;gap:8px;font-family:inherit;transition:opacity .25s;opacity:0;pointer-events:none;max-width:min(360px,calc(100vw - 36px));';
       _statusDot = document.createElement('span');
-      _statusDot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:rgb(120,213,168);animation:lore-pulse 1s infinite;flex-shrink:0;';
+      _statusDot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--li-accent,#8ab4ff);animation:lore-pulse 1s infinite;flex-shrink:0;';
       _statusLabel = document.createElement('span');
       _statusLabel.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       _statusBadge.appendChild(_statusDot);
@@ -77,10 +77,10 @@
 
   // 설정 UI 헬퍼
   const UI = {
-    field: 'width:100%;min-height:34px;padding:7px 9px;border:1px solid var(--li-line,#2f3b4f);border-radius:7px;background:rgb(11,17,28);color:var(--li-text,#e7edf5);font-size:12px;box-sizing:border-box;outline:none;',
-    sectionTitle: 'font-size:14px;color:var(--li-text,#e7edf5);font-weight:800;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--li-line,#2f3b4f);letter-spacing:0;',
-    subtle: 'font-size:11px;color:var(--li-text-soft,#a9b6c7);line-height:1.45;word-break:keep-all;',
-    label: 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:800;letter-spacing:0;'
+    field: 'width:100%;min-height:34px;padding:7px 9px;border:1px solid var(--li-line,#343840);border-radius:8px;background:var(--li-bg,#101113);color:var(--li-text,#f3f4f6);font-size:12px;box-sizing:border-box;outline:none;',
+    sectionTitle: 'font-size:14px;color:var(--li-text,#f3f4f6);font-weight:900;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--li-line,#343840);letter-spacing:0;',
+    subtle: 'font-size:11px;color:var(--li-text-soft,#b8bec8);line-height:1.45;word-break:keep-all;',
+    label: 'font-size:13px;color:var(--li-text,#f3f4f6);font-weight:900;letter-spacing:0;'
   };
 
   function setFullWidth(node) {
@@ -90,7 +90,7 @@
       p.style.border = 'none'; p.style.background = 'transparent';
       Array.from(p.children).forEach(c => { if (c !== node) c.style.display = 'none'; });
     }
-    node.style.cssText = 'width:100%;display:block;padding:4px 2px;box-sizing:border-box;background:transparent;border:none;margin-bottom:14px;';
+    node.style.cssText = 'width:100%;display:block;padding:4px 0;box-sizing:border-box;background:transparent;border:none;margin-bottom:14px;';
     node.innerHTML = '';
   }
 
@@ -110,15 +110,15 @@
     swLabel.textContent = isChecked ? 'ON' : 'OFF';
     swLabel.style.cssText = 'font-size:11px;color:var(--li-text-soft,#a9b6c7);font-weight:800;width:24px;text-align:center;';
     const sw = document.createElement('div');
-    sw.style.cssText = `width:38px;height:22px;border-radius:999px;cursor:pointer;background:${isChecked ? 'var(--li-accent,#5aa7ff)' : '#303a4d'};position:relative;flex-shrink:0;border:1px solid ${isChecked ? 'rgba(90,167,255,.65)' : 'rgba(148,163,184,.22)'};`;
+    sw.style.cssText = `width:38px;height:22px;border-radius:999px;cursor:pointer;background:${isChecked ? 'var(--li-accent,#8ab4ff)' : 'var(--li-surface-3,#272a2f)'};position:relative;flex-shrink:0;border:1px solid ${isChecked ? 'rgba(138,180,255,.65)' : 'var(--li-line,#343840)'};`;
     const dot = document.createElement('div');
     dot.style.cssText = `width:16px;height:16px;border-radius:50%;background:white;position:absolute;top:2px;left:${isChecked ? '19px' : '3px'};transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.35);`;
     sw.appendChild(dot);
     sw.onclick = () => {
       isChecked = !isChecked; onChange(isChecked);
       swLabel.textContent = isChecked ? 'ON' : 'OFF';
-      sw.style.background = isChecked ? 'var(--li-accent,#5aa7ff)' : '#303a4d';
-      sw.style.borderColor = isChecked ? 'rgba(90,167,255,.65)' : 'rgba(148,163,184,.22)';
+      sw.style.background = isChecked ? 'var(--li-accent,#8ab4ff)' : 'var(--li-surface-3,#272a2f)';
+      sw.style.borderColor = isChecked ? 'rgba(138,180,255,.65)' : 'var(--li-line,#343840)';
       dot.style.left = isChecked ? '19px' : '3px';
     };
     right.appendChild(swLabel); right.appendChild(sw);
@@ -148,13 +148,13 @@
     const nodes = {};
     (items || []).forEach((item) => {
       const c = document.createElement('div');
-      c.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:10px 12px;background:rgb(12,19,32);min-width:0;';
+      c.style.cssText = 'border:1px solid var(--li-line,#343840);border-radius:9px;padding:10px 12px;background:var(--li-surface-2,#202226);min-width:0;';
       const l = document.createElement('div');
       l.textContent = item.label || '';
-      l.style.cssText = 'font-size:10px;color:var(--li-muted,#748196);margin-bottom:5px;';
+      l.style.cssText = 'font-size:10px;color:var(--li-muted,#858c98);margin-bottom:5px;';
       const v = document.createElement('div');
       v.textContent = item.value || '';
-      v.style.cssText = 'font-size:13px;font-weight:800;color:' + (item.ok ? 'var(--li-accent,#5aa7ff)' : '#e7b56f') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      v.style.cssText = 'font-size:13px;font-weight:900;color:' + (item.ok ? 'var(--li-accent,#8ab4ff)' : '#e7b56f') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       c.appendChild(l);
       c.appendChild(v);
       grid.appendChild(c);
@@ -213,7 +213,7 @@
     const update = () => {
       buttons.forEach((btn) => {
         const on = btn.__value === value;
-        btn.style.cssText = `padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;border:1px solid ${on ? 'rgba(90,167,255,.7)' : 'var(--li-line,#2f3b4f)'};background:${on ? 'var(--li-accent-bg,#143456)' : 'transparent'};color:${on ? 'var(--li-text,#e7edf5)' : 'var(--li-text-soft,#a9b6c7)'};font-weight:800;`;
+        btn.style.cssText = `padding:7px 12px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid ${on ? 'rgba(138,180,255,.7)' : 'var(--li-line,#343840)'};background:${on ? 'var(--li-accent-bg,rgba(138,180,255,.13))' : 'transparent'};color:${on ? 'var(--li-text,#f3f4f6)' : 'var(--li-text-soft,#b8bec8)'};font-weight:800;`;
       });
     };
     (options || []).forEach((opt) => {
@@ -237,10 +237,10 @@
   function createActionButton(label, tone) {
     const btn = document.createElement('button');
     const styles = {
-      primary: 'background:var(--li-accent-bg,#143456);color:var(--li-text,#e7edf5);border:1px solid rgba(90,167,255,.65);',
-      success: 'background:rgb(20,55,41);color:rgb(191,255,228);border:1px solid rgb(44,122,95);',
-      danger: 'background:rgb(58,23,27);color:rgb(255,201,201);border:1px solid rgb(143,51,63);',
-      ghost: 'background:transparent;color:var(--li-text-soft,#a9b6c7);border:1px solid var(--li-line,#2f3b4f);'
+      primary: 'background:var(--li-accent-bg,rgba(138,180,255,.13));color:var(--li-text,#f3f4f6);border:1px solid rgba(138,180,255,.65);',
+      success: 'background:rgba(34,197,94,.13);color:#9ee6bd;border:1px solid rgba(34,197,94,.45);',
+      danger: 'background:rgba(240,111,111,.12);color:#ffc9c9;border:1px solid rgba(240,111,111,.45);',
+      ghost: 'background:transparent;color:var(--li-text-soft,#b8bec8);border:1px solid var(--li-line,#343840);'
     };
     btn.textContent = label;
     btn.style.cssText = 'min-height:34px;padding:7px 11px;border-radius:7px;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:0;' + (styles[tone || 'ghost'] || styles.ghost);
@@ -266,7 +266,7 @@
     const vertexArea = document.createElement('div');
     const firebaseArea = document.createElement('div');
     const curMode = () => config[apiTypeKey] || 'key';
-    const sty = (on) => `min-height:32px;padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;font-weight:800;border:1px solid ${on ? 'rgba(90,167,255,.65)' : 'var(--li-line,#2f3b4f)'};background:${on ? 'var(--li-accent-bg,#143456)' : 'transparent'};color:${on ? 'var(--li-text,#e7edf5)' : 'var(--li-text-soft,#a9b6c7)'};`;
+    const sty = (on) => `min-height:32px;padding:7px 12px;font-size:12px;border-radius:8px;cursor:pointer;font-weight:800;border:1px solid ${on ? 'rgba(138,180,255,.65)' : 'var(--li-line,#343840)'};background:${on ? 'var(--li-accent-bg,rgba(138,180,255,.13))' : 'transparent'};color:${on ? 'var(--li-text,#f3f4f6)' : 'var(--li-text-soft,#b8bec8)'};`;
     const updateBtns = () => {
       const m = curMode();
       btnKey.style.cssText = sty(m === 'key');
