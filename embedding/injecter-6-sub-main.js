@@ -44,19 +44,22 @@
             const active = new Set(activePacks);
             const usable = active.size ? entries.filter(e => active.has(e.packName)).length : 0;
             metrics.nodes.entry.textContent = usable + '개';
-            metrics.nodes.entry.style.color = usable ? '#4a9' : '#da8';
+            metrics.nodes.entry.style.color = usable ? 'var(--li-accent,#5aa7ff)' : '#e7b56f';
             if (activePacks.length) metrics.nodes.pack.textContent = activePacks.join(', ');
-          }).catch(() => { metrics.nodes.entry.textContent = '확인 실패'; metrics.nodes.entry.style.color = '#d66'; });
+          }).catch(() => { metrics.nodes.entry.textContent = '확인 실패'; metrics.nodes.entry.style.color = '#ef6b6b'; });
         }});
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           nd.appendChild(C.createSectionTitle('빠른 설정'));
-          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+          const row = document.createElement('div'); row.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;';
+          if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) row.style.gridTemplateColumns = '1fr';
           for (const [key, preset] of Object.entries(PRESETS)) {
-            const btn = document.createElement('button'); btn.style.cssText = 'padding:10px 14px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid #333;background:#1a1a1a;color:#ccc;display:flex;flex-direction:column;gap:4px;text-align:left;flex:1;min-width:110px;';
-            const nm = document.createElement('div'); nm.textContent = preset.name; nm.style.cssText = 'font-weight:bold;color:#4a9;font-size:13px;';
-            const ds = document.createElement('div'); ds.textContent = preset.desc; ds.style.cssText = 'font-size:10px;color:#888;';
+            const btn = document.createElement('button'); btn.style.cssText = 'min-height:88px;padding:12px 13px;font-size:12px;border-radius:10px;cursor:pointer;border:1px solid var(--li-line,#2f3b4f);background:#0c1320;color:var(--li-text-soft,#a9b6c7);display:flex;flex-direction:column;gap:7px;text-align:left;min-width:0;';
+            const nm = document.createElement('div'); nm.textContent = preset.name; nm.style.cssText = 'font-weight:800;color:var(--li-text,#e7edf5);font-size:13px;';
+            const ds = document.createElement('div'); ds.textContent = preset.desc; ds.style.cssText = 'font-size:11px;color:var(--li-text-soft,#a9b6c7);line-height:1.45;word-break:keep-all;';
             btn.appendChild(nm); btn.appendChild(ds);
+            btn.onmouseenter = () => { btn.style.borderColor = 'rgba(90,167,255,.55)'; btn.style.background = '#111c2d'; };
+            btn.onmouseleave = () => { btn.style.borderColor = 'var(--li-line,#2f3b4f)'; btn.style.background = '#0c1320'; };
             btn.onclick = () => {
               if (!confirm('[' + preset.name + '] 프리셋 적용?')) return;
               if (_w.__LoreInj.applyPresetKeepState) _w.__LoreInj.applyPresetKeepState(preset.config);
@@ -113,12 +116,12 @@
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           nd.appendChild(C.createSectionTitle('출력 포맷'));
-          const oocSel = document.createElement('select'); oocSel.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
+          const oocSel = document.createElement('select'); oocSel.style.cssText = C.UI.field + 'margin-bottom:12px;';
           for (const [k, v] of Object.entries(OOC_FORMATS)) { const opt = document.createElement('option'); opt.value = k; opt.textContent = v.name + ' — ' + v.desc; oocSel.appendChild(opt); }
           oocSel.value = settings.config.oocFormat || 'custom';
-          const pInp = document.createElement('input'); pInp.value = settings.config.prefix || ''; pInp.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:12px;';
+          const pInp = document.createElement('input'); pInp.value = settings.config.prefix || ''; pInp.style.cssText = C.UI.field + 'margin-bottom:12px;';
           pInp.onchange = () => { settings.config.prefix = pInp.value; settings.save(); };
-          const sInp = document.createElement('input'); sInp.value = settings.config.suffix || ''; sInp.style.cssText = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:20px;';
+          const sInp = document.createElement('input'); sInp.value = settings.config.suffix || ''; sInp.style.cssText = C.UI.field + 'margin-bottom:20px;';
           sInp.onchange = () => { settings.config.suffix = sInp.value; settings.save(); };
           oocSel.onchange = () => {
             const fmt = OOC_FORMATS[oocSel.value];
@@ -149,7 +152,7 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const resetBtn = C.createActionButton('모든 설정 초기화 (DB 유지)', 'danger'); resetBtn.style.width = '100%'; resetBtn.style.marginTop = '20px'; resetBtn.style.padding = '10px';
+          const resetBtn = C.createActionButton('모든 설정 초기화 (DB 유지)', 'danger'); resetBtn.style.width = '100%'; resetBtn.style.marginTop = '18px'; resetBtn.style.padding = '10px';
           resetBtn.onclick = () => {
             if (!confirm('설정 초기화? API 설정값과 DB/로어팩 활성화는 유지됨.')) return;
             if (_w.__LoreInj.resetSettingsKeepApi) _w.__LoreInj.resetSettingsKeepApi();

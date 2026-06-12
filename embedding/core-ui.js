@@ -76,10 +76,10 @@
 
   // 설정 UI 헬퍼
   const UI = {
-    field: 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;',
-    sectionTitle: 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;',
-    subtle: 'font-size:11px;color:#888;line-height:1.4;word-break:keep-all;',
-    label: 'font-size:13px;color:#ccc;font-weight:bold;'
+    field: 'width:100%;min-height:34px;padding:7px 9px;border:1px solid var(--li-line,#2f3b4f);border-radius:7px;background:#0b111c;color:var(--li-text,#e7edf5);font-size:12px;box-sizing:border-box;outline:none;',
+    sectionTitle: 'font-size:14px;color:var(--li-text,#e7edf5);font-weight:800;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--li-line,#2f3b4f);letter-spacing:0;',
+    subtle: 'font-size:11px;color:var(--li-text-soft,#a9b6c7);line-height:1.45;word-break:keep-all;',
+    label: 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:800;letter-spacing:0;'
   };
 
   function setFullWidth(node) {
@@ -89,35 +89,36 @@
       p.style.border = 'none'; p.style.background = 'transparent';
       Array.from(p.children).forEach(c => { if (c !== node) c.style.display = 'none'; });
     }
-    node.style.cssText = 'width:100%;display:block;padding:10px 14px;box-sizing:border-box;background:transparent;border:none;margin-bottom:12px;';
+    node.style.cssText = 'width:100%;display:block;padding:4px 2px;box-sizing:border-box;background:transparent;border:none;margin-bottom:14px;';
     node.innerHTML = '';
   }
 
   function createToggleRow(title, desc, isChecked, onChange) {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
+    wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:14px;width:100%;margin-bottom:10px;padding:10px 0;border-bottom:1px solid rgba(148,163,184,.08);';
     const left = document.createElement('div');
     left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
     const t = document.createElement('div'); t.textContent = title;
-    t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
+    t.style.cssText = UI.label;
     const d = document.createElement('div'); d.textContent = desc;
-    d.style.cssText = 'font-size:11px;color:#888;line-height:1.4;word-break:keep-all;';
+    d.style.cssText = UI.subtle;
     left.appendChild(t); left.appendChild(d);
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:8px;';
     const swLabel = document.createElement('span');
     swLabel.textContent = isChecked ? 'ON' : 'OFF';
-    swLabel.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;width:22px;text-align:center;';
+    swLabel.style.cssText = 'font-size:11px;color:var(--li-text-soft,#a9b6c7);font-weight:800;width:24px;text-align:center;';
     const sw = document.createElement('div');
-    sw.style.cssText = `width:36px;height:20px;border-radius:10px;cursor:pointer;background:${isChecked ? '#285' : '#444'};position:relative;flex-shrink:0;`;
+    sw.style.cssText = `width:38px;height:22px;border-radius:999px;cursor:pointer;background:${isChecked ? 'var(--li-accent,#5aa7ff)' : '#303a4d'};position:relative;flex-shrink:0;border:1px solid ${isChecked ? 'rgba(90,167,255,.65)' : 'rgba(148,163,184,.22)'};`;
     const dot = document.createElement('div');
-    dot.style.cssText = `width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${isChecked ? '18px' : '2px'};transition:left .2s;`;
+    dot.style.cssText = `width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:${isChecked ? '19px' : '3px'};transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.35);`;
     sw.appendChild(dot);
     sw.onclick = () => {
       isChecked = !isChecked; onChange(isChecked);
       swLabel.textContent = isChecked ? 'ON' : 'OFF';
-      sw.style.background = isChecked ? '#285' : '#444';
-      dot.style.left = isChecked ? '18px' : '2px';
+      sw.style.background = isChecked ? 'var(--li-accent,#5aa7ff)' : '#303a4d';
+      sw.style.borderColor = isChecked ? 'rgba(90,167,255,.65)' : 'rgba(148,163,184,.22)';
+      dot.style.left = isChecked ? '19px' : '3px';
     };
     right.appendChild(swLabel); right.appendChild(sw);
     wrap.appendChild(left); wrap.appendChild(right);
@@ -146,13 +147,13 @@
     const nodes = {};
     (items || []).forEach((item) => {
       const c = document.createElement('div');
-      c.style.cssText = 'border:1px solid #333;border-radius:6px;padding:8px 10px;background:#111;min-width:0;';
+      c.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:10px 12px;background:#0c1320;min-width:0;';
       const l = document.createElement('div');
       l.textContent = item.label || '';
-      l.style.cssText = 'font-size:10px;color:#888;margin-bottom:4px;';
+      l.style.cssText = 'font-size:10px;color:var(--li-muted,#748196);margin-bottom:5px;';
       const v = document.createElement('div');
       v.textContent = item.value || '';
-      v.style.cssText = 'font-size:12px;font-weight:bold;color:' + (item.ok ? '#4a9' : '#da8') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      v.style.cssText = 'font-size:13px;font-weight:800;color:' + (item.ok ? 'var(--li-accent,#5aa7ff)' : '#e7b56f') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       c.appendChild(l);
       c.appendChild(v);
       grid.appendChild(c);
@@ -164,7 +165,7 @@
   function createSelectRow(label, value, options, onChange, opts) {
     opts = opts || {};
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:14px;width:100%;margin-bottom:10px;';
     const left = document.createElement('div');
     left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
     const l = document.createElement('div');
@@ -178,7 +179,7 @@
       left.appendChild(d);
     }
     const sel = document.createElement('select');
-    sel.style.cssText = UI.field + 'width:' + (opts.width || '200px') + ';';
+    sel.style.cssText = UI.field + 'width:' + (opts.width || '220px') + ';';
     (options || []).forEach((opt) => {
       const o = document.createElement('option');
       o.value = opt.value;
@@ -194,7 +195,7 @@
 
   function createSegmentedRow(label, desc, value, options, onChange) {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;gap:10px;';
+    wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;gap:14px;margin-bottom:10px;';
     const left = document.createElement('div');
     left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
     const t = document.createElement('div');
@@ -211,7 +212,7 @@
     const update = () => {
       buttons.forEach((btn) => {
         const on = btn.__value === value;
-        btn.style.cssText = `padding:6px 12px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${on ? '#285' : '#444'};background:${on ? '#285' : 'transparent'};color:${on ? '#fff' : '#ccc'};`;
+        btn.style.cssText = `padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;border:1px solid ${on ? 'rgba(90,167,255,.7)' : 'var(--li-line,#2f3b4f)'};background:${on ? 'var(--li-accent-bg,#143456)' : 'transparent'};color:${on ? 'var(--li-text,#e7edf5)' : 'var(--li-text-soft,#a9b6c7)'};font-weight:800;`;
       });
     };
     (options || []).forEach((opt) => {
@@ -235,13 +236,13 @@
   function createActionButton(label, tone) {
     const btn = document.createElement('button');
     const styles = {
-      primary: 'background:#258;color:#fff;border:1px solid #258;',
-      success: 'background:#164c38;color:#bfffe4;border:1px solid #287a59;',
-      danger: 'background:#833;color:#fff;border:1px solid #833;',
-      ghost: 'background:transparent;color:#ccc;border:1px solid #444;'
+      primary: 'background:var(--li-accent-bg,#143456);color:var(--li-text,#e7edf5);border:1px solid rgba(90,167,255,.65);',
+      success: 'background:#143729;color:#bfffe4;border:1px solid #2c7a5f;',
+      danger: 'background:#3a171b;color:#ffc9c9;border:1px solid #8f333f;',
+      ghost: 'background:transparent;color:var(--li-text-soft,#a9b6c7);border:1px solid var(--li-line,#2f3b4f);'
     };
     btn.textContent = label;
-    btn.style.cssText = 'padding:7px 10px;border-radius:4px;font-size:12px;font-weight:bold;cursor:pointer;' + (styles[tone || 'ghost'] || styles.ghost);
+    btn.style.cssText = 'min-height:34px;padding:7px 11px;border-radius:7px;font-size:12px;font-weight:800;cursor:pointer;letter-spacing:0;' + (styles[tone || 'ghost'] || styles.ghost);
     return btn;
   }
 
