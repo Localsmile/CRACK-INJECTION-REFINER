@@ -8,6 +8,17 @@
   
   const { C, db, settings, getChatKey, getTurnCounter, getCooldownMap, isEntryEnabledForUrl } = _w.__LoreInj;
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
+  const COLOR = {
+    muted: 'var(--li-muted,#748196)',
+    soft: 'var(--li-text-soft,#a9b6c7)',
+    text: 'var(--li-text,#e7edf5)',
+    accent: 'var(--li-accent,#5aa7ff)',
+    ok: '#78d5a8',
+    warn: '#e7b56f',
+    danger: '#ef6b6b'
+  };
+  const BTN_DANGER = 'min-height:34px;padding:7px 11px;font-size:12px;border-radius:7px;cursor:pointer;font-weight:800;border:1px solid #8f333f;background:#3a171b;color:#ffc9c9;';
+  const BTN_GHOST = 'min-height:30px;padding:5px 10px;font-size:11px;border-radius:7px;cursor:pointer;font-weight:800;border:1px solid var(--li-line,#2f3b4f);background:transparent;color:var(--li-text-soft,#a9b6c7);';
   
   _w.__LoreInj.registerSubMenu('session', function(modal) {
     modal.createSubMenu('세션 상태 관리', (m) => {
@@ -27,14 +38,21 @@
           C.setFullWidth(nd);
   
           const headerRow = document.createElement('div');
-          headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:8px;';
+          headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--li-line,#2f3b4f);padding-bottom:10px;gap:12px;';
+          const titleWrap = document.createElement('div');
+          titleWrap.style.cssText = 'min-width:0;';
           const title = document.createElement('div');
-          title.textContent = `현재 세션 상태 (턴: ${turnCounter})`;
-          title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;';
+          title.textContent = '현재 세션 상태';
+          title.style.cssText = 'font-size:14px;color:' + COLOR.text + ';font-weight:800;';
+          const sub = document.createElement('div');
+          sub.textContent = '현재 턴 ' + turnCounter + ' / 활성 로어팩 ' + (urlPacks.length || 0) + '개';
+          sub.style.cssText = 'font-size:11px;color:' + COLOR.soft + ';margin-top:4px;';
+          titleWrap.appendChild(title);
+          titleWrap.appendChild(sub);
   
           const clearAllBtn = document.createElement('button');
           clearAllBtn.textContent = '세션 전체 초기화';
-          clearAllBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;cursor:pointer;background:#833;color:#fff;border:none;font-weight:bold;';
+          clearAllBtn.style.cssText = BTN_DANGER;
           clearAllBtn.onclick = async () => {
             if(!confirm('이 채팅방의 모든 쿨다운, 시간감쇠(망각) 점수 및 턴 수를 초기화할 것?')) return;
             try {
@@ -68,7 +86,7 @@
               alert('세션 초기화 실패: ' + (e.message || e));
             }
           };
-          headerRow.appendChild(title);
+          headerRow.appendChild(titleWrap);
           headerRow.appendChild(clearAllBtn);
           nd.appendChild(headerRow);
 
@@ -76,7 +94,7 @@
           if (mig && mig.message) {
             const migBox = document.createElement('div');
             const ok = !/failed/i.test(mig.message);
-            migBox.style.cssText = `margin-bottom:10px;padding:8px;border-radius:6px;border:1px solid ${ok ? '#285' : '#833'};background:#111;color:#ccc;font-size:11px;line-height:1.5;`;
+            migBox.style.cssText = `margin-bottom:12px;padding:9px 10px;border-radius:9px;border:1px solid ${ok ? '#2c7a5f' : '#8f333f'};background:#0c1320;color:${COLOR.soft};font-size:11px;line-height:1.5;`;
             migBox.textContent = `마이그레이션: ${mig.message} / 엔트리 ${mig.migratedEntries || 0}개 정리 / stale embedding ${mig.staleEmbeddingsRemoved || 0}개 삭제`;
             nd.appendChild(migBox);
           }
@@ -84,7 +102,7 @@
           if (!allEntries.length) {
             const empty = document.createElement('div');
             empty.textContent = '현재 활성화된 로어가 없습니다.';
-            empty.style.cssText = 'color:#888;font-size:12px;text-align:center;padding:10px;';
+            empty.style.cssText = 'color:' + COLOR.soft + ';font-size:12px;text-align:center;padding:14px;border:1px dashed var(--li-line,#2f3b4f);border-radius:9px;';
             nd.appendChild(empty);
             return;
           }
@@ -124,32 +142,32 @@
           if (statusList.length === 0) {
             const empty2 = document.createElement('div');
             empty2.textContent = '표시할 상태(쿨다운/점수)가 없습니다.';
-            empty2.style.cssText = 'color:#888;font-size:12px;text-align:center;padding:10px;';
+            empty2.style.cssText = 'color:' + COLOR.soft + ';font-size:12px;text-align:center;padding:14px;border:1px dashed var(--li-line,#2f3b4f);border-radius:9px;';
             nd.appendChild(empty2);
             return;
           }
   
           const listContainer = document.createElement('div');
-          listContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;';
+          listContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:430px;overflow-y:auto;';
   
           for (const st of statusList) {
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:8px 12px;';
+            row.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;background:#0c1320;border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:10px 12px;gap:12px;';
   
             const info = document.createElement('div');
-            info.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+            info.style.cssText = 'display:flex;flex-direction:column;gap:6px;min-width:0;';
             const nameEl = document.createElement('div');
             nameEl.textContent = `[${st.type}] ${st.name}`;
-            nameEl.style.cssText = 'font-size:13px;font-weight:bold;color:#ccc;';
+            nameEl.style.cssText = 'font-size:13px;font-weight:800;color:' + COLOR.text + ';word-break:break-word;';
   
             const statText = document.createElement('div');
-            statText.style.cssText = 'font-size:11px;color:#888;display:flex;gap:12px;';
+            statText.style.cssText = 'font-size:11px;color:' + COLOR.soft + ';display:flex;gap:10px;flex-wrap:wrap;line-height:1.45;';
   
-            let cdStr = st.cooldownRem > 0 ? `<span style="color:#d66;">⏳ 쿨다운 ${st.cooldownRem}턴 남음</span>` : `<span style="color:#4a9;">✅ 쿨다운 완료</span>`;
+            let cdStr = st.cooldownRem > 0 ? `<span style="color:${COLOR.danger};">쿨다운 ${st.cooldownRem}턴 남음</span>` : `<span style="color:${COLOR.ok};">쿨다운 완료</span>`;
             let decayStr = '';
             if (settings.config.decayEnabled) {
               const p = Math.round(st.reinjScore * 100);
-              const pColor = p > 70 ? '#d66' : (p > 40 ? '#da8' : '#888');
+              const pColor = p > 70 ? COLOR.danger : (p > 40 ? COLOR.warn : COLOR.soft);
               decayStr = `<span>망각: ${st.turnsSince}턴 경과 (재주입 점수: <span style="color:${pColor}">${p}%</span>)</span>`;
             }
             const timeStr = st.eventTurn ? `<span>사건:t${st.eventTurn}${st.gap != null ? ' / gap ' + st.gap + '턴' : ''}</span>` : '';
@@ -161,7 +179,7 @@
   
             const resetBtn = document.createElement('button');
             resetBtn.textContent = '리셋';
-            resetBtn.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;background:transparent;border:1px solid #555;color:#ccc;';
+            resetBtn.style.cssText = BTN_GHOST;
             resetBtn.onclick = () => {
               if (settings.config.urlCooldownMaps?.[chatKey]) {
                 delete settings.config.urlCooldownMaps[chatKey][st.id];
