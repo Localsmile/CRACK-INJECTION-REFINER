@@ -32,11 +32,15 @@
           const storageHealth = _w.__LoreInj.getSettingsStorageHealth ? _w.__LoreInj.getSettingsStorageHealth() : { ok: true, configBytes: 0 };
           const envDiag = (_w.__LoreEnv && _w.__LoreEnv.diagnostics) || {};
           const persistLabel = envDiag.persisted === true ? '영구 저장' : (envDiag.persisted === false ? '일반 저장' : '확인 중');
+          const platformCaps = (_w.__LorePlatform && _w.__LorePlatform.capabilities) ? _w.__LorePlatform.capabilities() : {};
+          const platformDiag = platformCaps.diagnostics || {};
+          const platformOk = platformCaps.canReadLogs && platformCaps.canPatch && platformDiag.messageShapeOk !== false;
           const metrics = C.createMetricGrid([
             { key: 'api', label: 'API', value: apiReady ? '설정됨' : '미설정', ok: apiReady },
             { key: 'pack', label: '활성 로어팩', value: activePacks.length ? activePacks.length + '개' : '없음', ok: activePacks.length > 0 },
             { key: 'entry', label: '사용 가능한 로어', value: '확인 중', ok: true },
             { key: 'save', label: '설정 저장', value: settings._lastSaveOk === false ? '실패' : '정상', ok: settings._lastSaveOk !== false },
+            { key: 'platform', label: '사이트 연결', value: platformOk ? '정상' : '제한됨', ok: platformOk },
             { key: 'storage', label: '저장 공간', value: storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', ok: storageHealth.ok },
             { key: 'storageMode', label: '저장 방식', value: (envDiag.storageMode || 'localStorage') + ' / ' + persistLabel, ok: envDiag.persisted !== false },
             { key: 'extract', label: '자동 대화 정리', value: cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', ok: !!cfg.autoExtEnabled },

@@ -38,6 +38,46 @@
     return id ? 'chat:' + id : pathname();
   }
 
+  function textOfMessage(raw) {
+    return String((raw && (raw.content != null ? raw.content : raw.message)) || '');
+  }
+
+  function idOfMessage(raw) {
+    return raw && (raw.id || raw._id || raw.messageId || raw.serverId)
+      ? String(raw.id || raw._id || raw.messageId || raw.serverId)
+      : '';
+  }
+
+  function normalizeMessage(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const content = textOfMessage(raw);
+    const role = raw.role === 'assistant' || raw.role === 'user' ? raw.role : String(raw.role || '');
+    if (role !== 'assistant' && role !== 'user') return null;
+    return {
+      id: idOfMessage(raw),
+      role,
+      content,
+      message: content,
+      createdAt: raw.createdAt ? Date.parse(raw.createdAt) || raw.createdAt : (raw.timestamp || raw.ts || 0),
+      charLen: content.length,
+      raw
+    };
+  }
+
+  const diagnostics = {
+    checkedAt: 0,
+    chatIdOk: false,
+    logsOk: false,
+    patchAuthOk: false,
+    messageShapeOk: false,
+    errors: []
+  };
+
+  function setDiagnosticError(label, error) {
+    diagnostics.errors.push(label + ': ' + (error && error.message ? error.message : String(error || 'failed')));
+    if (diagnostics.errors.length > 5) diagnostics.errors.shift();
+  }
+
   async function getRecentMessages(opts) {
     const chatId = opts && opts.chatId ? opts.chatId : getChatId();
     const maxCount = opts && opts.maxCount ? opts.maxCount : 90;
@@ -46,7 +86,7 @@
       const CU = crackUtil();
       if (!CU || !CU.chatRoom || !chatId) return [];
       const logs = await CU.chatRoom().extractLogs(chatId, { maxCount, naturalOrder });
-      return (logs instanceof Error || !Array.isArray(logs)) ? [] : logs;
+      return (logs instanceof Error || !Array.isArray(logs)) ? [] : logs.map(normalizeMessage).filter(Boolean);
     } catch (_) { return []; }
   }
 
@@ -55,7 +95,7 @@
       const CU = crackUtil();
       if (CU && CU.chatRoom && typeof CU.chatRoom().getMessage === 'function') {
         const msg = await CU.chatRoom().getMessage(chatId, messageId);
-        if (msg && !(msg instanceof Error)) return msg;
+        if (msg && !(msg instanceof Error)) return normalizeMessage(msg) || msg;
       }
     } catch (_) {}
     return null;
@@ -149,8 +189,33 @@
       chatPath: isChatPath(),
       canReadLogs: !!(chatApi && chatId),
       canPatch: !!(token && chatId),
-      canReadSummary: false
+      canReadSummary: false,
+      diagnostics
     };
+  }
+
+  async function runContractCheck() {
+    diagnostics.checkedAt = Date.now();
+    diagnostics.errors = [];
+    try {
+      const chatId = getChatId();
+      diagnostics.chatIdOk = !!chatId || !isChatPath();
+      diagnostics.patchAuthOk = !!(getAuthToken() && chatId);
+      if (!chatId || !isChatPath()) {
+        diagnostics.logsOk = false;
+        diagnostics.messageShapeOk = false;
+        return diagnostics;
+      }
+      const logs = await getRecentMessages({ chatId, maxCount: 3, naturalOrder: true });
+      diagnostics.logsOk = Array.isArray(logs);
+      diagnostics.messageShapeOk = Array.isArray(logs) && logs.every(m =>
+        m && typeof m.id === 'string' && (m.role === 'user' || m.role === 'assistant') &&
+        typeof m.content === 'string' && typeof m.message === 'string' && typeof m.charLen === 'number'
+      );
+    } catch (e) {
+      setDiagnosticError('contract', e);
+    }
+    return diagnostics;
   }
 
   _w.__LorePlatform = {
@@ -168,7 +233,10 @@
     getAuthToken,
     fetchPersonaName,
     getLauncherMount,
-    capabilities
+    capabilities,
+    diagnostics,
+    runContractCheck
   };
+  setTimeout(() => { runContractCheck().catch(e => setDiagnosticError('startup', e)); }, 500);
   console.log('[LorePlatform] loaded');
 })();

@@ -20,7 +20,17 @@
         ? await P.getRecentMessages({ maxCount: count })
         : [];
       if (items instanceof Error || !Array.isArray(items)) return [];
-      return items.map(m => ({ role: m.role, message: m.content }));
+      return items.map(m => {
+        const content = String((m && (m.content != null ? m.content : m.message)) || '');
+        return {
+          id: m && (m.id || m._id || m.messageId || m.serverId) ? String(m.id || m._id || m.messageId || m.serverId) : '',
+          role: m && m.role,
+          message: content,
+          content,
+          charLen: m && m.charLen != null ? Number(m.charLen) || content.length : content.length,
+          createdAt: m && m.createdAt ? m.createdAt : 0
+        };
+      }).filter(m => m.role === 'user' || m.role === 'assistant');
     } catch (e) { return []; }
   }
 
