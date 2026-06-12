@@ -8,6 +8,17 @@
   if (_w.__LoreInj.__subRefinerLoaded) return;
   
   const { C, settings } = _w.__LoreInj;
+  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;min-height:34px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:8px 10px;font-size:12px;box-sizing:border-box;';
+  const BTN_BASE = 'min-height:32px;padding:7px 10px;font-size:12px;border-radius:8px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
+  const TONE = {
+    muted: 'var(--li-muted,#748196)',
+    soft: 'var(--li-text-soft,#a9b6c7)',
+    text: 'var(--li-text,#e7edf5)',
+    accent: 'var(--li-accent,#5aa7ff)',
+    ok: '#78d5a8',
+    warn: '#e7b56f',
+    danger: '#ef6b6b'
+  };
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
   
   _w.__LoreInj.registerSubMenu('refiner', function(modal) {
@@ -17,11 +28,11 @@
         // 수동 검수 버튼
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const t = document.createElement('div'); t.textContent = '수동 검수'; t.style.cssText = 'font-size:13px;color:#4a9;font-weight:bold;margin-bottom:4px;'; nd.appendChild(t);
-          const d = document.createElement('div'); d.textContent = '마지막 AI 응답을 지금 즉시 재검수. 이미 처리된 응답도 다시 돌릴 수 있음.'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;'; nd.appendChild(d);
+          const t = document.createElement('div'); t.textContent = '수동 검수'; t.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:4px;'; nd.appendChild(t);
+          const d = document.createElement('div'); d.textContent = '마지막 AI 응답을 즉시 재검수함. 이미 처리된 응답도 다시 돌릴 수 있음.'; d.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
           const btnBox = document.createElement('div'); btnBox.style.cssText = 'position:relative;';
-          const btn = document.createElement('button'); btn.textContent = '최근 AI 응답 재검수'; btn.style.cssText = 'width:100%;padding:10px;background:#258;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;';
-          const statusLine = document.createElement('div'); statusLine.style.cssText = 'font-size:11px;margin-top:6px;text-align:center;line-height:1.4;min-height:16px;display:flex;align-items:center;justify-content:center;gap:6px;color:#888;';
+          const btn = document.createElement('button'); btn.textContent = '최근 AI 응답 재검수'; btn.style.cssText = BTN_BASE + 'width:100%;min-height:38px;color:#fff;background:var(--li-accent,#5aa7ff);border-color:transparent;';
+          const statusLine = document.createElement('div'); statusLine.style.cssText = 'font-size:11px;margin-top:8px;text-align:center;line-height:1.5;min-height:18px;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--li-muted,#748196);';
           btnBox.appendChild(btn); btnBox.appendChild(statusLine); nd.appendChild(btnBox);
           if (!_w.__loreRefinerPulseCss) {
             _w.__loreRefinerPulseCss = true;
@@ -29,7 +40,7 @@
             st.textContent = '@keyframes lore-refiner-pulse{0%,100%{opacity:1}50%{opacity:.3}}';
             document.head.appendChild(st);
           }
-          const makeDot = () => { const d = document.createElement('span'); d.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a9;animation:lore-refiner-pulse 1s infinite;'; return d; };
+          const makeDot = () => { const d = document.createElement('span'); d.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:' + TONE.ok + ';animation:lore-refiner-pulse 1s infinite;'; return d; };
           btn.onclick = async () => {
             if (!R.manualRefine) { alert('Refiner 버전 낮음. Tampermonkey에서 스크립트 수동 업데이트 필요.'); return; }
             const cid = C.getCurrentChatId();
@@ -40,7 +51,7 @@
             statusLine.innerHTML = '';
             statusLine.appendChild(makeDot());
             const txt = document.createElement('span'); txt.textContent = '대상 탐색'; statusLine.appendChild(txt);
-            statusLine.style.color = '#4a9';
+            statusLine.style.color = TONE.ok;
             const start = Date.now();
             const phases = ['대상 탐색', '로어 수집', '메모리 수집', 'AI 호출 중', '반영 중'];
             let phaseIdx = 0;
@@ -58,12 +69,12 @@
               await R.manualRefine(lastBot.content, lastBot.id);
               clearInterval(tick);
               const sec = Math.floor((Date.now() - start) / 1000);
-              statusLine.innerHTML = ''; statusLine.textContent = `완료 (${sec}초)`; statusLine.style.color = '#4a9';
-              setTimeout(() => { statusLine.textContent = ''; statusLine.style.color = '#888'; }, 3000);
+              statusLine.innerHTML = ''; statusLine.textContent = `완료 (${sec}초)`; statusLine.style.color = TONE.ok;
+              setTimeout(() => { statusLine.textContent = ''; statusLine.style.color = TONE.muted; }, 3000);
             } catch(e) {
               clearInterval(tick);
               statusLine.innerHTML = ''; statusLine.textContent = '실패: ' + String(e.message || e).slice(0, 50);
-              statusLine.style.color = '#d66';
+              statusLine.style.color = TONE.danger;
             } finally {
               btn.textContent = orig;
               btn.disabled = false;
@@ -78,7 +89,7 @@
           nd.appendChild(C.createToggleRow('상태 배지 표시', '진행 상태를 화면 우측에 띄움. 모바일에서 겹치면 끄기.', settings.config.statusBadgeEnabled !== false, (v) => { settings.config.statusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
 
           const live = document.createElement('div');
-          live.style.cssText = 'font-size:11px;color:#888;margin:8px 0 12px;padding:8px;border:1px solid #333;border-radius:4px;background:#111;line-height:1.4;';
+          live.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:8px 0 12px;padding:9px 10px;border:1px solid var(--li-line,#2f3b4f);border-radius:9px;background:rgba(7,13,23,.62);line-height:1.5;';
           const renderLive = () => {
             const st = R.getRefinerState ? R.getRefinerState() : null;
             if (!st) { live.textContent = '상태: 대기'; return; }
@@ -90,20 +101,20 @@
           R.__refinerStatusUiTimer = setInterval(renderLive, 1000);
           nd.appendChild(live);
   
-          const S = 'width:100%;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:8px;';
+          const S = FIELD_STYLE + 'margin-bottom:8px;';
   
           const modeWrap = document.createElement('div'); modeWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
-          const modeLbl = document.createElement('div'); modeLbl.textContent = '로어 검색 모드'; modeLbl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
-          const modeSel = document.createElement('select'); modeSel.style.cssText = 'width:160px;padding:4px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
+          const modeLbl = document.createElement('div'); modeLbl.textContent = '로어 검색 모드'; modeLbl.style.cssText = 'font-size:13px;color:var(--li-text-soft,#a9b6c7);font-weight:900;';
+          const modeSel = document.createElement('select'); modeSel.style.cssText = FIELD_STYLE + 'width:170px;padding:6px 8px;';
           [{v:'matchedOnly', l:'키워드 매칭만'}, {v:'semantic', l:'임베딩 (의미 검색)'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; modeSel.appendChild(opt); });
           modeSel.value = settings.config.refinerLoreMode || 'matchedOnly';
           modeSel.onchange = () => { settings.config.refinerLoreMode = modeSel.value; settings.save(); };
           modeWrap.appendChild(modeLbl); modeWrap.appendChild(modeSel); nd.appendChild(modeWrap);
   
-          const tplWrap = document.createElement('div'); tplWrap.style.cssText = 'margin-bottom:8px;padding-top:8px;border-top:1px dashed #333;';
-          const tplLbl = document.createElement('div'); tplLbl.textContent = '검수 템플릿 선택'; tplLbl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:4px;';
+          const tplWrap = document.createElement('div'); tplWrap.style.cssText = 'margin-bottom:10px;padding-top:10px;border-top:1px dashed var(--li-line,#2f3b4f);';
+          const tplLbl = document.createElement('div'); tplLbl.textContent = '검수 템플릿 선택'; tplLbl.style.cssText = 'font-size:13px;color:var(--li-text-soft,#a9b6c7);font-weight:900;margin-bottom:4px;';
           const tplSel = document.createElement('select'); tplSel.style.cssText = S;
-          const tplDesc = document.createElement('div'); tplDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
+          const tplDesc = document.createElement('div'); tplDesc.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:8px;line-height:1.5;';
   
           const customOpt = document.createElement('option'); customOpt.value = 'custom'; customOpt.textContent = '직접 입력 (커스텀)'; tplSel.appendChild(customOpt);
           if (R.TEMPLATES) {
@@ -115,8 +126,8 @@
           tplWrap.appendChild(tplLbl); tplWrap.appendChild(tplSel); tplWrap.appendChild(tplDesc); nd.appendChild(tplWrap);
   
           const topicsWrap = document.createElement('div');
-          topicsWrap.style.cssText = 'display:none;margin-bottom:12px;padding:10px;background:#111;border:1px solid #333;border-radius:4px;';
-          const topicsHdr = document.createElement('div'); topicsHdr.textContent = '검수 주제 선택 — 호칭은 최신 안정 상태 기준으로만 검사'; topicsHdr.style.cssText = 'font-size:12px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed #333;';
+          topicsWrap.style.cssText = 'display:none;margin-bottom:12px;padding:10px;background:rgba(7,13,23,.62);border:1px solid var(--li-line,#2f3b4f);border-radius:9px;';
+          const topicsHdr = document.createElement('div'); topicsHdr.textContent = '검수 주제 선택 - 호칭은 최신 안정 상태 기준으로만 검사'; topicsHdr.style.cssText = 'font-size:12px;color:' + TONE.ok + ';font-weight:900;margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed var(--li-line,#2f3b4f);';
           topicsWrap.appendChild(topicsHdr);
           const topicsBody = document.createElement('div'); topicsWrap.appendChild(topicsBody);
           nd.appendChild(topicsWrap);
@@ -137,18 +148,18 @@
               if (meta.group !== curGroup) {
                 curGroup = meta.group;
                 const gh = document.createElement('div');
-                gh.textContent = curGroup === 'logic' ? '— 모순 검수 —' : '— 끊김 복구 —';
-                gh.style.cssText = 'font-size:10px;color:#888;margin:6px 0 4px;font-weight:bold;';
+                gh.textContent = curGroup === 'logic' ? '모순 검수' : '끊김 복구';
+                gh.style.cssText = 'font-size:10px;color:var(--li-muted,#748196);margin:6px 0 4px;font-weight:900;';
                 topicsBody.appendChild(gh);
               }
               const row = document.createElement('label');
               row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;';
               const cb = document.createElement('input'); cb.type = 'checkbox';
               cb.checked = !!settings.config.refinerTopics[k];
-              cb.style.cssText = 'margin-top:3px;flex-shrink:0;accent-color:#4a9;';
+              cb.style.cssText = 'margin-top:3px;flex-shrink:0;accent-color:#78d5a8;';
               const txt = document.createElement('div'); txt.style.flex = '1';
-              const lbl = document.createElement('div'); lbl.textContent = meta.label; lbl.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;';
-              const dsc = document.createElement('div'); dsc.textContent = meta.desc; dsc.style.cssText = 'font-size:10px;color:#888;line-height:1.4;';
+              const lbl = document.createElement('div'); lbl.textContent = meta.label; lbl.style.cssText = 'font-size:12px;color:var(--li-text,#e7edf5);font-weight:800;';
+              const dsc = document.createElement('div'); dsc.textContent = meta.desc; dsc.style.cssText = 'font-size:10px;color:var(--li-muted,#748196);line-height:1.45;';
               txt.appendChild(lbl); txt.appendChild(dsc);
               cb.onchange = () => {
                 settings.config.refinerTopics[k] = cb.checked;
@@ -160,14 +171,14 @@
   
           const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:12px;';
           const left = document.createElement('div'); left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
-          const t = document.createElement('div'); t.textContent = '참조 대화 턴 수'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;'; left.appendChild(t);
+          const t = document.createElement('div'); t.textContent = '참조 대화 턴 수'; t.style.cssText = 'font-size:13px;color:var(--li-text-soft,#a9b6c7);font-weight:900;'; left.appendChild(t);
           const right = document.createElement('div');
           const inp = document.createElement('input'); inp.type = 'number'; inp.value = settings.config.refinerContextTurns !== undefined ? settings.config.refinerContextTurns : 1; inp.min = 0; inp.max = 20;
-          inp.style.cssText = 'width:60px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;text-align:center;';
+          inp.style.cssText = FIELD_STYLE + 'width:70px;text-align:center;';
           inp.onchange = () => { settings.config.refinerContextTurns = parseInt(inp.value) || 0; settings.save(); };
           right.appendChild(inp); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
   
-          const tLbl2 = document.createElement('div'); tLbl2.textContent = '프롬프트 미리보기'; tLbl2.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; nd.appendChild(tLbl2);
+          const tLbl2 = document.createElement('div'); tLbl2.textContent = '프롬프트 미리보기'; tLbl2.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:4px;font-weight:800;'; nd.appendChild(tLbl2);
           const ta = document.createElement('textarea'); ta.value = settings.config.refinerCustomPrompt; ta.style.cssText = S + 'height:200px;font-family:monospace;resize:vertical;';
           ta.readOnly = true;
           nd.appendChild(ta);
@@ -223,7 +234,7 @@
             else tplDesc.textContent = '직접 작성한 프롬프트 사용 중. 내용 수정은 프롬프트 관리에서 함.';
           }
   
-          const clearFpBtn = document.createElement('button'); clearFpBtn.textContent = '처리 기록 큐 초기화'; clearFpBtn.style.cssText = 'width:100%;padding:8px;margin-top:12px;background:#654;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;';
+          const clearFpBtn = document.createElement('button'); clearFpBtn.textContent = '처리 기록 큐 초기화'; clearFpBtn.style.cssText = BTN_BASE + 'width:100%;margin-top:12px;color:' + TONE.warn + ';border-color:rgba(231,181,111,.45);background:rgba(231,181,111,.12);';
           clearFpBtn.onclick = () => { R.clearProcessed(); alert('기록 삭제됨'); }; nd.appendChild(clearFpBtn);
         }});
       }, '응답 교정 설정');
