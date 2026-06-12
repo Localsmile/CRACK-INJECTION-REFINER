@@ -19,6 +19,11 @@
   };
   const BTN_DANGER = 'min-height:34px;padding:7px 11px;font-size:12px;border-radius:7px;cursor:pointer;font-weight:800;border:1px solid #8f333f;background:#3a171b;color:#ffc9c9;';
   const BTN_GHOST = 'min-height:30px;padding:5px 10px;font-size:11px;border-radius:7px;cursor:pointer;font-weight:800;border:1px solid var(--li-line,#2f3b4f);background:transparent;color:var(--li-text-soft,#a9b6c7);';
+
+  function cooldownTurnIndex(value) {
+    if (value && typeof value === 'object') return Number(value.turnIndex || value.turn || 0) || 0;
+    return Number(value || 0) || 0;
+  }
   
   _w.__LoreInj.registerSubMenu('session', function(modal) {
     modal.createSubMenu('세션 상태 관리', (m) => {
@@ -114,7 +119,7 @@
             let cooldownRem = 0;
             const lastInj = cMap[e.id];
             if (lastInj !== undefined) {
-              const elap = turnCounter - lastInj;
+              const elap = turnCounter - cooldownTurnIndex(lastInj);
               cooldownRem = Math.max(0, settings.config.cooldownTurns - elap);
             }
   

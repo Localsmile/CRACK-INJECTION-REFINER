@@ -100,6 +100,10 @@
     return position === 'before' ? injectedText + '\n\n' + originalText : originalText + '\n\n' + injectedText;
   }
 
+  function messageIdOf(log) {
+    return log && (log.id || log._id || log.messageId) ? String(log.id || log._id || log.messageId) : '';
+  }
+
   function cleanInjectedContent(currentText, item) {
     const cur = String(currentText || '');
     const original = String(item.originalText || '');
@@ -117,6 +121,37 @@
 
   function messageText(log) {
     return String((log && (log.content != null ? log.content : log.message)) || '');
+  }
+
+  function userTurnIndexFromLogs(logs) {
+    if (!Array.isArray(logs) || !logs.length) return 0;
+    let count = 0;
+    for (const log of logs) if (log && log.role === 'user') count++;
+    return count;
+  }
+
+  function userTurnsBetweenLogs(logs, fromMessageId) {
+    if (!Array.isArray(logs) || !logs.length || !fromMessageId) return null;
+    let found = false;
+    let count = 0;
+    for (const log of logs) {
+      if (!log) continue;
+      if (!found) {
+        if (messageIdOf(log) === String(fromMessageId)) found = true;
+        continue;
+      }
+      if (log.role === 'user') count++;
+    }
+    return found ? count : null;
+  }
+
+  function getLastUserMessageId(logs) {
+    if (!Array.isArray(logs)) return '';
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const log = logs[i];
+      if (log && log.role === 'user') return messageIdOf(log);
+    }
+    return '';
   }
 
   function countCharsAfter(logs, item) {
@@ -143,6 +178,26 @@
   function isCleanupExpiredByFallback(item) {
     const createdAt = Number(item && item.createdAt) || 0;
     return createdAt > 0 && Date.now() - createdAt >= 24 * 60 * 60 * 1000;
+  }
+
+  function cooldownExpired(last, turnCounter, logs, config) {
+    if (last === undefined || last === null) return true;
+    const cooldownTurns = Math.max(0, parseInt(config.cooldownTurns || 0, 10) || 0);
+    if (!cooldownTurns) return true;
+    if (typeof last === 'object') {
+      const msgId = last.messageId || last.msgId || last.injectedAtMsgId || '';
+      const serverGap = userTurnsBetweenLogs(logs, msgId);
+      if (serverGap != null) return serverGap >= cooldownTurns;
+      const at = Number(last.at || last.timestamp || 0);
+      if (at && Date.now() - at > 24 * 60 * 60 * 1000) return true;
+      const idx = Number(last.turnIndex || last.turn || 0);
+      if (idx && turnCounter != null) return (turnCounter - idx) >= cooldownTurns;
+      return false;
+    }
+    const oldTurn = Number(last);
+    if (!Number.isFinite(oldTurn)) return true;
+    if (turnCounter != null && oldTurn > turnCounter) return true;
+    return turnCounter == null || (turnCounter - oldTurn) >= cooldownTurns;
   }
 
   async function reconcileCleanupItem(item, logs) {
@@ -466,9 +521,9 @@
   async function inject(userInput) {
     if (!settings.config.enabled) return userInput;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const turnCounter = incrementTurnCounter(chatKey);
+    const localTurnCounter = incrementTurnCounter(chatKey);
+    let turnCounter = localTurnCounter;
     scheduleInjectionCleanup('turn-start', 2500);
-    if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
 
     const activePacksArr = typeof _w.__LoreInj.getActivePacksForUrl === 'function'
       ? _w.__LoreInj.getActivePacksForUrl(_url)
@@ -497,6 +552,10 @@
 
     const fetchCount = Math.max(20, (settings.config.scanRange || 6) * 3);
     const recentMsgs = await C.fetchLogs(fetchCount);
+    const serverTurnCounter = Array.isArray(recentMsgs) && recentMsgs.length ? userTurnIndexFromLogs(recentMsgs) + 1 : 0;
+    if (serverTurnCounter > 0) turnCounter = serverTurnCounter;
+    const lastServerUserMsgId = getLastUserMessageId(recentMsgs);
+    if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
 
     const config = settings.config;
     const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
@@ -649,12 +708,12 @@
       let staleCooldownCount = 0;
       scored = scored.filter(s => {
         const last = cMap[s.entry.id];
-        if (last !== undefined && turnCounter != null && Number(last) > turnCounter) {
+        if (last !== undefined && last !== null && typeof last !== 'object' && turnCounter != null && Number(last) > turnCounter) {
           delete cMap[s.entry.id];
           staleCooldownCount++;
           return true;
         }
-        return last === undefined || (turnCounter - last) >= config.cooldownTurns;
+        return cooldownExpired(last, turnCounter, recentMsgs, config);
       });
       if (staleCooldownCount > 0) settings.save();
       cooldownFilteredAll = scoredCountBeforeCooldown > 0 && !scored.length;
@@ -833,8 +892,8 @@
     try {
       for (const e of allIncluded) {
         recordEntryMention(chatKey, e.id);
-        setCooldownLastTurn(chatKey, e.id, turnCounter);
-        try { await db.entries.update(e.id, { lastMentionedTurn: turnCounter }); } catch(_) {}
+        setCooldownLastTurn(chatKey, e.id, { turnIndex: turnCounter, messageId: lastServerUserMsgId || '', at: Date.now() });
+        try { await db.entries.update(e.id, { lastMentionedTurn: turnCounter, lastMentionedMsgId: lastServerUserMsgId || '', lastMentionedAt: Date.now() }); } catch(_) {}
       }
     } catch(e) {}
 

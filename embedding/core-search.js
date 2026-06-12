@@ -39,6 +39,25 @@
     return ((userInput || '') + ' ' + sliceText).toLowerCase();
   }
 
+  function messageIdOf(log) {
+    return log && (log.id || log._id || log.messageId) ? String(log.id || log._id || log.messageId) : '';
+  }
+
+  function userTurnsBetweenLogs(logs, fromMessageId) {
+    if (!Array.isArray(logs) || !logs.length || !fromMessageId) return null;
+    let found = false;
+    let count = 0;
+    for (const log of logs) {
+      if (!log) continue;
+      if (!found) {
+        if (messageIdOf(log) === String(fromMessageId)) found = true;
+        continue;
+      }
+      if (log.role === 'user') count++;
+    }
+    return found ? count : null;
+  }
+
   // ---- 트리거 스캔 ----
   function triggerScan(userInput, recentMsgs, entries, config) {
     const cfg = config || {};
@@ -201,15 +220,16 @@
       let score = trigWeight * tScore + embWeight * eScore;
       let matched = tHit ? tHit.matched : '';
 
-      // 언급 시점 해석: entry 프로퍼티 우선, 없으면 localStorage 맵 fallback
+      const serverTurnsSinceMention = e.lastMentionedMsgId ? userTurnsBetweenLogs(recentMsgs, e.lastMentionedMsgId) : null;
+      // 언급 시점 해석: 서버 메시지 ID 우선, 없으면 entry/localStorage turn fallback
       let lmt = e.lastMentionedTurn != null
         ? e.lastMentionedTurn
         : (lastMentionMap && lastMentionMap[e.id] != null ? lastMentionMap[e.id] : null);
       // 방어: 저장된 lmt가 현재 카운터보다 크면(세션 리셋/데이터 불일치) 미언급으로 취급
       if (lmt != null && turnCounter != null && lmt > turnCounter) lmt = null;
       // 재주입 필요도 (최근 언급된 엔트리에 약한 가산)
-      if (decayEnabled && turnCounter != null && lmt != null) {
-        const turnsSince = turnCounter - lmt;
+      if (decayEnabled && (serverTurnsSinceMention != null || (turnCounter != null && lmt != null))) {
+        const turnsSince = serverTurnsSinceMention != null ? serverTurnsSinceMention : (turnCounter - lmt);
         const reScore = calcReinjectionScore(turnsSince, e.type, cfg, e);
         score = score * (1 + reScore * 0.5);
       }
