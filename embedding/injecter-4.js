@@ -17,6 +17,7 @@
     getAutoExtPackForUrl,
     addExtLog, setPackEnabled,
     DEFAULT_AUTO_EXTRACT_SCHEMA,
+    DEFAULT_SCENE_STATE_PATCH_SCHEMA,
     DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA,
     DEFAULT_TEMPORAL_EXTRACT_PROMPT,
     DEFAULT_TEMPORAL_EXTRACT_SCHEMA
@@ -25,12 +26,13 @@
   // v1.4.0-test.56: patch ON/OFF must not change the DB context payload. Only output instructions differ.
   const OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
 - Existing entries are provided as compact digests with stable "id".
-- Output must be one JSON array. Never return a bare object.
+- Output must be one JSON object: {"entries":[...],"sceneStatePatch":{}}.
 - For an existing entry, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
 - For unchanged existing entries, output nothing.
-- If nothing changed at all, return exactly [].
+- If nothing changed at all, return exactly {"entries":[],"sceneStatePatch":{}}.
 - For brand-new lore, output {"op":"add","entry":{...}}.
+- Also return sceneStatePatch with only changed current scene fields. Use {} when unchanged.
 - Do not repeat unchanged summary.full.
 - Prefer set.state only if state changed.
 - Prefer append.eventHistory for new concrete events.
@@ -40,14 +42,18 @@
 
   const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
 - Existing entries are provided as compact digests with stable "id".
-- Output must be one JSON array. Never return a bare object.
+- Output must be one JSON object: {"entries":[...],"sceneStatePatch":{}}.
 - For each NEW lore, output the complete entry object.
 - For each UPDATED existing entry, output the complete updated entry object and keep the same "name" when possible.
 - Do NOT use add/patch op format in this mode.
 - For unchanged existing entries, output nothing.
+- Also return sceneStatePatch with only changed current scene fields. Use {} when unchanged.
 - Anchored entries: only append new triggers and eventHistory.`;
 
-  const UNIFIED_EXTRACT_SCHEMA = `${DEFAULT_AUTO_EXTRACT_SCHEMA}
+  const UNIFIED_EXTRACT_SCHEMA = `${DEFAULT_SCENE_STATE_PATCH_SCHEMA || ''}
+
+Schema for objects inside entries:
+${DEFAULT_AUTO_EXTRACT_SCHEMA}
 
 Patch-mode alternative when OUTPUT MODE asks for SAVE ONLY CHANGES:
 ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
@@ -116,14 +122,20 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   function buildObjectOutputContract(kind, patchMode) {
     const isTemporal = kind === 'temporal';
     const noun = isTemporal ? 'important scene memory' : 'lore';
+    const shape = isTemporal ? '{"entries":[...]}' : '{"entries":[...],"sceneStatePatch":{...}}';
+    const empty = isTemporal ? '{"entries":[]}' : '{"entries":[],"sceneStatePatch":{}}';
+    const sceneLine = isTemporal
+      ? ''
+      : '- Also return sceneStatePatch with only changed current scene fields. Use {} when unchanged.\n';
     const unchanged = isTemporal
       ? '- If the conversation only repeats already stored scene memories, return exactly {"entries":[]}.\n'
       : '';
     if (patchMode) {
       return `OUTPUT MODE: SAVE ONLY CHANGES
-- Output exactly one JSON object: {"entries":[...]}.
-- If nothing changed at all, return exactly {"entries":[]}.
+- Output exactly one JSON object: ${shape}.
+- If nothing changed at all, return exactly ${empty}.
 ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided as compact digests with stable "id".
+${sceneLine}
 - For unchanged existing ${isTemporal ? 'scene memories' : 'entries'}, add nothing to entries.
 - For an existing ${isTemporal ? 'scene memory' : 'entry'}, do NOT re-output the full object.
 - Put {"op":"patch","id":...} inside entries only when something changed.
@@ -131,9 +143,10 @@ ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided
 - Keep patch fields tiny; prefer append.* for new facts and set.* only for changed fields.`;
     }
     return `OUTPUT MODE: FULL UPDATED ENTRIES
-- Output exactly one JSON object: {"entries":[...]}.
-- If nothing changed at all, return exactly {"entries":[]}.
+- Output exactly one JSON object: ${shape}.
+- If nothing changed at all, return exactly ${empty}.
 ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided as compact digests with stable "id".
+${sceneLine}
 - For unchanged existing ${isTemporal ? 'scene memories' : 'entries'}, add nothing to entries.
 - For each NEW ${noun}, put the complete object inside entries.
 - For each UPDATED existing ${isTemporal ? 'scene memory' : 'entry'}, put the complete updated object inside entries and keep the same "name" when possible.
@@ -470,6 +483,93 @@ ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided
     return [];
   }
 
+  function findScenePayload(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    if (payload.sceneStatePatch && typeof payload.sceneStatePatch === 'object') return payload;
+    if (payload.data && typeof payload.data === 'object') {
+      const nested = findScenePayload(payload.data);
+      if (nested) return nested;
+    }
+    if (payload.output && typeof payload.output === 'object') {
+      const nested = findScenePayload(payload.output);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  function normalizeSceneStatePatch(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const patch = {};
+    const setText = (key, max) => {
+      if (raw[key] == null) return;
+      const v = String(raw[key]).trim();
+      if (v) patch[key] = v.slice(0, max || 160);
+    };
+    const setTextArray = (key, limit, max) => {
+      if (!Array.isArray(raw[key])) return;
+      const seen = new Set();
+      const out = [];
+      raw[key].forEach(item => {
+        const v = String(item || '').trim().slice(0, max || 120);
+        if (!v || seen.has(v)) return;
+        seen.add(v);
+        out.push(v);
+      });
+      if (out.length) patch[key] = out.slice(0, limit || 8);
+    };
+    setText('location', 120);
+    setText('timeLabel', 120);
+    setTextArray('presentChars', 8, 80);
+    setTextArray('facts', 8, 160);
+    if (Array.isArray(raw.honorifics)) {
+      const honorifics = raw.honorifics.map(h => ({
+        from: String(h && h.from || '').trim().slice(0, 80),
+        to: String(h && h.to || '').trim().slice(0, 80),
+        term: String(h && h.term || '').trim().slice(0, 80)
+      })).filter(h => h.from && h.to && h.term).slice(0, 12);
+      if (honorifics.length) patch.honorifics = honorifics;
+    }
+    if (Array.isArray(raw.relationships)) {
+      const relationships = raw.relationships.map(r => {
+        const pair = Array.isArray(r && r.pair) ? r.pair.map(v => String(v || '').trim().slice(0, 80)).filter(Boolean).slice(0, 2) : [];
+        const status = String(r && r.status || '').trim().slice(0, 160);
+        return pair.length === 2 && status ? { pair, status } : null;
+      }).filter(Boolean).slice(0, 12);
+      if (relationships.length) patch.relationships = relationships;
+    }
+    if (Array.isArray(raw.pending)) {
+      const pending = raw.pending.map(p => {
+        const kind = /promise/i.test(String(p && p.kind || '')) ? 'promise' : 'hook';
+        const text = String(p && p.text || '').trim().slice(0, 200);
+        const owner = String(p && p.owner || '').trim().slice(0, 80);
+        return text ? (owner ? { kind, text, owner } : { kind, text }) : null;
+      }).filter(Boolean).slice(0, 8);
+      if (pending.length) patch.pending = pending;
+    }
+    return Object.keys(patch).length ? patch : null;
+  }
+
+  function extractSceneStatePatch(payload) {
+    const root = findScenePayload(payload);
+    return root ? normalizeSceneStatePatch(root.sceneStatePatch) : null;
+  }
+
+  function hasSceneStatePatch(payload) {
+    return !!extractSceneStatePatch(payload);
+  }
+
+  async function applySceneStatePatchFromPayload(payload, chatKey, meta = {}) {
+    const patch = extractSceneStatePatch(payload);
+    if (!patch || !chatKey || !C.saveSceneState) return 0;
+    try {
+      await C.saveSceneState(chatKey, patch, meta);
+      return 1;
+    } catch (e) {
+      console.warn('[Lore] sceneStatePatch 저장 실패:', e && e.message || e);
+      return 0;
+    }
+  }
+
   function normalizeTemporalCandidates(parsed, limit) {
     let arr = parsed;
     if (arr && !Array.isArray(arr)) {
@@ -527,7 +627,7 @@ ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided
 
 Structured output reminder:
 - Return exactly one valid json object.
-- The top-level shape is {"entries":[...]}.
+- The top-level shape is {"entries":[...],"sceneStatePatch":{}} for general extraction, or {"entries":[...]} for temporal extraction.
 - No markdown, no prose, no comments, no trailing text.` : prompt;
     let res = await C.callGeminiApi(finalPrompt, apiOpts);
     let parsed = parseJsonLoose(res && res.text);
@@ -541,8 +641,8 @@ Structured output reminder:
             .replace(/Wrap patch\/add items in an array\./gi, 'Wrap patch/add items in {"entries":[...]}.')
         : (repairHint || '');
       const retryPrompt = finalPrompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n' + (isDeepSeek
-        ? '- Return only one complete JSON object in this exact shape: {"entries":[...]}.\n- If there is no change, return exactly {"entries":[]}.\n'
-        : '- Return only one complete JSON array.\n- If there is no change, return exactly [].\n') + safeRepairHint;
+        ? '- Return only one complete JSON object. For general extraction use {"entries":[...],"sceneStatePatch":{}}. For temporal extraction use {"entries":[...]}.\n- If there is no change, return exactly {"entries":[],"sceneStatePatch":{}} for general extraction or {"entries":[]} for temporal extraction.\n'
+        : '- Return only complete JSON. If the prompt asks for a top-level object, use {"entries":[...],"sceneStatePatch":{}}. If it asks for event-only array output, a JSON array is allowed.\n- If there is no change in general extraction, return {"entries":[],"sceneStatePatch":{}}. If there is no temporal event, return [].\n') + safeRepairHint;
       const repairOpts = {
         ...apiOpts,
         maxRetries: 0,
@@ -720,6 +820,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const chatKey = getChatKey();
     const mergeOpts = opts && typeof opts === 'object' ? opts : {};
     const ctxTurn = () => mergeOpts.baseTurn != null ? Number(mergeOpts.baseTurn) || 0 : getTurnCounter(chatKey);
+    await applySceneStatePatchFromPayload(entries, chatKey, { source: mergeOpts.source || 'extract', msgId: mergeOpts.msgId || '' });
+    const normalizedItems = normalizeExtractItems(entries);
+    if (!normalizedItems.length) return 0;
     let ap = [...(settings.config.autoPacks || [])];
     if (!ap.includes(packName)) { ap.push(packName); settings.config.autoPacks = ap; settings.save(); }
     const proj = settings.config.activeProject || '';
@@ -728,7 +831,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     else await createSnapshot(packName, '자동 병합 전 백업', 'auto');
 
     let processedCount = 0;
-    for (const item of normalizeExtractItems(entries)) {
+    for (const item of normalizedItems) {
       if (!item) continue;
       if (item.op === 'patch') {
         processedCount += await applyExtractPatchOp(item, packName, chatKey, ctxTurn());
@@ -1133,13 +1236,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (!res || !res.text) throw new Error('AI 응답없음 (' + ((res && res.error) || '알수없음') + ')');
       if (!parsed) throw new Error('JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       const parsedItems = normalizeExtractItems(parsed);
+      const sceneStateChanged = hasSceneStatePatch(parsed);
       let generalCount = 0;
       let generalStatus = '추출 내용 없음';
       let embedMsg = '';
       let embedCount = 0;
-      if (parsedItems.length > 0) {
-        generalCount = await mergeExtractedData(parsedItems, _url);
-        generalStatus = generalCount > 0 ? '성공' : '변경 없음';
+      if (parsedItems.length > 0 || sceneStateChanged) {
+        generalCount = await mergeExtractedData(parsed, _url);
+        generalStatus = generalCount > 0 ? '성공' : (sceneStateChanged ? '장면 상태 갱신' : '변경 없음');
         if (generalCount > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
           try {
             const epName = await getAutoExtPackForUrl(_url);
@@ -1442,8 +1546,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             continue;
           }
           const parsedItems = normalizeExtractItems(parsed);
-          if (parsedItems.length > 0) {
-            mergedCount = await mergeExtractedData(parsedItems, _url, { source: 'batch', baseTurn: 0 });
+          const sceneStateChanged = hasSceneStatePatch(parsed);
+          if (parsedItems.length > 0 || sceneStateChanged) {
+            mergedCount = await mergeExtractedData(parsed, _url, { source: 'batch', baseTurn: 0 });
             report.entriesAdded += mergedCount;
             status = mergedCount > 0 ? 'ok' : 'empty'; ok = true;
           } else {
@@ -1531,8 +1636,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
                 continue;
               }
               const parsedItems = normalizeExtractItems(parsed);
-              if (parsedItems.length > 0) {
-                mergedCount = await mergeExtractedData(parsedItems, _url, { source: 'batch', baseTurn: 0 });
+              const sceneStateChanged = hasSceneStatePatch(parsed);
+              if (parsedItems.length > 0 || sceneStateChanged) {
+                mergedCount = await mergeExtractedData(parsed, _url, { source: 'batch', baseTurn: 0 });
                 report.entriesAdded += mergedCount;
                 status = mergedCount > 0 ? 'ok_retry' : 'empty_retry'; ok = true;
               } else {

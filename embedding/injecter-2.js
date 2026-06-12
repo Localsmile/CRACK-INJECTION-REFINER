@@ -7,18 +7,22 @@
   if (_w.__LoreInj.__constLoaded) return;
 
   const VER = '1.4.0-test.48';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0-test.47-outputMode';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0-test.49-sceneStatePatch';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-memory-label';
   function toJsonObjectPrompt(prompt, opts = {}) {
-    const empty = opts.empty || '{"entries":[]}';
     const eventOnly = !!opts.eventOnly;
+    const empty = opts.empty || (eventOnly ? '{"entries":[]}' : '{"entries":[],"sceneStatePatch":{}}');
+    const shape = eventOnly ? '{"entries":[...]}' : '{"entries":[...],"sceneStatePatch":{...}}';
+    const structureLine = eventOnly
+      ? '0. STRUCTURE: The response must be one JSON object with an "entries" array. Every extracted timeline_event goes inside entries.\n'
+      : '0. STRUCTURE: The response must be one JSON object with "entries" and "sceneStatePatch". Every lore entry or patch operation goes inside entries. Current scene-state changes go inside sceneStatePatch.\n';
     return String(prompt || '')
-      .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if nothing new\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape {"entries":[...]}. Return exactly ' + empty + ' if nothing new.')
-      .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if no meaningful event occurred\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape {"entries":[...]}. Return exactly ' + empty + ' if no meaningful event occurred.')
-      .replace(/Output ONLY a valid JSON array/g, 'Output exactly one valid JSON object with top-level shape {"entries":[...]}')
+      .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if nothing new\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape ' + shape + '. Return exactly ' + empty + ' if nothing new.')
+      .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if no meaningful event occurred\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape ' + shape + '. Return exactly ' + empty + ' if no meaningful event occurred.')
+      .replace(/Output ONLY a valid JSON array/g, 'Output exactly one valid JSON object with top-level shape ' + shape)
       .replace(/Empty array \[\]/g, empty)
       .replace(/Schema:\n\{schema\}/g, 'Schema for each object inside entries:\n{schema}')
-      .replace(/CRITICAL RULES:\n/g, 'CRITICAL RULES:\n0. STRUCTURE: The response must be one JSON object with an "entries" array. Every extracted ' + (eventOnly ? 'timeline_event' : 'lore entry or patch operation') + ' goes inside entries.\n')
+      .replace(/CRITICAL RULES:\n/g, 'CRITICAL RULES:\n' + structureLine)
       .replace(/RATE: PG-13 ~ NC-21 \(Private Sessions, Unlimited RP\)/g, 'RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)\n- Preserve adult/private relationship facts when they are continuity-relevant. Do not censor, moralize, or replace explicit scene facts with vague euphemisms. Summarize them neutrally and compactly.');
   }
   const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `You are a Lore Archivist for RP.
@@ -32,7 +36,7 @@ EXTRACTION PRIORITIES (in order of importance):
 3. CHARACTER STATE: Update each character's current situation.
 
 CRITICAL RULES:
-1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
+1. JSON ONLY: Output ONLY a valid JSON object. No markdown. Use {"entries":[...],"sceneStatePatch":{}}. Return {"entries":[],"sceneStatePatch":{}} if nothing new.
 2. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
 3. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
    PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
@@ -63,6 +67,11 @@ CRITICAL RULES:
    - Maximum 3 new events per entry per extraction pass.
    - Summary must be concrete noun-ending Korean for search: "LO와 첫 키스, 카페에서" not "행복한 순간".
    - If no new significant event occurred, OMIT eventHistory for that entry.
+10. SCENE STATE PATCH:
+   - In addition to lore entries, output a top-level "sceneStatePatch" object.
+   - Track only the current visible scene state: location, timeLabel, presentChars, honorifics, relationships, pending promises/hooks, and hard facts.
+   - Output only changed fields. If nothing changed, output "sceneStatePatch": {}.
+   - Do not store broad lore, old scene history, or full summaries in sceneStatePatch.
 
 SUMMARY AND INJECTION FORMAT RULES:
 - "summary" has three semantic levels, not just shorter copies:
@@ -157,6 +166,24 @@ Conversation Log:
     "imp": 5, "sur": 5, "emo": 5
   }
 ]`;
+
+  const DEFAULT_SCENE_STATE_PATCH_SCHEMA = `Top-level response shape for general extraction:
+{
+  "entries": [
+    "lore entry objects or patch/add operations described below"
+  ],
+  "sceneStatePatch": {
+    "location": "current place if changed",
+    "timeLabel": "current time or scene time if changed",
+    "presentChars": ["characters currently present"],
+    "honorifics": [{"from":"speaker","to":"target","term":"latest address term"}],
+    "relationships": [{"pair":["A","B"],"status":"current relationship status"}],
+    "pending": [{"kind":"promise|hook","text":"unresolved promise or hook","owner":"optional owner"}],
+    "facts": ["hard current-scene facts that a summary may lose"]
+  }
+}
+
+If no current scene state changed, use "sceneStatePatch": {}.`;
 
   const DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA = `[
   {
@@ -327,7 +354,7 @@ EXTRACTION PRIORITIES (in order of importance):
 3. CHARACTER STATE: Update current situation.
 
 CRITICAL RULES:
-1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
+1. JSON ONLY: Output ONLY a valid JSON object. No markdown. Use {"entries":[...],"sceneStatePatch":{}}. Return {"entries":[],"sceneStatePatch":{}} if nothing new.
 2. INTEGRATE AND UPDATE: If the entity already exists in the Lore Database, DO NOT duplicate it. Keep the exact same "name".
 3. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
 4. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
@@ -373,6 +400,11 @@ CRITICAL RULES:
     - For "state": output only if the status actually changed (e.g. pending→fulfilled, 우호→적대). Stable states are preserved automatically.
     - For "call": output only changed or newly observed pairs. Previous terms are context only, not mandatory future speech.
     - If unsure whether a fact is new or old, output it as eventHistory instead of overwriting summary/state.
+13. SCENE STATE PATCH:
+    - In addition to lore entries, output a top-level "sceneStatePatch" object.
+    - Track only the current visible scene state: location, timeLabel, presentChars, honorifics, relationships, pending promises/hooks, and hard facts.
+    - Output only changed fields. If nothing changed, output "sceneStatePatch": {}.
+    - Do not duplicate existing lore database entries into sceneStatePatch.
 
 SUMMARY AND INJECTION FORMAT RULES:
 - "summary" has three semantic levels, not just shorter copies:
@@ -558,6 +590,7 @@ Source Material:
     AUTO_EXTRACT_PROMPT_VERSION,
     LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB,
     DEFAULT_AUTO_EXTRACT_SCHEMA,
+    DEFAULT_SCENE_STATE_PATCH_SCHEMA,
     DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA,
     DEFAULT_TEMPORAL_EXTRACT_PROMPT,
     DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
