@@ -346,14 +346,14 @@ ${sceneLine}
     return false;
   }
 
-  async function applyExtractPatchOp(op, packName, chatKey, turnHint) {
+  async function applyExtractPatchOp(op, packName, chatKey, turnHint, versionMeta = {}) {
     if (!op || op.op !== 'patch' || op.id == null) return 0;
     let existing = await db.entries.get(op.id);
     if (!existing || existing.packName !== packName) return 0;
     const beforeSig = entryContentSignature(existing);
 
     const anchorGuard = existing.anchor === true;
-    try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_patch'); } catch (_) {}
+    try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_patch', { ...versionMeta, turn: turnHint }); } catch (_) {}
 
     const set = anchorGuard ? {} : (op.set || {});
     const append = op.append || {};
@@ -415,14 +415,14 @@ ${sceneLine}
     return 1;
   }
 
-  async function applyTemporalPatchOp(op, packName, chatKey, turnHint) {
+  async function applyTemporalPatchOp(op, packName, chatKey, turnHint, versionMeta = {}) {
     if (!op || op.op !== 'patch' || op.id == null) return 0;
     let existing = await db.entries.get(op.id);
     const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
     if (!existing || existing.packName !== packName || existing.type !== TL_TYPE) return 0;
     const beforeSig = entryContentSignature(existing);
 
-    try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'temporal_patch'); } catch (_) {}
+    try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'temporal_patch', { ...versionMeta, turn: turnHint }); } catch (_) {}
     const set = op.set || {};
     const append = op.append || {};
 
@@ -787,7 +787,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (!parsed) throw new Error('시간축 JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       let patchedCount = 0;
       for (const item of normalizeExtractItems(parsed)) {
-        if (item && item.op === 'patch') patchedCount += await applyTemporalPatchOp(item, packName, chatKey, opts.mergeOpts && opts.mergeOpts.baseTurn);
+        if (item && item.op === 'patch') {
+          const _turn = opts.mergeOpts && opts.mergeOpts.baseTurn;
+          patchedCount += await applyTemporalPatchOp(item, packName, chatKey, _turn, {
+            turn: _turn,
+            msgId: opts.mergeOpts && (opts.mergeOpts.msgId || opts.mergeOpts.messageId) || '',
+            at: Date.now()
+          });
+        }
       }
       const events = normalizeTemporalCandidates(parsed, settings.config.temporalMaxEventsPerPass || 5);
       if (!events.length && patchedCount <= 0) {
@@ -836,6 +843,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const chatKey = getChatKey();
     const mergeOpts = opts && typeof opts === 'object' ? opts : {};
     const ctxTurn = () => mergeOpts.baseTurn != null ? Number(mergeOpts.baseTurn) || 0 : getTurnCounter(chatKey);
+    const versionMeta = () => ({ turn: ctxTurn(), msgId: mergeOpts.msgId || mergeOpts.messageId || '', at: Date.now() });
     await applySceneStatePatchFromPayload(entries, chatKey, { source: mergeOpts.source || 'extract', msgId: mergeOpts.msgId || '' });
     const normalizedItems = normalizeExtractItems(entries);
     if (!normalizedItems.length) return 0;
@@ -850,7 +858,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     for (const item of normalizedItems) {
       if (!item) continue;
       if (item.op === 'patch') {
-        processedCount += await applyExtractPatchOp(item, packName, chatKey, ctxTurn());
+        processedCount += await applyExtractPatchOp(item, packName, chatKey, ctxTurn(), versionMeta());
         continue;
       }
       let e = (item.op === 'add' && item.entry) ? item.entry : item;
@@ -906,7 +914,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         existing = normalizeEntryForMerge(existing, ctxTurn());
         const _beforeExistingSig = entryContentSignature(existing);
         // 서사 무결성: 덮어쓰기 전 현재 상태 백업 (append-only)
-        try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge'); } catch(ex) {}
+        try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'extract_merge', versionMeta()); } catch(ex) {}
         // Narrative Anchor: 앵커 엔트리는 summary/state/detail/call/inject 등 내러티브 필드 보호.
         // 스냅샷 떠놨다가 put 직전 복원. eventHistory/triggers 병합만 허용.
         const _anchorGuard = existing.anchor === true;
@@ -1263,7 +1271,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       let embedMsg = '';
       let embedCount = 0;
       if (parsedItems.length > 0 || sceneStateChanged) {
-        generalCount = await mergeExtractedData(parsed, _url);
+        generalCount = await mergeExtractedData(parsed, _url, {
+          source: isManual ? 'manual' : 'auto',
+          baseTurn: recentMsgs.filter(m => m && m.role === 'user').length,
+          msgId: lastMessageIdOf(recentMsgs)
+        });
         generalStatus = generalCount > 0 ? '성공' : (sceneStateChanged ? '장면 상태 갱신' : '변경 없음');
         if (generalCount > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
           try {
@@ -1282,7 +1294,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       }
       let temporalResult = null;
       if (settings.config.temporalExtractEnabled !== false) {
-        temporalResult = await runTemporalExtractPass({ context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length });
+        temporalResult = await runTemporalExtractPass({
+          context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length,
+          mergeOpts: {
+            source: isManual ? 'manual-temporal' : 'auto-temporal',
+            baseTurn: recentMsgs.filter(m => m && m.role === 'user').length,
+            msgId: lastMessageIdOf(recentMsgs)
+          }
+        });
       }
       if (isManual) {
         const temporalMsg = settings.config.temporalExtractEnabled !== false
@@ -1361,6 +1380,15 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const text = String(m.message || m.content || '');
     const sig = [m.role || '', text.length, text.slice(0, 24), text.slice(-24)].join('|');
     return 'fallback:' + index + ':' + (C.simpleHash ? C.simpleHash(sig) : sig);
+  }
+
+  function lastMessageIdOf(msgs) {
+    if (!Array.isArray(msgs) || !msgs.length) return '';
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const id = batchMessageId(msgs[i], i);
+      if (id && !String(id).startsWith('fallback:') && !String(id).startsWith('missing:')) return id;
+    }
+    return '';
   }
 
   function buildBatchPlan(allMsgs, turnsPerBatch, overlap) {
@@ -1574,7 +1602,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           const parsedItems = normalizeExtractItems(parsed);
           const sceneStateChanged = hasSceneStatePatch(parsed);
           if (parsedItems.length > 0 || sceneStateChanged) {
-            mergedCount = await mergeExtractedData(parsed, _url, { source: 'batch', baseTurn: 0 });
+            mergedCount = await mergeExtractedData(parsed, _url, {
+              source: 'batch',
+              baseTurn: msgs.filter(m => m && m.role === 'user').length,
+              msgId: lastMessageIdOf(msgs)
+            });
             report.entriesAdded += mergedCount;
             status = mergedCount > 0 ? 'ok' : 'empty'; ok = true;
           } else {
@@ -1604,7 +1636,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         if (settings.config.temporalExtractEnabled !== false) {
           try {
             const tApiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtract', chatKey);
-            const tres = await runTemporalExtractPass({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true, mergeOpts: { source: 'batch', baseTurn: 0 } });
+            const tres = await runTemporalExtractPass({
+              context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true,
+              mergeOpts: {
+                source: 'batch-temporal',
+                baseTurn: msgs.filter(m => m && m.role === 'user').length,
+                msgId: lastMessageIdOf(msgs)
+              }
+            });
             if (tres && tres.count) {
               report.entriesAdded += tres.count;
               report.batchResults.push({ batch: bi + 1, status: 'temporal_ok', attempts: 1, entries: tres.count });
@@ -1664,7 +1703,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               const parsedItems = normalizeExtractItems(parsed);
               const sceneStateChanged = hasSceneStatePatch(parsed);
               if (parsedItems.length > 0 || sceneStateChanged) {
-                mergedCount = await mergeExtractedData(parsed, _url, { source: 'batch', baseTurn: 0 });
+                mergedCount = await mergeExtractedData(parsed, _url, {
+                  source: 'batch-retry',
+                  baseTurn: msgs.filter(m => m && m.role === 'user').length,
+                  msgId: lastMessageIdOf(msgs)
+                });
                 report.entriesAdded += mergedCount;
                 status = mergedCount > 0 ? 'ok_retry' : 'empty_retry'; ok = true;
               } else {

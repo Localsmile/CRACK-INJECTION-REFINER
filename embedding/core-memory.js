@@ -733,17 +733,22 @@
   // Append-only 엔트리 버전 백업 (서사 무결성)
   // 기존 entry가 덮어써지기 직전 스냅샷을 entryVersions 테이블에 저장.
   // 엔트리당 최대 20개 유지.
-  async function saveEntryVersion(entry, reason) {
+  async function saveEntryVersion(entry, reason, meta = {}) {
     if (!entry || !entry.id) return;
     try {
       const db = getDB();
       if (!db.entryVersions) return; // v7 미만 fallback
       const snap = JSON.parse(JSON.stringify(entry));
       delete snap.id;
+      const at = Number(meta.at || Date.now());
+      const turn = meta.turn != null && Number.isFinite(Number(meta.turn)) ? Number(meta.turn) : (entry.updatedTurn || entry.createdTurn || 0);
+      const msgId = meta.msgId || meta.messageId || entry.lastMentionedMsgId || '';
       await db.entryVersions.put({
         entryId: entry.id,
-        ts: Date.now(),
-        turn: 0,
+        ts: at,
+        at,
+        turn,
+        msgId,
         reason: reason || 'auto',
         snapshot: snap
       });

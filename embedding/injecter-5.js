@@ -251,7 +251,9 @@
       for (const item of items) {
         if (!item.messageId) changed = (await reconcileCleanupItem(item, logs)) || changed;
       }
-      const currentTurn = getTurnCounter(chatKey);
+      const currentTurn = getServerTurnCounterFromLogs
+        ? getServerTurnCounterFromLogs(logs, false)
+        : (Array.isArray(logs) ? logs.filter(log => log && log.role === 'user').length : 0);
       let cleaned = 0;
       for (const item of items) {
         if (cleaned >= 3) break;
