@@ -34,7 +34,7 @@
     const btn = document.createElement('button');
     btn.id = 'lore-inj-boot-error';
     btn.textContent = 'Lore Injector 로딩 진단';
-    btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:rgba(58,23,27,.94);color:#ffc9c9;border:1px solid rgba(239,107,107,.55);border-radius:9px;padding:8px 10px;font-size:12px;font-weight:800;box-shadow:0 12px 28px rgba(0,0,0,.38);';
+    btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:rgba(24,24,27,.96);color:#FAFAFA;border:1px solid #DC2626;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;box-shadow:0 12px 28px rgba(0,0,0,.38);';
     btn.onclick = () => {
       const L = _w.__LoreInj || {};
       const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], menuOrder: L.__menuOrder || null, route: L.route || null };
@@ -114,17 +114,17 @@
         height: 28px;
         padding: 0 9px;
         border-radius: 8px;
-        border: 1px solid rgba(148, 163, 184, .32);
-        background: rgba(18, 19, 22, .74);
-        color: #f3f4f6;
+        border: 1px solid #3F3F46;
+        background: #232327;
+        color: #FAFAFA;
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
         line-height: 1;
         cursor: pointer;
       }
       .lore-launcher-button:hover {
-        background: rgba(36, 39, 44, .92);
-        border-color: rgba(138, 180, 255, .52);
+        background: #32323A;
+        border-color: #818CF8;
       }
       .lore-launcher-button span {
         margin: 0;
@@ -135,8 +135,23 @@
         height: 6px;
         flex: 0 0 auto;
         border-radius: 50%;
-        background: #8ab4ff;
-        box-shadow: 0 0 0 2px rgba(138,180,255,.16);
+        background: #818CF8;
+        box-shadow: 0 0 0 2px rgba(129,140,248,.16);
+      }
+      @media (prefers-color-scheme: light) {
+        .lore-launcher-button {
+          border-color: #E4E4E7;
+          background: #FFFFFF;
+          color: #18181B;
+        }
+        .lore-launcher-button:hover {
+          background: #F7F7F8;
+          border-color: #4F46E5;
+        }
+        .lore-launcher-dot {
+          background: #4F46E5;
+          box-shadow: 0 0 0 2px rgba(79,70,229,.14);
+        }
       }
     `;
     const style = document.createElement('style');

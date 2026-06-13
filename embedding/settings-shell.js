@@ -6,40 +6,65 @@
   if (L.__settingsShellLoaded) return;
 
   const SHELL_ID = 'lore-settings-shell';
-  const STYLE_ID = 'lore-settings-shell-style';
+  const STYLE_MARK = 'data-lore-settings-shell-style';
   const LAST_SECTION_KEY = 'lore-ui-last-section';
 
   function kv() {
     return (L.__LoreEnv && L.__LoreEnv.kv) || _w.localStorage;
   }
 
-  function installStyle() {
-    if (document.getElementById(STYLE_ID)) return;
+  function shellHost() {
+    let host = document.getElementById(SHELL_ID);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = SHELL_ID;
+      (document.body || document.documentElement).appendChild(host);
+    }
+    return host;
+  }
+
+  function shellRoot() {
+    const host = shellHost();
+    return host.shadowRoot || host.attachShadow({ mode: 'open' });
+  }
+
+  function shellNode() {
+    const host = document.getElementById(SHELL_ID);
+    const root = host && host.shadowRoot;
+    return root ? root.querySelector('.lore-v2-app') : null;
+  }
+
+  function installStyle(root) {
+    if (root.querySelector('style[' + STYLE_MARK + ']')) return;
     const css = `
-      #${SHELL_ID} {
-        --li-bg: #101113;
-        --li-surface: #18191c;
-        --li-surface-2: #202226;
-        --li-surface-3: #272a2f;
-        --li-line: #343840;
-        --li-line-strong: #4b515c;
-        --li-text: #f3f4f6;
-        --li-text-soft: #b8bec8;
-        --li-muted: #858c98;
-        --li-accent: #8ab4ff;
-        --li-accent-strong: #b8d2ff;
-        --li-accent-bg: rgba(138,180,255,.13);
-        --li-danger: #f06f6f;
+      .lore-v2-app {
+        --li-bg: #18181B;
+        --li-surface: #232327;
+        --li-surface-2: #2B2B31;
+        --li-surface-3: #32323A;
+        --li-line: #3F3F46;
+        --li-line-strong: #52525B;
+        --li-text: #FAFAFA;
+        --li-text-soft: #A1A1AA;
+        --li-muted: #A1A1AA;
+        --li-accent: #818CF8;
+        --li-accent-strong: #C7D2FE;
+        --li-accent-bg: rgba(129,140,248,.14);
+        --li-ok: #16A34A;
+        --li-warn: #D97706;
+        --li-danger: #DC2626;
         position: fixed;
         inset: 0;
         z-index: 2147483645;
         display: none;
         color: var(--li-text);
-        font-family: inherit;
+        font-family: -apple-system, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
         letter-spacing: 0;
       }
-      #${SHELL_ID}[data-open="true"] { display: block; }
-      #${SHELL_ID} * { box-sizing: border-box; }
+      .lore-v2-app[data-open="true"] { display: block; }
+      .lore-v2-app * { box-sizing: border-box; }
       .lore-v2-backdrop {
         position: absolute;
         inset: 0;
@@ -49,11 +74,11 @@
         position: absolute;
         top: 50%;
         left: 50%;
-        width: min(920px, calc(100vw - 48px));
-        height: min(680px, calc(100vh - 72px));
+        width: min(720px, calc(100vw - 48px));
+        height: min(640px, calc(100vh - 96px));
         transform: translate(-50%, -50%);
         display: grid;
-        grid-template-columns: 176px minmax(0, 1fr);
+        grid-template-columns: 168px minmax(0, 1fr);
         background: var(--li-surface);
         border: 1px solid var(--li-line-strong);
         border-radius: 12px;
@@ -67,7 +92,7 @@
         grid-template-rows: auto auto 1fr auto;
         gap: 12px;
         padding: 14px 12px;
-        background: #141518;
+        background: var(--li-bg);
         border-right: 1px solid var(--li-line);
       }
       .lore-v2-brand {
@@ -77,7 +102,7 @@
       .lore-v2-brand-title {
         font-size: 15px;
         line-height: 1.2;
-        font-weight: 900;
+        font-weight: 600;
         color: var(--li-text);
       }
       .lore-v2-brand-sub {
@@ -92,7 +117,7 @@
         height: 34px;
         border: 1px solid var(--li-line);
         border-radius: 8px;
-        background: #0f1012;
+        background: var(--li-bg);
         color: var(--li-text);
         padding: 0 10px;
         font-size: 12px;
@@ -132,7 +157,7 @@
         justify-content: space-between;
         gap: 8px;
         font-size: 12px;
-        font-weight: 900;
+        font-weight: 600;
       }
       .lore-v2-section-desc {
         margin-top: 4px;
@@ -178,7 +203,7 @@
       .lore-v2-title {
         color: var(--li-text);
         font-size: 17px;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1.2;
         white-space: nowrap;
         overflow: hidden;
@@ -203,7 +228,7 @@
         color: var(--li-text-soft);
         cursor: pointer;
         font-size: 14px;
-        font-weight: 900;
+        font-weight: 600;
       }
       .lore-v2-close:hover {
         border-color: var(--li-accent);
@@ -216,7 +241,7 @@
         overflow-x: auto;
         padding: 9px 16px;
         border-bottom: 1px solid var(--li-line);
-        background: #16171a;
+        background: var(--li-bg);
       }
       .lore-v2-page {
         flex: 0 0 auto;
@@ -229,7 +254,7 @@
         color: var(--li-text-soft);
         cursor: pointer;
         font-size: 11px;
-        font-weight: 800;
+        font-weight: 600;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -300,24 +325,36 @@
         color: var(--li-muted);
         opacity: 1;
       }
+      .lore-v2-content [style*="font-weight:800"],
+      .lore-v2-content [style*="font-weight: 800"],
+      .lore-v2-content [style*="font-weight:900"],
+      .lore-v2-content [style*="font-weight: 900"] {
+        font-weight: 600 !important;
+      }
+      .lore-v2-content [style*="border-radius:9px"],
+      .lore-v2-content [style*="border-radius: 9px"],
+      .lore-v2-content [style*="border-radius:10px"],
+      .lore-v2-content [style*="border-radius: 10px"] {
+        border-radius: 8px !important;
+      }
       @media (prefers-color-scheme: light) {
-        #${SHELL_ID} {
-          --li-bg: #f7f7f8;
-          --li-surface: #ffffff;
-          --li-surface-2: #f3f4f6;
-          --li-surface-3: #e9ebef;
-          --li-line: #d4d7dd;
-          --li-line-strong: #b7bcc6;
-          --li-text: #17191d;
-          --li-text-soft: #3d4350;
-          --li-muted: #69707d;
-          --li-accent: #2563eb;
-          --li-accent-strong: #1d4ed8;
-          --li-accent-bg: rgba(37,99,235,.10);
+        .lore-v2-app {
+          --li-bg: #FFFFFF;
+          --li-surface: #FFFFFF;
+          --li-surface-2: #F7F7F8;
+          --li-surface-3: #ECECEF;
+          --li-line: #E4E4E7;
+          --li-line-strong: #D4D4D8;
+          --li-text: #18181B;
+          --li-text-soft: #71717A;
+          --li-muted: #71717A;
+          --li-accent: #4F46E5;
+          --li-accent-strong: #4338CA;
+          --li-accent-bg: rgba(79,70,229,.10);
         }
-        .lore-v2-sidebar { background: #f4f5f7; }
-        .lore-v2-search { background: #fff; }
-        .lore-v2-pages { background: #f8f8f9; }
+        .lore-v2-sidebar { background: var(--li-surface-2); }
+        .lore-v2-search { background: var(--li-bg); }
+        .lore-v2-pages { background: var(--li-surface-2); }
       }
       @media (max-width: 639px) {
         .lore-v2-frame {
@@ -365,9 +402,9 @@
       }
     `;
     const style = document.createElement('style');
-    style.id = STYLE_ID;
+    style.setAttribute(STYLE_MARK, '');
     style.textContent = css;
-    (document.head || document.documentElement).appendChild(style);
+    root.appendChild(style);
   }
 
   const state = {
@@ -460,7 +497,7 @@
   }
 
   function renderPage(page) {
-    const shell = document.getElementById(SHELL_ID);
+    const shell = shellNode();
     if (!shell || !page) return;
     const content = shell.querySelector('.lore-v2-content');
     const title = shell.querySelector('.lore-v2-title');
@@ -539,7 +576,7 @@
   }
 
   function renderShellNav() {
-    const shell = document.getElementById(SHELL_ID);
+    const shell = shellNode();
     if (!shell) return;
     const nav = shell.querySelector('.lore-v2-sections');
     const pages = shell.querySelector('.lore-v2-pages');
@@ -586,11 +623,12 @@
   }
 
   function ensureShell() {
-    installStyle();
-    let shell = document.getElementById(SHELL_ID);
+    const root = shellRoot();
+    installStyle(root);
+    let shell = shellNode();
     if (shell) return shell;
     shell = document.createElement('div');
-    shell.id = SHELL_ID;
+    shell.className = 'lore-v2-app';
     shell.innerHTML = `
       <div class="lore-v2-backdrop"></div>
       <div class="lore-v2-frame" role="dialog" aria-modal="true" aria-label="Lore Injector 설정">
@@ -632,7 +670,7 @@
         search.focus();
       }
     });
-    (document.body || document.documentElement).appendChild(shell);
+    root.appendChild(shell);
     return shell;
   }
 
@@ -650,7 +688,7 @@
   }
 
   function close() {
-    const shell = document.getElementById(SHELL_ID);
+    const shell = shellNode();
     if (shell) shell.dataset.open = 'false';
   }
 
@@ -684,7 +722,7 @@
         cb(createCollector(meta.id, meta.label, meta.desc, meta.order));
       } catch (e) { console.error('[LoreShell] submenu collect failed:', key, e); }
     });
-    if (document.getElementById(SHELL_ID)) {
+    if (shellNode()) {
       if (!state.activeRoot) {
         const root = findRestoredRoot();
         if (root) setActive(root.id);

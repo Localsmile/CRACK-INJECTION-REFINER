@@ -10,12 +10,13 @@
 
   const { settings } = _w.__LoreInj;
   const TONE = {
-    text: 'var(--li-text,#f3f4f6)',
-    soft: 'var(--li-text-soft,#b8bec8)',
-    muted: 'var(--li-muted,#858c98)',
-    line: 'var(--li-line,#343840)',
-    panel: 'var(--li-surface-2,#202226)',
-    accent: 'var(--li-accent,#8ab4ff)'
+    text: 'var(--li-text)',
+    soft: 'var(--li-text-soft)',
+    muted: 'var(--li-muted)',
+    line: 'var(--li-line)',
+    panel: 'var(--li-surface-2)',
+    accent: 'var(--li-accent)',
+    warn: 'var(--li-warn)'
   };
 
   const SETTINGS_REGISTRY = [
@@ -150,17 +151,17 @@
         const section = makeShell('section', '', '');
         section.style.cssText = 'border:1px solid ' + TONE.line + ';border-radius:10px;background:' + TONE.panel + ';padding:12px;';
         const title = makeShell('div', '', group.label);
-        title.style.cssText = 'font-size:13px;font-weight:900;color:' + TONE.text + ';margin-bottom:9px;';
+        title.style.cssText = 'font-size:16px;font-weight:600;color:' + TONE.text + ';margin-bottom:12px;';
         section.appendChild(title);
         const renderDef = (def, parent) => {
           const cap = capabilityOk(def);
           const row = makeShell('div', '', '');
-          row.style.cssText = 'display:grid;grid-template-columns:minmax(160px, 260px) minmax(160px, 1fr);gap:12px;align-items:center;padding:9px 0;border-top:1px solid rgba(148,163,184,.14);';
+          row.style.cssText = 'display:grid;grid-template-columns:minmax(160px, 260px) minmax(160px, 1fr);gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--li-line);';
           const meta = makeShell('div', '', '');
           const label = makeShell('div', '', def.label);
-          label.style.cssText = 'font-size:12px;font-weight:900;color:' + (cap.ok ? TONE.text : TONE.muted) + ';';
+          label.style.cssText = 'font-size:13px;font-weight:600;color:' + (cap.ok ? TONE.text : TONE.muted) + ';';
           const help = makeShell('div', '', cap.ok ? (def.help || '') : cap.reason);
-          help.style.cssText = 'font-size:11px;line-height:1.5;color:' + (cap.ok ? TONE.soft : '#e7b56f') + ';margin-top:3px;word-break:keep-all;';
+          help.style.cssText = 'font-size:12px;line-height:1.5;color:' + (cap.ok ? TONE.soft : TONE.warn) + ';margin-top:3px;word-break:keep-all;';
           meta.appendChild(label);
           meta.appendChild(help);
           const controlWrap = makeShell('div', '', '');
@@ -168,7 +169,7 @@
           const control = renderControl(def, !cap.ok);
           control.style.cssText = def.type === 'boolean'
             ? 'width:18px;height:18px;accent-color:' + TONE.accent + ';'
-            : 'width:100%;max-width:360px;min-height:34px;border-radius:8px;border:1px solid ' + TONE.line + ';background:var(--li-bg,#101113);color:' + TONE.text + ';padding:7px 9px;font-size:12px;box-sizing:border-box;';
+            : 'width:100%;max-width:360px;min-height:44px;border-radius:8px;border:1px solid ' + TONE.line + ';background:var(--li-bg);color:' + TONE.text + ';padding:8px 12px;font-size:13px;box-sizing:border-box;';
           controlWrap.appendChild(control);
           row.appendChild(meta);
           row.appendChild(controlWrap);
@@ -179,10 +180,10 @@
         basicDefs.forEach(def => renderDef(def, section));
         if (advancedDefs.length) {
           const details = document.createElement('details');
-          details.style.cssText = 'border-top:1px solid rgba(148,163,184,.14);margin-top:6px;padding-top:8px;';
+          details.style.cssText = 'border-top:1px solid var(--li-line);margin-top:8px;padding-top:8px;';
           const summary = document.createElement('summary');
           summary.textContent = '고급 설정';
-          summary.style.cssText = 'cursor:pointer;color:' + TONE.accent + ';font-size:12px;font-weight:900;list-style-position:inside;';
+          summary.style.cssText = 'cursor:pointer;color:' + TONE.accent + ';font-size:13px;font-weight:600;list-style-position:inside;min-height:44px;display:flex;align-items:center;';
           details.appendChild(summary);
           const advancedWrap = document.createElement('div');
           advancedWrap.style.cssText = 'margin-top:6px;';
