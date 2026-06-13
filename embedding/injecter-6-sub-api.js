@@ -249,8 +249,8 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('후보 재정렬/응답 교정 프롬프트'));
-      addPromptArea(nd, '후보 재정렬 지시문', settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt, (v) => { settings.config.rerankPrompt = v; settings.save(); }, { height: 110, reset: () => C.DEFAULTS.rerankPrompt });
+      nd.appendChild(C.createSectionTitle('후보 준비/응답 교정 프롬프트'));
+      addPromptArea(nd, '후보 준비 지시문', settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt, (v) => { settings.config.rerankPrompt = v; settings.save(); }, { height: 110, reset: () => C.DEFAULTS.rerankPrompt });
       addPromptArea(nd, '응답 교정 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
       const note = document.createElement('div');
       note.textContent = '응답 교정 템플릿/체크박스 선택은 AI 응답 교정 화면에서도 가능함.';
@@ -316,7 +316,7 @@
           const isDeepSeekApi = (settings.config.autoExtApiType || 'key') === 'deepseek';
           const deepSeekDefault = 'deepseek-v4-flash';
           addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || (isDeepSeekApi ? deepSeekDefault : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
-          addSelect(nd, '후보 재정렬 모델', settings.config.rerankModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
+          addSelect(nd, '후보 준비 모델', settings.config.rerankModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
           const judgeCtl = addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
           addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
   

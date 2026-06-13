@@ -137,7 +137,7 @@
   function getDurableStateSnapshot(config) {
     const keys = [
       'urlPacks', 'urlDisabledEntries', 'urlAutoExtPacks', 'urlCooldownMaps',
-      'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs', 'urlTurnCounters',
+      'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs',
       'autoPacks', 'templates', 'activeTemplateId',
       'refinerCustomPrompt', 'refinerUseDynamic', 'refinerTopics', 'refinerPromptVersion',
       'prefix', 'suffix', 'oocFormat', 'oocPromptVersion',
@@ -377,7 +377,7 @@
       deepSeekImportPrompt: DEFAULT_DEEPSEEK_IMPORT_PROMPT
     }],
     autoPacks: ['자동추출'], urlPacks: {}, urlDisabledEntries: {},
-    urlTurnCounters: {}, urlCooldownMaps: {}, urlAutoExtPacks: {}, urlExtLogs: {}, urlInjLogs: {},
+    urlCooldownMaps: {}, urlAutoExtPacks: {}, urlExtLogs: {}, urlInjLogs: {},
 
     embeddingEnabled: true, activeCharDetection: true, decayEnabled: true, periodicRecallEnabled: true,
     loreBudgetChars: 300, loreBudgetMax: 500,

@@ -27,6 +27,8 @@
   const CLEANUP_LOG_LIMIT = 90;
   let _cleanupTimer = null;
   let _cleanupRunning = false;
+  const _curatorTimers = {};
+  const _curatorInFlight = {};
 
   function cleanupHash(text) {
     try { return C.simpleHash(String(text || '')); } catch (_) { return String(String(text || '').length); }
@@ -342,6 +344,140 @@
     return String(e?.eventId || e?.id || e?.name || '');
   }
 
+  function curatorCacheKey(chatKey) {
+    return 'lore-curator-cache:' + (chatKey || 'global');
+  }
+
+  function lastLogId(logs) {
+    if (!Array.isArray(logs) || !logs.length) return '';
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const id = messageIdOf(logs[i]);
+      if (id) return id;
+    }
+    return '';
+  }
+
+  function readCuratorCache(chatKey, recentMsgs) {
+    try {
+      const raw = _ls.getItem(curatorCacheKey(chatKey));
+      const cache = raw ? JSON.parse(raw) : null;
+      if (!cache || typeof cache !== 'object') return null;
+      const ids = Array.isArray(recentMsgs) ? recentMsgs.slice(-3).map(messageIdOf).filter(Boolean) : [];
+      if (cache.basedOnMsgId && ids.length && !ids.includes(String(cache.basedOnMsgId))) return null;
+      if (cache.expiresAt && Date.now() > Number(cache.expiresAt)) return null;
+      return cache;
+    } catch (_) {}
+    return null;
+  }
+
+  function writeCuratorCache(chatKey, payload) {
+    try {
+      _ls.setItem(curatorCacheKey(chatKey), JSON.stringify({
+        version: 1,
+        savedAt: Date.now(),
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+        ...payload
+      }));
+      return true;
+    } catch (e) {
+      console.warn('[LoreInj:curator] cache save failed:', e && e.message);
+      return false;
+    }
+  }
+
+  function applyCuratorCache(scored, cache) {
+    if (!cache || !Array.isArray(scored) || !scored.length) return { scored, decision: null, source: 'none' };
+    let next = scored;
+    if (Array.isArray(cache.ordering) && cache.ordering.length) {
+      const rank = new Map(cache.ordering.map((id, idx) => [String(id), idx]));
+      next = scored.slice().sort((a, b) => {
+        const ar = rank.has(String(a?.entry?.id)) ? rank.get(String(a.entry.id)) : 999999;
+        const br = rank.has(String(b?.entry?.id)) ? rank.get(String(b.entry.id)) : 999999;
+        if (ar !== br) return ar - br;
+        return (b.score || 0) - (a.score || 0);
+      });
+    }
+    const decision = cache.temporalJudge && typeof cache.temporalJudge === 'object' ? cache.temporalJudge : null;
+    if (decision && !decision.error && !decision.fallback) next = applyTemporalJudge(next, decision);
+    return { scored: next, decision, source: 'cache' };
+  }
+
+  function buildGenerationOptsForCurator(config, chatKey, feature, model) {
+    if (_w.__LoreInj.buildGenerationApiOpts) {
+      return _w.__LoreInj.buildGenerationApiOpts({
+        model,
+        costContext: { feature, chatKey: chatKey || 'global' }
+      }, { feature, chatKey: chatKey || 'global' });
+    }
+    return {
+      apiType: config.autoExtApiType || 'key',
+      key: config.autoExtKey,
+      deepSeekKey: config.autoExtDeepSeekKey,
+      deepSeekThinking: config.autoExtDeepSeekThinking !== false,
+      deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
+      vertexJson: config.autoExtVertexJson,
+      vertexLocation: config.autoExtVertexLocation || 'global',
+      vertexProjectId: config.autoExtVertexProjectId,
+      firebaseScript: config.autoExtFirebaseScript,
+      model,
+      costContext: { feature, chatKey: chatKey || 'global' }
+    };
+  }
+
+  function scheduleBackgroundCuration(chatKey, userInput, recentMsgs, scored, config) {
+    if (!chatKey || !Array.isArray(scored) || !scored.length) return;
+    if (config.rerankEnabled !== true && config.temporalRecallJudgeEnabled !== true) return;
+    const cacheAnchor = lastLogId(recentMsgs);
+    if (!cacheAnchor) return;
+    const jobKey = chatKey + ':' + cacheAnchor;
+    if (_curatorInFlight[jobKey]) return;
+    if (_curatorTimers[jobKey]) clearTimeout(_curatorTimers[jobKey]);
+    _curatorTimers[jobKey] = setTimeout(async () => {
+      delete _curatorTimers[jobKey];
+      _curatorInFlight[jobKey] = true;
+      try {
+        let ordering = scored.map(s => s && s.entry && s.entry.id).filter(id => id != null).map(String);
+        let temporalJudge = null;
+        const fallbackModel = _w.__LoreInj.getGenerationFallbackModel
+          ? _w.__LoreInj.getGenerationFallbackModel(config)
+          : 'gemini-3-flash-preview';
+        if (config.rerankEnabled === true) {
+          try {
+            const rerankModel = (config.rerankModel === '_custom' ? config.rerankCustomModel : config.rerankModel)
+              || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : config.autoExtModel)
+              || fallbackModel;
+            const rerankOpts = buildGenerationOptsForCurator(config, chatKey, 'rerank', rerankModel);
+            const recentText = recentMsgs.slice(-4).map(m => (m.role || '') + ': ' + (m.message || m.content || '')).join('\n');
+            const reranked = await C.smartRerank(userInput, scored, recentText, rerankOpts, config);
+            if (Array.isArray(reranked) && reranked.length) {
+              ordering = reranked.map(s => s && s.entry && s.entry.id).filter(id => id != null).map(String);
+            }
+          } catch (e) {
+            console.warn('[LoreInj:curator] rerank failed:', e && e.message);
+          }
+        }
+        if (config.temporalRecallJudgeEnabled === true) {
+          try {
+            const judgeModel = (config.temporalRecallJudgeModel === '_custom' ? config.temporalRecallJudgeCustomModel : config.temporalRecallJudgeModel)
+              || fallbackModel;
+            const judgeOpts = buildGenerationOptsForCurator(config, chatKey, 'judge', judgeModel);
+            temporalJudge = await runTemporalRecallJudge(userInput, recentMsgs, scored, config, judgeOpts);
+          } catch (e) {
+            temporalJudge = { error: e && e.message ? e.message : String(e), fallback: true };
+          }
+        }
+        writeCuratorCache(chatKey, {
+          basedOnMsgId: cacheAnchor,
+          ordering,
+          temporalJudge,
+          candidateCount: scored.length
+        });
+      } finally {
+        delete _curatorInFlight[jobKey];
+      }
+    }, 1200);
+  }
+
   function resolveActivePackState(url) {
     const packsByUrl = settings.config.urlPacks || {};
     const disabledByUrl = settings.config.urlDisabledEntries || {};
@@ -588,7 +724,7 @@
       inactiveCharPenalty: config.activeCharBoostEnabled !== false ? C.DEFAULTS.inactiveCharPenalty : 1.0
     };
 
-    let scored = [], activeNames = [], temporalJudgeDecision = null;
+    let scored = [], activeNames = [], temporalJudgeDecision = null, curatorSource = 'none';
     try {
       const r = await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts);
       scored = r.scored || []; activeNames = r.activeNames || [];
@@ -615,9 +751,12 @@
           scored.sort((a,b) => b.score - a.score);
         }
       }
-      temporalJudgeDecision = await runTemporalRecallJudge(userInput, recentMsgs, scored, config, apiOpts);
-      if (temporalJudgeDecision && !temporalJudgeDecision.fallback && !temporalJudgeDecision.error) {
-        scored = applyTemporalJudge(scored, temporalJudgeDecision);
+      const curatorCache = readCuratorCache(chatKey, recentMsgs);
+      if (curatorCache) {
+        const applied = applyCuratorCache(scored, curatorCache);
+        scored = applied.scored || scored;
+        temporalJudgeDecision = applied.decision || null;
+        curatorSource = applied.source || 'cache';
       }
       if (r.searchStats && config.embeddingEnabled) {
         const sk = 'lore-hybrid-stats';
@@ -647,6 +786,7 @@
         }
         _ls.setItem(sk, JSON.stringify(st));
       }
+      scheduleBackgroundCuration(chatKey, userInput, recentMsgs, scored, config);
     } catch(e) {
       const tr = C.triggerScan(userInput, recentMsgs, enabled, searchConfig);
       scored = tr.map(r => ({ entry: r.entry, score: r.triggerScore }));
@@ -666,31 +806,6 @@
           } catch(e) {}
         }
       }
-    }
-
-    if (config.rerankEnabled) {
-      try {
-        C.showStatusBadge('에리가 로어 재정렬 중');
-        const last2 = recentMsgs.slice(-4).map(m => m.role + ': ' + m.message).join('\n');
-        const rerankModel = (config.rerankModel === '_custom' ? config.rerankCustomModel : config.rerankModel)
-          || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : config.autoExtModel)
-          || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3-flash-preview');
-        const rerankApiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-          model: rerankModel,
-          costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
-        }, { feature: 'rerank', chatKey: chatKey || 'global' }) : {
-          apiType: config.autoExtApiType || 'key', key: config.autoExtKey, deepSeekKey: config.autoExtDeepSeekKey,
-          deepSeekThinking: config.autoExtDeepSeekThinking !== false, deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
-          vertexJson: config.autoExtVertexJson, vertexLocation: config.autoExtVertexLocation || 'global',
-          vertexProjectId: config.autoExtVertexProjectId,
-          firebaseScript: config.autoExtFirebaseScript,
-          model: rerankModel,
-          costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
-        };
-        scored = await C.smartRerank(userInput, scored, last2, rerankApiOpts, config);
-      } catch(e) {}
-      // 리랭크 직후 hide 대신 "응답 기다리는 중"으로 전환 — Refiner가 실제 응답 감지 시 다음 상태로 교체/hide 담당
-      C.showStatusBadge('에리가 응답 기다리는 중');
     }
 
     let cooldownFilteredAll = false;
@@ -913,6 +1028,7 @@
       finalChars: _finalChars,
       reason: fmtResult.reason || 'ok',
       temporalJudge: temporalJudgeDecision,
+      curator: curatorSource,
       temporalInjection: {
         source: temporalPlan.source,
         mode: temporalPlan.mode,
