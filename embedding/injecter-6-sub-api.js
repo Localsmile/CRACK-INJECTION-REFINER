@@ -145,6 +145,7 @@
 
   function renderPromptSettings(panel) {
     if (settings.ensureDeepSeekTemplateFields && settings.ensureDeepSeekTemplateFields()) settings.save();
+    if (_w.__LoreInj.ensurePromptBlocks && _w.__LoreInj.ensurePromptBlocks(settings.config)) settings.save();
     let renderDeepSeekOptions = null;
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
@@ -245,6 +246,54 @@
         ds1.disabled = ds2.disabled = ds3.disabled = ds4.disabled = !!activeTpl.isDefault;
       };
       renderDeepSeekOptions();
+    }});
+
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      nd.appendChild(C.createSectionTitle('공통 규칙 블록', '추출/변환/교정 프롬프트에 공통으로 붙는 규칙. 전체 템플릿을 복사하지 않고 핵심 규칙만 관리함.'));
+      const blocks = _w.__LoreInj.normalizePromptBlocks ? _w.__LoreInj.normalizePromptBlocks(settings.config.promptBlocks) : (settings.config.promptBlocks || []);
+      settings.config.promptBlocks = blocks;
+      const featureLabel = (features) => {
+        const map = { extract: '추출', temporalExtract: '중요 장면', import: '지식 변환', repair: 'JSON 복구', refine: '응답 교정' };
+        return (features || []).map(f => map[f] || f).join(', ');
+      };
+      blocks.forEach((block, idx) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:10px;padding:10px;margin:10px 0;background:var(--li-surface-2,#101928);';
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = block.enabled !== false;
+        chk.disabled = !!block.locked;
+        chk.onchange = () => { settings.config.promptBlocks[idx].enabled = chk.checked; settings.save(); };
+        const title = document.createElement('div');
+        title.textContent = block.title || block.id;
+        title.style.cssText = 'font-size:12px;font-weight:900;color:var(--li-text,#e7edf5);flex:1;';
+        const feat = document.createElement('div');
+        feat.textContent = featureLabel(block.features);
+        feat.style.cssText = 'font-size:10px;color:var(--li-muted,#748196);';
+        head.appendChild(chk);
+        head.appendChild(title);
+        head.appendChild(feat);
+        const ta = document.createElement('textarea');
+        ta.value = block.text || '';
+        ta.style.cssText = FIELD_STYLE + 'height:86px;font-family:monospace;resize:vertical;';
+        ta.onchange = () => { settings.config.promptBlocks[idx].text = ta.value; settings.save(); };
+        box.appendChild(head);
+        box.appendChild(ta);
+        nd.appendChild(box);
+      });
+      const resetBlocks = document.createElement('button');
+      resetBlocks.textContent = '규칙 블록 기본값 복원';
+      resetBlocks.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);margin-top:4px;';
+      resetBlocks.onclick = () => {
+        if (!confirm('공통 규칙 블록을 기본값으로 복원?')) return;
+        settings.config.promptBlocks = _w.__LoreInj.DEFAULT_PROMPT_BLOCKS ? JSON.parse(JSON.stringify(_w.__LoreInj.DEFAULT_PROMPT_BLOCKS)) : [];
+        settings.save();
+        alert('복원됨. 프롬프트 관리 화면을 다시 열면 반영됨.');
+      };
+      nd.appendChild(resetBlocks);
     }});
 
     panel.addBoxedField('', '', { onInit: (nd) => {

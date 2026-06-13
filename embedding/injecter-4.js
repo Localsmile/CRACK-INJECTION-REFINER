@@ -715,6 +715,21 @@ DEDUP RULE:
     return fallback || '';
   }
 
+  function composeFeaturePrompt(template, replacements, opts = {}) {
+    if (_w.__LoreInj && typeof _w.__LoreInj.composePrompt === 'function') {
+      return _w.__LoreInj.composePrompt(template, replacements, {
+        feature: opts.feature || 'extract',
+        config: settings.config || {},
+        prefix: opts.prefix || ''
+      });
+    }
+    let out = String(template || '');
+    Object.keys(replacements || {}).forEach(key => {
+      out = out.replace(new RegExp('\\{' + key + '\\}', 'g'), replacements[key] == null ? '' : String(replacements[key]));
+    });
+    return (opts.prefix || '') + out;
+  }
+
   async function runTemporalExtractPass(opts = {}) {
     if (settings.config.temporalExtractEnabled === false) return { count: 0, skipped: true };
     const context = opts.context || '';
@@ -752,7 +767,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       } catch (_) {}
 
       const outputModeText = buildOutputModeText(_patchOn ? TEMPORAL_OUTPUT_MODE_PATCH : TEMPORAL_OUTPUT_MODE_FULL, apiOpts, 'temporal', _patchOn);
-      const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
+      const promptBase = composeFeaturePrompt(promptTpl, { context, schema }, { feature: 'temporalExtract' });
+      const prompt = injectTemporalExistingBlock(promptBase, existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
       const temporalApiOpts = {
@@ -1205,7 +1221,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
     const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
     const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn) : '';
-    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
+    const prompt = composeFeaturePrompt(promptTpl, {
+      context,
+      entries: entriesText,
+      schema: extractSchema,
+      outputMode: outputModeText
+    }, { feature: 'extract', prefix: personaPrefix });
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let apiLog = null, _extElapsedMs = 0, _extCost = null;
@@ -1512,7 +1533,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       }
       const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
       const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn) : '';
-      const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
+      const prompt = composeFeaturePrompt(promptTpl, {
+        context,
+        entries: entriesText,
+        schema: extractSchema,
+        outputMode: outputModeText
+      }, { feature: 'extract', prefix: personaPrefix });
 
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0; let lastFailureKind = ''; let forceThinkingOff = false;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {

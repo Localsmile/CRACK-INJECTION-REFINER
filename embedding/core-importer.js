@@ -166,20 +166,31 @@
   const DEEPSEEK_IMPORT_MAX_OUTPUT_TOKENS = 65536;
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
-    if (!apiOpts || apiOpts.apiType !== 'deepseek') return prompt;
-    const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
-    if (fullPrompt) {
-      return fullPrompt
+    const compose = (tpl) => {
+      const L = _w.__LoreInj || {};
+      if (typeof L.composePrompt === 'function') {
+        return L.composePrompt(tpl, {
+          source: values.source || '',
+          schema: values.schema || '',
+          maxEntries: String(values.maxEntries || DEFAULTS.importMaxEntries)
+        }, { feature: 'import', config: (L.settings && L.settings.config) || {} });
+      }
+      return String(tpl || '')
         .replace('{source}', values.source || '')
         .replace('{schema}', values.schema || '')
         .replace('{maxEntries}', String(values.maxEntries || DEFAULTS.importMaxEntries));
+    };
+    if (!apiOpts || apiOpts.apiType !== 'deepseek') return compose(prompt);
+    const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
+    if (fullPrompt) {
+      return compose(fullPrompt);
     }
-    return String(prompt || '')
+    return compose(String(prompt || '')
       .replace('JSON ONLY. Output a valid JSON array. No markdown.', 'JSON ONLY. Output one valid JSON object with top-level shape {"entries":[...]}. No markdown.')
       + '\n\nStructured output:\n'
       + '- Top-level object shape must be exactly {"entries":[...]}.\n'
       + '- Put every converted lore entry inside entries.\n'
-      + '- If no useful lore exists, return exactly {"entries":[]}.';
+      + '- If no useful lore exists, return exactly {"entries":[]}.');
   }
 
   async function importFromText(text, packName, apiOpts, opts = {}) {
@@ -208,11 +219,7 @@
       const chunk = chunks[ci];
       const schemaText = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n');
       const promptTpl = IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n');
-      const prompt = adaptImportPromptForProvider(
-        promptTpl.replace('{source}', chunk).replace('{schema}', schemaText).replace('{maxEntries}', String(maxEntries)),
-        safeApiOpts,
-        { source: chunk, schema: schemaText, maxEntries }
-      );
+      const prompt = adaptImportPromptForProvider(promptTpl, safeApiOpts, { source: chunk, schema: schemaText, maxEntries });
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let gotEntries = 0;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
         attempts++;

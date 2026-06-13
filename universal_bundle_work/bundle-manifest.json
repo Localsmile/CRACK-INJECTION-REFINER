@@ -27,6 +27,7 @@
     "embedding/refiner.js",
     "embedding/injecter-1.js",
     "embedding/injecter-2.js",
+    "embedding/prompt-composer.js",
     "embedding/injecter-3.js",
     "embedding/injecter-4.js",
     "embedding/injecter-5.js",

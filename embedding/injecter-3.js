@@ -138,7 +138,7 @@
     const keys = [
       'urlPacks', 'urlDisabledEntries', 'urlAutoExtPacks', 'urlCooldownMaps',
       'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs',
-      'autoPacks', 'templates', 'activeTemplateId',
+      'autoPacks', 'templates', 'activeTemplateId', 'promptBlocks',
       'refinerCustomPrompt', 'refinerUseDynamic', 'refinerTopics', 'refinerPromptVersion',
       'prefix', 'suffix', 'oocFormat', 'oocPromptVersion',
       'autoExtractPromptVersion', 'migrationStatus', 'localMigrationVersion'
@@ -365,6 +365,7 @@
     temporalRecallJudgePrompt: DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
     temporalRecallJudgeSchema: DEFAULT_TEMPORAL_RECALL_JUDGE_SCHEMA,
 
+    promptBlocks: _w.__LoreInj.DEFAULT_PROMPT_BLOCKS ? JSON.parse(JSON.stringify(_w.__LoreInj.DEFAULT_PROMPT_BLOCKS)) : [],
     activeTemplateId: 'default',
     templates: [{
       id: 'default', name: '기본 프롬프트', isDefault: true,
@@ -496,6 +497,10 @@
 
         try {
           if (this.ensureDeepSeekTemplateFields()) this.save();
+        } catch (e) {}
+
+        try {
+          if (_w.__LoreInj.ensurePromptBlocks && _w.__LoreInj.ensurePromptBlocks(this.config)) this.save();
         } catch (e) {}
 
         const refSaved = _ls.getItem('speech-refiner-v1');
