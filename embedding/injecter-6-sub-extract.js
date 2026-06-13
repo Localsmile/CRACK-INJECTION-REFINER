@@ -54,41 +54,20 @@
   }
   
   _w.__LoreInj.registerSubMenu('extract', function(modal) {
-    modal.createSubMenu('추출/변환 설정', (m) => {
+    modal.createSubMenu('추출 실행', (m) => {
       m.replaceContentPanel((panel) => {
-        // === 자동 대화 추출 ===
+        // === manual extraction ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          nd.appendChild(C.createToggleRow('자동 대화 정리', '정해진 턴마다 대화를 로어에 추가함.', settings.config.autoExtEnabled, (v) => { settings.config.autoExtEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('기존 로어 참고', '저장된 로어를 같이 참고해 중복 저장 줄임.', settings.config.autoExtIncludeDb, (v) => { settings.config.autoExtIncludeDb = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('변경분만 저장', '기존 로어 전체 대신 바뀐 부분만 받아 출력 토큰 줄임.', settings.config.autoExtPatchMode !== false, (v) => { settings.config.autoExtPatchMode = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('페르소나 정보 전송', '추출 시 페르소나 이름을 같이 보내 정확도 올림.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('중요 장면 기억하기', '중요 사건/약속을 나중에 떠올릴 수 있게 별도 정리함.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('추출 상태 배지 표시', '추출/배치/임베딩 진행 상태를 화면에 띄움. 모바일에서 겹치면 끄기.', settings.config.extractStatusBadgeEnabled !== false, (v) => { settings.config.extractStatusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
-  
-          const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
-          const makeInput = (label, key, defaultVal) => {
-            const f = document.createElement('div'); f.style.flex = '1';
-            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
-            const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal;
-            i.style.cssText = FIELD_STYLE;
-            const saveNum = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } };
-            i.oninput = saveNum; i.onchange = saveNum;
-            f.appendChild(l); f.appendChild(i); return f;
-          };
-          row1.appendChild(makeInput('자동 정리 주기', 'autoExtTurns', 8)); row1.appendChild(makeInput('읽을 최근 대화', 'autoExtScanRange', 6)); row1.appendChild(makeInput('최근 제외', 'autoExtOffset', 5)); row1.appendChild(makeInput('중요 장면 최대', 'temporalMaxEventsPerPass', 5));
-          nd.appendChild(row1);
+          const title = document.createElement('div');
+          title.textContent = '수동 추출';
+          title.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;';
+          const desc = document.createElement('div');
+          desc.textContent = '추출 방식, 변경분 저장, 중요 장면, 임베딩 같은 설정은 기억 설정/삽입 설정에서 관리함. 이 화면은 실행과 대상 로어팩만 다룸.';
+          desc.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:12px;line-height:1.55;word-break:keep-all;';
+          nd.appendChild(title);
+          nd.appendChild(desc);
 
-          const injTitle = document.createElement('div'); injTitle.textContent = '삽입 옵션'; injTitle.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;margin:12px 0 6px;padding-top:10px;border-top:1px solid var(--li-line,#2f3b4f);'; nd.appendChild(injTitle);
-          nd.appendChild(C.createToggleRow('삽입 쿨타임 사용', '같은 로어가 너무 자주 들어가지 않게 막음.', settings.config.cooldownEnabled !== false, (v) => { settings.config.cooldownEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('오래된 정보도 가끔 넣기', '직접 관련이 약해도 중요한 과거 정보를 주기적으로 넣음.', settings.config.periodicRecallEnabled !== false, (v) => { settings.config.periodicRecallEnabled = v; settings.config.decayEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('삽입 흔적 자동 정리', '지난 로어 참조문을 나중에 걷어내 대화 기록을 깔끔하게 유지함.', settings.config.injectionCleanupEnabled !== false, (v) => { settings.config.injectionCleanupEnabled = v; settings.save(); }));
-          const injRow = document.createElement('div'); injRow.style.cssText = 'display:flex;gap:12px;margin:8px 0 12px;align-items:center;';
-          injRow.appendChild(makeInput('삽입 쿨타임(턴)', 'cooldownTurns', 3));
-          injRow.appendChild(makeInput('한 번에 넣을 로어', 'maxEntries', 3));
-          injRow.appendChild(makeInput('삽입 흔적 정리 기준(문자)', 'windowExitChars', 7000));
-          nd.appendChild(injRow);
-  
           const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
           const f3 = document.createElement('div'); f3.style.flex = '1';
           const l3 = document.createElement('div'); l3.textContent = '저장할 로어팩'; l3.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
@@ -138,19 +117,6 @@
           };
           nd.appendChild(btnRun);
           nd.appendChild(btnStatus);
-        }});
-  
-        // === 과거 장면 불러오기 판단 ===
-        panel.addBoxedField('', '', { onInit: (nd) => {
-          C.setFullWidth(nd);
-          const jt = document.createElement('div'); jt.textContent = '과거 장면 불러오기 판단'; jt.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;'; nd.appendChild(jt);
-          const jd = document.createElement('div'); jd.textContent = '사용 여부와 호출 범위만 여기서 조절함. 모델/생각 깊이는 API 설정에서 관리함.'; jd.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:10px;line-height:1.5;'; nd.appendChild(jd);
-          nd.appendChild(C.createToggleRow('AI로 참고 장면 고르기', '규칙 판단 뒤 AI가 필요한 과거 장면 한 번 더 고름.', settings.config.temporalRecallJudgeEnabled, (v) => { settings.config.temporalRecallJudgeEnabled = v; settings.save(); }));
-          const jrow = document.createElement('div'); jrow.style.cssText = 'display:flex;gap:12px;margin-top:10px;';
-          const jmkNum = (label, key, defaultVal, min, max) => { const f = document.createElement('div'); f.style.flex = '1'; const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;'; const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal; if (min !== undefined) i.min = min; if (max !== undefined) i.max = max; i.style.cssText = FIELD_STYLE; const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } }; i.oninput = save; i.onchange = save; f.appendChild(l); f.appendChild(i); return f; };
-          jrow.appendChild(jmkNum('응답 제한 시간(ms)', 'temporalRecallJudgeTimeoutMs', 8000, 1000, 60000));
-          jrow.appendChild(jmkNum('검토할 장면 수', 'temporalRecallJudgeCandidateLimit', 6, 1, 30));
-          nd.appendChild(jrow);
         }});
   
         // === 전체 로그 일괄 추출 ===
@@ -379,7 +345,7 @@
           };
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
-      }, '추출/변환 설정');
+      }, '추출 실행');
     });
   });
   

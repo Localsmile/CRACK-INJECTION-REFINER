@@ -42,7 +42,11 @@
     { key: 'autoExtTurns', type: 'number', label: '자동 정리 주기', help: '몇 유저 턴마다 자동 정리를 실행할지 정함.', group: 'memory', level: 'basic', min: 2, max: 100, step: 1 },
     { key: 'autoExtPatchMode', type: 'boolean', label: '변경분만 저장', help: '기존 로어 전체 대신 바뀐 부분만 받아 출력 비용을 줄임.', group: 'memory', level: 'basic' },
     { key: 'autoExtIncludeDb', type: 'boolean', label: '기존 로어 참고', help: '추출 시 현재 로어를 참고해 중복 저장을 줄임.', group: 'memory', level: 'basic' },
+    { key: 'autoExtIncludePersona', type: 'boolean', label: '페르소나 정보 전송', help: '추출 시 페르소나 이름을 같이 보내 정확도를 높임.', group: 'memory', level: 'advanced' },
+    { key: 'autoExtScanRange', type: 'number', label: '읽을 최근 대화', help: '자동 정리 때 참고할 최근 대화 범위.', group: 'memory', level: 'advanced', min: 1, max: 80, step: 1 },
+    { key: 'autoExtOffset', type: 'number', label: '최근 제외', help: '아직 흐름이 안정되지 않은 최근 대화를 제외함.', group: 'memory', level: 'advanced', min: 0, max: 30, step: 1 },
     { key: 'temporalExtractEnabled', type: 'boolean', label: '중요 장면 기억', help: '사건, 약속, 관계 변화 등을 별도 장면 기억으로 저장함.', group: 'memory', level: 'basic' },
+    { key: 'temporalMaxEventsPerPass', type: 'number', label: '중요 장면 최대', help: '한 번의 정리에서 저장할 중요 장면 최대 개수.', group: 'memory', level: 'advanced', min: 1, max: 30, step: 1 },
     { key: 'autoEmbedOnExtract', type: 'boolean', label: '추출 후 임베딩', help: '새 로어를 의미 검색용으로 자동 준비함.', group: 'memory', level: 'advanced' },
 
     { key: 'autoExtApiType', type: 'select', label: 'API 방식', help: '추출/교정에 사용할 API 연결 방식.', group: 'models', level: 'basic', options: [{ value: 'key', label: 'Gemini API Key' }, { value: 'deepseek', label: 'DeepSeek' }, { value: 'firebase', label: 'Firebase' }, { value: 'vertex', label: 'Vertex JSON' }] },
@@ -53,6 +57,9 @@
 
     { key: 'extractStatusBadgeEnabled', type: 'boolean', label: '추출 상태 배지', help: '추출/배치/임베딩 진행 상태를 화면에 표시함.', group: 'advanced', level: 'basic' },
     { key: 'rerankEnabled', type: 'boolean', label: '다음 턴 후보 준비', help: '현재 대화를 보고 다음 삽입에 쓸 후보 순서를 백그라운드로 준비함.', group: 'advanced', level: 'advanced' },
+    { key: 'temporalRecallJudgeEnabled', type: 'boolean', label: 'AI로 참고 장면 고르기', help: '규칙 판단 뒤 필요한 과거 장면을 백그라운드로 한 번 더 고름.', group: 'advanced', level: 'advanced' },
+    { key: 'temporalRecallJudgeTimeoutMs', type: 'number', label: '참고 장면 제한 시간', help: '과거 장면 판단 API 호출 제한 시간(ms).', group: 'advanced', level: 'advanced', min: 1000, max: 60000, step: 500 },
+    { key: 'temporalRecallJudgeCandidateLimit', type: 'number', label: '검토할 장면 수', help: '과거 장면 판단에 넘길 후보 개수.', group: 'advanced', level: 'advanced', min: 1, max: 30, step: 1 },
     { key: 'statusBadgeEnabled', type: 'boolean', label: '교정 상태 배지', help: '응답 교정 진행 상태를 화면에 표시함.', group: 'advanced', level: 'advanced' }
   ];
 
@@ -145,7 +152,7 @@
         const title = makeShell('div', '', group.label);
         title.style.cssText = 'font-size:13px;font-weight:900;color:' + TONE.text + ';margin-bottom:9px;';
         section.appendChild(title);
-        defs.forEach(def => {
+        const renderDef = (def, parent) => {
           const cap = capabilityOk(def);
           const row = makeShell('div', '', '');
           row.style.cssText = 'display:grid;grid-template-columns:minmax(160px, 260px) minmax(160px, 1fr);gap:12px;align-items:center;padding:9px 0;border-top:1px solid rgba(148,163,184,.14);';
@@ -165,8 +172,24 @@
           controlWrap.appendChild(control);
           row.appendChild(meta);
           row.appendChild(controlWrap);
-          section.appendChild(row);
-        });
+          parent.appendChild(row);
+        };
+        const basicDefs = defs.filter(def => def.level !== 'advanced');
+        const advancedDefs = defs.filter(def => def.level === 'advanced');
+        basicDefs.forEach(def => renderDef(def, section));
+        if (advancedDefs.length) {
+          const details = document.createElement('details');
+          details.style.cssText = 'border-top:1px solid rgba(148,163,184,.14);margin-top:6px;padding-top:8px;';
+          const summary = document.createElement('summary');
+          summary.textContent = '고급 설정';
+          summary.style.cssText = 'cursor:pointer;color:' + TONE.accent + ';font-size:12px;font-weight:900;list-style-position:inside;';
+          details.appendChild(summary);
+          const advancedWrap = document.createElement('div');
+          advancedWrap.style.cssText = 'margin-top:6px;';
+          advancedDefs.forEach(def => renderDef(def, advancedWrap));
+          details.appendChild(advancedWrap);
+          section.appendChild(details);
+        }
         nd.appendChild(section);
       });
     }});
