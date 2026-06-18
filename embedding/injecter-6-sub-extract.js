@@ -7,9 +7,9 @@
   if (_w.__LoreInj.__subExtractLoaded) return;
   
   const { C, db, settings, getAutoExtPackForUrl, setAutoExtPackForUrl, setPackEnabled } = _w.__LoreInj;
-  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;min-height:34px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:8px 10px;font-size:12px;box-sizing:border-box;';
-  const BTN_BASE = 'min-height:34px;padding:7px 12px;font-size:12px;border-radius:8px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
-  const TONE = { muted: 'var(--li-muted,#748196)', soft: 'var(--li-text-soft,#a9b6c7)', text: 'var(--li-text,#e7edf5)', ok: '#78d5a8', warn: '#e7b56f', danger: '#ef6b6b' };
+  const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;min-height:40px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:9px 11px;font-size:13px;box-sizing:border-box;';
+  const BTN_BASE = 'min-height:36px;padding:8px 13px;font-size:12px;border-radius:8px;background:var(--li-surface-3,#272a2f);border:1px solid var(--li-line,#2f3b4f);color:var(--li-text,#e7edf5);cursor:pointer;font-weight:600;';
+  const TONE = { muted: 'var(--li-muted,#748196)', soft: 'var(--li-text-soft,#a9b6c7)', text: 'var(--li-text,#e7edf5)', ok: 'var(--li-accent-strong,#c7d2fe)', warn: 'var(--li-warn,#d97706)', danger: 'var(--li-danger,#dc2626)' };
 
   function requireGenerationApiOpts(overrides = {}, costContext = null) {
     if (typeof _w.__LoreInj.buildGenerationApiOpts === 'function') {
@@ -51,9 +51,95 @@
     } catch (_) {}
     return { logs: arr.length, batches, inputTokens, expectedOutputTokens, model, usd };
   }
+
+  function appendExtractionOptions(nd) {
+    const box = document.createElement('div');
+    box.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:var(--li-surface-2,#2b2b31);padding:14px;margin:0 0 16px;';
+    const head = document.createElement('div');
+    head.textContent = '추출 설정';
+    head.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:4px;';
+    box.appendChild(head);
+    const desc = document.createElement('div');
+    desc.textContent = '자동 정리, 변경분 저장, 중요 장면, 임베딩, 배치 기본값을 한 곳에서 조정함.';
+    desc.style.cssText = 'font-size:11px;color:' + TONE.muted + ';line-height:1.5;margin-bottom:10px;word-break:keep-all;';
+    box.appendChild(desc);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;';
+    if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) grid.style.gridTemplateColumns = '1fr';
+    const addToggle = (label, desc, key, defaultOn) => {
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;padding:11px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:var(--li-bg,#18181b);cursor:pointer;min-width:0;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = settings.config[key] !== undefined ? settings.config[key] !== false : defaultOn !== false;
+      cb.style.cssText = 'margin-top:2px;accent-color:' + TONE.ok + ';flex:0 0 auto;';
+      const meta = document.createElement('div');
+      meta.style.cssText = 'min-width:0;';
+      const title = document.createElement('div');
+      title.textContent = label;
+      title.style.cssText = 'font-size:12px;color:' + TONE.text + ';font-weight:700;';
+      const help = document.createElement('div');
+      help.textContent = desc;
+      help.style.cssText = 'font-size:11px;color:' + TONE.muted + ';line-height:1.45;margin-top:2px;word-break:keep-all;';
+      meta.appendChild(title); meta.appendChild(help);
+      cb.onchange = () => { settings.config[key] = cb.checked; settings.save(); };
+      row.appendChild(cb); row.appendChild(meta); grid.appendChild(row);
+    };
+    addToggle('자동 대화 정리', '정해진 턴마다 대화를 읽어 로어를 갱신함.', 'autoExtEnabled', true);
+    addToggle('변경분만 저장', '기존 로어가 있으면 바뀐 내용만 받아 출력 비용을 줄임.', 'autoExtPatchMode', true);
+    addToggle('기존 로어 참고', '중복 저장을 줄이기 위해 현재 로어 요약을 함께 보냄.', 'autoExtIncludeDb', true);
+    addToggle('페르소나 정보 전송', '추출 시 현재 페르소나 이름을 같이 보내 정확도를 높임.', 'autoExtIncludePersona', true);
+    addToggle('중요 장면 기억', '사건, 약속, 관계 변화 같은 장면 기억을 함께 저장함.', 'temporalExtractEnabled', true);
+    addToggle('추출 후 임베딩', '새 로어를 의미 검색에 바로 사용할 수 있게 준비함.', 'autoEmbedOnExtract', true);
+    addToggle('추출 상태 배지', '추출/배치/임베딩 진행 상태를 화면에 표시함.', 'extractStatusBadgeEnabled', true);
+    box.appendChild(grid);
+
+    const numbers = document.createElement('div');
+    numbers.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px;';
+    if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) numbers.style.gridTemplateColumns = '1fr 1fr';
+    const addNumber = (label, key, fallback, min, max, step) => {
+      const wrap = document.createElement('label');
+      wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;min-width:0;';
+      const title = document.createElement('span');
+      title.textContent = label;
+      title.style.cssText = 'font-size:11px;color:' + TONE.muted + ';font-weight:800;';
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = settings.config[key] !== undefined ? settings.config[key] : fallback;
+      if (min != null) input.min = String(min);
+      if (max != null) input.max = String(max);
+      if (step != null) input.step = String(step);
+      input.style.cssText = FIELD_STYLE;
+      const save = () => {
+        const value = parseInt(input.value, 10);
+        if (!Number.isNaN(value)) {
+          settings.config[key] = value;
+          settings.save();
+        }
+      };
+      input.oninput = save;
+      input.onchange = save;
+      wrap.appendChild(title);
+      wrap.appendChild(input);
+      numbers.appendChild(wrap);
+    };
+    addNumber('자동 정리 주기', 'autoExtTurns', 8, 2, 100, 1);
+    addNumber('읽을 최근 대화', 'autoExtScanRange', 6, 1, 80, 1);
+    addNumber('최근 제외', 'autoExtOffset', 3, 0, 30, 1);
+    addNumber('추출 재시도', 'autoExtMaxRetries', 2, 0, 10, 1);
+    addNumber('중요 장면 최대', 'temporalMaxEventsPerPass', 5, 1, 30, 1);
+    addNumber('기존 로어 참고 수', 'autoExtDbDigestLimit', 40, 0, 200, 5);
+    box.appendChild(numbers);
+    nd.appendChild(box);
+  }
   
   _w.__LoreInj.registerSettingsPage('extract', '추출 실행', (m) => {
       m.replaceContentPanel((panel) => {
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          appendExtractionOptions(nd);
+        }});
+
         // === manual extraction ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -61,12 +147,12 @@
           title.textContent = '수동 추출';
           title.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;';
           const desc = document.createElement('div');
-          desc.textContent = '추출 방식, 변경분 저장, 중요 장면, 임베딩 같은 설정은 기억 설정/삽입 설정에서 관리함. 이 화면은 실행과 대상 로어팩만 다룸.';
+          desc.textContent = '최근 대화 또는 전체 로그를 로어로 정리함. 자주 쓰는 추출 옵션은 여기서 바로 바꿀 수 있음.';
           desc.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:12px;line-height:1.55;word-break:keep-all;';
           nd.appendChild(title);
           nd.appendChild(desc);
 
-          const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
+          const row2 = document.createElement('div'); row2.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-bottom:12px;align-items:center;';
           const f3 = document.createElement('div'); f3.style.flex = '1';
           const l3 = document.createElement('div'); l3.textContent = '저장할 로어팩'; l3.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
           const inputWrap = document.createElement('div'); inputWrap.style.cssText = 'display:flex;gap:6px;';
@@ -82,7 +168,7 @@
           row2.appendChild(f3); nd.appendChild(row2);
   
           const btnRun = document.createElement('button'); btnRun.textContent = '수동 추출 실행';
-          btnRun.style.cssText = BTN_BASE + 'width:100%;margin-top:10px;color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.14);';
+          btnRun.style.cssText = BTN_BASE + 'width:100%;margin-top:10px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
           const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-top:8px;text-align:center;line-height:1.5;'; btnStatus.textContent = '';
           btnRun.onclick = async () => {
             if (!confirm('수동 추출 시작?')) return;
@@ -123,9 +209,10 @@
           const bTitle = document.createElement('div'); bTitle.textContent = '전체 로그 일괄 추출'; bTitle.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:8px;'; nd.appendChild(bTitle);
           const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 배치로 나눠 정리함. API 비용 큼. 초기 정리용.'; bDesc.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-bottom:10px;line-height:1.5;'; nd.appendChild(bDesc);
   
-          const bRow = document.createElement('div'); bRow.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
+          const bRow = document.createElement('div'); bRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px;align-items:end;';
+          if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) bRow.style.gridTemplateColumns = '1fr';
           const mkNum = (label, getter, setter, defaultVal) => {
-            const f = document.createElement('div'); f.style.flex = '1';
+            const f = document.createElement('div'); f.style.cssText = 'min-width:0;';
             const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);font-weight:800;margin-bottom:4px;';
             const i = document.createElement('input'); i.type = 'number'; const cur = getter(); i.value = (cur !== undefined && cur !== null) ? cur : defaultVal;
             i.style.cssText = FIELD_STYLE;
@@ -139,7 +226,7 @@
           nd.appendChild(bRow);
   
           const bBtn = document.createElement('button'); bBtn.textContent = '전체 일괄 추출 실행';
-          bBtn.style.cssText = BTN_BASE + 'width:100%;margin-top:6px;color:#fff;background:var(--li-accent,#5aa7ff);border-color:transparent;';
+          bBtn.style.cssText = BTN_BASE + 'width:100%;margin-top:6px;color:#fff;background:var(--li-accent,#818cf8);border-color:transparent;';
           const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin-top:8px;text-align:center;line-height:1.5;';
           bBtn.onclick = async () => {
             settings.save();
@@ -215,12 +302,21 @@
         // === 지식 변환 (URL/텍스트 - 로어) ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const S = FIELD_STYLE + 'margin-bottom:8px;';
-          nd.innerHTML = '<div style="font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:8px;">지식 변환 (URL/텍스트 - 로어)</div>';
-          const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S; nd.appendChild(urlInp);
-          const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S; nd.appendChild(nameInp);
+          const S = FIELD_STYLE;
+          nd.innerHTML = '<div style="font-size:15px;color:var(--li-text,#e7edf5);font-weight:700;margin-bottom:6px;">지식 변환</div><div style="font-size:12px;color:var(--li-muted,#748196);line-height:1.55;margin-bottom:14px;">URL이나 긴 텍스트를 별도 로어팩으로 변환함.</div>';
+          const urlGrid = document.createElement('div'); urlGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1.5fr) minmax(160px,.8fr) auto;gap:10px;align-items:end;margin-bottom:10px;';
+          if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) urlGrid.style.gridTemplateColumns = '1fr';
+          const makeField = (label, node) => {
+            const wrap = document.createElement('label');
+            wrap.style.cssText = 'display:flex;flex-direction:column;gap:5px;min-width:0;';
+            const cap = document.createElement('span'); cap.textContent = label; cap.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:700;';
+            wrap.appendChild(cap); wrap.appendChild(node);
+            return wrap;
+          };
+          const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S;
+          const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S;
           const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
-          const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.14);';
+          const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
           urlBtn.onclick = async () => {
             if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; }
             urlBtn.disabled = true; urlBtn.textContent = '변환중...';
@@ -289,12 +385,17 @@
               urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false;
             }
           };
-          nd.appendChild(urlBtn); nd.appendChild(rDiv);
-          const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;margin-top:16px;margin-bottom:8px;">텍스트 - 로어 팩</div>'; nd.appendChild(t2);
-          const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + 'height:100px;resize:vertical;'; nd.appendChild(ta);
-          const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S; nd.appendChild(nameInp2);
+          urlGrid.appendChild(makeField('URL', urlInp));
+          urlGrid.appendChild(makeField('팩 이름', nameInp));
+          urlGrid.appendChild(urlBtn);
+          nd.appendChild(urlGrid); nd.appendChild(rDiv);
+          const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:var(--li-text,#e7edf5);font-weight:700;margin-top:18px;margin-bottom:8px;">텍스트 변환</div>'; nd.appendChild(t2);
+          const textGrid = document.createElement('div'); textGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.35fr) auto;gap:10px;align-items:end;';
+          if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) textGrid.style.gridTemplateColumns = '1fr';
+          const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + ';height:112px;resize:vertical;';
+          const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S;
           const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
-          const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.14);';
+          const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
           tBtn.onclick = async () => {
             if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; }
             tBtn.disabled = true; tBtn.textContent = '변환중...';
@@ -341,7 +442,10 @@
               tBtn.textContent = '텍스트 변환'; tBtn.disabled = false;
             }
           };
-          nd.appendChild(tBtn); nd.appendChild(rDiv2);
+          textGrid.appendChild(makeField('원문', ta));
+          textGrid.appendChild(makeField('팩 이름', nameInp2));
+          textGrid.appendChild(tBtn);
+          nd.appendChild(textGrid); nd.appendChild(rDiv2);
         }});
       }, '추출 실행');
   });

@@ -46,30 +46,26 @@
     { key: 'autoExtIncludePersona', type: 'boolean', label: '페르소나 정보 전송', help: '추출 시 페르소나 이름을 같이 보내 정확도를 높임.', group: 'memory', level: 'advanced' },
     { key: 'autoExtScanRange', type: 'number', label: '읽을 최근 대화', help: '자동 정리 때 참고할 최근 대화 범위.', group: 'memory', level: 'advanced', min: 1, max: 80, step: 1 },
     { key: 'autoExtOffset', type: 'number', label: '최근 제외', help: '아직 흐름이 안정되지 않은 최근 대화를 제외함.', group: 'memory', level: 'advanced', min: 0, max: 30, step: 1 },
+    { key: 'autoExtMaxRetries', type: 'number', label: '추출 재시도', help: '자동/수동 추출 API 실패 시 다시 시도할 횟수.', group: 'memory', level: 'advanced', min: 0, max: 10, step: 1 },
+    { key: 'autoExtDbDigestLimit', type: 'number', label: '기존 로어 참고 수', help: '변경분 저장 때 함께 참고할 기존 로어 요약 개수.', group: 'memory', level: 'advanced', min: 0, max: 200, step: 5 },
     { key: 'temporalExtractEnabled', type: 'boolean', label: '중요 장면 기억', help: '사건, 약속, 관계 변화 등을 별도 장면 기억으로 저장함.', group: 'memory', level: 'basic' },
     { key: 'temporalMaxEventsPerPass', type: 'number', label: '중요 장면 최대', help: '한 번의 정리에서 저장할 중요 장면 최대 개수.', group: 'memory', level: 'advanced', min: 1, max: 30, step: 1 },
     { key: 'autoEmbedOnExtract', type: 'boolean', label: '추출 후 임베딩', help: '새 로어를 의미 검색용으로 자동 준비함.', group: 'memory', level: 'advanced' },
+    { key: 'extractStatusBadgeEnabled', type: 'boolean', label: '추출 상태 배지', help: '추출/배치/임베딩 진행 상태를 화면에 표시함.', group: 'memory', level: 'advanced' },
+    { key: 'batchExtTurnsPerBatch', type: 'number', label: '배치 크기', help: '전체 로그 일괄 추출에서 한 번에 읽을 턴 수.', group: 'memory', level: 'advanced', min: 2, max: 200, step: 1 },
+    { key: 'batchExtOverlap', type: 'number', label: '배치 오버랩', help: '배치 사이 흐름 보존을 위해 겹쳐 읽을 턴 수.', group: 'memory', level: 'advanced', min: 0, max: 50, step: 1 },
+    { key: 'batchExtMaxAttempts', type: 'number', label: '배치 재시도', help: '일괄 추출 배치 하나가 실패했을 때 다시 시도할 횟수.', group: 'memory', level: 'advanced', min: 1, max: 10, step: 1 },
 
-    { key: 'autoExtApiType', type: 'select', label: 'API 방식', help: '추출/교정에 사용할 API 연결 방식.', group: 'models', level: 'basic', options: [{ value: 'key', label: 'Gemini API Key' }, { value: 'deepseek', label: 'DeepSeek' }, { value: 'firebase', label: 'Firebase' }, { value: 'vertex', label: 'Vertex JSON' }] },
-    { key: 'autoExtModel', type: 'text', label: 'Gemini 추출 모델', help: 'Gemini API 방식에서 사용할 생성 모델.', group: 'models', level: 'advanced' },
-    { key: 'deepSeekExtractModel', type: 'select', label: 'DeepSeek 추출 모델', help: 'DeepSeek 방식에서 추출/정리에 사용할 모델.', group: 'models', level: 'basic', options: [{ value: 'deepseek-v4-flash', label: 'V4 Flash' }, { value: 'deepseek-v4-pro', label: 'V4 Pro' }] },
-    { key: 'embeddingModel', type: 'text', label: '임베딩 모델', help: '의미 검색 벡터 생성에 사용할 Gemini 임베딩 모델.', group: 'models', level: 'advanced' },
-    { key: 'refinerEnabled', type: 'boolean', label: '응답 교정', help: 'AI 응답을 로어 기준으로 검수하고 필요 시 수정함.', group: 'models', level: 'basic', requiresCapability: 'canPatch' },
-
-    { key: 'extractStatusBadgeEnabled', type: 'boolean', label: '추출 상태 배지', help: '추출/배치/임베딩 진행 상태를 화면에 표시함.', group: 'advanced', level: 'basic' },
-    { key: 'rerankEnabled', type: 'boolean', label: '다음 턴 후보 준비', help: '현재 대화를 보고 다음 삽입에 쓸 후보 순서를 백그라운드로 준비함.', group: 'advanced', level: 'advanced' },
-    { key: 'temporalRecallJudgeEnabled', type: 'boolean', label: 'AI로 참고 장면 고르기', help: '규칙 판단 뒤 필요한 과거 장면을 백그라운드로 한 번 더 고름.', group: 'advanced', level: 'advanced' },
-    { key: 'temporalRecallJudgeTimeoutMs', type: 'number', label: '참고 장면 제한 시간', help: '과거 장면 판단 API 호출 제한 시간(ms).', group: 'advanced', level: 'advanced', min: 1000, max: 60000, step: 500 },
-    { key: 'temporalRecallJudgeCandidateLimit', type: 'number', label: '검토할 장면 수', help: '과거 장면 판단에 넘길 후보 개수.', group: 'advanced', level: 'advanced', min: 1, max: 30, step: 1 },
-    { key: 'statusBadgeEnabled', type: 'boolean', label: '교정 상태 배지', help: '응답 교정 진행 상태를 화면에 표시함.', group: 'advanced', level: 'advanced' }
+    { key: 'rerankEnabled', type: 'boolean', label: '다음 턴 후보 준비', help: '현재 대화를 보고 다음 삽입에 쓸 후보 순서를 백그라운드로 준비함.', group: 'retrieval', level: 'advanced' },
+    { key: 'temporalRecallJudgeEnabled', type: 'boolean', label: 'AI로 참고 장면 고르기', help: '규칙 판단 뒤 필요한 과거 장면을 백그라운드로 한 번 더 고름.', group: 'retrieval', level: 'advanced' },
+    { key: 'temporalRecallJudgeTimeoutMs', type: 'number', label: '참고 장면 제한 시간', help: '과거 장면 판단 API 호출 제한 시간(ms).', group: 'retrieval', level: 'advanced', min: 1000, max: 60000, step: 500 },
+    { key: 'temporalRecallJudgeCandidateLimit', type: 'number', label: '검토할 장면 수', help: '과거 장면 판단에 넘길 후보 개수.', group: 'retrieval', level: 'advanced', min: 1, max: 30, step: 1 }
   ];
 
   const GROUPS = [
     { id: 'memory', label: '기억 관리' },
     { id: 'retrieval', label: '검색과 회수' },
-    { id: 'injection', label: '삽입과 정리' },
-    { id: 'models', label: 'API와 모델' },
-    { id: 'advanced', label: '고급 동작' }
+    { id: 'injection', label: '삽입과 정리' }
   ];
 
   function capabilityOk(def) {
@@ -199,9 +195,7 @@
   [
     { key: 'memory-settings', label: '기억 설정', group: 'memory' },
     { key: 'retrieval-settings', label: '검색 설정', group: 'retrieval' },
-    { key: 'injection-settings', label: '삽입 설정', group: 'injection' },
-    { key: 'model-settings', label: '모델 설정', group: 'models' },
-    { key: 'advanced-settings', label: '고급 설정', group: 'advanced' }
+    { key: 'injection-settings', label: '삽입 설정', group: 'injection' }
   ].forEach(item => {
     _w.__LoreInj.registerSettingsPage(item.key, item.label, (m) => {
       m.replaceContentPanel((panel) => renderSettingsRegistryPanel(panel, item.group), item.label);

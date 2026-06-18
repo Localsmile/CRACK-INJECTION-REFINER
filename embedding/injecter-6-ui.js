@@ -33,7 +33,7 @@
     if (document.getElementById('lore-inj-boot-error')) return;
     const btn = document.createElement('button');
     btn.id = 'lore-inj-boot-error';
-    btn.textContent = 'Lore Injector 로딩 진단';
+    btn.textContent = '로어 인젝터 로딩 진단';
     btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:rgba(24,24,27,.96);color:#FAFAFA;border:1px solid #DC2626;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;box-shadow:0 12px 28px rgba(0,0,0,.38);';
     btn.onclick = () => {
       const L = _w.__LoreInj || {};
@@ -160,7 +160,7 @@
   }
 
   // === DOM 진입점 ===
-  // 1) 좌측 설정 메뉴에 Lore Injector 링크 추가
+  // 1) 좌측 설정 메뉴에 로어 인젝터 링크 추가
   function __updateModalMenu() {
     const modalEl = document.getElementById('web-modal');
     if (modalEl && !document.getElementById('lore-injector-settings-menu')) {
@@ -170,7 +170,7 @@
           const clonedElement = item.cloneNode(true);
           clonedElement.id = 'lore-injector-settings-menu';
           const textElement = clonedElement.getElementsByTagName('span')[0];
-          if (textElement) textElement.innerText = 'Lore Injector';
+          if (textElement) textElement.innerText = '로어 인젝터';
           clonedElement.setAttribute('href', 'javascript: void(0)');
           clonedElement.onclick = (event) => {
             event.preventDefault(); event.stopPropagation();
@@ -183,7 +183,7 @@
     }
   }
 
-  // 2) 채팅창 상단 패널에 Lore 버튼 삽입
+  // 2) 채팅창 상단 패널에 로어 버튼 삽입
   async function injectBannerButton() {
     const selected = document.getElementsByClassName('lore-launcher-button');
     if (selected && selected.length > 0) return;
@@ -192,10 +192,10 @@
       const mount = platform && typeof platform.getLauncherMount === 'function' ? platform.getLauncherMount() : null;
       if (mount && mount.target) {
         const buttonCloned = document.createElement('button');
-        buttonCloned.innerHTML = '<span class="lore-launcher-dot"></span><span>Lore</span>';
+        buttonCloned.innerHTML = '<span class="lore-launcher-dot"></span><span>로어</span>';
         buttonCloned.style.cssText = 'margin-right: 10px';
         buttonCloned.className = 'lore-launcher-button';
-        buttonCloned.title = 'Lore Injector';
+        buttonCloned.title = '로어 인젝터';
         mount.target.insertBefore(buttonCloned, mount.before || mount.target.childNodes[0] || null);
         buttonCloned.removeAttribute('onClick');
         buttonCloned.addEventListener('click', openLoreSettings);

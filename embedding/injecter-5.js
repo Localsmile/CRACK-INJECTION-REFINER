@@ -163,7 +163,7 @@
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];
       if (!log || log.role !== 'user') continue;
-      if ((item.messageId && log.id === item.messageId) || messageText(log) === full) { idx = i; break; }
+      if ((item.messageId && messageIdOf(log) === String(item.messageId)) || messageText(log) === full) { idx = i; break; }
     }
     if (idx < 0) return null;
     let chars = 0;
@@ -207,8 +207,8 @@
     const full = item.finalText || buildInjectedMessage(item.originalText, item.injectedText, item.position);
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];
-      if (log && log.role === 'user' && log.content === full && log.id) {
-        item.messageId = log.id;
+      if (log && log.role === 'user' && messageText(log) === full && messageIdOf(log)) {
+        item.messageId = messageIdOf(log);
         item.status = 'tracked';
         item.linkedAt = Date.now();
         return true;
@@ -264,7 +264,7 @@
         if (!(charsAfter != null ? charsAfter >= configuredChars : fallbackExpired)) continue;
 
         const cur = await platformMessageById(item.chatId || chatId, item.messageId);
-        const currentText = cur && typeof cur.content === 'string' ? cur.content : null;
+        const currentText = cur ? messageText(cur) : null;
         if (!cur || cur.role !== 'user' || currentText == null) {
           item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
           item.lastCleanupAttemptAt = Date.now();

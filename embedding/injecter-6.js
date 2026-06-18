@@ -12,32 +12,31 @@
   const L = _w.__LoreInj;
 
   const PAGE_ORDER = {
-    main: 10,
-    log: 20,
-    session: 30,
-    help: 40,
-    'memory-settings': 100,
-    lore: 110,
-    file: 120,
-    backup: 130,
-    snapshot: 140,
-    merge: 150,
+    extract: 10,
+    refiner: 10,
+    'injection-settings': 20,
+    main: 40,
+    lore: 100,
+    file: 110,
+    backup: 120,
+    snapshot: 130,
+    merge: 140,
+    'memory-settings': 150,
     'retrieval-settings': 200,
-    'injection-settings': 300,
-    extract: 310,
-    refiner: 320,
-    'model-settings': 400,
-    api: 410,
-    prompts: 420,
-    'advanced-settings': 430
+    api: 300,
+    prompts: 310,
+    log: 400,
+    session: 410,
+    help: 420
   };
 
   const SETTINGS_GROUPS = {
-    status: { label: 'Status', order: 10, keys: ['main', 'log', 'session', 'help'], desc: '상태, 로그, 세션 진단을 확인함.' },
-    memory: { label: 'Memory', order: 20, keys: ['memory-settings', 'lore', 'file', 'backup', 'snapshot', 'merge'], desc: '로어, 백업, 가져오기, 병합을 관리함.' },
-    retrieval: { label: 'Retrieval', order: 30, keys: ['retrieval-settings'], desc: '검색, 회수, 쿨타임 기준을 관리함.' },
-    injection: { label: 'Injection', order: 40, keys: ['injection-settings', 'extract', 'refiner'], desc: '삽입, 정리, 추출, 교정을 관리함.' },
-    models: { label: 'Models', order: 50, keys: ['model-settings', 'api', 'prompts', 'advanced-settings'], desc: 'API, 모델, 프롬프트, 고급 동작을 관리함.' }
+    work: { label: '자주 쓰는 작업', order: 10, keys: ['extract', 'injection-settings', 'main'], desc: '추출 실행과 삽입 기준을 바로 관리함.' },
+    refiner: { label: '응답 교정', order: 20, keys: ['refiner'], desc: 'AI 응답 검수, 자동 반영, 상태 표시를 관리함.' },
+    memory: { label: '로어와 백업', order: 30, keys: ['lore', 'file', 'backup', 'snapshot', 'merge', 'memory-settings'], desc: '로어팩, 파일, 서버/파일 백업을 관리함.' },
+    retrieval: { label: '검색과 회수', order: 40, keys: ['retrieval-settings'], desc: '의미 검색, 오래된 정보 회수, 쿨타임을 조정함.' },
+    models: { label: 'API와 프롬프트', order: 50, keys: ['api', 'prompts'], desc: 'API 키, 모델, 프롬프트를 관리함.' },
+    diagnostics: { label: '진단과 도움말', order: 60, keys: ['log', 'session', 'help'], desc: '실행 로그, 세션 상태, 기능 안내를 확인함.' }
   };
 
   const KEY_TO_GROUP = Object.entries(SETTINGS_GROUPS).reduce((acc, [groupKey, group]) => {

@@ -234,7 +234,7 @@
           const clearFpBtn = document.createElement('button'); clearFpBtn.textContent = '처리 기록 큐 초기화'; clearFpBtn.style.cssText = BTN_BASE + 'width:100%;margin-top:12px;color:' + TONE.warn + ';border-color:rgba(231,181,111,.45);background:rgba(231,181,111,.12);';
           clearFpBtn.onclick = () => { R.clearProcessed(); alert('기록 삭제됨'); }; nd.appendChild(clearFpBtn);
         }});
-      }, '응답 교정 설정');
+      }, '응답 교정');
   });
   
   _w.__LoreInj.__subRefinerLoaded = true;

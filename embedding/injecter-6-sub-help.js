@@ -76,7 +76,7 @@
     "sections": [
       {
         "label": "[API 연결]",
-        "text": "지원 방식은 4종.\nGemini API Key: 가장 단순함. 처음 설정 권장.\nFirebase: Firebase 설정 스크립트 사용함. 의미 검색 준비는 별도 Gemini API Key 필요. Google AI Studio에서 무료 키 발급 가능.\nVertex JSON: 서비스 계정 JSON 사용함.\nDeepSeek: V4 Flash/Pro 생성 호출에 사용함. 의미 검색/임베딩은 DeepSeek가 아니라 별도 Gemini API 키 사용함."
+        "text": "지원 방식은 4종.\nGemini API Key: 가장 단순함. 처음 설정 권장.\nFirebase: Firebase 설정 스크립트 사용함. 의미 검색 준비는 별도 Gemini API Key 필요. Google AI Studio에서 무료 키 발급 가능.\nVertex JSON: 서비스 계정 JSON 사용함.\n딥식이: V4 Flash/Pro 생성 호출에 사용함. 의미 검색/임베딩은 딥식이가 아니라 별도 Gemini API 키 사용함."
       },
       {
         "label": "[모델 선택]",
@@ -84,7 +84,7 @@
       },
       {
         "label": "[비용 표시]",
-        "text": "API 응답에 사용량 정보가 있으면 실제 토큰 기준으로 계산함.\nGemini는 usageMetadata, DeepSeek는 usage 필드 기준.\nDeepSeek 캐시 hit/miss 토큰이 있으면 분리 계산함.\n없으면 글자 수 기반 추정값 사용함.\n표시 비용은 디버그/비교용이며 실제 청구액은 제공사 청구 정책/환율/세금에 따라 달라질 수 있음."
+        "text": "API 응답에 사용량 정보가 있으면 실제 토큰 기준으로 계산함.\nGemini는 usageMetadata, 딥식이는 usage 필드 기준.\n딥식이 캐시 hit/miss 토큰이 있으면 분리 계산함.\n없으면 글자 수 기반 추정값 사용함.\n표시 비용은 디버그/비교용이며 실제 청구액은 제공사 청구 정책/환율/세금에 따라 달라질 수 있음."
       },
       {
         "label": "[고급 지시문]",
