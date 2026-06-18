@@ -10,7 +10,6 @@
   const FIELD_STYLE = (C.UI && C.UI.field) || 'width:100%;min-height:34px;border-radius:8px;border:1px solid var(--li-line,#2f3b4f);background:#08111d;color:var(--li-text,#e7edf5);padding:8px 10px;font-size:12px;box-sizing:border-box;';
   const BTN_BASE = 'min-height:34px;padding:7px 12px;font-size:12px;border-radius:8px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
   const TONE = { muted: 'var(--li-muted,#748196)', soft: 'var(--li-text-soft,#a9b6c7)', text: 'var(--li-text,#e7edf5)', ok: '#78d5a8', warn: '#e7b56f', danger: '#ef6b6b' };
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   function requireGenerationApiOpts(overrides = {}, costContext = null) {
     if (typeof _w.__LoreInj.buildGenerationApiOpts === 'function') {
@@ -53,8 +52,7 @@
     return { logs: arr.length, batches, inputTokens, expectedOutputTokens, model, usd };
   }
   
-  _w.__LoreInj.registerSubMenu('extract', function(modal) {
-    modal.createSubMenu('추출 실행', (m) => {
+  _w.__LoreInj.registerSettingsPage('extract', '추출 실행', (m) => {
       m.replaceContentPanel((panel) => {
         // === manual extraction ===
         panel.addBoxedField('', '', { onInit: (nd) => {
@@ -346,7 +344,6 @@
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
       }, '추출 실행');
-    });
   });
   
   _w.__LoreInj.__subExtractLoaded = true;

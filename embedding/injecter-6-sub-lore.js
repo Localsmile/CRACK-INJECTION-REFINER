@@ -37,10 +37,7 @@
     el.style.color = color;
   }
 
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-
-  _w.__LoreInj.registerSubMenu('lore', function(modal) {
-    modal.createSubMenu('로어 관리 (목록)', (m) => {
+  _w.__LoreInj.registerSettingsPage('lore', '로어 목록', (m) => {
       const renderPanel = async (panel) => {
         const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
         if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 파일 탭에서 활성화하세요.'); return; }
@@ -171,7 +168,6 @@
         }
       };
       m.replaceContentPanel(renderPanel, '로어 목록 관리');
-    });
   });
 
   _w.__LoreInj.__subLoreLoaded = true;

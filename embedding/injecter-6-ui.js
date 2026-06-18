@@ -37,7 +37,7 @@
     btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:rgba(24,24,27,.96);color:#FAFAFA;border:1px solid #DC2626;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;box-shadow:0 12px 28px rgba(0,0,0,.38);';
     btn.onclick = () => {
       const L = _w.__LoreInj || {};
-      const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], menuOrder: L.__menuOrder || null, route: L.route || null };
+      const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], settingsPageOrder: L.__settingsPageOrder || null, route: L.route || null };
       alert(JSON.stringify(payload, null, 2).slice(0, 3000));
     };
     document.body.appendChild(btn);
@@ -79,7 +79,7 @@
   const VER = _w.__LoreInj.VER;
   const settingsShellReady = _w.__LoreInj.__settingsShellLoaded
     && _w.__LoreInj.__LoreSettingsShell
-    && typeof _w.__LoreInj.__LoreSettingsShell.mountQueues === 'function'
+    && typeof _w.__LoreInj.__LoreSettingsShell.registerPage === 'function'
     && typeof _w.__LoreInj.__LoreSettingsShell.open === 'function';
   if (!settingsShellReady) {
     console.error('[LoreInj:6-ui] settings shell not ready');
@@ -98,9 +98,8 @@
     showBootErrorBadge({ ok: false, reason: 'settings shell missing' });
   }
 
-  // 메뉴 등록 함수 호출. 새 settings shell이 기존 callback API를 흡수한다.
-  if (_w.__LoreInj.setupSubMenus) {
-    _w.__LoreInj.setupSubMenus(null);
+  if (_w.__LoreInj.setupSettingsPages) {
+    _w.__LoreInj.setupSettingsPages();
   }
 
   function installProductShellStyle() {

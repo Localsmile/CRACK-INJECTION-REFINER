@@ -12,8 +12,6 @@
     text: 'var(--li-text,#e7edf5)',
     ok: '#78d5a8'
   };
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-
   const HELP_QUICK_START = {
   "title": "제작자: 로컬AI",
   "text": "[핵심 기능]\n1. 현재 장면에 맞는 로어를 찾아 대화에 자동 삽입함.\n2. 대화를 주기적으로 읽어 로어팩에 기억을 추가함.\n3. 중요한 사건/약속은 별도 장면 기억으로 저장해 나중에 다시 불러옴.\n\n[로드 방식]\n메인화면에서는 무거운 모듈 로드 안 함. 채팅/에피소드 주소로 들어가거나 메인에서 자연스럽게 이동하면 그때 UI 로드함.\n\n[용어]\n로어: 요약본/기억\n의미 검색: 단어가 달라도 비슷한 의미의 로어를 찾는 기능\n변경분만 저장: 기존 로어 전체 대신 바뀐 부분만 받아 출력 토큰 줄이는 기능"
@@ -147,8 +145,7 @@
   }
 ];
 
-  _w.__LoreInj.registerSubMenu('help', function(modal) {
-    modal.createSubMenu('도움말', (m) => {
+  _w.__LoreInj.registerSettingsPage('help', '도움말', (m) => {
       m.replaceContentPanel((panel) => {
         const addHelp = (title, sections) => {
           panel.addBoxedField('', '', { onInit: (nd) => {
@@ -212,7 +209,6 @@
 
         HELP_ITEMS.forEach(item => addHelp(item.title, item.sections || []));
       }, '기능 안내');
-    });
   });
 
   _w.__LoreInj.__subHelpLoaded = true;

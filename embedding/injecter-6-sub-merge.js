@@ -99,10 +99,7 @@
     return merged;
   }
 
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-
-  _w.__LoreInj.registerSubMenu('merge', function(modal) {
-    modal.createSubMenu('로어 병합 (중복 정리)', (m) => {
+  _w.__LoreInj.registerSettingsPage('merge', '중복 정리', (m) => {
       const renderMerge = async (panel) => {
         const state = _w.__loreMergeState || (_w.__loreMergeState = { threshold: 0.88, maxChars: 1200, groups: null });
 
@@ -330,7 +327,6 @@
         }
       };
       m.replaceContentPanel(renderMerge, '로어 병합');
-    });
   });
 
   _w.__LoreInj.__subMergeLoaded = true;

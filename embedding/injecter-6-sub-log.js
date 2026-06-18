@@ -7,7 +7,6 @@
   if (_w.__LoreInj.__subLogLoaded) return;
   
   const { C, settings, getChatKey, getInjLog, getExtLog, clearInjLog, clearExtLog } = _w.__LoreInj;
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
   const COLOR = {
     muted: 'var(--li-muted,#748196)',
     soft: 'var(--li-text-soft,#a9b6c7)',
@@ -28,8 +27,7 @@
     contradiction: '#d99a6c'
   };
   
-  _w.__LoreInj.registerSubMenu('log', function(modal) {
-    modal.createSubMenu('실행 로그', (m) => {
+  _w.__LoreInj.registerSettingsPage('log', '실행 로그', (m) => {
       const renderLogs = (panel) => {
         const chatKey = getChatKey();
         const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -324,7 +322,6 @@
         makeLogBox('모순 기록', TONE.contradiction, cLog, (clear, i, nd) => { if(clear) _ls.removeItem('lore-contradictions'); else { const r = document.createElement('div'); r.style.cssText = LOG_ROW; r.innerHTML = `<span style="color:${TONE.contradiction};font-weight:800;">${i.name}</span><br><span style="color:${COLOR.danger};">"${i.oldStatus}" -> "${i.newStatus}"</span><br><span style="font-size:10px;color:${COLOR.soft};">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`; nd.appendChild(r); } });
       };
       m.replaceContentPanel(renderLogs, '로그 조회');
-    });
   });
   
   _w.__LoreInj.__subLogLoaded = true;

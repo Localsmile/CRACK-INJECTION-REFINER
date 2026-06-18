@@ -196,7 +196,6 @@
     }});
   }
 
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
   [
     { key: 'memory-settings', label: '기억 설정', group: 'memory' },
     { key: 'retrieval-settings', label: '검색 설정', group: 'retrieval' },
@@ -204,10 +203,8 @@
     { key: 'model-settings', label: '모델 설정', group: 'models' },
     { key: 'advanced-settings', label: '고급 설정', group: 'advanced' }
   ].forEach(item => {
-    _w.__LoreInj.registerSubMenu(item.key, function(modal) {
-      modal.createSubMenu(item.label, (m) => {
-        m.replaceContentPanel((panel) => renderSettingsRegistryPanel(panel, item.group), item.label);
-      });
+    _w.__LoreInj.registerSettingsPage(item.key, item.label, (m) => {
+      m.replaceContentPanel((panel) => renderSettingsRegistryPanel(panel, item.group), item.label);
     });
   });
 

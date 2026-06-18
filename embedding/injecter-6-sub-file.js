@@ -487,10 +487,7 @@
     }
   });
 
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-
-  _w.__LoreInj.registerSubMenu('file', function(modal) {
-    modal.createSubMenu('로어 관리 (파일)', (m) => {
+  _w.__LoreInj.registerSettingsPage('file', '파일 관리', (m) => {
       const renderPackUI = async (panel) => {
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -592,7 +589,6 @@
         }});
       };
       m.replaceContentPanel(renderPackUI, '파일 관리');
-    });
   });
 
   _w.__LoreInj.__subFileLoaded = true;

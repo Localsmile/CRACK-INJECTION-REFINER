@@ -7,7 +7,6 @@
   if (_w.__LoreInj.__subSessionLoaded) return;
   
   const { C, db, settings, getChatKey, getTurnCounter, getCooldownMap, isEntryEnabledForUrl } = _w.__LoreInj;
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
   const COLOR = {
     muted: 'var(--li-muted,#748196)',
     soft: 'var(--li-text-soft,#a9b6c7)',
@@ -25,8 +24,7 @@
     return Number(value || 0) || 0;
   }
   
-  _w.__LoreInj.registerSubMenu('session', function(modal) {
-    modal.createSubMenu('세션 상태 관리', (m) => {
+  _w.__LoreInj.registerSettingsPage('session', '세션 상태', (m) => {
       const renderSessionStatus = async (panel) => {
         const chatKey = getChatKey();
         const turnCounter = getTurnCounter(chatKey);
@@ -209,7 +207,6 @@
         }});
       };
       m.replaceContentPanel(renderSessionStatus, '세션 상태 조회');
-    });
   });
   
   _w.__LoreInj.__subSessionLoaded = true;

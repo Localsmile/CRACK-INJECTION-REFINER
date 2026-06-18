@@ -474,26 +474,52 @@
     };
   }
 
-  function addPage(rootId, label, action) {
+  function sortRootPages(root) {
+    if (!root) return;
+    root.pages.sort((a, b) => {
+      const pa = state.pages.get(a);
+      const pb = state.pages.get(b);
+      const ao = pa ? pa.order : 1000;
+      const bo = pb ? pb.order : 1000;
+      if (ao !== bo) return ao - bo;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+  }
+
+  function addPage(rootId, label, action, key, order) {
     const root = ensureRoot(rootId, rootId, '', 1000);
-    const id = rootId + ':' + label;
+    const id = rootId + ':' + (key || label);
     if (!state.pages.has(id)) {
-      state.pages.set(id, { id, rootId, label, action });
+      state.pages.set(id, { id, key: key || label, rootId, label, action, order: order || 1000 });
       root.pages.push(id);
+      sortRootPages(root);
+    } else {
+      const page = state.pages.get(id);
+      page.label = label;
+      page.action = action;
+      page.order = order || page.order || 1000;
+      sortRootPages(root);
     }
     return state.pages.get(id);
   }
 
-  function createCollector(rootId, rootLabel, rootDesc, rootOrder) {
-    const root = ensureRoot(rootId, rootLabel, rootDesc, rootOrder);
-    return {
-      createMenu: function (label, action) {
-        return addPage(root.id, label, action);
-      },
-      createSubMenu: function (label, action) {
-        return addPage(root.id, label, action);
+  function registerPage(spec) {
+    if (!spec || !spec.key || typeof spec.render !== 'function') return;
+    const root = ensureRoot(spec.rootId || spec.key, spec.rootLabel || spec.rootId || spec.key, spec.rootDesc || '', spec.rootOrder || 1000);
+    addPage(root.id, spec.label || spec.key, spec.render, spec.key, spec.order || 1000);
+    if (!state.activeRoot) {
+      const restored = findRestoredRoot();
+      if (restored) {
+        const first = firstVisiblePage(restored);
+        state.activeRoot = restored.id;
+        state.activePage = first ? first.id : '';
       }
-    };
+    }
+    if (shellNode()) {
+      renderShellNav();
+      const active = state.pages.get(state.activePage);
+      if (active) renderPage(active);
+    }
   }
 
   function renderPage(page) {
@@ -700,41 +726,8 @@
     state.activePage = '';
   }
 
-  function groupMetaForKey(key, menuGroups, keyToGroup) {
-    const groupId = keyToGroup[key] || key;
-    const group = menuGroups[groupId] || { label: key, desc: '', order: 1000 };
-    return { id: groupId, label: group.label || key, desc: group.desc || '', order: group.order || 1000 };
-  }
-
-  function mountQueues(menuQ, subQ, menuGroups, keyToGroup) {
-    resetRegistry();
-    menuGroups = menuGroups || {};
-    keyToGroup = keyToGroup || {};
-    (menuQ || []).forEach(({ key, cb }) => {
-      const meta = groupMetaForKey(key, menuGroups, keyToGroup);
-      try {
-        cb(createCollector(meta.id, meta.label, meta.desc, meta.order));
-      } catch (e) { console.error('[LoreShell] menu collect failed:', key, e); }
-    });
-    (subQ || []).forEach(({ key, cb }) => {
-      const meta = groupMetaForKey(key, menuGroups, keyToGroup);
-      try {
-        cb(createCollector(meta.id, meta.label, meta.desc, meta.order));
-      } catch (e) { console.error('[LoreShell] submenu collect failed:', key, e); }
-    });
-    if (shellNode()) {
-      if (!state.activeRoot) {
-        const root = findRestoredRoot();
-        if (root) setActive(root.id);
-      } else {
-        renderShellNav();
-        const page = state.pages.get(state.activePage);
-        if (page) renderPage(page);
-      }
-    }
-  }
-
-  L.__LoreSettingsShell = { mountQueues, open, close, ensureShell };
+  L.__LoreSettingsShell = { registerPage, open, close, ensureShell, resetRegistry };
   L.__settingsShellLoaded = true;
+  if (typeof L.setupSettingsPages === 'function') L.setupSettingsPages();
   console.log('[LoreShell] loaded');
 })();

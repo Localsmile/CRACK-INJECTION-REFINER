@@ -6,7 +6,6 @@
   if (_w.__LoreInj.__subApiLoaded) return;
   
   const { C, settings } = _w.__LoreInj;
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   // Firebase 사전 워밍업: 첫 실호출의 SDK import + initializeApp 비용을 백그라운드로 분리.
   if (settings.config.autoExtApiType === 'firebase' && settings.config.autoExtFirebaseScript && C.warmupFirebase) {
@@ -308,8 +307,7 @@
     }});
   }
   
-  _w.__LoreInj.registerSubMenu('api', function(modal) {
-    modal.createSubMenu('API 설정', (m) => {
+  _w.__LoreInj.registerSettingsPage('api', 'API 설정', (m) => {
       m.replaceContentPanel((panel) => {
         panel.addBoxedField('', '', { onInit: (nd) => {
           ensureApiModelDefaults();
@@ -393,11 +391,10 @@
           }
         }});
       }, 'API 설정');
-    });
+  });
 
-    modal.createSubMenu('프롬프트 관리', (m) => {
-      m.replaceContentPanel((panel) => renderPromptSettings(panel), '프롬프트 관리');
-    });
+  _w.__LoreInj.registerSettingsPage('prompts', '프롬프트 관리', (m) => {
+    m.replaceContentPanel((panel) => renderPromptSettings(panel), '프롬프트 관리');
   });
   
   _w.__LoreInj.__subApiLoaded = true;

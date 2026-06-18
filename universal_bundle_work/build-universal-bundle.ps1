@@ -91,11 +91,6 @@ $bootstrap = @"
   L.chatBootstrapVersion = '$($manifest.version)';
   L.universalBundle = true;
 
-  if (!L.__menuQueue) L.__menuQueue = [];
-  if (!L.__subMenuQueue) L.__subMenuQueue = [];
-  L.registerMenu = L.registerMenu || function(key, cb) { L.__menuQueue.push({ key, cb }); };
-  L.registerSubMenu = L.registerSubMenu || function(key, cb) { L.__subMenuQueue.push({ key, cb }); };
-
   if (!_w.__LoreInjReady) {
     let resolveReady;
     const p = new Promise(r => { resolveReady = r; });
@@ -116,7 +111,7 @@ foreach ($rel in @($manifest.modules)) {
 }
 
 $requiredCore = @("'__interceptorLoaded'", "'__constLoaded'", "'__settingsLoaded'", "'__extractLoaded'", "'__injectLoaded'", "'__inject6Loaded'") -join ', '
-$requiredSubs = @("'__subMainLoaded'", "'__subLoreLoaded'", "'__subMergeLoaded'", "'__subSnapshotLoaded'", "'__subFileLoaded'", "'__subExtractLoaded'", "'__subRefinerLoaded'", "'__subLogLoaded'", "'__subSessionLoaded'", "'__subApiLoaded'", "'__subHelpLoaded'") -join ', '
+$requiredSubs = @("'__subMainLoaded'", "'__subLoreLoaded'", "'__subMergeLoaded'", "'__subSnapshotLoaded'", "'__subFileLoaded'", "'__subBackupLoaded'", "'__subExtractLoaded'", "'__subRefinerLoaded'", "'__subLogLoaded'", "'__subSessionLoaded'", "'__subApiLoaded'", "'__subHelpLoaded'") -join ', '
 
 $gate = @"
 

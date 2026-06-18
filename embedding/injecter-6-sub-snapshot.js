@@ -14,10 +14,7 @@
   const BTN_BASE = 'min-height:30px;padding:5px 10px;font-size:11px;border-radius:7px;background:transparent;border:1px solid var(--li-line,#2f3b4f);color:var(--li-text-soft,#a9b6c7);cursor:pointer;font-weight:800;';
   const TONE = { muted: 'var(--li-muted,#748196)', soft: 'var(--li-text-soft,#a9b6c7)', text: 'var(--li-text,#e7edf5)', accent: 'var(--li-accent,#5aa7ff)', danger: '#ef6b6b' };
 
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-
-  _w.__LoreInj.registerSubMenu('snapshot', function(modal) {
-    modal.createSubMenu('로어 스냅샷 (백업)', (m) => {
+  _w.__LoreInj.registerSettingsPage('snapshot', '스냅샷', (m) => {
       const renderSnapshotUI = async (panel) => {
         panel.addBoxedField('', '', { onInit: async (nd) => {
           C.setFullWidth(nd);
@@ -43,7 +40,6 @@
         }});
       };
       m.replaceContentPanel(renderSnapshotUI, '스냅샷 관리');
-    });
   });
 
   _w.__LoreInj.__subSnapshotLoaded = true;

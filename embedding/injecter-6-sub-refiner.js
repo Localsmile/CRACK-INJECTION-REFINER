@@ -19,10 +19,7 @@
     warn: '#e7b56f',
     danger: '#ef6b6b'
   };
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-  
-  _w.__LoreInj.registerSubMenu('refiner', function(modal) {
-    modal.createSubMenu('AI 응답 교정', (m) => {
+  _w.__LoreInj.registerSettingsPage('refiner', '응답 교정', (m) => {
       m.replaceContentPanel(async (panel) => {
         if (!R) { panel.addText('Refiner 라이브러리 없음.'); return; }
         // 수동 검수 버튼
@@ -238,7 +235,6 @@
           clearFpBtn.onclick = () => { R.clearProcessed(); alert('기록 삭제됨'); }; nd.appendChild(clearFpBtn);
         }});
       }, '응답 교정 설정');
-    });
   });
   
   _w.__LoreInj.__subRefinerLoaded = true;

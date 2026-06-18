@@ -630,11 +630,8 @@
     }});
   }
 
-  _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-  _w.__LoreInj.registerSubMenu('backup', function(modal) {
-    modal.createSubMenu('백업/동기화', (m) => {
-      m.replaceContentPanel(renderBackupUI, '백업/동기화');
-    });
+  _w.__LoreInj.registerSettingsPage('backup', '백업/동기화', (m) => {
+    m.replaceContentPanel(renderBackupUI, '백업/동기화');
   });
 
   _w.__LoreInj.__subBackupLoaded = true;

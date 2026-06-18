@@ -119,15 +119,12 @@
     }});
   }
 
-  _w.__LoreInj.registerMenu = _w.__LoreInj.registerMenu || function() {};
-  _w.__LoreInj.registerMenu('main', function(modal) {
-    modal.createMenu('상태', (m) => {
+  _w.__LoreInj.registerSettingsPage('main', '상태', (m) => {
       m.replaceContentPanel(async (panel) => {
         appendStatus(panel);
         appendPresets(panel, m);
         appendReset(panel);
       }, '상태');
-    });
   });
 
   _w.__LoreInj.__subMainLoaded = true;
