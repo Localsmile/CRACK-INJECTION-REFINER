@@ -362,8 +362,8 @@
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
       const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';
-      Core.showStatusBadge(isDeepSeekRefiner ? '에리가 딥식이에게 묻는 중' : '에리가 잼민이에게 묻는 중');
-      showToast(isDeepSeekRefiner ? '에리가 딥식이에게 응답 검수 중' : '에리가 응답 검수 중', 'info');
+      Core.showStatusBadge(isDeepSeekRefiner ? '에리가 DeepSeek에게 묻는 중' : '에리가 잼민이에게 묻는 중');
+      showToast(isDeepSeekRefiner ? '에리가 DeepSeek에게 응답 검수 중' : '에리가 응답 검수 중', 'info');
       if (isDeepSeekRefiner) {
         apiOpts.responseMimeType = 'application/json';
         prompt += '\n\nStructured output instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';

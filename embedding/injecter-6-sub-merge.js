@@ -99,6 +99,47 @@
     return merged;
   }
 
+  function buildKeepLongest(entries, maxChars) {
+    const sorted = [...entries].sort((a, b) => summaryValue(b.summary).length - summaryValue(a.summary).length);
+    return mergeDraftWithOriginals(sorted[0] || {}, entries, maxChars);
+  }
+
+  async function buildLlmMerge(entries, maxChars) {
+    const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest);
+    const prompt = '다음은 중복으로 판단된 로어 엔트리들이다. 하나의 로어 JSON으로 병합하라.\n' +
+      '원칙:\n1. 핵심 정보는 누락하지 않는다. 각 입력 엔트리를 체크리스트처럼 대조해 이름/관계/상태/약속/사건/원인/미해결 훅을 모두 보존한다\n2. 불필요한 반복만 제거한다. 서로 다른 사실은 삭제하지 않는다\n3. summary는 {full, compact, micro} 객체로 병합한다. full은 ' + maxChars + '자 이내 self-contained\n4. eventHistory/callHistory/callState/timeline/entities/detail은 합집합으로 통합한다\n5. triggers는 필수 키워드만 유지하되 양쪽 인물명과 고유명사는 보존한다 (최대 12개)\n6. 출력은 순수 JSON 객체 하나만. 입력에 없던 설정을 창작하지 않는다.\n\n입력:\n' + JSON.stringify(clean, null, 2);
+    const res = await C.callGeminiApi(prompt, _w.__LoreInj.buildGenerationApiOpts
+      ? _w.__LoreInj.buildGenerationApiOpts({ model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel, maxRetries: 2 }, { feature: 'merge', chatKey: 'global' })
+      : {
+        apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
+        deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
+        vertexJson: settings.config.autoExtVertexJson,
+        vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
+        firebaseScript: settings.config.autoExtFirebaseScript, model: settings.config.autoExtModel, maxRetries: 2
+      });
+    if (!res.text) throw new Error('LLM 응답 없음: ' + (res.error || ''));
+    let txt = res.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const m1 = txt.match(/\{[\s\S]*\}/); if (m1) txt = m1[0];
+    const parsed = JSON.parse(txt);
+    return mergeDraftWithOriginals(parsed, entries, maxChars);
+  }
+
+  async function applyMergedGroup(grp, mergedDraft) {
+    const originals = grp.entries.map(e => JSON.parse(JSON.stringify(e)));
+    for (const e of grp.entries) { try { if (C.saveEntryVersion) await C.saveEntryVersion(e, 'pre_merge'); } catch(_){} }
+    const anchored = grp.entries.find(e => e.anchor);
+    const target = anchored || grp.entries[0];
+    const toDelete = grp.entries.filter(e => e.id !== target.id);
+    const finalEntry = { ...mergedDraft, id: target.id, packName: target.packName, project: target.project };
+    await db.entries.put(finalEntry);
+    for (const e of toDelete) { await db.entries.delete(e.id); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(e.id); else await db.embeddings.where('entryId').equals(e.id).delete(); } catch(_){} }
+    try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(target.id); else await db.embeddings.where('entryId').equals(target.id).delete(); } catch(_){}
+    const packs = new Set(grp.entries.map(e => e.packName));
+    for (const pk of packs) { const cnt = await db.entries.where('packName').equals(pk).count(); await db.packs.update(pk, { entryCount: cnt }); }
+    C.__lastMergeUndo = { mergedId: target.id, originals };
+    return finalEntry;
+  }
+
   _w.__LoreInj.registerSettingsPage('merge', '중복 정리', (m) => {
       const renderMerge = async (panel) => {
         const state = _w.__loreMergeState || (_w.__loreMergeState = { threshold: 0.88, maxChars: 1200, groups: null });
@@ -179,11 +220,42 @@
           nd.appendChild(runBtn); nd.appendChild(runStatus);
 
           const bulkRow = document.createElement('div'); bulkRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:10px;padding:9px;background:rgba(7,13,23,.62);border:1px solid var(--li-line,#2f3b4f);border-radius:9px;';
-          const bulkLbl = document.createElement('div'); bulkLbl.textContent = '일괄 모드 변경'; bulkLbl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);white-space:nowrap;font-weight:800;';
+          const bulkLbl = document.createElement('div'); bulkLbl.textContent = '일괄 병합 방식'; bulkLbl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);white-space:nowrap;font-weight:800;';
           const bulkSel = document.createElement('select'); bulkSel.style.cssText = 'flex:1;' + FIELD_STYLE + 'font-size:11px;';
-          [['', '-- 선택하여 모든 그룹에 일괄 적용 --'], ['keep-longest', '가장 긴 항목 유지 + 키워드 합집합 (안전)'], ['llm-summarize', 'LLM 요약 병합 (API 호출, 품질↑)']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; bulkSel.appendChild(o); });
-          bulkSel.onchange = () => { if (!bulkSel.value) return; const sels = document.querySelectorAll('select.lore-merge-mode-sel'); sels.forEach(s => { s.value = bulkSel.value; }); bulkSel.value = ''; };
-          bulkRow.appendChild(bulkLbl); bulkRow.appendChild(bulkSel); nd.appendChild(bulkRow);
+          [['keep-longest', '가장 긴 항목 유지 + 키워드 합집합 (안전)'], ['llm-summarize', 'LLM 요약 병합 (API 호출, 품질↑)']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; bulkSel.appendChild(o); });
+          bulkSel.onchange = () => { if (!bulkSel.value) return; const sels = document.querySelectorAll('select.lore-merge-mode-sel'); sels.forEach(s => { s.value = bulkSel.value; }); };
+          const bulkExec = document.createElement('button'); bulkExec.textContent = '모든 후보 병합'; bulkExec.style.cssText = BTN_BASE + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);background:rgba(120,213,168,.12);';
+          bulkExec.onclick = async () => {
+            if (!state.groups || !state.groups.length) { alert('먼저 병합 후보를 찾아야 함.'); return; }
+            const mode = bulkSel.value || 'keep-longest';
+            const msg = mode === 'llm-summarize'
+              ? '모든 후보를 LLM 요약 병합함. 후보 수만큼 API 비용이 발생할 수 있음. 계속?'
+              : '모든 후보를 가장 긴 항목 기준으로 병합함. API 비용 없음. 계속?';
+            if (!confirm(msg)) return;
+            bulkExec.disabled = true;
+            const orig = bulkExec.textContent;
+            let ok = 0;
+            try {
+              const groups = state.groups.slice();
+              for (let i = 0; i < groups.length; i++) {
+                bulkExec.textContent = (i + 1) + '/' + groups.length;
+                const draft = mode === 'llm-summarize'
+                  ? await buildLlmMerge(groups[i].entries, state.maxChars)
+                  : buildKeepLongest(groups[i].entries, state.maxChars);
+                await applyMergedGroup(groups[i], draft);
+                ok++;
+              }
+              state.groups = [];
+              alert('일괄 병합 완료: ' + ok + '개 그룹');
+              m.replaceContentPanel(renderMerge, '로어 병합');
+            } catch (e) {
+              alert('일괄 병합 실패: ' + (e.message || e) + '\n완료된 그룹: ' + ok + '개');
+            } finally {
+              bulkExec.textContent = orig;
+              bulkExec.disabled = false;
+            }
+          };
+          bulkRow.appendChild(bulkLbl); bulkRow.appendChild(bulkSel); bulkRow.appendChild(bulkExec); nd.appendChild(bulkRow);
 
           if (C.__lastMergeUndo && C.__lastMergeUndo.originals && C.__lastMergeUndo.originals.length) {
             const undoBtn = document.createElement('button'); undoBtn.textContent = '직전 병합 취소 (' + C.__lastMergeUndo.originals.length + '개 엔트리 복원)';
@@ -278,8 +350,8 @@
             const buildPreview = async () => {
               preview.style.display = 'block'; preview.textContent = '생성 중...';
               try {
-                if (modeSel.value === 'keep-longest') mergedDraft = mkKeepLongest(grp.entries);
-                else mergedDraft = await mkLlmMerge(grp.entries);
+                if (modeSel.value === 'keep-longest') mergedDraft = buildKeepLongest(grp.entries, state.maxChars);
+                else mergedDraft = await buildLlmMerge(grp.entries, state.maxChars);
                 const sumLen = summaryValue(mergedDraft.summary).length;
                 const over = sumLen > state.maxChars;
                 const color = over ? TONE.danger : TONE.ok;

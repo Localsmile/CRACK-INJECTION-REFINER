@@ -46,9 +46,51 @@
         if (!filtered.length) { panel.addText('활성 항목 없음.'); return; }
         const byPack = {}; filtered.forEach(e => { (byPack[e.packName] = byPack[e.packName] || []).push(e); });
 
+        panel.addBoxedField('', '', { onInit: (nd) => {
+          C.setFullWidth(nd);
+          nd.appendChild(C.createSectionTitle('로어 목록', '현재 활성 로어를 관리함. 의미 검색을 쓰려면 임베딩 준비가 필요함.'));
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+          const info = document.createElement('div');
+          info.textContent = '활성 로어팩 ' + activePacks.length + '개 / 로어 ' + filtered.length + '개';
+          info.style.cssText = 'flex:1;min-width:180px;font-size:12px;color:var(--li-muted,#748196);line-height:1.5;';
+          const embAll = document.createElement('button');
+          embAll.textContent = '임베딩 일괄 생성';
+          embAll.style.cssText = BTN_BASE + 'color:var(--li-accent-strong,#c7d2fe);border-color:rgba(129,140,248,.45);background:rgba(129,140,248,.12);';
+          embAll.onclick = async () => {
+            const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
+            if (miss) { alert('임베딩 API 설정 필요: ' + miss); return; }
+            embAll.disabled = true;
+            const orig = embAll.textContent;
+            try {
+              const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+                ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
+                : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+              let ok = 0;
+              for (let i = 0; i < filtered.length; i++) {
+                embAll.textContent = '임베딩 ' + (i + 1) + '/' + filtered.length;
+                await C.ensureEmbedding(filtered[i], apiOpts);
+                ok++;
+              }
+              info.textContent = '임베딩 완료: ' + ok + '개';
+              info.style.color = 'var(--li-accent-strong,#c7d2fe)';
+              m.replaceContentPanel(renderPanel, '로어 목록 관리');
+            } catch (e) {
+              info.textContent = '임베딩 실패: ' + String(e.message || e).slice(0, 100);
+              info.style.color = 'var(--li-danger,#dc2626)';
+            } finally {
+              embAll.textContent = orig;
+              embAll.disabled = false;
+            }
+          };
+          row.appendChild(info);
+          row.appendChild(embAll);
+          nd.appendChild(row);
+        }});
+
         for (const [pk, items] of Object.entries(byPack)) {
           panel.addBoxedField('', '', { onInit: (nd) => {
-            C.setFullWidth(nd); nd.style.cssText += 'background:linear-gradient(180deg,#0c1422,#09111d);border:1px solid var(--li-line,#2f3b4f);border-radius:10px;margin-bottom:12px;box-shadow:0 10px 24px rgba(0,0,0,.18);';
+            C.setFullWidth(nd); nd.style.cssText += 'background:var(--li-surface-2,#2b2b31);border:1px solid var(--li-line,#3f3f46);border-radius:8px;margin-bottom:12px;';
             const headerRow = document.createElement('div'); headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid var(--li-line,#2f3b4f);padding-bottom:10px;cursor:pointer;gap:10px;';
 
             const curUrl = _w.__LoreInj.getUrlStateKey ? _w.__LoreInj.getUrlStateKey(C.getCurUrl()) : C.getCurUrl();
@@ -73,13 +115,13 @@
             };
 
             const title = document.createElement('div'); title.style.cssText = 'font-size:14px;font-weight:900;color:var(--li-text,#e7edf5);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; title.textContent = pk + ' (' + items.length + '개)';
-            const arrow = document.createElement('span'); arrow.textContent = '열기'; arrow.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:800;';
+            const arrow = document.createElement('button'); arrow.type = 'button'; arrow.textContent = '+'; arrow.className = 'lore-v2-compact-toggle'; arrow.setAttribute('aria-label', '목록 펼치기'); arrow.style.cssText = 'font-size:13px;color:var(--li-muted,#748196);font-weight:800;';
             headerRow.appendChild(pkSw); headerRow.appendChild(title); headerRow.appendChild(arrow); nd.appendChild(headerRow);
 
             items.sort((a,b) => (a.type||'').localeCompare(b.type||''));
             const listContainer = document.createElement('div'); listContainer.style.cssText = 'display:none;flex-direction:column;gap:8px;';
             let isExpanded = false;
-            headerRow.onclick = () => { isExpanded = !isExpanded; listContainer.style.display = isExpanded ? 'flex' : 'none'; arrow.textContent = isExpanded ? '접기' : '열기'; };
+            headerRow.onclick = () => { isExpanded = !isExpanded; listContainer.style.display = isExpanded ? 'flex' : 'none'; arrow.textContent = isExpanded ? '-' : '+'; arrow.setAttribute('aria-label', isExpanded ? '목록 접기' : '목록 펼치기'); };
 
             for (const e of items) {
               const row = document.createElement('div'); row.style.cssText = 'padding:10px;border:1px solid rgba(255,255,255,.05);border-radius:9px;background:rgba(7,13,23,.74);display:flex;flex-direction:column;';

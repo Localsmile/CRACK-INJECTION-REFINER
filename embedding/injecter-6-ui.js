@@ -108,15 +108,15 @@
       .lore-launcher-button {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
+        gap: 8px;
         min-width: 0;
-        height: 28px;
-        padding: 0 9px;
+        height: 32px;
+        padding: 0 11px;
         border-radius: 8px;
         border: 1px solid #3F3F46;
         background: #232327;
         color: #FAFAFA;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 600;
         line-height: 1;
         cursor: pointer;
@@ -130,8 +130,8 @@
         white-space: nowrap;
       }
       .lore-launcher-dot {
-        width: 6px;
-        height: 6px;
+        width: 7px;
+        height: 7px;
         flex: 0 0 auto;
         border-radius: 50%;
         background: #818CF8;
@@ -193,7 +193,7 @@
       if (mount && mount.target) {
         const buttonCloned = document.createElement('button');
         buttonCloned.innerHTML = '<span class="lore-launcher-dot"></span><span>로어</span>';
-        buttonCloned.style.cssText = 'margin-right: 10px';
+        buttonCloned.style.cssText = 'margin-right: 6px';
         buttonCloned.className = 'lore-launcher-button';
         buttonCloned.title = '로어 인젝터';
         mount.target.insertBefore(buttonCloned, mount.before || mount.target.childNodes[0] || null);

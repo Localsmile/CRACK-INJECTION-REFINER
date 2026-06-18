@@ -66,6 +66,19 @@
           }
           return parts.length ? '<br><span style="font-size:10px;color:' + COLOR.soft + ';">' + parts.join(' · ') + '</span>' : '';
         };
+        const shortText = (v, n = 220) => {
+          const s = String(v == null ? '' : v);
+          return s.length > n ? s.slice(0, n) + '...' : s;
+        };
+        const diffChangedOnly = (before, after) => {
+          const a = String(before || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+          const b = String(after || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+          const setA = new Set(a);
+          const setB = new Set(b);
+          const removed = a.filter(x => !setB.has(x)).slice(0, 6);
+          const added = b.filter(x => !setA.has(x)).slice(0, 6);
+          return { removed, added };
+        };
         const iLog = getInjLog(chatKey); const eLog = getExtLog(chatKey); const cLog = JSON.parse(_ls.getItem('lore-contradictions') || '[]'); const rLog = settings.config.urlRefinerLogs?.[chatKey] || [];
   
         const makeLogBox = (title, color, items, renderer) => {
@@ -73,7 +86,7 @@
             C.setFullWidth(nd);
             const hRow = document.createElement('div'); hRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--li-line,#2f3b4f);margin-bottom:8px;cursor:pointer;gap:10px;';
             const leftWrap = document.createElement('div'); leftWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
-            const arrow = document.createElement('span'); arrow.textContent = '열기'; arrow.style.cssText = 'font-size:10px;color:' + COLOR.muted + ';min-width:24px;';
+            const arrow = document.createElement('button'); arrow.type = 'button'; arrow.textContent = '+'; arrow.className = 'lore-v2-compact-toggle'; arrow.setAttribute('aria-label', title + ' 펼치기'); arrow.style.cssText = 'font-size:12px;color:' + COLOR.muted + ';';
             const t = document.createElement('div'); t.textContent = `${title} (${items.length})`; t.style.cssText = `font-size:14px;color:${color};font-weight:800;`;
             leftWrap.appendChild(arrow); leftWrap.appendChild(t);
             hRow.appendChild(leftWrap);
@@ -99,7 +112,8 @@
             hRow.onclick = () => {
               const isOpen = listCon.style.display !== 'none';
               listCon.style.display = isOpen ? 'none' : 'block';
-              arrow.textContent = isOpen ? '열기' : '접기';
+              arrow.textContent = isOpen ? '+' : '-';
+              arrow.setAttribute('aria-label', title + (isOpen ? ' 펼치기' : ' 접기'));
             };
           }});
         };
@@ -116,7 +130,7 @@
             const leftWrap = document.createElement('div');
             leftWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;min-width:0;flex-wrap:wrap;';
             const arrow = document.createElement('span');
-            arrow.textContent = '열기'; arrow.style.cssText = 'font-size:10px;color:' + COLOR.muted + ';min-width:24px;';
+            arrow.textContent = '+'; arrow.style.cssText = 'font-size:12px;color:' + COLOR.muted + ';min-width:24px;';
             const titleSpan = document.createElement('span');
             titleSpan.textContent = 'API 비용'; titleSpan.style.cssText = 'font-size:14px;color:' + COLOR.text + ';font-weight:800;';
             const totalSpan = document.createElement('span');
@@ -162,7 +176,7 @@
             leftWrap.onclick = () => {
               detailsOpen = !detailsOpen;
               detailsCon.style.display = detailsOpen ? 'block' : 'none';
-              arrow.textContent = detailsOpen ? '접기' : '열기';
+              arrow.textContent = detailsOpen ? '-' : '+';
             };
   
             const fmtUsd = (n) => '$' + (Math.abs(n) < 0.01 ? n.toFixed(5) : n.toFixed(4));
@@ -318,8 +332,67 @@
           r.innerHTML = h; nd.appendChild(r);
         });
         makeLogBox('추출 기록', TONE.extract, eLog, (clear, i, nd) => { if(clear) clearExtLog(chatKey); else { const r = document.createElement('div'); r.style.cssText = LOG_ROW; r.innerHTML = `<span style="color:${i.status==='실패'?COLOR.danger:i.status==='성공'?COLOR.ok:COLOR.text};font-weight:800;">[${i.time}] ${i.isManual?'수동':'자동'} - ${i.status} (${i.count||0}개)</span>${i.api?`<br><span style="font-size:10px;color:${COLOR.accent};">API: ${i.api.status}${i.api.error?' | '+i.api.error:''}</span>`:''}${renderCostLine(i)}`; nd.appendChild(r); } });
-        makeLogBox('교정 기록', TONE.refine, rLog, (clear, i, nd) => { if(clear){ settings.config.urlRefinerLogs[chatKey]=[]; settings.save(); } else { const r = document.createElement('div'); r.style.cssText = LOG_ROW; r.innerHTML = `<span style="color:${i.isPass?COLOR.ok:i.isError?COLOR.danger:TONE.refine};font-weight:800;">[${i.time}] ${i.isPass?'통과':i.isError?'에러':'교정됨'}</span>${i.reason?`<br><span style="font-size:11px;color:${COLOR.warn};">${i.reason}</span>`:''}${renderCostLine(i)}`; nd.appendChild(r); } });
-        makeLogBox('모순 기록', TONE.contradiction, cLog, (clear, i, nd) => { if(clear) _ls.removeItem('lore-contradictions'); else { const r = document.createElement('div'); r.style.cssText = LOG_ROW; r.innerHTML = `<span style="color:${TONE.contradiction};font-weight:800;">${i.name}</span><br><span style="color:${COLOR.danger};">"${i.oldStatus}" -> "${i.newStatus}"</span><br><span style="font-size:10px;color:${COLOR.soft};">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`; nd.appendChild(r); } });
+        makeLogBox('교정 기록', TONE.refine, rLog, (clear, i, nd) => {
+          if(clear){ settings.config.urlRefinerLogs[chatKey]=[]; settings.save(); return; }
+          const r = document.createElement('div');
+          r.style.cssText = LOG_ROW;
+          const before = i.before || i.original || i.input || '';
+          const after = i.after || i.fixed || i.output || i.result || '';
+          const changed = diffChangedOnly(before, after);
+          const head = document.createElement('div');
+          head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = '+';
+          btn.className = 'lore-v2-compact-toggle';
+          btn.setAttribute('aria-label', '교정 상세 펼치기');
+          const title = document.createElement('div');
+          title.innerHTML = `<span style="color:${i.isPass?COLOR.ok:i.isError?COLOR.danger:TONE.refine};font-weight:800;">[${i.time}] ${i.isPass?'문제 없음':i.isError?'오류':'교정됨'}</span>${i.reason?`<br><span style="font-size:11px;color:${COLOR.warn};">${escHtml(i.reason)}</span>`:''}${renderCostLine(i)}`;
+          head.appendChild(btn);
+          head.appendChild(title);
+          const body = document.createElement('div');
+          body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:rgba(7,13,23,.62);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;';
+          const added = changed.added.length ? changed.added.map(x => '+ ' + x).join('\n') : '(추가 변경 없음)';
+          const removed = changed.removed.length ? changed.removed.map(x => '- ' + x).join('\n') : '(삭제 변경 없음)';
+          body.textContent = '바뀐 부분만\n' + removed + '\n' + added + '\n\n변경 전\n' + shortText(before) + '\n\n변경 후\n' + shortText(after);
+          head.onclick = () => {
+            const open = body.style.display !== 'none';
+            body.style.display = open ? 'none' : 'block';
+            btn.textContent = open ? '+' : '-';
+            btn.setAttribute('aria-label', open ? '교정 상세 펼치기' : '교정 상세 접기');
+          };
+          r.appendChild(head);
+          r.appendChild(body);
+          nd.appendChild(r);
+        });
+        makeLogBox('모순 기록', TONE.contradiction, cLog, (clear, i, nd) => {
+          if(clear) { _ls.removeItem('lore-contradictions'); return; }
+          const r = document.createElement('div');
+          r.style.cssText = LOG_ROW;
+          const head = document.createElement('div');
+          head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = '+';
+          btn.className = 'lore-v2-compact-toggle';
+          btn.setAttribute('aria-label', '모순 상세 펼치기');
+          const title = document.createElement('div');
+          title.innerHTML = `<span style="color:${TONE.contradiction};font-weight:800;">${escHtml(i.name)}</span><br><span style="font-size:10px;color:${COLOR.soft};">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`;
+          head.appendChild(btn);
+          head.appendChild(title);
+          const body = document.createElement('div');
+          body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:rgba(7,13,23,.62);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;';
+          body.textContent = '변경 전\n' + String(i.oldStatus || '') + '\n\n변경 후\n' + String(i.newStatus || '') + '\n\n바뀐 부분만\n- ' + String(i.oldStatus || '') + '\n+ ' + String(i.newStatus || '');
+          head.onclick = () => {
+            const open = body.style.display !== 'none';
+            body.style.display = open ? 'none' : 'block';
+            btn.textContent = open ? '+' : '-';
+            btn.setAttribute('aria-label', open ? '모순 상세 펼치기' : '모순 상세 접기');
+          };
+          r.appendChild(head);
+          r.appendChild(body);
+          nd.appendChild(r);
+        });
       };
       m.replaceContentPanel(renderLogs, '로그 조회');
   });

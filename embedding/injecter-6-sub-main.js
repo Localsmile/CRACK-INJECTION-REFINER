@@ -9,6 +9,7 @@
   if (_w.__LoreInj.__subMainLoaded) return;
 
   const { C, db, _ls, settings } = _w.__LoreInj;
+  const R = _w.__LoreRefiner;
 
   const PRESETS = {
     beginner: { name: '기본 추천', desc: '의미 검색 + 8턴마다 대화 정리. 일반 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, injectionCleanupEnabled: true, windowExitChars: 7000, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, rerankEnabled: false, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true } },
@@ -55,6 +56,50 @@
         metrics.nodes.entry.style.color = usable ? 'var(--li-accent,#5aa7ff)' : '#e7b56f';
         if (activePacks.length) metrics.nodes.pack.textContent = activePacks.join(', ');
       }).catch(() => { metrics.nodes.entry.textContent = '확인 실패'; metrics.nodes.entry.style.color = '#ef6b6b'; });
+    }});
+  }
+
+  function appendQuickRefiner(panel) {
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      nd.appendChild(C.createSectionTitle('최근 AI 응답 재검수', '마지막 AI 응답을 즉시 다시 검사함. 가장 자주 쓰는 수동 교정 작업.'));
+      const btn = C.createActionButton('최근 AI 응답 재검수', 'primary');
+      btn.style.width = '100%';
+      btn.style.minHeight = '42px';
+      const status = document.createElement('div');
+      status.style.cssText = 'margin-top:8px;min-height:18px;text-align:center;font-size:11px;color:var(--li-muted,#748196);line-height:1.5;';
+      btn.onclick = async () => {
+        if (!R || !R.manualRefine) { alert('응답 교정 모듈을 찾을 수 없음. 스크립트 업데이트 또는 새로고침 필요.'); return; }
+        const cid = C.getCurrentChatId && C.getCurrentChatId();
+        if (!cid) { alert('현재 채팅방을 찾지 못함.'); return; }
+        btn.disabled = true;
+        const orig = btn.textContent;
+        const start = Date.now();
+        btn.textContent = '검수 중';
+        status.textContent = '최근 응답 찾는 중';
+        status.style.color = 'var(--li-accent-strong,#c7d2fe)';
+        const tick = setInterval(() => {
+          status.textContent = '검수 중 (' + Math.floor((Date.now() - start) / 1000) + '초)';
+        }, 1000);
+        try {
+          const platform = _w.__LorePlatform;
+          const lastBot = platform && platform.findLastAssistantMessage ? await platform.findLastAssistantMessage(cid) : null;
+          if (!lastBot || lastBot instanceof Error || !lastBot.content) throw new Error('마지막 AI 응답 없음');
+          await R.manualRefine(lastBot.content, lastBot.id);
+          status.textContent = '완료';
+          status.style.color = 'var(--li-accent-strong,#c7d2fe)';
+          setTimeout(() => { status.textContent = ''; }, 2500);
+        } catch (e) {
+          status.textContent = '실패: ' + String(e.message || e).slice(0, 80);
+          status.style.color = 'var(--li-danger,#dc2626)';
+        } finally {
+          clearInterval(tick);
+          btn.textContent = orig;
+          btn.disabled = false;
+        }
+      };
+      nd.appendChild(btn);
+      nd.appendChild(status);
     }});
   }
 
@@ -119,12 +164,69 @@
     }});
   }
 
-  _w.__LoreInj.registerSettingsPage('main', '상태', (m) => {
+  function appendQuickLore(panel, menuApi) {
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      nd.appendChild(C.createSectionTitle('로어 목록', '현재 채팅에서 활성화된 로어팩과 검색 준비 상태를 빠르게 확인함.'));
+      const status = document.createElement('div');
+      status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);line-height:1.6;margin-bottom:10px;';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+      const openBtn = C.createActionButton('로어 목록', 'primary');
+      const embedBtn = C.createActionButton('임베딩 일괄 생성', 'ghost');
+      openBtn.onclick = () => menuApi.openPage('lore');
+      embedBtn.onclick = async () => {
+        const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
+        if (miss) { alert('임베딩 API 설정 필요: ' + miss); return; }
+        embedBtn.disabled = true;
+        const orig = embedBtn.textContent;
+        embedBtn.textContent = '준비 중';
+        try {
+          const url = C.getCurUrl();
+          const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(url) : ((settings.config.urlPacks && settings.config.urlPacks[url]) || []);
+          const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
+          if (!entries.length) { status.textContent = '활성 로어 없음'; return; }
+          const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+            ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
+            : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+          let ok = 0;
+          for (let i = 0; i < entries.length; i++) {
+            embedBtn.textContent = '임베딩 ' + (i + 1) + '/' + entries.length;
+            await C.ensureEmbedding(entries[i], apiOpts);
+            ok++;
+          }
+          status.textContent = '임베딩 완료: ' + ok + '개';
+        } catch (e) {
+          status.textContent = '임베딩 실패: ' + String(e.message || e).slice(0, 80);
+          status.style.color = 'var(--li-danger,#dc2626)';
+        } finally {
+          embedBtn.textContent = orig;
+          embedBtn.disabled = false;
+        }
+      };
+      row.appendChild(openBtn);
+      row.appendChild(embedBtn);
+      nd.appendChild(status);
+      nd.appendChild(row);
+      (async () => {
+        try {
+          const url = C.getCurUrl();
+          const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(url) : ((settings.config.urlPacks && settings.config.urlPacks[url]) || []);
+          const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
+          status.textContent = activePacks.length ? ('활성 로어팩 ' + activePacks.length + '개 / 로어 ' + entries.length + '개') : '활성 로어팩 없음';
+        } catch (_) { status.textContent = '로어 상태 확인 실패'; }
+      })();
+    }});
+  }
+
+  _w.__LoreInj.registerSettingsPage('main', '빠른 설정', (m) => {
       m.replaceContentPanel(async (panel) => {
+        appendQuickRefiner(panel);
         appendStatus(panel);
         appendPresets(panel, m);
+        appendQuickLore(panel, m);
         appendReset(panel);
-      }, '상태');
+      }, '빠른 설정');
   });
 
   _w.__LoreInj.__subMainLoaded = true;

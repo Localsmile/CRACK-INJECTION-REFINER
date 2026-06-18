@@ -91,7 +91,8 @@
             const st = R.getRefinerState ? R.getRefinerState() : null;
             if (!st) { live.textContent = '상태: 대기'; return; }
             const age = st.at ? Math.max(0, Math.floor((Date.now() - st.at) / 1000)) : 0;
-            live.textContent = '상태: ' + (st.state || 'idle') + (st.detail ? ' · ' + st.detail : '') + ' · ' + age + '초 전';
+            const raw = (st.state || 'idle') + (st.detail ? ' · ' + st.detail : '') + ' · ' + (age === 0 ? '0초 전' : age + '초 전');
+            live.textContent = '상태: ' + (C.humanizeStatusText ? C.humanizeStatusText(raw) : raw);
           };
           renderLive();
           try { if (R.__refinerStatusUiTimer) clearInterval(R.__refinerStatusUiTimer); } catch(_) {}

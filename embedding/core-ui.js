@@ -13,6 +13,22 @@
   var _statusLabel = null;
   var _statusDot = null;
   var _statusAutoHideTimer = null;
+  function humanizeStatusText(text) {
+    var s = String(text || '');
+    var map = [
+      [/Local migration check complete\.?/i, '저장 데이터 점검 완료'],
+      [/Local migration failed:?/i, '저장 데이터 점검 실패:'],
+      [/local migration/i, '저장 데이터 정리'],
+      [/stale embedding/i, '검색 준비 갱신 필요'],
+      [/queued for refine/i, '응답 교정 대기 중'],
+      [/\bqueued\b/i, '대기 중'],
+      [/\brefining\b/i, '응답 교정 중'],
+      [/\bidle\b/i, '대기 중'],
+      [/0초 전/g, '방금 전']
+    ];
+    map.forEach(function (pair) { s = s.replace(pair[0], pair[1]); });
+    return s;
+  }
   function showStatusBadge(text) {
     if (_w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config && _w.__LoreInj.settings.config.statusBadgeEnabled === false) {
       hideStatusBadge();
@@ -47,11 +63,12 @@
     if (mountTarget && _statusBadge.parentNode !== mountTarget) {
       try { mountTarget.appendChild(_statusBadge); } catch (_) {}
     }
-    if (_statusLabel && _statusLabel.textContent !== text) _statusLabel.textContent = text;
+    var labelText = humanizeStatusText(text);
+    if (_statusLabel && _statusLabel.textContent !== labelText) _statusLabel.textContent = labelText;
     if (_statusBadge.style.opacity !== '1') _statusBadge.style.opacity = '1';
     if (_statusBadge.style.pointerEvents !== 'auto') _statusBadge.style.pointerEvents = 'auto';
     if (_statusAutoHideTimer) { clearTimeout(_statusAutoHideTimer); _statusAutoHideTimer = null; }
-    if (text === '에리가 응답 기다리는 중') {
+    if (labelText === '에리가 응답 기다리는 중') {
       _statusAutoHideTimer = setTimeout(function () {
         if (_statusLabel && _statusLabel.textContent === '에리가 응답 기다리는 중') hideStatusBadge();
       }, 45000);
@@ -352,6 +369,7 @@
 
   Object.assign(C, {
     showStatusBadge, hideStatusBadge,
+    humanizeStatusText,
     UI, setFullWidth, createToggleRow, createSectionTitle, createMetricGrid,
     createSelectRow, createSegmentedRow, createActionButton, createApiInput,
     __uiLoaded: true

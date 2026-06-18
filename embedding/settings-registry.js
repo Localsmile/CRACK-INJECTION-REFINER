@@ -63,9 +63,9 @@
   ];
 
   const GROUPS = [
-    { id: 'memory', label: '기억 관리' },
-    { id: 'retrieval', label: '검색과 회수' },
-    { id: 'injection', label: '삽입과 정리' }
+    { id: 'injection', label: '삽입 방식' },
+    { id: 'retrieval', label: '검색과 후보 선택' },
+    { id: 'memory', label: '대화 정리와 기억 저장' }
   ];
 
   function capabilityOk(def) {
@@ -138,7 +138,7 @@
   function renderSettingsRegistryPanel(panel, groupFilter = null) {
     panel.addBoxedField('', '', { onInit: (nd) => {
       nd.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
-      const intro = makeShell('div', '', '자주 쓰는 설정을 작업 흐름별로 관리함. 고급 값은 필요한 경우에만 조정함.');
+      const intro = makeShell('div', '', '로어 삽입에 직접 영향을 주는 설정을 작업 흐름별로 관리함. 고급 값은 필요한 경우에만 조정함.');
       intro.style.cssText = 'color:' + TONE.soft + ';font-size:12px;line-height:1.6;';
       nd.appendChild(intro);
 
@@ -194,7 +194,7 @@
 
   [
     { key: 'memory-settings', label: '기억 설정', group: 'memory' },
-    { key: 'retrieval-settings', label: '검색 설정', group: 'retrieval' },
+    { key: 'retrieval-settings', label: '검색과 후보 선택', group: 'retrieval' },
     { key: 'injection-settings', label: '삽입 설정', group: 'injection' }
   ].forEach(item => {
     _w.__LoreInj.registerSettingsPage(item.key, item.label, (m) => {

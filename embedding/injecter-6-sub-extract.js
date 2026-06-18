@@ -298,156 +298,103 @@
           nd.appendChild(bBtn);
           nd.appendChild(bStatus);
         }});
-  
-        // === 지식 변환 (URL/텍스트 - 로어) ===
-        panel.addBoxedField('', '', { onInit: (nd) => {
-          C.setFullWidth(nd);
-          const S = FIELD_STYLE;
-          nd.innerHTML = '<div style="font-size:15px;color:var(--li-text,#e7edf5);font-weight:700;margin-bottom:6px;">지식 변환</div><div style="font-size:12px;color:var(--li-muted,#748196);line-height:1.55;margin-bottom:14px;">URL이나 긴 텍스트를 별도 로어팩으로 변환함.</div>';
-          const urlGrid = document.createElement('div'); urlGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1.5fr) minmax(160px,.8fr) auto;gap:10px;align-items:end;margin-bottom:10px;';
-          if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) urlGrid.style.gridTemplateColumns = '1fr';
-          const makeField = (label, node) => {
-            const wrap = document.createElement('label');
-            wrap.style.cssText = 'display:flex;flex-direction:column;gap:5px;min-width:0;';
-            const cap = document.createElement('span'); cap.textContent = label; cap.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:700;';
-            wrap.appendChild(cap); wrap.appendChild(node);
-            return wrap;
-          };
-          const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S;
-          const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S;
-          const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
-          const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
-          urlBtn.onclick = async () => {
-            if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; }
-            urlBtn.disabled = true; urlBtn.textContent = '변환중...';
-            const startMs = Date.now();
-            let phaseMsg = '에리가 URL 본문 가져오는 중';
-            const setBusy = (msg, color = TONE.ok) => {
-              phaseMsg = msg;
-              rDiv.textContent = msg;
-              rDiv.style.color = color;
-              try { C.showStatusBadge(msg); } catch (_) {}
-            };
-            const tick = setInterval(() => {
-              const sec = Math.floor((Date.now() - startMs) / 1000);
-              setBusy(phaseMsg.replace(/\s*\(\d+초\)$/, '') + ` (${sec}초)`);
-            }, 1000);
-            setBusy(phaseMsg + ' (0초)');
-            try {
-              const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), requireGenerationApiOpts({}, { feature: 'urlImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
-                onProgress: (ev) => {
-                  if (!ev) return;
-                  switch (ev.phase) {
-                    case 'fetch:start':
-                      setBusy('에리가 URL 본문 가져오는 중');
-                      break;
-                    case 'fetch:try': {
-                      const methodLabel = ({ 'gm-direct': 'GM 직접 요청', 'fetch': '브라우저 fetch', 'proxy': '공용 프록시' })[ev.method] || ev.method;
-                      const suffix = ev.method === 'proxy' ? ` #${ev.attempt}/${ev.total}` : '';
-                      const sec = Math.max(1, Math.floor((ev.timeoutMs || 15000) / 1000));
-                      setBusy(`에리가 URL 가져오는 중 - ${methodLabel}${suffix} (최대 ${sec}초)`);
-                      break;
-                    }
-                    case 'fetch:done':
-                      setBusy(`에리가 URL 본문 받음 - ${((ev.bytes || 0) / 1024).toFixed(1)}KB`);
-                      break;
-                    case 'parse':
-                      setBusy('에리가 HTML 정리 중');
-                      break;
-                    case 'fetch:fail':
-                      setBusy('URL 가져오기 실패 - 모든 경로 컷', TONE.danger);
-                      break;
-                    case 'chunk':
-                      setBusy(`에리가 URL 내용을 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} - 시도 ${ev.attempt}/${ev.maxAttempts}`);
-                      break;
-                  }
-                }
-              });
-              const rpt = C.__lastImportReport;
-              let msg = '완료: ' + cnt + '개 생성';
-              if (rpt) {
-                if (rpt.failed > 0) {
-                  const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || '';
-                  msg += ' / 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
-                } else if (cnt === 0 && rpt.empty === rpt.chunks) {
-                  msg = '0개 - 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
-                }
-              }
-              rDiv.textContent = msg;
-              rDiv.style.color = cnt > 0 ? TONE.ok : TONE.warn;
-              if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
-            } catch (e) {
-              rDiv.textContent = '실패: ' + (e.message || String(e));
-              rDiv.style.color = TONE.danger;
-            } finally {
-              clearInterval(tick);
-              try { C.hideStatusBadge(); } catch (_) {}
-              urlBtn.textContent = 'URL 변환'; urlBtn.disabled = false;
-            }
-          };
-          urlGrid.appendChild(makeField('URL', urlInp));
-          urlGrid.appendChild(makeField('팩 이름', nameInp));
-          urlGrid.appendChild(urlBtn);
-          nd.appendChild(urlGrid); nd.appendChild(rDiv);
-          const t2 = document.createElement('div'); t2.innerHTML = '<div style="font-size:13px;color:var(--li-text,#e7edf5);font-weight:700;margin-top:18px;margin-bottom:8px;">텍스트 변환</div>'; nd.appendChild(t2);
-          const textGrid = document.createElement('div'); textGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.35fr) auto;gap:10px;align-items:end;';
-          if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) textGrid.style.gridTemplateColumns = '1fr';
-          const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + ';height:112px;resize:vertical;';
-          const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S;
-          const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
-          const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
-          tBtn.onclick = async () => {
-            if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; }
-            tBtn.disabled = true; tBtn.textContent = '변환중...';
-            const startMs = Date.now();
-            let phaseMsg = '에리가 텍스트를 로어로 변환 중';
-            const setBusy = (msg, color = TONE.ok) => {
-              phaseMsg = msg;
-              rDiv2.textContent = msg;
-              rDiv2.style.color = color;
-              try { C.showStatusBadge(msg); } catch (_) {}
-            };
-            const tick = setInterval(() => {
-              const sec = Math.floor((Date.now() - startMs) / 1000);
-              setBusy(phaseMsg.replace(/\s*\(\d+초\)$/, '') + ` (${sec}초)`);
-            }, 1000);
-            setBusy(phaseMsg + ' (0초)');
-            try {
-              const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), requireGenerationApiOpts({}, { feature: 'textImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
-                onProgress: (ev) => {
-                  if (ev && ev.phase === 'chunk') {
-                    setBusy(`에리가 텍스트를 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} - 시도 ${ev.attempt}/${ev.maxAttempts}`);
-                  }
-                }
-              });
-              const rpt = C.__lastImportReport;
-              let msg = '완료: ' + cnt + '개 생성';
-              if (rpt) {
-                if (rpt.failed > 0) {
-                  const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || '';
-                  msg += ' / 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
-                } else if (cnt === 0 && rpt.empty === rpt.chunks) {
-                  msg = '0개 - 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
-                }
-              }
-              rDiv2.textContent = msg;
-              rDiv2.style.color = cnt > 0 ? TONE.ok : TONE.warn;
-              if (cnt > 0) await setPackEnabled(nameInp2.value.trim(), true);
-            } catch (e) {
-              rDiv2.textContent = '실패: ' + (e.message || String(e));
-              rDiv2.style.color = TONE.danger;
-            } finally {
-              clearInterval(tick);
-              try { C.hideStatusBadge(); } catch (_) {}
-              tBtn.textContent = '텍스트 변환'; tBtn.disabled = false;
-            }
-          };
-          textGrid.appendChild(makeField('원문', ta));
-          textGrid.appendChild(makeField('팩 이름', nameInp2));
-          textGrid.appendChild(tBtn);
-          nd.appendChild(textGrid); nd.appendChild(rDiv2);
-        }});
       }, '추출 실행');
+  });
+
+  _w.__LoreInj.registerSettingsPage('knowledge', '지식 변환', (m) => {
+    m.replaceContentPanel((panel) => {
+      panel.addBoxedField('', '', { onInit: (nd) => {
+        C.setFullWidth(nd);
+        nd.appendChild(C.createSectionTitle('지식 변환', 'URL이나 긴 텍스트를 별도 로어팩으로 변환함. 추출/정리용 모델을 사용함.'));
+        const S = FIELD_STYLE;
+        const makeField = (label, node) => {
+          const wrap = document.createElement('label');
+          wrap.style.cssText = 'display:flex;flex-direction:column;gap:5px;min-width:0;';
+          const cap = document.createElement('span'); cap.textContent = label; cap.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:700;';
+          wrap.appendChild(cap); wrap.appendChild(node);
+          return wrap;
+        };
+
+        const urlGrid = document.createElement('div');
+        urlGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1.5fr) minmax(160px,.8fr) auto;gap:10px;align-items:end;margin-bottom:10px;';
+        if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) urlGrid.style.gridTemplateColumns = '1fr';
+        const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S;
+        const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S;
+        const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
+        const status = document.createElement('div'); status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin:8px 0 18px;line-height:1.45;';
+        urlBtn.onclick = async () => {
+          if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩 이름 필요.'); return; }
+          urlBtn.disabled = true; const orig = urlBtn.textContent; urlBtn.textContent = '변환 중';
+          const startMs = Date.now();
+          let phaseMsg = 'URL 본문 가져오는 중';
+          const tick = setInterval(() => { status.textContent = phaseMsg + ' (' + Math.floor((Date.now() - startMs) / 1000) + '초)'; }, 1000);
+          try {
+            const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), requireGenerationApiOpts({}, { feature: 'urlImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
+              onProgress: (ev) => {
+                if (!ev) return;
+                if (ev.phase === 'fetch:start') phaseMsg = 'URL 본문 가져오는 중';
+                else if (ev.phase === 'parse') phaseMsg = '본문 정리 중';
+                else if (ev.phase === 'chunk') phaseMsg = '로어 변환 중: 청크 ' + ev.chunk + '/' + ev.total;
+              }
+            });
+            status.textContent = '완료: ' + cnt + '개 생성';
+            status.style.color = cnt ? TONE.ok : TONE.warn;
+            if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
+          } catch (e) {
+            status.textContent = '실패: ' + (e.message || String(e));
+            status.style.color = TONE.danger;
+          } finally {
+            clearInterval(tick);
+            urlBtn.textContent = orig;
+            urlBtn.disabled = false;
+          }
+        };
+        urlGrid.appendChild(makeField('URL', urlInp));
+        urlGrid.appendChild(makeField('팩 이름', nameInp));
+        urlGrid.appendChild(urlBtn);
+        nd.appendChild(urlGrid);
+        nd.appendChild(status);
+
+        const textTitle = document.createElement('div');
+        textTitle.textContent = '텍스트 변환';
+        textTitle.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:700;margin:18px 0 8px;';
+        nd.appendChild(textTitle);
+        const textGrid = document.createElement('div');
+        textGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.35fr) auto;gap:10px;align-items:end;';
+        if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) textGrid.style.gridTemplateColumns = '1fr';
+        const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + ';height:130px;resize:vertical;';
+        const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S;
+        const textBtn = document.createElement('button'); textBtn.textContent = '텍스트 변환'; textBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
+        const status2 = document.createElement('div'); status2.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
+        textBtn.onclick = async () => {
+          if (!ta.value.trim() || !nameInp2.value.trim()) { alert('텍스트와 팩 이름 필요.'); return; }
+          textBtn.disabled = true; const orig = textBtn.textContent; textBtn.textContent = '변환 중';
+          const startMs = Date.now();
+          let phaseMsg = '텍스트를 로어로 변환 중';
+          const tick = setInterval(() => { status2.textContent = phaseMsg + ' (' + Math.floor((Date.now() - startMs) / 1000) + '초)'; }, 1000);
+          try {
+            const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), requireGenerationApiOpts({}, { feature: 'textImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
+              onProgress: (ev) => { if (ev && ev.phase === 'chunk') phaseMsg = '로어 변환 중: 청크 ' + ev.chunk + '/' + ev.total; }
+            });
+            status2.textContent = '완료: ' + cnt + '개 생성';
+            status2.style.color = cnt ? TONE.ok : TONE.warn;
+            if (cnt > 0) await setPackEnabled(nameInp2.value.trim(), true);
+          } catch (e) {
+            status2.textContent = '실패: ' + (e.message || String(e));
+            status2.style.color = TONE.danger;
+          } finally {
+            clearInterval(tick);
+            textBtn.textContent = orig;
+            textBtn.disabled = false;
+          }
+        };
+        textGrid.appendChild(makeField('원문', ta));
+        textGrid.appendChild(makeField('팩 이름', nameInp2));
+        textGrid.appendChild(textBtn);
+        nd.appendChild(textGrid);
+        nd.appendChild(status2);
+      }});
+    }, '지식 변환');
   });
   
   _w.__LoreInj.__subExtractLoaded = true;

@@ -59,7 +59,7 @@
       },
       {
         "label": "[추출 실행]",
-        "text": "수동 추출, 전체 로그 일괄 추출, URL/텍스트 변환처럼 즉시 실행하는 작업만 추출 실행 화면에서 처리함.\n저장할 로어팩은 실행 화면에서 선택함."
+        "text": "수동 추출과 전체 로그 일괄 추출처럼 API를 직접 실행하는 작업만 추출 화면에서 처리함.\n저장할 로어팩은 실행 화면에서 선택함.\nURL/텍스트 변환은 별도 지식 변환 화면에서 처리함."
       },
       {
         "label": "[전체 로그 일괄 추출]",
@@ -67,7 +67,7 @@
       },
       {
         "label": "[지식 변환]",
-        "text": "URL/텍스트를 로어팩으로 변환함.\nAPI 설정의 추출/정리용 모델 사용함.\n생성된 로어팩은 자동 활성화함."
+        "text": "URL/텍스트를 로어팩으로 변환함.\nAPI 설정의 추출/정리용 모델 사용함.\n생성된 로어팩은 자동 활성화함.\n긴 원문은 청크로 나눠 처리하며 실패 시 추출 로그에서 확인함."
       }
     ]
   },
@@ -76,7 +76,7 @@
     "sections": [
       {
         "label": "[API 연결]",
-        "text": "지원 방식은 4종.\nGemini API Key: 가장 단순함. 처음 설정 권장.\nFirebase: Firebase 설정 스크립트 사용함. 의미 검색 준비는 별도 Gemini API Key 필요. Google AI Studio에서 무료 키 발급 가능.\nVertex JSON: 서비스 계정 JSON 사용함.\n딥식이: V4 Flash/Pro 생성 호출에 사용함. 의미 검색/임베딩은 딥식이가 아니라 별도 Gemini API 키 사용함."
+        "text": "지원 방식은 4종.\nGemini API Key: 가장 단순함. 처음 설정 권장.\nFirebase: Firebase 설정 스크립트 사용함. 의미 검색 준비는 별도 Gemini API Key 필요. Google AI Studio에서 무료 키 발급 가능.\nVertex JSON: 서비스 계정 JSON 사용함.\nDeepSeek: V4 Flash/Pro 생성 호출에 사용함. 의미 검색/임베딩은 DeepSeek가 아니라 별도 Gemini API 키 사용함."
       },
       {
         "label": "[모델 선택]",
@@ -84,7 +84,7 @@
       },
       {
         "label": "[비용 표시]",
-        "text": "API 응답에 사용량 정보가 있으면 실제 토큰 기준으로 계산함.\nGemini는 usageMetadata, 딥식이는 usage 필드 기준.\n딥식이 캐시 hit/miss 토큰이 있으면 분리 계산함.\n없으면 글자 수 기반 추정값 사용함.\n표시 비용은 디버그/비교용이며 실제 청구액은 제공사 청구 정책/환율/세금에 따라 달라질 수 있음."
+        "text": "API 응답에 사용량 정보가 있으면 실제 토큰 기준으로 계산함.\nGemini는 usageMetadata, DeepSeek는 usage 필드 기준.\nDeepSeek 캐시 hit/miss 토큰이 있으면 분리 계산함.\n없으면 글자 수 기반 추정값 사용함.\n표시 비용은 디버그/비교용이며 실제 청구액은 제공사 청구 정책/환율/세금에 따라 달라질 수 있음."
       },
       {
         "label": "[고급 지시문]",
@@ -109,7 +109,7 @@
       },
       {
         "label": "[병합]",
-        "text": "활성 로어팩 안의 유사한 로어를 통합함.\n키워드 병합은 API 없음.\nLLM 요약 병합은 API 비용 발생."
+        "text": "활성 로어팩 안의 유사한 로어를 통합함.\n가장 긴 항목 유지는 API 없음.\nLLM 요약 병합은 API 비용 발생.\n후보를 찾은 뒤 모든 후보를 한 번에 병합할 수 있음."
       },
       {
         "label": "[스냅샷]",
@@ -154,9 +154,12 @@
             const head = document.createElement('div');
             head.style.cssText = 'display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 0;';
 
-            const arrow = document.createElement('span');
-            arrow.textContent = '열기';
-            arrow.style.cssText = 'font-size:11px;color:' + TONE.muted + ';width:28px;font-weight:800;';
+            const arrow = document.createElement('button');
+            arrow.type = 'button';
+            arrow.textContent = '+';
+            arrow.className = 'lore-v2-compact-toggle';
+            arrow.setAttribute('aria-label', '도움말 펼치기');
+            arrow.style.cssText = 'font-size:12px;color:' + TONE.muted + ';font-weight:800;';
 
             const tt = document.createElement('div');
             tt.textContent = title || '도움말';
@@ -184,7 +187,8 @@
             head.onclick = () => {
               const open = body.style.display !== 'none';
               body.style.display = open ? 'none' : 'block';
-              arrow.textContent = open ? '열기' : '접기';
+              arrow.textContent = open ? '+' : '-';
+              arrow.setAttribute('aria-label', open ? '도움말 펼치기' : '도움말 접기');
             };
 
             nd.appendChild(head);

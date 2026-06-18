@@ -15,7 +15,7 @@
   const WORKER_TIMEOUT = 90000;
 
   function enqueueRefine(text, msgId) {
-    R.lastState = { state: 'queued', detail: 'queued for refine', at: Date.now(), queue: refineQueue.length + 1, busy: !!R.workerBusy };
+    R.lastState = { state: 'queued', detail: '응답 교정 대기 중', at: Date.now(), queue: refineQueue.length + 1, busy: !!R.workerBusy };
     const fingerprints = R.getProcessedFingerprints();
     const fingerprint = msgId || text.slice(0, 40);
     if (fingerprints.has(fingerprint)) {
@@ -36,13 +36,13 @@
     }
     R.workerBusy = true;
     R.workerStartTime = Date.now();
-    R.lastState = { state: 'running', detail: 'calling refiner api', at: Date.now(), queue: refineQueue.length, busy: true };
+    R.lastState = { state: 'running', detail: '응답 교정 요청 중', at: Date.now(), queue: refineQueue.length, busy: true };
 
     const item = refineQueue.shift();
     const fingerprints = R.getProcessedFingerprints();
     if (fingerprints.has(item.fingerprint)) {
       R.workerBusy = false;
-      R.lastState = { state: 'skipped', detail: 'already processed', at: Date.now(), queue: refineQueue.length, busy: false };
+      R.lastState = { state: 'skipped', detail: '이미 처리된 응답', at: Date.now(), queue: refineQueue.length, busy: false };
       if (refineQueue.length > 0) processQueue();
       return;
     }
@@ -60,7 +60,7 @@
 
     // B6 fix: 중복 add/save 제거 (위 try 진입 전 이미 처리됨)
     R.workerBusy = false;
-    if (!R.lastState || R.lastState.state === 'running') R.lastState = { state: 'idle', detail: 'done', at: Date.now(), queue: refineQueue.length, busy: false };
+    if (!R.lastState || R.lastState.state === 'running') R.lastState = { state: 'idle', detail: '처리 완료', at: Date.now(), queue: refineQueue.length, busy: false };
 
     if (refineQueue.length > 0) processQueue();
   }

@@ -88,10 +88,18 @@
 
           const mig = settings.config.migrationStatus;
           if (mig && mig.message) {
-            const migBox = document.createElement('div');
             const ok = !/failed/i.test(mig.message);
-            migBox.style.cssText = `margin-bottom:12px;padding:9px 10px;border-radius:9px;border:1px solid ${ok ? '#2c7a5f' : '#8f333f'};background:#0c1320;color:${COLOR.soft};font-size:11px;line-height:1.5;`;
-            migBox.textContent = `마이그레이션: ${mig.message} / 엔트리 ${mig.migratedEntries || 0}개 정리 / stale embedding ${mig.staleEmbeddingsRemoved || 0}개 삭제`;
+            const migBox = document.createElement('details');
+            migBox.style.cssText = `margin-bottom:12px;padding:9px 10px;border-radius:9px;border:1px solid ${ok ? 'rgba(129,140,248,.45)' : 'rgba(220,38,38,.45)'};background:var(--li-surface-2,#2b2b31);color:${COLOR.soft};font-size:11px;line-height:1.5;`;
+            const summary = document.createElement('summary');
+            summary.textContent = ok ? '저장 데이터 점검 완료' : '저장 데이터 점검 실패';
+            summary.style.cssText = 'cursor:pointer;color:' + (ok ? 'var(--li-accent-strong,#c7d2fe)' : COLOR.danger) + ';font-size:12px;font-weight:800;min-height:24px;';
+            const detail = document.createElement('div');
+            const humanMessage = C.humanizeStatusText ? C.humanizeStatusText(mig.message) : mig.message;
+            detail.textContent = `상세: ${humanMessage}\n정리된 로어: ${mig.migratedEntries || 0}개\n갱신 필요 검색 데이터 삭제: ${mig.staleEmbeddingsRemoved || 0}개\n확인 시각: ${mig.checkedAt ? new Date(mig.checkedAt).toLocaleString() : '알 수 없음'}`;
+            detail.style.cssText = 'white-space:pre-line;margin-top:8px;color:' + COLOR.soft + ';';
+            migBox.appendChild(summary);
+            migBox.appendChild(detail);
             nd.appendChild(migBox);
           }
 
@@ -173,15 +181,15 @@
             const statText = document.createElement('div');
             statText.style.cssText = 'font-size:11px;color:' + COLOR.soft + ';display:flex;gap:10px;flex-wrap:wrap;line-height:1.45;';
   
-            let cdStr = st.cooldownRem > 0 ? `<span style="color:${COLOR.danger};">쿨다운 ${st.cooldownRem}턴 남음</span>` : `<span style="color:${COLOR.ok};">쿨다운 완료</span>`;
+            let cdStr = st.cooldownRem > 0 ? `<span style="color:${COLOR.danger};">다시 삽입까지 ${st.cooldownRem}턴 남음</span>` : `<span style="color:${COLOR.ok};">다시 삽입 가능</span>`;
             let decayStr = '';
             if (settings.config.decayEnabled) {
               const p = Math.round(st.reinjScore * 100);
               const pColor = p > 70 ? COLOR.danger : (p > 40 ? COLOR.warn : COLOR.soft);
-              decayStr = `<span>망각: ${st.turnsSince}턴 경과 (재주입 점수: <span style="color:${pColor}">${p}%</span>)</span>`;
+              decayStr = `<span>마지막 삽입 후 ${st.turnsSince}턴 경과 (재삽입 가능성: <span style="color:${pColor}">${p}%</span>)</span>`;
             }
-            const timeStr = st.eventTurn ? `<span>사건:t${st.eventTurn}${st.gap != null ? ' / gap ' + st.gap + '턴' : ''}</span>` : '';
-            const entStr = st.entities && st.entities.length ? `<span>엔티티:${st.entities.join(',')}</span>` : '';
+            const timeStr = st.eventTurn ? `<span>기록된 시점 ${st.eventTurn}턴${st.gap != null ? ' / 현재와 ' + st.gap + '턴 차이' : ''}</span>` : '';
+            const entStr = st.entities && st.entities.length ? `<span>관련 대상: ${st.entities.join(', ')}</span>` : '';
             statText.innerHTML = [cdStr, decayStr, timeStr, entStr].filter(Boolean).join('');
   
             info.appendChild(nameEl);
