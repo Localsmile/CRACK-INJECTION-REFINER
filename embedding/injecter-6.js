@@ -1,12 +1,8 @@
 // Settings page registry bridge
-(async function(){
+(function(){
   'use strict';
-  if(document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-
-  const deadline = Date.now() + 15000;
-  while (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
-  if (!(_w.__LoreInj && _w.__LoreInj.__injectLoaded)) { console.error('[LoreInj:6] inject not loaded'); return; }
+  _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__inject6Loaded) return;
 
   const L = _w.__LoreInj;
