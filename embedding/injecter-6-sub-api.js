@@ -148,7 +148,7 @@
     let renderDeepSeekOptions = null;
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('Gemini 추출 프롬프트', '템플릿 선택은 Gemini와 DeepSeek 프롬프트 세트에 함께 적용됨. 기본 템플릿은 직접 수정 안 됨.'));
+      nd.appendChild(C.createSectionTitle('Gemini 추출 프롬프트', 'Gemini API용 단일 패스 추출 템플릿. 일반 로어, 중요 장면, 장면 상태를 한 번에 받음. 기본 템플릿은 직접 수정 안 됨.'));
 
       const tplHeader = document.createElement('div'); tplHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
       const tplTitle = document.createElement('div'); tplTitle.textContent = '템플릿'; tplTitle.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:900;';
@@ -213,7 +213,7 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('DeepSeek 추출 프롬프트', '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출은 일반 로어, 중요 장면, 장면 상태를 한 번에 처리함.'));
+      nd.appendChild(C.createSectionTitle('DeepSeek 추출 프롬프트', 'DeepSeek API용 단일 패스 전체 프롬프트. Gemini 템플릿과 별도로 저장됨.'));
       const defaults = _w.__LoreInj.defaultSettings || {};
       const saveDeepSeekTpl = (key, val) => {
         const id = settings.config.activeTemplateId || 'default';
@@ -245,7 +245,7 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('공통 규칙 블록', '추출/변환/교정 프롬프트에 공통으로 붙는 규칙. 전체 템플릿을 복사하지 않고 핵심 규칙만 관리함.'));
+      nd.appendChild(C.createSectionTitle('공통 규칙 블록', '추출, 변환, 교정 프롬프트에 붙는 공통 규칙. 잠긴 항목은 구조 안정성을 위해 수정하지 않음.'));
       const blocks = _w.__LoreInj.normalizePromptBlocks ? _w.__LoreInj.normalizePromptBlocks(settings.config.promptBlocks) : (settings.config.promptBlocks || []);
       settings.config.promptBlocks = blocks;
       const featureLabel = (features) => {
@@ -309,7 +309,7 @@
           ensureApiModelDefaults();
           C.setFullWidth(nd);
           const apiTypeLabel = (settings.config.autoExtApiType || 'key') === 'deepseek' ? 'DeepSeek' : (settings.config.autoExtApiType || 'key') === 'vertex' ? 'Vertex JSON' : (settings.config.autoExtApiType || 'key') === 'firebase' ? 'Firebase' : 'Gemini API Key';
-          nd.appendChild(C.createSectionTitle('API 연결', '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면 추출이 이 연결 사용함.'));
+          nd.appendChild(C.createSectionTitle('API 연결', '현재 방식: ' + apiTypeLabel + ' · 추출/정리와 변환이 이 연결 사용함. 중요 장면은 추출 결과 안에서 함께 저장됨.'));
           const providerLabel = document.createElement('div'); providerLabel.textContent = 'API 종류'; providerLabel.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;'; nd.appendChild(providerLabel);
           const providerSel = document.createElement('select'); providerSel.style.cssText = FIELD_STYLE;
           [['Gemini API Key', 'key'], ['Firebase', 'firebase'], ['Vertex JSON', 'vertex'], ['DeepSeek', 'deepseek']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; providerSel.appendChild(o); });
@@ -323,7 +323,7 @@
           nd.appendChild(providerSel);
           if ((settings.config.autoExtApiType || 'key') === 'deepseek') {
             addSimpleInput(nd, 'DeepSeek API 키', settings.config.autoExtDeepSeekKey || '', (v) => { settings.config.autoExtDeepSeekKey = v; settings.save(); }, { placeholder: 'sk-...' });
-            nd.appendChild(C.createToggleRow('DeepSeek 추론 사용', '끄면 빠르고 저렴하게 호출함. 켜면 V4 추론 모드 사용함.', settings.config.autoExtDeepSeekThinking !== false, (v) => { settings.config.autoExtDeepSeekThinking = v; settings.save(); }));
+            nd.appendChild(C.createToggleRow('DeepSeek 추론 사용', 'V4 추론 모드 사용. 긴 추출에서 느려질 수 있으므로 필요에 따라 끔.', settings.config.autoExtDeepSeekThinking !== false, (v) => { settings.config.autoExtDeepSeekThinking = v; settings.save(); }));
             const dsl = document.createElement('div'); dsl.textContent = 'DeepSeek 추론 강도'; dsl.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);margin:10px 0 4px;font-weight:800;'; nd.appendChild(dsl);
             const dss = document.createElement('select'); dss.style.cssText = FIELD_STYLE;
             [['High', 'high'], ['Max', 'max']].forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; dss.appendChild(o); });
@@ -346,7 +346,7 @@
             testBtn.disabled = true; testResult.textContent = '테스트 중...';
             try {
               const testModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : (settings.config.autoExtModel || (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : 'gemini-3-flash-preview'));
-              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', costContext: { feature: 'apiTest', chatKey: 'global' } });
+              const r = await C.callGeminiApi('Return exactly {"ok":true}.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, responseMimeType: 'application/json', deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', deepSeekJsonSystemPrompt: settings.config.deepSeekJsonSystemPrompt || '', costContext: { feature: 'apiTest', chatKey: 'global' } });
               testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? TONE.ok : TONE.danger;
             } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = TONE.danger; }
             testBtn.disabled = false;

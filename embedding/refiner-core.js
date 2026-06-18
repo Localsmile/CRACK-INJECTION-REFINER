@@ -85,6 +85,22 @@
     };
   }
 
+  function normalizeForRefinerCompare(text) {
+    return String(text || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function isNoIssueReason(reason, passWord) {
+    const s = String(reason || '').trim().toLowerCase();
+    if (!s) return false;
+    const p = String(passWord || 'PASS').trim().toLowerCase();
+    if (s === p) return true;
+    return /문제\s*(없|없음|없다|없습니다)|이상\s*(없|없음|없다|없습니다)|수정\s*(불필요|필요\s*없)|교정\s*(불필요|필요\s*없)|no\s*(issue|problem|change|edit)|nothing\s*to\s*(fix|change)|looks\s*ok|pass/.test(s);
+  }
+
   function formatCallStateForRefiner(entry) {
     const out = [];
     const addState = (key, raw) => {
@@ -326,7 +342,7 @@
     try {
       const _isDeepSeekConfig = (config.autoExtApiType || 'key') === 'deepseek';
       const apiOpts = _w.__LoreInj && _w.__LoreInj.buildGenerationApiOpts
-        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: _isDeepSeekConfig ? 90000 : 60000, maxOutputTokens: _isDeepSeekConfig ? 4096 : 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
+        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: _isDeepSeekConfig ? 90000 : 60000, maxOutputTokens: _isDeepSeekConfig ? 8192 : 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
         : {
           apiType: config.autoExtApiType || 'key',
           key: config.autoExtKey,
@@ -342,7 +358,7 @@
           model: _refModel,
           maxRetries: 1,
           timeoutMs: _isDeepSeekConfig ? 90000 : 60000,
-          maxOutputTokens: _isDeepSeekConfig ? 4096 : 2048,
+          maxOutputTokens: _isDeepSeekConfig ? 8192 : 2048,
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
       const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';
@@ -382,9 +398,7 @@
       const isPass = text.includes(passWord) && text.length < passWord.length + 10;
       if (isPass) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
-        Core.showStatusBadge('에리: 이상 없음');
-        setTimeout(Core.hideStatusBadge, 2000);
-        showToast('에리: 통과', 'success');
+        Core.hideStatusBadge();
         return;
       }
 
@@ -403,13 +417,16 @@
 
       if (parsed && parsed.pass === true) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: parsed.reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
-        Core.showStatusBadge('에리: 이상 없음');
-        setTimeout(Core.hideStatusBadge, 2000);
-        showToast('에리: 통과', 'success');
+        Core.hideStatusBadge();
         return;
       }
 
       if (parsed && !parsed.replacements && !parsed.refined_text) {
+        if (isNoIssueReason(parsed.reason, passWord)) {
+          if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: parsed.reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
+          Core.hideStatusBadge();
+          return;
+        }
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명', isError: true, reason: parsed.reason || '(이유 없음)', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
         showToast('에리: 응답 구조 불명', 'error');
@@ -425,6 +442,15 @@
           }
         } else if (parsed.refined_text) {
           correctedText = parsed.refined_text;
+        }
+
+        if (
+          normalizeForRefinerCompare(correctedText) === normalizeForRefinerCompare(assistantText) ||
+          isNoIssueReason(parsed.reason, passWord)
+        ) {
+          if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: parsed.reason || 'no change', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
+          Core.hideStatusBadge();
+          return;
         }
 
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: parsed.reason, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });

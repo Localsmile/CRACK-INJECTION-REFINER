@@ -341,7 +341,7 @@
     autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '',
-    autoExtDeepSeekKey: '', autoExtDeepSeekThinking: false, autoExtDeepSeekReasoning: 'high',
+    autoExtDeepSeekKey: '', autoExtDeepSeekThinking: true, autoExtDeepSeekReasoning: 'high',
     deepSeekJsonSystemPrompt: 'Return only one valid json object. Do not output markdown fences, explanations, comments, or trailing text. Preserve the language of the source content. Follow the exact object shape requested by the user.',
     deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
     deepSeekPromptWithDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
@@ -1013,7 +1013,7 @@
       if (!cfg.rerankModel || !isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = fallback;
       if (!cfg.temporalRecallJudgeModel || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = fallback;
       if (cfg.refinerModel === '' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = fallback;
-      if (cfg.autoExtDeepSeekThinking === undefined) cfg.autoExtDeepSeekThinking = false;
+      if (cfg.autoExtDeepSeekThinking === undefined) cfg.autoExtDeepSeekThinking = true;
     } else {
       if (!isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3-flash-preview';
       if (!isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';

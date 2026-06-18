@@ -847,10 +847,10 @@
   function showRefineConfirm(reason, refinedText, onConfirm, onCancel) {
     const overlay = document.createElement('div');
     overlay.id = 'refiner-confirm-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:999999;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:999999;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;overflow:auto;';
 
     const box = document.createElement('div');
-    box.style.cssText = 'background:linear-gradient(180deg,#101a2a,#0a111d);border:1px solid var(--li-line,#2f3b4f);border-radius:14px;width:100%;max-width:440px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;gap:12px;';
+    box.style.cssText = 'background:linear-gradient(180deg,#101a2a,#0a111d);border:1px solid var(--li-line,#2f3b4f);border-radius:14px;width:min(440px,100%);max-height:min(680px,calc(100vh - 40px));padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;gap:12px;box-sizing:border-box;overflow:auto;';
 
     const title = document.createElement('div');
     title.textContent = 'AI 응답 교정 제안';
@@ -869,10 +869,10 @@
 
     const refTa = document.createElement('textarea');
     refTa.value = refinedText;
-    refTa.style.cssText = 'width:100%;height:110px;background:#08111d;color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:9px 10px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5;';
+    refTa.style.cssText = 'width:100%;height:110px;min-height:96px;max-height:42vh;background:#08111d;color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:9px;padding:9px 10px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;line-height:1.5;';
 
     const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:12px;';
+    btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:12px;flex-wrap:wrap;';
 
     const btnCancel = document.createElement('button');
     btnCancel.textContent = '원본 유지';

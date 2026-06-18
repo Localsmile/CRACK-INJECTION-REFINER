@@ -85,6 +85,12 @@
         overflow: hidden;
         box-shadow: 0 26px 80px rgba(0,0,0,.48);
       }
+      .lore-v2-frame button,
+      .lore-v2-frame input,
+      .lore-v2-frame textarea,
+      .lore-v2-frame select {
+        max-width: 100%;
+      }
       .lore-v2-sidebar {
         min-width: 0;
         min-height: 0;
@@ -239,6 +245,8 @@
         display: flex;
         gap: 6px;
         overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
         padding: 9px 16px;
         border-bottom: 1px solid var(--li-line);
         background: var(--li-bg);
@@ -269,6 +277,7 @@
         min-width: 0;
         min-height: 0;
         overflow: auto;
+        overscroll-behavior: contain;
         padding: 16px 18px 28px;
         background: var(--li-surface);
       }
@@ -307,6 +316,13 @@
       .lore-v2-content button {
         border-radius: 8px !important;
         letter-spacing: 0 !important;
+        min-width: 0 !important;
+      }
+      .lore-v2-content textarea {
+        min-height: 86px;
+      }
+      .lore-v2-content > * {
+        max-width: 100%;
       }
       .lore-v2-content table {
         width: 100%;
@@ -363,6 +379,7 @@
           left: auto;
           width: 100vw;
           height: 100vh;
+          height: 100dvh;
           transform: none;
           grid-template-columns: 1fr;
           grid-template-rows: auto 1fr;
@@ -381,6 +398,8 @@
         .lore-v2-sections {
           flex-direction: row;
           overflow-x: auto;
+          overscroll-behavior-x: contain;
+          scrollbar-width: thin;
           padding-bottom: 1px;
         }
         .lore-v2-section {
@@ -391,6 +410,9 @@
         .lore-v2-section-desc { display: none; }
         .lore-v2-main { grid-template-rows: auto auto 1fr; }
         .lore-v2-header { min-height: 52px; padding: 9px 12px; }
+        .lore-v2-title {
+          font-size: 15px;
+        }
         .lore-v2-subtitle {
           white-space: normal;
           display: -webkit-box;
@@ -398,7 +420,25 @@
           -webkit-box-orient: vertical;
         }
         .lore-v2-pages { padding: 8px 10px; }
+        .lore-v2-page {
+          max-width: 168px;
+        }
         .lore-v2-content { padding: 12px 10px calc(22px + env(safe-area-inset-bottom, 0px)); }
+      }
+      @media (max-height: 560px) and (min-width: 640px) {
+        .lore-v2-frame {
+          width: min(820px, calc(100vw - 28px));
+          height: calc(100vh - 28px);
+        }
+        .lore-v2-brand-sub,
+        .lore-v2-system,
+        .lore-v2-section-desc {
+          display: none;
+        }
+        .lore-v2-section {
+          min-height: 34px;
+          padding: 6px 8px;
+        }
       }
     `;
     const style = document.createElement('style');
