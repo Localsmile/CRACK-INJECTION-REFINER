@@ -32,8 +32,6 @@
       const cfg = settings.config || {};
       const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
       const storageHealth = _w.__LoreInj.getSettingsStorageHealth ? _w.__LoreInj.getSettingsStorageHealth() : { ok: true, configBytes: 0 };
-      const envDiag = (_w.__LoreEnv && _w.__LoreEnv.diagnostics) || {};
-      const persistLabel = envDiag.persisted === true ? '영구 저장' : (envDiag.persisted === false ? '일반 저장' : '확인 중');
       const platformCaps = (_w.__LorePlatform && _w.__LorePlatform.capabilities) ? _w.__LorePlatform.capabilities() : {};
       const platformDiag = platformCaps.diagnostics || {};
       const platformOk = platformCaps.canReadLogs && platformCaps.canPatch && platformDiag.messageShapeOk !== false;
@@ -44,7 +42,6 @@
         { key: 'save', label: '설정 저장', value: settings._lastSaveOk === false ? '실패' : '정상', ok: settings._lastSaveOk !== false },
         { key: 'platform', label: '사이트 연결', value: platformOk ? '정상' : '제한됨', ok: platformOk },
         { key: 'storage', label: '저장 공간', value: storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', ok: storageHealth.ok },
-        { key: 'storageMode', label: '저장 방식', value: (envDiag.storageMode || 'localStorage') + ' / ' + persistLabel, ok: envDiag.persisted !== false },
         { key: 'extract', label: '자동 대화 정리', value: cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', ok: !!cfg.autoExtEnabled },
         { key: 'semantic', label: '의미 검색', value: cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', ok: !!cfg.embeddingEnabled }
       ]);
@@ -62,7 +59,7 @@
   function appendQuickRefiner(panel) {
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('최근 AI 응답 재검수', '마지막 AI 응답을 즉시 다시 검사함. 가장 자주 쓰는 수동 교정 작업.'));
+      nd.appendChild(C.createSectionTitle('최근 AI 응답 재검수', '마지막 AI 응답을 로어 기준으로 다시 확인함.'));
       const btn = C.createActionButton('최근 AI 응답 재검수', 'primary');
       btn.style.width = '100%';
       btn.style.minHeight = '42px';
@@ -112,7 +109,7 @@
       if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) row.style.gridTemplateColumns = '1fr';
       for (const preset of Object.values(PRESETS)) {
         const btn = document.createElement('button');
-        btn.style.cssText = 'min-height:88px;padding:12px 13px;font-size:12px;border-radius:10px;cursor:pointer;border:1px solid var(--li-line,#2f3b4f);background:#0c1320;color:var(--li-text-soft,#a9b6c7);display:flex;flex-direction:column;gap:7px;text-align:left;min-width:0;';
+        btn.style.cssText = 'min-height:88px;padding:12px 13px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid var(--li-line,#3f3f46);background:var(--li-surface-2,#2b2b31);color:var(--li-text-soft,#a1a1aa);display:flex;flex-direction:column;gap:7px;text-align:left;min-width:0;';
         const nm = document.createElement('div');
         nm.textContent = preset.name;
         nm.style.cssText = 'font-weight:800;color:var(--li-text,#e7edf5);font-size:13px;';
@@ -164,56 +161,63 @@
     }});
   }
 
-  function appendQuickLore(panel, menuApi) {
+  function appendQuickLore(panel) {
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('로어 목록', '현재 채팅에서 활성화된 로어팩과 검색 준비 상태를 빠르게 확인함.'));
+      nd.appendChild(C.createSectionTitle('로어 목록', '현재 채팅에서 활성화된 로어를 바로 확인함.'));
       const status = document.createElement('div');
       status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);line-height:1.6;margin-bottom:10px;';
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
-      const openBtn = C.createActionButton('로어 목록', 'primary');
-      const embedBtn = C.createActionButton('임베딩 일괄 생성', 'ghost');
-      openBtn.onclick = () => menuApi.openPage('lore');
-      embedBtn.onclick = async () => {
-        const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
-        if (miss) { alert('임베딩 API 설정 필요: ' + miss); return; }
-        embedBtn.disabled = true;
-        const orig = embedBtn.textContent;
-        embedBtn.textContent = '준비 중';
-        try {
-          const url = C.getCurUrl();
-          const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(url) : ((settings.config.urlPacks && settings.config.urlPacks[url]) || []);
-          const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
-          if (!entries.length) { status.textContent = '활성 로어 없음'; return; }
-          const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
-            ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
-            : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-          let ok = 0;
-          for (let i = 0; i < entries.length; i++) {
-            embedBtn.textContent = '임베딩 ' + (i + 1) + '/' + entries.length;
-            await C.ensureEmbedding(entries[i], apiOpts);
-            ok++;
-          }
-          status.textContent = '임베딩 완료: ' + ok + '개';
-        } catch (e) {
-          status.textContent = '임베딩 실패: ' + String(e.message || e).slice(0, 80);
-          status.style.color = 'var(--li-danger,#dc2626)';
-        } finally {
-          embedBtn.textContent = orig;
-          embedBtn.disabled = false;
-        }
-      };
-      row.appendChild(openBtn);
-      row.appendChild(embedBtn);
+      const list = document.createElement('div');
+      list.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
       nd.appendChild(status);
-      nd.appendChild(row);
+      nd.appendChild(list);
       (async () => {
         try {
           const url = C.getCurUrl();
           const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(url) : ((settings.config.urlPacks && settings.config.urlPacks[url]) || []);
           const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
           status.textContent = activePacks.length ? ('활성 로어팩 ' + activePacks.length + '개 / 로어 ' + entries.length + '개') : '활성 로어팩 없음';
+          if (!entries.length) {
+            const empty = document.createElement('div');
+            empty.className = 'lore-v2-empty';
+            empty.textContent = activePacks.length ? '활성 로어팩에 로어 없음.' : '현재 채팅에 연결된 로어팩 없음.';
+            list.appendChild(empty);
+            return;
+          }
+          const byPack = {};
+          entries.forEach(e => { (byPack[e.packName] = byPack[e.packName] || []).push(e); });
+          const summarize = (e) => {
+            const raw = e.summary && typeof e.summary === 'object' ? (e.summary.full || e.summary.text || e.summary.short || '') : (e.summary || e.state || e.detail || '');
+            return String(raw || e.name || '').replace(/\s+/g, ' ').trim();
+          };
+          Object.entries(byPack).forEach(([packName, items]) => {
+            const packBox = document.createElement('div');
+            packBox.style.cssText = 'border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface-2,#2b2b31);padding:10px 11px;';
+            const head = document.createElement('div');
+            head.textContent = packName + ' (' + items.length + '개)';
+            head.style.cssText = 'font-size:13px;font-weight:700;color:var(--li-text,#fafafa);margin-bottom:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            packBox.appendChild(head);
+            items.slice(0, 8).forEach((e) => {
+              const row = document.createElement('div');
+              row.style.cssText = 'padding:7px 0;border-top:1px dashed rgba(148,163,184,.18);';
+              const title = document.createElement('div');
+              title.textContent = '[' + (e.type || 'lore') + '] ' + (e.name || '이름 없음');
+              title.style.cssText = 'font-size:12px;font-weight:700;color:var(--li-text-soft,#a1a1aa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+              const desc = document.createElement('div');
+              desc.textContent = summarize(e).slice(0, 130) || '요약 없음';
+              desc.style.cssText = 'margin-top:3px;font-size:11px;line-height:1.45;color:var(--li-muted,#a1a1aa);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
+              row.appendChild(title);
+              row.appendChild(desc);
+              packBox.appendChild(row);
+            });
+            if (items.length > 8) {
+              const more = document.createElement('div');
+              more.textContent = '외 ' + (items.length - 8) + '개';
+              more.style.cssText = 'padding-top:7px;border-top:1px dashed rgba(148,163,184,.18);font-size:11px;color:var(--li-muted,#a1a1aa);';
+              packBox.appendChild(more);
+            }
+            list.appendChild(packBox);
+          });
         } catch (_) { status.textContent = '로어 상태 확인 실패'; }
       })();
     }});
@@ -224,7 +228,7 @@
         appendQuickRefiner(panel);
         appendStatus(panel);
         appendPresets(panel, m);
-        appendQuickLore(panel, m);
+        appendQuickLore(panel);
         appendReset(panel);
       }, '빠른 설정');
   });

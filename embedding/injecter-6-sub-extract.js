@@ -305,23 +305,40 @@
     m.replaceContentPanel((panel) => {
       panel.addBoxedField('', '', { onInit: (nd) => {
         C.setFullWidth(nd);
-        nd.appendChild(C.createSectionTitle('지식 변환', 'URL이나 긴 텍스트를 별도 로어팩으로 변환함. 추출/정리용 모델을 사용함.'));
+        nd.appendChild(C.createSectionTitle('지식 변환', 'URL이나 긴 텍스트를 별도 로어팩으로 변환함. 추출/정리용 모델 사용.'));
         const S = FIELD_STYLE;
-        const makeField = (label, node) => {
+        const makeField = (label, node, grow) => {
           const wrap = document.createElement('label');
-          wrap.style.cssText = 'display:flex;flex-direction:column;gap:5px;min-width:0;';
+          wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;min-width:0;' + (grow ? 'flex:1 1 260px;' : 'flex:0 1 220px;');
           const cap = document.createElement('span'); cap.textContent = label; cap.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:700;';
           wrap.appendChild(cap); wrap.appendChild(node);
           return wrap;
         };
+        const makeCard = (title, desc) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface-2,#2b2b31);padding:14px;margin-top:12px;';
+          const h = document.createElement('div');
+          h.textContent = title;
+          h.style.cssText = 'font-size:13px;color:var(--li-text,#fafafa);font-weight:700;margin-bottom:4px;';
+          const d = document.createElement('div');
+          d.textContent = desc || '';
+          d.style.cssText = 'font-size:12px;color:var(--li-muted,#a1a1aa);line-height:1.55;margin-bottom:12px;word-break:keep-all;';
+          card.appendChild(h);
+          card.appendChild(d);
+          return card;
+        };
+        const makeActionRow = () => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;';
+          return row;
+        };
 
-        const urlGrid = document.createElement('div');
-        urlGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1.5fr) minmax(160px,.8fr) auto;gap:10px;align-items:end;margin-bottom:10px;';
-        if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) urlGrid.style.gridTemplateColumns = '1fr';
+        const urlCard = makeCard('URL 변환', '웹 문서 본문을 읽어 새 로어팩으로 정리함.');
+        const urlGrid = makeActionRow();
         const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S;
         const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S;
-        const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
-        const status = document.createElement('div'); status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin:8px 0 18px;line-height:1.45;';
+        const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:104px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
+        const status = document.createElement('div'); status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:10px;line-height:1.45;min-height:18px;';
         urlBtn.onclick = async () => {
           if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩 이름 필요.'); return; }
           urlBtn.disabled = true; const orig = urlBtn.textContent; urlBtn.textContent = '변환 중';
@@ -349,22 +366,17 @@
             urlBtn.disabled = false;
           }
         };
-        urlGrid.appendChild(makeField('URL', urlInp));
-        urlGrid.appendChild(makeField('팩 이름', nameInp));
+        urlGrid.appendChild(makeField('URL', urlInp, true));
+        urlGrid.appendChild(makeField('팩 이름', nameInp, false));
         urlGrid.appendChild(urlBtn);
-        nd.appendChild(urlGrid);
-        nd.appendChild(status);
+        urlCard.appendChild(urlGrid);
+        urlCard.appendChild(status);
+        nd.appendChild(urlCard);
 
-        const textTitle = document.createElement('div');
-        textTitle.textContent = '텍스트 변환';
-        textTitle.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:700;margin:18px 0 8px;';
-        nd.appendChild(textTitle);
-        const textGrid = document.createElement('div');
-        textGrid.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,.35fr) auto;gap:10px;align-items:end;';
-        if (typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches) textGrid.style.gridTemplateColumns = '1fr';
+        const textCard = makeCard('텍스트 변환', '설정 문서, 세계관, 긴 원문을 붙여넣어 로어팩으로 정리함.');
         const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + ';height:130px;resize:vertical;';
         const nameInp2 = document.createElement('input'); nameInp2.type = 'text'; nameInp2.placeholder = '팩 이름'; nameInp2.style.cssText = S;
-        const textBtn = document.createElement('button'); textBtn.textContent = '텍스트 변환'; textBtn.style.cssText = BTN_BASE + 'min-width:96px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
+        const textBtn = document.createElement('button'); textBtn.textContent = '텍스트 변환'; textBtn.style.cssText = BTN_BASE + 'min-width:104px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
         const status2 = document.createElement('div'); status2.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:8px;line-height:1.45;';
         textBtn.onclick = async () => {
           if (!ta.value.trim() || !nameInp2.value.trim()) { alert('텍스트와 팩 이름 필요.'); return; }
@@ -388,11 +400,14 @@
             textBtn.disabled = false;
           }
         };
-        textGrid.appendChild(makeField('원문', ta));
-        textGrid.appendChild(makeField('팩 이름', nameInp2));
-        textGrid.appendChild(textBtn);
-        nd.appendChild(textGrid);
-        nd.appendChild(status2);
+        textCard.appendChild(makeField('원문', ta, true));
+        const textActionRow = makeActionRow();
+        textActionRow.style.marginTop = '10px';
+        textActionRow.appendChild(makeField('팩 이름', nameInp2, false));
+        textActionRow.appendChild(textBtn);
+        textCard.appendChild(textActionRow);
+        textCard.appendChild(status2);
+        nd.appendChild(textCard);
       }});
     }, '지식 변환');
   });

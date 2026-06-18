@@ -86,7 +86,7 @@
             C.setFullWidth(nd);
             const hRow = document.createElement('div'); hRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--li-line,#2f3b4f);margin-bottom:8px;cursor:pointer;gap:10px;';
             const leftWrap = document.createElement('div'); leftWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
-            const arrow = document.createElement('button'); arrow.type = 'button'; arrow.textContent = '+'; arrow.className = 'lore-v2-compact-toggle'; arrow.setAttribute('aria-label', title + ' 펼치기'); arrow.style.cssText = 'font-size:12px;color:' + COLOR.muted + ';';
+            const arrow = document.createElement('span'); arrow.textContent = '▸'; arrow.setAttribute('aria-hidden', 'true'); arrow.style.cssText = 'font-size:13px;color:' + COLOR.muted + ';width:16px;text-align:center;line-height:1;';
             const t = document.createElement('div'); t.textContent = `${title} (${items.length})`; t.style.cssText = `font-size:14px;color:${color};font-weight:800;`;
             leftWrap.appendChild(arrow); leftWrap.appendChild(t);
             hRow.appendChild(leftWrap);
@@ -112,8 +112,7 @@
             hRow.onclick = () => {
               const isOpen = listCon.style.display !== 'none';
               listCon.style.display = isOpen ? 'none' : 'block';
-              arrow.textContent = isOpen ? '+' : '-';
-              arrow.setAttribute('aria-label', title + (isOpen ? ' 펼치기' : ' 접기'));
+              arrow.textContent = isOpen ? '▸' : '▾';
             };
           }});
         };
@@ -130,7 +129,7 @@
             const leftWrap = document.createElement('div');
             leftWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;min-width:0;flex-wrap:wrap;';
             const arrow = document.createElement('span');
-            arrow.textContent = '+'; arrow.style.cssText = 'font-size:12px;color:' + COLOR.muted + ';min-width:24px;';
+            arrow.textContent = '▸'; arrow.style.cssText = 'font-size:13px;color:' + COLOR.muted + ';min-width:18px;text-align:center;';
             const titleSpan = document.createElement('span');
             titleSpan.textContent = 'API 비용'; titleSpan.style.cssText = 'font-size:14px;color:' + COLOR.text + ';font-weight:800;';
             const totalSpan = document.createElement('span');
@@ -176,7 +175,7 @@
             leftWrap.onclick = () => {
               detailsOpen = !detailsOpen;
               detailsCon.style.display = detailsOpen ? 'block' : 'none';
-              arrow.textContent = detailsOpen ? '-' : '+';
+              arrow.textContent = detailsOpen ? '▾' : '▸';
             };
   
             const fmtUsd = (n) => '$' + (Math.abs(n) < 0.01 ? n.toFixed(5) : n.toFixed(4));
@@ -341,25 +340,24 @@
           const changed = diffChangedOnly(before, after);
           const head = document.createElement('div');
           head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = '+';
-          btn.className = 'lore-v2-compact-toggle';
-          btn.setAttribute('aria-label', '교정 상세 펼치기');
+          const arrow = document.createElement('span');
+          arrow.textContent = '▸';
+          arrow.setAttribute('aria-hidden', 'true');
+          arrow.style.cssText = 'font-size:13px;color:' + COLOR.muted + ';width:16px;text-align:center;line-height:1;flex-shrink:0;';
           const title = document.createElement('div');
           title.innerHTML = `<span style="color:${i.isPass?COLOR.ok:i.isError?COLOR.danger:TONE.refine};font-weight:800;">[${i.time}] ${i.isPass?'문제 없음':i.isError?'오류':'교정됨'}</span>${i.reason?`<br><span style="font-size:11px;color:${COLOR.warn};">${escHtml(i.reason)}</span>`:''}${renderCostLine(i)}`;
-          head.appendChild(btn);
+          head.appendChild(arrow);
           head.appendChild(title);
           const body = document.createElement('div');
-          body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:rgba(7,13,23,.62);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;';
+          body.className = 'lore-v2-selectable';
+          body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:var(--li-bg,#18181b);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;-webkit-user-select:text;user-select:text;';
           const added = changed.added.length ? changed.added.map(x => '+ ' + x).join('\n') : '(추가 변경 없음)';
           const removed = changed.removed.length ? changed.removed.map(x => '- ' + x).join('\n') : '(삭제 변경 없음)';
-          body.textContent = '바뀐 부분만\n' + removed + '\n' + added + '\n\n변경 전\n' + shortText(before) + '\n\n변경 후\n' + shortText(after);
+          body.textContent = '변경된 텍스트\n' + removed + '\n' + added + '\n\n변경 전\n' + shortText(before) + '\n\n변경 후\n' + shortText(after);
           head.onclick = () => {
             const open = body.style.display !== 'none';
             body.style.display = open ? 'none' : 'block';
-            btn.textContent = open ? '+' : '-';
-            btn.setAttribute('aria-label', open ? '교정 상세 펼치기' : '교정 상세 접기');
+            arrow.textContent = open ? '▸' : '▾';
           };
           r.appendChild(head);
           r.appendChild(body);
@@ -371,23 +369,22 @@
           r.style.cssText = LOG_ROW;
           const head = document.createElement('div');
           head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = '+';
-          btn.className = 'lore-v2-compact-toggle';
-          btn.setAttribute('aria-label', '모순 상세 펼치기');
+          const arrow = document.createElement('span');
+          arrow.textContent = '▸';
+          arrow.setAttribute('aria-hidden', 'true');
+          arrow.style.cssText = 'font-size:13px;color:' + COLOR.muted + ';width:16px;text-align:center;line-height:1;flex-shrink:0;';
           const title = document.createElement('div');
           title.innerHTML = `<span style="color:${TONE.contradiction};font-weight:800;">${escHtml(i.name)}</span><br><span style="font-size:10px;color:${COLOR.soft};">${new Date(i.time).toLocaleString()} (~${i.turn}턴)</span>`;
-          head.appendChild(btn);
+          head.appendChild(arrow);
           head.appendChild(title);
           const body = document.createElement('div');
-          body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:rgba(7,13,23,.62);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;';
-          body.textContent = '변경 전\n' + String(i.oldStatus || '') + '\n\n변경 후\n' + String(i.newStatus || '') + '\n\n바뀐 부분만\n- ' + String(i.oldStatus || '') + '\n+ ' + String(i.newStatus || '');
+          body.className = 'lore-v2-selectable';
+          body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:var(--li-bg,#18181b);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;-webkit-user-select:text;user-select:text;';
+          body.textContent = '변경 전\n' + String(i.oldStatus || '') + '\n\n변경 후\n' + String(i.newStatus || '') + '\n\n변경된 텍스트\n- ' + String(i.oldStatus || '') + '\n+ ' + String(i.newStatus || '');
           head.onclick = () => {
             const open = body.style.display !== 'none';
             body.style.display = open ? 'none' : 'block';
-            btn.textContent = open ? '+' : '-';
-            btn.setAttribute('aria-label', open ? '모순 상세 펼치기' : '모순 상세 접기');
+            arrow.textContent = open ? '▸' : '▾';
           };
           r.appendChild(head);
           r.appendChild(body);

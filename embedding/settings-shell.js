@@ -20,6 +20,8 @@
     '임베딩', '임베딩 일괄 생성', 'LLM 요약 병합', 'DeepSeek 추출 프롬프트',
     '새 로어 추출 전체 프롬프트', '기존 로어 참고 전체 프롬프트', '지식 변환 전체 프롬프트'
   ]);
+  const API_WARNING_ICON_LABELS = new Set(['최근 AI 응답 재검수']);
+  const API_COST_NOTE = 'API 호출 또는 비용이 발생할 수 있음.';
 
   const HELP_TEXTS = {
     '자동 대화 정리': '지정한 유저 턴 간격마다 최근 대화를 API로 정리해 로어팩을 갱신함. 예: 8이면 유저가 8번 말할 때마다 자동 정리.',
@@ -42,7 +44,7 @@
     'URL': '변환할 웹 문서 주소. 접근 가능한 텍스트 페이지일수록 안정적임.',
     '원문': '로어팩으로 바꿀 긴 설정, 소설, 캐릭터 문서, 세계관 텍스트.',
     '팩 이름': '생성하거나 갱신할 로어팩 이름. 이미 같은 이름이 있으면 해당 팩 기준으로 저장함.',
-    'URL 변환': '입력한 URL 내용을 읽어 로어팩으로 변환함. API 호출과 비용이 발생할 수 있음.',
+    'URL 변환': '입력한 URL 내용을 읽어 로어팩으로 변환함. 접근 가능한 텍스트 페이지일수록 안정적임.',
     '텍스트 변환': '붙여넣은 원문을 로어팩으로 변환함. 긴 텍스트는 나눠 처리될 수 있음.',
     '의미 검색': '키워드가 직접 일치하지 않아도 의미가 가까운 로어를 찾음. 임베딩 준비 필요.',
     '의미 검색 비중': '키워드 매칭 대비 의미 검색 점수 영향도. 0.3~0.5 권장.',
@@ -96,7 +98,7 @@
     '유사도 임계값': '중복 병합 후보로 볼 최소 유사도. 낮추면 후보가 늘지만 오병합 위험 증가.',
     '최대 글자수 (summary)': '병합 후 summary.full의 목표 상한. 긴 항목 유지/LLM 병합 모두 이 값을 참고함.',
     '일괄 병합 방식': '찾은 모든 후보를 한 번에 병합할 때 사용할 방식. LLM 방식은 API 비용 발생.',
-    '최근 AI 응답 재검수': '현재 채팅의 마지막 AI 응답을 즉시 다시 검사함. 수동 테스트에 가장 많이 쓰는 버튼.',
+    '최근 AI 응답 재검수': '현재 채팅의 마지막 AI 응답을 다시 검사함. 필요하면 교정 결과를 적용함.',
     '로어 목록': '현재 채팅에서 활성화된 로어팩과 로어를 확인하고 개별 ON/OFF, 수정, 삭제, 임베딩을 관리함.'
   };
 
@@ -141,6 +143,7 @@
         --li-accent: #818CF8;
         --li-accent-strong: #C7D2FE;
         --li-accent-bg: rgba(129,140,248,.14);
+        --li-help: #FACC15;
         --li-ok: #16A34A;
         --li-warn: #D97706;
         --li-danger: #DC2626;
@@ -156,6 +159,15 @@
       }
       .lore-v2-app[data-open="true"] { display: block; }
       .lore-v2-app * { box-sizing: border-box; }
+      .lore-v2-content,
+      .lore-v2-content div,
+      .lore-v2-content span,
+      .lore-v2-content label,
+      .lore-v2-content summary {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
       .lore-v2-app,
       .lore-v2-app button,
       .lore-v2-app label,
@@ -407,10 +419,16 @@
       }
       .lore-v2-content input:not([type="checkbox"]):not([type="radio"]),
       .lore-v2-content textarea,
-      .lore-v2-content select {
+      .lore-v2-content select,
+      .lore-v2-selectable,
+      .lore-v2-selectable * {
         -webkit-user-select: text;
         user-select: text;
         -webkit-touch-callout: default;
+      }
+      .lore-v2-content input:not([type="checkbox"]):not([type="radio"]),
+      .lore-v2-content textarea,
+      .lore-v2-content select {
         border-color: var(--li-line) !important;
         background: var(--li-bg) !important;
         color: var(--li-text) !important;
@@ -464,19 +482,19 @@
         position: absolute;
         right: 8px;
         top: 50%;
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
         transform: translateY(-50%);
         border-radius: 999px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 10px;
+        font-size: 9px;
         line-height: 1;
         font-weight: 800;
-        border: 1px solid rgba(129,140,248,.48);
-        background: rgba(129,140,248,.13);
-        color: var(--li-accent-strong);
+        border: 1px solid rgba(250,204,21,.48);
+        background: rgba(250,204,21,.10);
+        color: var(--li-help);
       }
       .lore-v2-content button.lore-v2-button-helped.lore-v2-button-api::after {
         border-color: rgba(217,119,6,.50);
@@ -535,31 +553,31 @@
       .lore-v2-help-wrap {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        margin-left: 6px;
+        gap: 3px;
+        margin-left: 5px;
         vertical-align: middle;
       }
       .lore-v2-help,
       .lore-v2-api-warn {
-        width: 18px !important;
-        height: 18px !important;
-        min-width: 18px !important;
-        min-height: 18px !important;
+        width: 14px !important;
+        height: 14px !important;
+        min-width: 14px !important;
+        min-height: 14px !important;
         padding: 0 !important;
         border-radius: 999px !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        font-size: 11px !important;
+        font-size: 9px !important;
         line-height: 1 !important;
         font-weight: 700 !important;
         cursor: help !important;
         position: relative;
       }
       .lore-v2-help {
-        color: var(--li-accent-strong) !important;
-        border: 1px solid rgba(129,140,248,.48) !important;
-        background: rgba(129,140,248,.13) !important;
+        color: var(--li-help) !important;
+        border: 1px solid rgba(250,204,21,.48) !important;
+        background: rgba(250,204,21,.10) !important;
       }
       .lore-v2-api-warn {
         color: #FCD34D !important;
@@ -596,6 +614,25 @@
       .lore-v2-api-warn:hover::after,
       .lore-v2-api-warn:focus-visible::after {
         opacity: 1;
+      }
+      .lore-v2-content button.lore-v2-help,
+      .lore-v2-content button.lore-v2-api-warn {
+        width: 14px !important;
+        height: 14px !important;
+        min-width: 14px !important;
+        min-height: 14px !important;
+        padding: 0 !important;
+        border-radius: 999px !important;
+        font-size: 9px !important;
+        line-height: 1 !important;
+        background: rgba(250,204,21,.10) !important;
+        color: var(--li-help) !important;
+        border-color: rgba(250,204,21,.48) !important;
+      }
+      .lore-v2-content button.lore-v2-api-warn {
+        background: rgba(217,119,6,.13) !important;
+        color: #FCD34D !important;
+        border-color: rgba(217,119,6,.50) !important;
       }
       .lore-v2-compact-toggle {
         width: 24px !important;
@@ -681,10 +718,18 @@
         }
         .lore-v2-section {
           width: auto;
-          min-width: 124px;
+          min-width: 104px;
+          min-height: 40px;
+          padding: 8px 9px;
           flex: 0 0 auto;
         }
         .lore-v2-section-desc { display: none; }
+        .lore-v2-section-title {
+          font-size: 12px;
+        }
+        .lore-v2-count {
+          display: none;
+        }
         .lore-v2-main { grid-template-rows: auto auto 1fr; }
         .lore-v2-header { min-height: 52px; padding: 9px 12px; }
         .lore-v2-title {
@@ -698,7 +743,10 @@
         }
         .lore-v2-pages { padding: 8px 10px; }
         .lore-v2-page {
-          max-width: 190px;
+          max-width: none;
+          min-height: 32px;
+          padding: 7px 10px;
+          font-size: 12px;
         }
         .lore-v2-content {
           padding: 14px 12px calc(24px + env(safe-area-inset-bottom, 0px));
@@ -817,22 +865,28 @@
     return raw.replace(/\s+/g, ' ');
   }
 
+  function helpBody(label, body, includeCost) {
+    const base = String(body || '');
+    if (!includeCost) return base;
+    return base.includes(API_COST_NOTE) ? base : (base + '\n\n' + API_COST_NOTE);
+  }
+
   function showHelpDialog(label, body, api) {
-    const text = label + '\n\n' + body + (api ? '\n\nAPI 호출 또는 비용이 발생할 수 있음.' : '');
+    const text = label + '\n\n' + helpBody(label, body, api);
     alert(text.slice(0, 1200));
   }
 
-  function makeHelpIcon(label, body, isApi) {
+  function makeHelpIcon(label, body, isApi, includeCost) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = isApi ? 'lore-v2-api-warn' : 'lore-v2-help';
     btn.textContent = isApi ? '!' : '?';
-    btn.setAttribute('aria-label', (isApi ? 'API 비용 안내: ' : '도움말: ') + label);
-    btn.dataset.tip = (isApi ? 'API 호출/비용 발생 가능\n' : '') + body;
+    btn.setAttribute('aria-label', (isApi ? '주의: ' : '도움말: ') + label);
+    btn.dataset.tip = helpBody(label, body, includeCost || isApi);
     btn.onclick = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      showHelpDialog(label, body, isApi);
+      showHelpDialog(label, body, includeCost || isApi);
     };
     return btn;
   }
@@ -846,19 +900,20 @@
       const key = textKeyOf(el);
       if (!key || !HELP_TEXTS[key]) return;
       if (el.tagName === 'BUTTON') {
-        const isApi = API_HELP_LABELS.has(key);
+        const includeCost = API_HELP_LABELS.has(key);
+        const isApiWarn = API_WARNING_ICON_LABELS.has(key);
         el.classList.add('lore-v2-button-helped');
-        if (isApi) el.classList.add('lore-v2-button-api');
-        el.dataset.loreHelpSymbol = isApi ? '!' : '?';
-        el.dataset.tip = (isApi ? 'API 호출/비용 발생 가능\n' : '') + HELP_TEXTS[key];
-        el.title = HELP_TEXTS[key] + (isApi ? '\nAPI 호출 또는 비용이 발생할 수 있음.' : '');
+        if (isApiWarn) el.classList.add('lore-v2-button-api');
+        el.dataset.loreHelpSymbol = isApiWarn ? '!' : '?';
+        el.dataset.tip = helpBody(key, HELP_TEXTS[key], includeCost || isApiWarn);
+        el.title = helpBody(key, HELP_TEXTS[key], includeCost || isApiWarn);
         return;
       }
       if (el.querySelector && el.querySelector('.lore-v2-help-wrap')) return;
       const wrap = document.createElement('span');
       wrap.className = 'lore-v2-help-wrap';
-      wrap.appendChild(makeHelpIcon(key, HELP_TEXTS[key], false));
-      if (API_HELP_LABELS.has(key)) wrap.appendChild(makeHelpIcon(key, HELP_TEXTS[key], true));
+      wrap.appendChild(makeHelpIcon(key, HELP_TEXTS[key], false, API_HELP_LABELS.has(key)));
+      if (API_WARNING_ICON_LABELS.has(key)) wrap.appendChild(makeHelpIcon(key, HELP_TEXTS[key], true, true));
       el.appendChild(wrap);
     });
   }

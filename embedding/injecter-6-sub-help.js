@@ -13,8 +13,8 @@
     ok: '#78d5a8'
   };
   const HELP_QUICK_START = {
-  "title": "제작자: 로컬AI",
-  "text": "[핵심 기능]\n1. 현재 장면에 맞는 로어를 찾아 대화에 자동 삽입함.\n2. 대화를 주기적으로 읽어 로어팩에 기억을 추가함.\n3. 중요한 사건/약속은 별도 장면 기억으로 저장해 나중에 다시 불러옴.\n\n[로드 방식]\n메인화면에서는 무거운 모듈 로드 안 함. 채팅/에피소드 주소로 들어가거나 메인에서 자연스럽게 이동하면 그때 UI 로드함.\n\n[용어]\n로어: 요약본/기억\n의미 검색: 단어가 달라도 비슷한 의미의 로어를 찾는 기능\n변경분만 저장: 기존 로어 전체 대신 바뀐 부분만 받아 출력 토큰 줄이는 기능"
+  "title": "기능 안내",
+  "text": "[핵심 기능]\n1. 현재 장면에 맞는 로어를 찾아 대화에 자동 삽입함.\n2. 대화를 주기적으로 정리해 로어팩을 갱신함.\n3. 중요한 사건과 약속을 별도 장면 기억으로 저장해 필요할 때 다시 참고함.\n\n[기본 용어]\n로어: 대화에 넣을 요약 기억\n의미 검색: 단어가 달라도 의미가 가까운 로어를 찾는 기능\n변경분만 저장: 기존 로어 전체 대신 바뀐 부분만 받아 출력 토큰을 줄이는 기능"
 };
   const HELP_ITEMS = [
   {
@@ -47,7 +47,7 @@
       },
       {
         "label": "[변경분만 저장]",
-        "text": "ON/OFF 모두 같은 대화와 기존 로어 요약을 입력으로 보냄.\nON: 바뀐 부분만 받아 기존 로어에 반영함. 변화 없으면 저장/검색 준비 건너뜀.\nOFF: 갱신된 전체 로어를 받아 병합함.\n\n즉, 입력 토큰은 거의 같아야 하고 출력 토큰만 달라지는 구조."
+        "text": "ON/OFF 모두 같은 대화와 기존 로어 요약을 입력으로 보냄.\nON: 변경된 부분만 받아 기존 로어에 반영함. 변화 없으면 저장/검색 준비를 건너뜀.\nOFF: 갱신된 전체 로어를 받아 병합함.\n입력 토큰은 거의 같고 출력 토큰만 줄이는 구조."
       },
       {
         "label": "[중요 장면 기억하기]",
@@ -88,7 +88,7 @@
       },
       {
         "label": "[고급 지시문]",
-        "text": "프롬프트 입력 공간은 프롬프트 관리 메뉴로 모음.\n추출 템플릿, 후보 준비 지시문, 응답 교정 지시문을 한 곳에서 수정함.\nAPI 설정은 모델/연결 중심으로 유지함."
+        "text": "프롬프트 화면에서 추출 템플릿, 후보 준비 지시문, 응답 교정 지시문을 수정함.\nAPI 화면은 연결 정보와 모델 선택만 관리함."
       }
     ]
   },
@@ -135,7 +135,7 @@
     "sections": [
       {
         "label": "[실행 로그]",
-        "text": "주입, 추출, 교정, 모순 기록 확인용.\nAPI 비용도 모델/기능/채팅별로 볼 수 있음.\n비용은 비교용으로 보고, 실제 청구 확인은 Google 결제 내역 기준."
+        "text": "주입, 추출, 교정, 모순 기록을 확인함.\nAPI 비용은 모델/기능/로어팩별로 볼 수 있음.\n실제 청구액은 API 제공사 결제 내역을 기준으로 확인."
       },
       {
         "label": "[현재 세션 상태]",
@@ -154,12 +154,10 @@
             const head = document.createElement('div');
             head.style.cssText = 'display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 0;';
 
-            const arrow = document.createElement('button');
-            arrow.type = 'button';
-            arrow.textContent = '+';
-            arrow.className = 'lore-v2-compact-toggle';
-            arrow.setAttribute('aria-label', '도움말 펼치기');
-            arrow.style.cssText = 'font-size:12px;color:' + TONE.muted + ';font-weight:800;';
+            const arrow = document.createElement('span');
+            arrow.textContent = '▸';
+            arrow.setAttribute('aria-hidden', 'true');
+            arrow.style.cssText = 'font-size:13px;color:' + TONE.muted + ';width:16px;text-align:center;line-height:1;';
 
             const tt = document.createElement('div');
             tt.textContent = title || '도움말';
@@ -187,8 +185,7 @@
             head.onclick = () => {
               const open = body.style.display !== 'none';
               body.style.display = open ? 'none' : 'block';
-              arrow.textContent = open ? '+' : '-';
-              arrow.setAttribute('aria-label', open ? '도움말 펼치기' : '도움말 접기');
+              arrow.textContent = open ? '▸' : '▾';
             };
 
             nd.appendChild(head);

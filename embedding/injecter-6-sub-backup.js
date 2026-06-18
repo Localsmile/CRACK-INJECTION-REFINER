@@ -22,8 +22,8 @@
   const BTN_BASE = 'min-height:34px;padding:7px 11px;font-size:12px;border-radius:7px;cursor:pointer;font-weight:800;letter-spacing:0;';
   const TONE = {
     ghost: 'border:1px solid var(--li-line,#2f3b4f);background:transparent;color:var(--li-text-soft,#a9b6c7);',
-    primary: 'border:1px solid rgba(90,167,255,.65);background:var(--li-accent-bg,#143456);color:var(--li-text,#e7edf5);',
-    success: 'border:1px solid #2c7a5f;background:#143729;color:#bfffe4;',
+    primary: 'border:1px solid rgba(129,140,248,.58);background:var(--li-accent-bg,rgba(129,140,248,.14));color:var(--li-text,#e7edf5);',
+    success: 'border:1px solid var(--li-line-strong,#52525b);background:var(--li-surface-3,#32323a);color:var(--li-text,#fafafa);',
     danger: 'border:1px solid #8f333f;background:#3a171b;color:#ffc9c9;'
   };
   const COLOR = {
@@ -392,7 +392,7 @@
       C.setFullWidth(nd);
       addSectionTitle(nd, '서버 동기화', '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 수동 저장/가져오기만 지원함.');
       const cfg = getCfg();
-      const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid var(--li-line,#2f3b4f);border-radius:10px;background:#0c1320;padding:12px;margin-top:12px;';
+      const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface-2,#2b2b31);padding:12px;margin-top:12px;';
       const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;';
       if (typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches) grid.style.gridTemplateColumns = '1fr';
       const idInput = makeInput(cfg.backupServerId || '', 'ID');
@@ -462,14 +462,14 @@
             try { meta = item.encryptedMeta ? await decryptJson(item.encryptedMeta, serverSession.userId, activePassword) : null; } catch (_) {}
             const row = document.createElement('button');
             row.type = 'button';
-            row.style.cssText = 'width:100%;text-align:left;border:1px solid var(--li-line,#2f3b4f);background:#0c1320;color:' + COLOR.soft + ';border-radius:8px;padding:9px 10px;cursor:pointer;line-height:1.45;';
+            row.style.cssText = 'width:100%;text-align:left;border:1px solid var(--li-line,#3f3f46);background:var(--li-surface-2,#2b2b31);color:' + COLOR.soft + ';border-radius:8px;padding:9px 10px;cursor:pointer;line-height:1.45;';
             const label = meta ? ((meta.packs || []).slice(0, 4).join(', ') || '로어팩 없음') : (item.title || item.backupId);
             const embLabel = meta && meta.embeddingsExcluded ? ' / 검색 준비 제외' : '';
             row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
             row.onclick = () => {
               selected = item;
               Array.from(listBox.children).forEach(x => x.style.borderColor = 'var(--li-line,#2f3b4f)');
-              row.style.borderColor = 'rgba(90,167,255,.75)';
+              row.style.borderColor = 'rgba(129,140,248,.75)';
             };
             listBox.appendChild(row);
           }
