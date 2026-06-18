@@ -37,7 +37,7 @@
     el.style.color = color;
   }
 
-  _w.__LoreInj.registerSettingsPage('lore', '로어 목록', (m) => {
+  function createLoreListRenderer(menuApi) {
       const renderPanel = async (panel) => {
         const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
         if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 파일 탭에서 활성화하세요.'); return; }
@@ -45,6 +45,7 @@
         const filtered = entries.filter(e => activePacks.includes(e.packName));
         if (!filtered.length) { panel.addText('활성 항목 없음.'); return; }
         const byPack = {}; filtered.forEach(e => { (byPack[e.packName] = byPack[e.packName] || []).push(e); });
+        const autoExpandPacks = filtered.length <= 12 && Object.keys(byPack).length <= 2;
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -74,7 +75,7 @@
               }
               info.textContent = '임베딩 완료: ' + ok + '개';
               info.style.color = 'var(--li-accent-strong,#c7d2fe)';
-              m.replaceContentPanel(renderPanel, '로어 목록 관리');
+              menuApi.replaceContentPanel(renderPanel, '로어 목록 관리');
             } catch (e) {
               info.textContent = '임베딩 실패: ' + String(e.message || e).slice(0, 100);
               info.style.color = 'var(--li-danger,#dc2626)';
@@ -91,7 +92,7 @@
         for (const [pk, items] of Object.entries(byPack)) {
           panel.addBoxedField('', '', { onInit: (nd) => {
             C.setFullWidth(nd); nd.style.cssText += 'background:var(--li-surface-2,#2b2b31);border:1px solid var(--li-line,#3f3f46);border-radius:8px;margin-bottom:12px;';
-            const headerRow = document.createElement('div'); headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid var(--li-line,#2f3b4f);padding-bottom:10px;cursor:pointer;gap:10px;';
+            const headerRow = document.createElement('div'); headerRow.className = 'lore-v2-pack-row'; headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid var(--li-line,#2f3b4f);padding-bottom:10px;cursor:pointer;gap:10px;';
 
             const curUrl = _w.__LoreInj.getUrlStateKey ? _w.__LoreInj.getUrlStateKey(C.getCurUrl()) : C.getCurUrl();
             const disabledEntries = _w.__LoreInj.getDisabledEntriesForUrl ? _w.__LoreInj.getDisabledEntriesForUrl(C.getCurUrl()) : (settings.config.urlDisabledEntries?.[curUrl] || []);
@@ -111,21 +112,21 @@
                 if (newState) { ud[curUrl] = ud[curUrl].filter(id => !itemIds.includes(id)); }
                 else { for (const id of itemIds) { if (!ud[curUrl].includes(id)) ud[curUrl].push(id); } }
                 settings.config.urlDisabledEntries = ud; settings.save();
-                m.replaceContentPanel(renderPanel, '로어 관리');
+                menuApi.replaceContentPanel(renderPanel, '로어 관리');
             };
 
             const title = document.createElement('div'); title.style.cssText = 'font-size:14px;font-weight:900;color:var(--li-text,#e7edf5);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; title.textContent = pk + ' (' + items.length + '개)';
-            const arrow = document.createElement('button'); arrow.type = 'button'; arrow.textContent = '+'; arrow.className = 'lore-v2-compact-toggle'; arrow.setAttribute('aria-label', '목록 펼치기'); arrow.style.cssText = 'font-size:13px;color:var(--li-muted,#748196);font-weight:800;';
+            const arrow = document.createElement('span'); arrow.textContent = autoExpandPacks ? '▾' : '▸'; arrow.setAttribute('aria-hidden', 'true'); arrow.style.cssText = 'font-size:13px;color:var(--li-muted,#748196);width:16px;text-align:center;line-height:1;flex-shrink:0;';
             headerRow.appendChild(pkSw); headerRow.appendChild(title); headerRow.appendChild(arrow); nd.appendChild(headerRow);
 
             items.sort((a,b) => (a.type||'').localeCompare(b.type||''));
-            const listContainer = document.createElement('div'); listContainer.style.cssText = 'display:none;flex-direction:column;gap:8px;';
-            let isExpanded = false;
-            headerRow.onclick = () => { isExpanded = !isExpanded; listContainer.style.display = isExpanded ? 'flex' : 'none'; arrow.textContent = isExpanded ? '-' : '+'; arrow.setAttribute('aria-label', isExpanded ? '목록 접기' : '목록 펼치기'); };
+            const listContainer = document.createElement('div'); listContainer.style.cssText = 'display:' + (autoExpandPacks ? 'flex' : 'none') + ';flex-direction:column;gap:8px;';
+            let isExpanded = autoExpandPacks;
+            headerRow.onclick = () => { isExpanded = !isExpanded; listContainer.style.display = isExpanded ? 'flex' : 'none'; arrow.textContent = isExpanded ? '▾' : '▸'; };
 
             for (const e of items) {
-              const row = document.createElement('div'); row.style.cssText = 'padding:10px;border:1px solid rgba(255,255,255,.05);border-radius:9px;background:rgba(7,13,23,.74);display:flex;flex-direction:column;';
-              const header = document.createElement('div'); header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
+              const row = document.createElement('div'); row.className = 'lore-v2-lore-entry'; row.style.cssText = 'padding:10px;border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-bg,#18181b);display:flex;flex-direction:column;';
+              const header = document.createElement('div'); header.className = 'lore-v2-lore-entry-head'; header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
               const left = document.createElement('div'); left.style.cssText = 'display:flex;align-items:center;gap:9px;flex:1;min-width:0;';
               const isEnabled = isEntryEnabledForUrl(e);
               const swWrap = document.createElement('div'); swWrap.style.cssText = 'display:flex;align-items:center;gap:7px;cursor:pointer;background:rgba(255,255,255,.035);padding:4px 8px;border-radius:999px;border:1px solid var(--li-line,#2f3b4f);flex-shrink:0;';
@@ -142,7 +143,7 @@
               updateEmbStatus();
               nameSpan.appendChild(embStatusSpan); left.appendChild(swWrap); left.appendChild(nameSpan);
 
-              const right = document.createElement('div'); right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
+              const right = document.createElement('div'); right.className = 'lore-v2-lore-actions'; right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
               const B = BTN_BASE;
               const embGenBtn = document.createElement('button'); embGenBtn.textContent = '임베딩'; embGenBtn.style.cssText = B + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);';
               embGenBtn.onclick = async (ev) => { ev.stopPropagation(); embGenBtn.disabled = true; embGenBtn.textContent = '...'; try { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) throw new Error(miss); const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; await C.ensureEmbedding(e, apiOpts); embGenBtn.textContent = 'OK'; updateEmbStatus(); } catch (err) { embGenBtn.textContent = 'X'; alert('실패:' + err.message); } setTimeout(() => { embGenBtn.textContent = '임베딩'; embGenBtn.disabled = false; }, 1500); };
@@ -154,6 +155,7 @@
               const _renderAnchor = () => { const on = !!e.anchor; anchorBtn.textContent = on ? '앵커' : '앵커'; anchorBtn.title = on ? '앵커 해제 - 자동 추출 병합 시 보호 해제됨' : '앵커 지정 - summary/state/detail/call/inject 자동 덮어쓰기 차단, 재주입 우선도 최대'; anchorBtn.style.cssText = B + (on ? 'color:' + TONE.warn + ';border-color:rgba(231,181,111,.6);background:rgba(231,181,111,.13);' : 'color:' + TONE.muted + ';border-color:var(--li-line,#2f3b4f);'); };
               _renderAnchor();
               anchorBtn.onclick = async (ev) => { ev.stopPropagation(); e.anchor = !e.anchor; try { await db.entries.put(e); _renderAnchor(); } catch(err) { alert('앵커 토글 실패: ' + err.message); e.anchor = !e.anchor; _renderAnchor(); } };
+              [embGenBtn, copyBtn, editBtn, delBtn, histBtn, anchorBtn].forEach(btn => btn.classList.add('lore-v2-compact-action'));
               right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(histBtn); right.appendChild(anchorBtn); right.appendChild(editBtn); right.appendChild(delBtn);
               header.appendChild(left); header.appendChild(right); row.appendChild(header);
 
@@ -202,13 +204,23 @@
               const toggleEdit = () => { editContainer.style.display = editContainer.style.display === 'none' ? 'flex' : 'none'; };
               nameSpan.onclick = toggleEdit; editBtn.onclick = toggleEdit; cancelBtn.onclick = toggleEdit;
               saveBtn.onclick = async () => { try { const parsed = JSON.parse(ta.value); const updated = {...e, ...parsed}; await db.entries.put(updated); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(updated.id); } catch(_){} alert('수정됨. 임베딩은 변경됨으로 표시되며 필요 시 재생성하세요.'); Object.assign(e, updated); nameSpan.textContent = '[' + updated.type + '] ' + updated.name; nameSpan.appendChild(embStatusSpan); updateEmbStatus(); toggleEdit(); } catch (err) { alert('JSON 오류: ' + err.message); } };
-              delBtn.onclick = async () => { if (confirm('[' + e.name + '] 삭제?')) { await db.entries.delete(e.id); try { await db.embeddings.where('entryId').equals(e.id).delete(); } catch(ex){} const count = await db.entries.where('packName').equals(e.packName).count(); if (count <= 0) { await db.packs.delete(e.packName); row.remove(); m.replaceContentPanel(renderPanel, '로어 관리'); } else { await db.packs.update(e.packName, { entryCount: count }); row.remove(); title.textContent = pk + ' (' + count + '개)'; } } };
+              delBtn.onclick = async () => { if (confirm('[' + e.name + '] 삭제?')) { await db.entries.delete(e.id); try { await db.embeddings.where('entryId').equals(e.id).delete(); } catch(ex){} const count = await db.entries.where('packName').equals(e.packName).count(); if (count <= 0) { await db.packs.delete(e.packName); row.remove(); menuApi.replaceContentPanel(renderPanel, '로어 관리'); } else { await db.packs.update(e.packName, { entryCount: count }); row.remove(); title.textContent = pk + ' (' + count + '개)'; } } };
               listContainer.appendChild(row);
             }
             nd.appendChild(listContainer);
           }});
         }
       };
+      return renderPanel;
+  }
+
+  _w.__LoreInj.renderLoreListPanel = (panel, menuApi) => {
+    const renderPanel = createLoreListRenderer(menuApi || { replaceContentPanel: (renderer) => renderer(panel) });
+    return renderPanel(panel);
+  };
+
+  _w.__LoreInj.registerSettingsPage('lore', '로어 목록', (m) => {
+      const renderPanel = createLoreListRenderer(m);
       m.replaceContentPanel(renderPanel, '로어 목록 관리');
   });
 

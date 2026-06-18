@@ -161,66 +161,12 @@
     }});
   }
 
-  function appendQuickLore(panel) {
-    panel.addBoxedField('', '', { onInit: (nd) => {
-      C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('로어 목록', '현재 채팅에서 활성화된 로어를 바로 확인함.'));
-      const status = document.createElement('div');
-      status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);line-height:1.6;margin-bottom:10px;';
-      const list = document.createElement('div');
-      list.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
-      nd.appendChild(status);
-      nd.appendChild(list);
-      (async () => {
-        try {
-          const url = C.getCurUrl();
-          const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(url) : ((settings.config.urlPacks && settings.config.urlPacks[url]) || []);
-          const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
-          status.textContent = activePacks.length ? ('활성 로어팩 ' + activePacks.length + '개 / 로어 ' + entries.length + '개') : '활성 로어팩 없음';
-          if (!entries.length) {
-            const empty = document.createElement('div');
-            empty.className = 'lore-v2-empty';
-            empty.textContent = activePacks.length ? '활성 로어팩에 로어 없음.' : '현재 채팅에 연결된 로어팩 없음.';
-            list.appendChild(empty);
-            return;
-          }
-          const byPack = {};
-          entries.forEach(e => { (byPack[e.packName] = byPack[e.packName] || []).push(e); });
-          const summarize = (e) => {
-            const raw = e.summary && typeof e.summary === 'object' ? (e.summary.full || e.summary.text || e.summary.short || '') : (e.summary || e.state || e.detail || '');
-            return String(raw || e.name || '').replace(/\s+/g, ' ').trim();
-          };
-          Object.entries(byPack).forEach(([packName, items]) => {
-            const packBox = document.createElement('div');
-            packBox.style.cssText = 'border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface-2,#2b2b31);padding:10px 11px;';
-            const head = document.createElement('div');
-            head.textContent = packName + ' (' + items.length + '개)';
-            head.style.cssText = 'font-size:13px;font-weight:700;color:var(--li-text,#fafafa);margin-bottom:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            packBox.appendChild(head);
-            items.slice(0, 8).forEach((e) => {
-              const row = document.createElement('div');
-              row.style.cssText = 'padding:7px 0;border-top:1px dashed rgba(148,163,184,.18);';
-              const title = document.createElement('div');
-              title.textContent = '[' + (e.type || 'lore') + '] ' + (e.name || '이름 없음');
-              title.style.cssText = 'font-size:12px;font-weight:700;color:var(--li-text-soft,#a1a1aa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-              const desc = document.createElement('div');
-              desc.textContent = summarize(e).slice(0, 130) || '요약 없음';
-              desc.style.cssText = 'margin-top:3px;font-size:11px;line-height:1.45;color:var(--li-muted,#a1a1aa);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
-              row.appendChild(title);
-              row.appendChild(desc);
-              packBox.appendChild(row);
-            });
-            if (items.length > 8) {
-              const more = document.createElement('div');
-              more.textContent = '외 ' + (items.length - 8) + '개';
-              more.style.cssText = 'padding-top:7px;border-top:1px dashed rgba(148,163,184,.18);font-size:11px;color:var(--li-muted,#a1a1aa);';
-              packBox.appendChild(more);
-            }
-            list.appendChild(packBox);
-          });
-        } catch (_) { status.textContent = '로어 상태 확인 실패'; }
-      })();
-    }});
+  function appendQuickLore(panel, menuApi) {
+    if (_w.__LoreInj.renderLoreListPanel) {
+      _w.__LoreInj.renderLoreListPanel(panel, menuApi);
+      return;
+    }
+    panel.addText('로어 목록 모듈 로딩 중. 잠시 뒤 다시 열어주세요.');
   }
 
   _w.__LoreInj.registerSettingsPage('main', '빠른 설정', (m) => {
@@ -228,7 +174,7 @@
         appendQuickRefiner(panel);
         appendStatus(panel);
         appendPresets(panel, m);
-        appendQuickLore(panel);
+        appendQuickLore(panel, m);
         appendReset(panel);
       }, '빠른 설정');
   });

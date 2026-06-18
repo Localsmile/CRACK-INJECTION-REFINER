@@ -84,7 +84,7 @@
         const makeLogBox = (title, color, items, renderer) => {
           panel.addBoxedField('', '', { onInit: (nd) => {
             C.setFullWidth(nd);
-            const hRow = document.createElement('div'); hRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--li-line,#2f3b4f);margin-bottom:8px;cursor:pointer;gap:10px;';
+            const hRow = document.createElement('div'); hRow.className = 'lore-v2-log-box-head'; hRow.dataset.logTitle = title; hRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--li-line,#2f3b4f);margin-bottom:8px;cursor:pointer;gap:10px;';
             const leftWrap = document.createElement('div'); leftWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
             const arrow = document.createElement('span'); arrow.textContent = '▸'; arrow.setAttribute('aria-hidden', 'true'); arrow.style.cssText = 'font-size:13px;color:' + COLOR.muted + ';width:16px;text-align:center;line-height:1;';
             const t = document.createElement('div'); t.textContent = `${title} (${items.length})`; t.style.cssText = `font-size:14px;color:${color};font-weight:800;`;
@@ -336,9 +336,10 @@
           const r = document.createElement('div');
           r.style.cssText = LOG_ROW;
           const before = i.before || i.original || i.input || '';
-          const after = i.after || i.fixed || i.output || i.result || '';
+          const after = i.after || i.fixed || i.output || i.refined || (i.result === 'Refined' ? '' : i.result) || '';
           const changed = diffChangedOnly(before, after);
           const head = document.createElement('div');
+          head.className = 'lore-v2-log-item-head';
           head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
           const arrow = document.createElement('span');
           arrow.textContent = '▸';
@@ -368,6 +369,7 @@
           const r = document.createElement('div');
           r.style.cssText = LOG_ROW;
           const head = document.createElement('div');
+          head.className = 'lore-v2-log-item-head';
           head.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;';
           const arrow = document.createElement('span');
           arrow.textContent = '▸';

@@ -264,6 +264,7 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+        -webkit-overflow-scrolling: touch;
       }
       .lore-v2-section {
         width: 100%;
@@ -364,6 +365,7 @@
         gap: 6px;
         overflow-x: auto;
         overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
         scrollbar-width: thin;
         padding: 9px 16px;
         border-bottom: 1px solid var(--li-line);
@@ -525,9 +527,31 @@
         transition: opacity .12s ease;
         z-index: 5;
       }
+      .lore-v2-floating-tip {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: min(320px, calc(100vw - 28px));
+        max-width: 320px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--li-line-strong);
+        background: #111114;
+        color: var(--li-text);
+        box-shadow: 0 16px 38px rgba(0,0,0,.42);
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.55;
+        white-space: pre-line;
+        text-align: left;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity .08s ease;
+        z-index: 2147483647;
+      }
       .lore-v2-content button.lore-v2-button-helped:hover::before,
       .lore-v2-content button.lore-v2-button-helped:focus-visible::before {
-        opacity: 1;
+        opacity: 0;
       }
       .lore-v2-content textarea {
         min-height: 86px;
@@ -608,6 +632,7 @@
         pointer-events: none;
         transition: opacity .12s ease;
         z-index: 4;
+        display: none;
       }
       .lore-v2-help:hover::after,
       .lore-v2-help:focus-visible::after,
@@ -628,6 +653,13 @@
         background: rgba(250,204,21,.10) !important;
         color: var(--li-help) !important;
         border-color: rgba(250,204,21,.48) !important;
+      }
+      .lore-v2-content button.lore-v2-compact-action {
+        min-height: 28px !important;
+        padding: 5px 8px !important;
+        font-size: 11px !important;
+        border-radius: 7px !important;
+        line-height: 1.2 !important;
       }
       .lore-v2-content button.lore-v2-api-warn {
         background: rgba(217,119,6,.13) !important;
@@ -713,19 +745,35 @@
           flex-direction: row;
           overflow-x: auto;
           overscroll-behavior-x: contain;
+          touch-action: pan-x;
           scrollbar-width: thin;
-          padding-bottom: 1px;
+          gap: 4px;
+          padding: 0 0 2px;
         }
         .lore-v2-section {
           width: auto;
-          min-width: 104px;
-          min-height: 40px;
-          padding: 8px 9px;
+          min-width: max-content;
+          min-height: 32px;
+          padding: 6px 8px 7px;
           flex: 0 0 auto;
+          border: 0;
+          border-bottom: 2px solid transparent;
+          border-radius: 0;
+          background: transparent;
+          text-align: center;
+        }
+        .lore-v2-section:hover { background: transparent; }
+        .lore-v2-section[data-active="true"] {
+          background: transparent;
+          border-color: var(--li-accent);
+          color: var(--li-text);
         }
         .lore-v2-section-desc { display: none; }
         .lore-v2-section-title {
+          justify-content: center;
           font-size: 12px;
+          line-height: 1.25;
+          white-space: nowrap;
         }
         .lore-v2-count {
           display: none;
@@ -741,11 +789,15 @@
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
         }
-        .lore-v2-pages { padding: 8px 10px; }
+        .lore-v2-pages {
+          min-height: 42px;
+          padding: 7px 10px;
+          touch-action: pan-x;
+        }
         .lore-v2-page {
           max-width: none;
-          min-height: 32px;
-          padding: 7px 10px;
+          min-height: 30px;
+          padding: 6px 9px;
           font-size: 12px;
         }
         .lore-v2-content {
@@ -767,6 +819,22 @@
         .lore-v2-content [style*="display:flex"],
         .lore-v2-content [style*="display: flex"] {
           flex-wrap: wrap;
+        }
+        .lore-v2-lore-entry-head {
+          align-items: stretch !important;
+          flex-direction: column !important;
+          gap: 8px !important;
+        }
+        .lore-v2-lore-actions {
+          justify-content: flex-start !important;
+          gap: 5px !important;
+        }
+        .lore-v2-lore-actions button {
+          flex: 0 0 auto;
+        }
+        .lore-v2-lore-entry [style*="white-space:nowrap"],
+        .lore-v2-lore-entry [style*="white-space: nowrap"] {
+          white-space: normal !important;
         }
       }
       @media (max-height: 560px) and (min-width: 640px) {
@@ -876,6 +944,57 @@
     alert(text.slice(0, 1200));
   }
 
+  function floatingTipNode() {
+    const root = shellRoot();
+    let tip = root.querySelector('.lore-v2-floating-tip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.className = 'lore-v2-floating-tip';
+      root.appendChild(tip);
+    }
+    return tip;
+  }
+
+  function showFloatingTip(target, text) {
+    if (!target || !text) return;
+    const tip = floatingTipNode();
+    tip.textContent = text;
+    tip.style.opacity = '0';
+    tip.style.transform = 'translate(-9999px, -9999px)';
+    requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      const gap = 8;
+      const margin = 8;
+      const tw = Math.min(tip.offsetWidth || 320, window.innerWidth - margin * 2);
+      const th = tip.offsetHeight || 40;
+      let left = rect.left + rect.width / 2 - tw / 2;
+      left = Math.max(margin, Math.min(left, window.innerWidth - tw - margin));
+      let top = rect.top - th - gap;
+      if (top < margin) top = rect.bottom + gap;
+      if (top + th > window.innerHeight - margin) top = Math.max(margin, window.innerHeight - th - margin);
+      tip.style.width = tw + 'px';
+      tip.style.transform = 'translate(' + Math.round(left) + 'px, ' + Math.round(top) + 'px)';
+      tip.style.opacity = '1';
+    });
+  }
+
+  function hideFloatingTip() {
+    const host = document.getElementById(SHELL_ID);
+    const root = host && host.shadowRoot;
+    const tip = root && root.querySelector('.lore-v2-floating-tip');
+    if (tip) tip.style.opacity = '0';
+  }
+
+  function attachFloatingTip(el, text) {
+    if (!el || el.__loreTipAttached) return;
+    el.__loreTipAttached = true;
+    el.addEventListener('mouseenter', () => showFloatingTip(el, text || el.dataset.tip || ''));
+    el.addEventListener('focus', () => showFloatingTip(el, text || el.dataset.tip || ''));
+    el.addEventListener('mouseleave', hideFloatingTip);
+    el.addEventListener('blur', hideFloatingTip);
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hideFloatingTip(); });
+  }
+
   function makeHelpIcon(label, body, isApi, includeCost) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -888,6 +1007,7 @@
       ev.stopPropagation();
       showHelpDialog(label, body, includeCost || isApi);
     };
+    attachFloatingTip(btn, btn.dataset.tip);
     return btn;
   }
 
@@ -907,6 +1027,7 @@
         el.dataset.loreHelpSymbol = isApiWarn ? '!' : '?';
         el.dataset.tip = helpBody(key, HELP_TEXTS[key], includeCost || isApiWarn);
         el.title = helpBody(key, HELP_TEXTS[key], includeCost || isApiWarn);
+        attachFloatingTip(el, el.dataset.tip);
         return;
       }
       if (el.querySelector && el.querySelector('.lore-v2-help-wrap')) return;
