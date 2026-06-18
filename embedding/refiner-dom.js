@@ -823,7 +823,7 @@
 
     const box = document.createElement('div');
     box.id = 'refiner-reload-action';
-    box.style.cssText = 'position:fixed;right:18px;bottom:90px;z-index:999999;background:rgba(8,17,29,.96);color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:10px;box-shadow:0 18px 44px rgba(0,0,0,.42);padding:12px;max-width:min(340px,calc(100vw - 36px));font-size:12px;line-height:1.5;';
+    box.style.cssText = 'position:fixed;right:18px;bottom:90px;z-index:2147483647;background:rgba(8,17,29,.96);color:var(--li-text,#e7edf5);border:1px solid var(--li-line,#2f3b4f);border-radius:10px;box-shadow:0 18px 44px rgba(0,0,0,.42);padding:12px;max-width:min(340px,calc(100vw - 36px));font-size:12px;line-height:1.5;';
     const text = document.createElement('div');
     text.textContent = message || '서버 수정 완료. 화면이 아직 예전 응답이면 새로고침으로 반영하세요.';
     text.style.cssText = 'margin-bottom:10px;color:var(--li-text-soft,#a9b6c7);';
@@ -845,9 +845,11 @@
 
   // UI
   function showRefineConfirm(reason, refinedText, onConfirm, onCancel) {
+    const old = document.querySelector('#refiner-confirm-overlay');
+    if (old) old.remove();
     const overlay = document.createElement('div');
     overlay.id = 'refiner-confirm-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:999999;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;overflow:auto;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:2147483647;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;overflow:auto;';
 
     const box = document.createElement('div');
     box.style.cssText = 'background:linear-gradient(180deg,#101a2a,#0a111d);border:1px solid var(--li-line,#2f3b4f);border-radius:14px;width:min(440px,100%);max-height:min(680px,calc(100vh - 40px));padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;gap:12px;box-sizing:border-box;overflow:auto;';

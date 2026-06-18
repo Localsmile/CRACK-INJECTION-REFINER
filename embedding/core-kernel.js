@@ -356,7 +356,7 @@ Entries:
     if (!core || typeof core.recordApiCost !== 'function') return null;
     const ctx = costContext || { feature: 'unknown', chatKey: 'global' };
     try {
-      let inTok, outTok, estimated = false;
+      let inTok, outTok;
       if (usageMeta && (usageMeta.promptTokenCount != null || usageMeta.candidatesTokenCount != null)) {
         inTok = Number(usageMeta.promptTokenCount) || 0;
         outTok = (Number(usageMeta.candidatesTokenCount) || 0) + (Number(usageMeta.thoughtsTokenCount) || 0);
@@ -364,14 +364,21 @@ Entries:
         inTok = Number(usageMeta.prompt_tokens) || 0;
         outTok = Number(usageMeta.completion_tokens) || 0;
       } else {
-        inTok = estimateTextTokens(promptText);
-        outTok = estimateTextTokens(outText);
-        estimated = true;
+        return core.recordApiCost({
+          chatKey: ctx.chatKey || 'global',
+          feature: ctx.feature || 'unknown',
+          model,
+          inTok: 0,
+          outTok: 0,
+          usageMissing: true,
+          cacheHitTok: Number(opts.cacheHitTok) || 0,
+          cacheMissTok: Number(opts.cacheMissTok) || 0
+        });
       }
       return core.recordApiCost({
         chatKey: ctx.chatKey || 'global',
         feature: ctx.feature || 'unknown',
-        model, inTok, outTok, estimated,
+        model, inTok, outTok,
         cacheHitTok: Number(opts.cacheHitTok) || 0,
         cacheMissTok: Number(opts.cacheMissTok) || 0
       });
@@ -461,22 +468,16 @@ Entries:
     }
 
     // 비용 추적: costContext 미지정 시 unknown/global로 폴백 기록(누락 방지).
-    // usageMetadata 부재 시 char/4 추정 + estimated:true.
+    // usageMetadata가 없으면 추정하지 않고 USD 합산에서 제외한다.
     const _trackCost = (usageMeta, promptText, outText) => {
       const core = _w.__LoreCore;
       if (!core || typeof core.recordApiCost !== 'function') return null;
       const ctx = costContext || { feature: 'unknown', chatKey: 'global' };
       try {
-        let inTok, outTok, estimated = false;
         if (usageMeta && (usageMeta.promptTokenCount != null || usageMeta.candidatesTokenCount != null)) {
-          inTok = Number(usageMeta.promptTokenCount) || 0;
-          outTok = (Number(usageMeta.candidatesTokenCount) || 0) + (Number(usageMeta.thoughtsTokenCount) || 0);
-        } else {
-          inTok = estimateTextTokens(promptText);
-          outTok = estimateTextTokens(outText);
-          estimated = true;
+          return trackGenerationCost(model, usageMeta, promptText, outText, ctx);
         }
-        return trackGenerationCost(model, estimated ? null : { promptTokenCount: inTok, candidatesTokenCount: outTok }, promptText, outText, ctx);
+        return trackGenerationCost(model, null, promptText, outText, ctx);
       } catch (_) { return null; }
     };
     const isVertex = apiType === 'vertex';
@@ -617,20 +618,19 @@ Entries:
       model = DEFAULTS.embeddingModel, dimensions = DEFAULTS.embeddingDimensions, taskType = DEFAULTS.embeddingTaskType, cacheKey = 'embed',
       costContext = null } = opts;
     const arr = Array.isArray(texts) ? texts : [texts];
-    // 임베딩 비용 추적: usageMetadata 부재 → char/4 추정. costContext 없으면 embed/global 폴백.
+    // 임베딩 API는 현재 응답에서 사용량을 주지 않는 경우가 있어 추정 USD를 만들지 않는다.
     const _trackEmbedCost = (textArr, modelUsed) => {
       const core = _w.__LoreCore;
       if (!core || typeof core.recordApiCost !== 'function') return;
       try {
         const ctx = costContext || { feature: 'embed', chatKey: 'global' };
-        const inputChars = (textArr || []).reduce((acc, t) => acc + String(t || '').length, 0);
         core.recordApiCost({
           chatKey: ctx.chatKey || 'global',
           feature: ctx.feature || 'embed',
           model: modelUsed,
-          inTok: Math.ceil(inputChars / 4),
+          inTok: 0,
           outTok: 0,
-          estimated: true
+          usageMissing: true
         });
       } catch (_) {}
     };

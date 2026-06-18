@@ -232,11 +232,11 @@
             settings.save();
             const turnsPerBatch = settings.config.batchExtTurnsPerBatch || 50;
             const overlap = settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5;
-            bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '비용 계산 중...';
+            bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 준비 중...';
             bStatus.textContent = '전체 로그 확인 중'; bStatus.style.color = TONE.ok;
             let resume = false;
             try {
-              const est = await estimateBatchRunCost(turnsPerBatch, overlap);
+              const plan = await estimateBatchRunCost(turnsPerBatch, overlap);
               let resumeText = '';
               if (typeof _w.__LoreInj.getBatchCheckpointInfo === 'function') {
                 try {
@@ -250,19 +250,16 @@
                   }
                 } catch (_) {}
               }
-              const costText = est.usd == null ? '계산 불가' : ('$' + Number(est.usd).toFixed(4) + ' 이상');
               const ok = confirm(
                 '전체 로그를 배치로 분석함.\n\n' +
                 resumeText +
-                '대화 ' + est.logs + '개 / 예상 배치 ' + est.batches + '개\n' +
-                '모델: ' + est.model + '\n' +
-                '예상 입력 ' + est.inputTokens.toLocaleString() + ' 토큰 / 예상 출력 ' + est.expectedOutputTokens.toLocaleString() + ' 토큰\n' +
-                '예상 비용: ' + costText + '\n\n' +
-                '실제 비용은 모델 응답 길이와 재시도 횟수에 따라 달라짐. 계속?'
+                '대화 ' + plan.logs + '개 / 예상 배치 ' + plan.batches + '개\n' +
+                '모델: ' + plan.model + '\n\n' +
+                'API 비용은 완료 후 실제 사용량 정보가 있는 호출만 기록됨.\n계속?'
               );
               if (!ok) { bStatus.textContent = '취소됨'; bStatus.style.color = TONE.muted; return; }
             } catch (e) {
-              if (!confirm('비용 추정 실패: ' + (e.message || e) + '\n그래도 전체 배치 추출을 실행할까?')) {
+              if (!confirm('전체 로그 확인 실패: ' + (e.message || e) + '\n그래도 전체 배치 추출을 실행할까?')) {
                 bStatus.textContent = '취소됨'; bStatus.style.color = TONE.muted; return;
               }
             } finally {

@@ -57,11 +57,11 @@
           if (i.cost) {
             const c = i.cost;
             if (c.isBatchAggregate) {
-              if (c.usd != null) parts.push(fmtCostUsd(c.usd) + (c.hasUnknown ? ' <span style="color:' + COLOR.muted + ';">(일부 제외)</span>' : '') + (c.estimated ? ' <span style="color:' + COLOR.soft + ';" title="char/4 추정">~</span>' : ''));
-              else if (c.hasUnknown) parts.push('<span style="color:' + COLOR.soft + ';">-</span>');
+              if (c.usd != null) parts.push(fmtCostUsd(c.usd) + (c.hasUnknown ? ' <span style="color:' + COLOR.muted + ';">(일부 제외)</span>' : ''));
+              else if (c.hasUnknown || c.usageMissing) parts.push('<span style="color:' + COLOR.soft + ';">사용량 미제공</span>');
             } else {
-              if (c.usd != null) parts.push(fmtCostUsd(c.usd) + (c.estimated ? ' <span style="color:' + COLOR.soft + ';" title="char/4 추정">~</span>' : ''));
-              else parts.push('<span style="color:' + COLOR.soft + ';">-</span>');
+              if (c.usd != null && !c.estimated && !c.usageMissing) parts.push(fmtCostUsd(c.usd));
+              else parts.push('<span style="color:' + COLOR.soft + ';">사용량 미제공</span>');
             }
           }
           return parts.length ? '<br><span style="font-size:10px;color:' + COLOR.soft + ';">' + parts.join(' · ') + '</span>' : '';
@@ -200,14 +200,16 @@
                 b.calls++;
                 b.inTok += Number(e.inTok) || 0;
                 b.outTok += Number(e.outTok) || 0;
-                if (e.estimated) b.est++;
-                if (e.unknown || e.usd == null) b.unknown++;
+                const usageMissing = !!(e.usageMissing || e.estimated);
+                if (usageMissing) b.est++;
+                if (usageMissing || e.unknown || e.usd == null) b.unknown++;
                 else b.usd += Number(e.usd) || 0;
               };
               for (const e of events) {
-                if (e.unknown || e.usd == null) unknownCalls++;
+                const usageMissing = !!(e.usageMissing || e.estimated);
+                if (usageMissing || e.unknown || e.usd == null) unknownCalls++;
                 else totalUsd += Number(e.usd) || 0;
-                if (e.estimated) estCalls++;
+                if (usageMissing) estCalls++;
                 bump(byModel, e.model || '?', e);
                 bump(byFeature, e.feature || '?', e);
                 bump(byChat, e.chatKey || 'global', e);
@@ -215,19 +217,18 @@
   
               // '전체' 기간 헤더는 누적치(getCumulativeCost) 우선, 상세 표는 이벤트 기반.
               const cumul = (period === 'all' && C.getCumulativeCost) ? C.getCumulativeCost() : null;
-              const cumulOverride = !!(cumul && Number(cumul.count) > 0);
+              const cumulOverride = !!(cumul && Number(cumul.count) > 0 && !Number(cumul.estimatedCount || 0));
               const truncated = cumulOverride && Number(cumul.count) > events.length;
               if (cumulOverride) {
                 totalUsd = Number(cumul.usd) || 0;
                 totalCalls = Number(cumul.count) || 0;
                 unknownCalls = Number(cumul.unknownCount) || 0;
-                estCalls = Number(cumul.estimatedCount) || 0;
+                estCalls = Number(cumul.usageMissingCount) || 0;
               }
   
               totalSpan.textContent = ' ' + fmtUsd(totalUsd);
               const subParts = [totalCalls + '회'];
-              if (unknownCalls) subParts.push('직접입력 ' + unknownCalls + '회 제외');
-              if (estCalls) subParts.push('추정 ' + estCalls);
+              if (unknownCalls) subParts.push('사용량 미제공/가격 미등록 ' + unknownCalls + '회 제외');
               subSpan.textContent = ' (' + subParts.join(' · ') + ')';
   
               const featureLabels = { autoExtract:'자동추출', batchExtract:'배치추출', temporalExtract:'시간축추출', urlImport:'URL 가져오기', textImport:'텍스트 변환', refine:'교정', rerank:'리랭킹', judge:'판단 AI', embed:'임베딩', apiTest:'API 테스트' };
@@ -239,7 +240,7 @@
                 for (const [k, v] of rows) {
                   const usdCell = v.unknown === v.calls
                     ? '<span style="color:' + COLOR.soft + ';">-</span>'
-                    : (fmtUsd(v.usd) + (v.unknown ? ' <span style="color:' + COLOR.soft + ';font-size:10px;">(+' + v.unknown + ' 제외)</span>' : '') + (v.est ? ' <span style="color:' + COLOR.soft + ';font-size:10px;" title="char/4 추정">~</span>' : ''));
+                    : (fmtUsd(v.usd) + (v.unknown ? ' <span style="color:' + COLOR.soft + ';font-size:10px;">(+' + v.unknown + ' 제외)</span>' : ''));
                   const labelText = labelMap && labelMap[k] ? escHtml(labelMap[k]) : escHtml(k);
                   html += '<tr style="border-bottom:1px dashed rgba(148,163,184,.16);"><td style="padding:5px 4px;word-break:break-all;">' + labelText + '</td><td style="padding:5px 4px;text-align:right;">' + v.calls + '</td><td style="padding:5px 4px;text-align:right;color:' + COLOR.muted + ';">' + fmtTok(v.inTok) + '</td><td style="padding:5px 4px;text-align:right;color:' + COLOR.muted + ';">' + fmtTok(v.outTok) + '</td><td style="padding:5px 4px;text-align:right;">' + usdCell + '</td></tr>';
                 }
@@ -263,7 +264,7 @@
                 const chatLabels = {};
                 Object.keys(byChat).forEach(k => { chatLabels[k] = displayChatLabel(k); });
                 html += renderTable('로어팩별', byChat, '로어팩', chatLabels);
-                html += '<div style="margin-top:8px;font-size:10px;color:' + COLOR.muted + ';">~ usageMetadata 없어 char/4 추정. 가격 미등록 모델(직접입력 등)은 호출수만 표기하고 USD 합산 제외.</div>';
+                html += '<div style="margin-top:8px;font-size:10px;color:' + COLOR.muted + ';">API 응답에 실제 사용량이 있는 호출만 USD 합산함. 사용량 미제공 호출과 가격 미등록 모델은 호출수만 표기.</div>';
                 detailsCon.innerHTML = html;
               }
             };
@@ -336,7 +337,7 @@
           const r = document.createElement('div');
           r.style.cssText = LOG_ROW;
           const before = i.before || i.original || i.input || '';
-          const after = i.after || i.fixed || i.output || i.refined || (i.result === 'Refined' ? '' : i.result) || '';
+          const after = i.refined || i.after || i.fixed || i.output || (i.result === 'Refined' ? '' : i.result) || '';
           const changed = diffChangedOnly(before, after);
           const head = document.createElement('div');
           head.className = 'lore-v2-log-item-head';

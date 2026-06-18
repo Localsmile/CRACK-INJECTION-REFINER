@@ -26,8 +26,8 @@
     const dw = dot || Math.max(8, h - 4);
     const leftOn = Math.max(2, w - dw - 2);
     return {
-      wrap: 'width:' + w + 'px;height:' + h + 'px;border-radius:' + Math.ceil(h / 2) + 'px;background:' + (on ? 'rgba(120,213,168,.32)' : 'rgba(116,129,150,.22)') + ';border:1px solid ' + (on ? 'rgba(120,213,168,.6)' : 'var(--li-line,#2f3b4f)') + ';position:relative;cursor:pointer;flex-shrink:0;',
-      dot: 'width:' + dw + 'px;height:' + dw + 'px;border-radius:50%;background:' + (on ? TONE.ok : TONE.muted) + ';position:absolute;top:2px;left:' + (on ? leftOn : 2) + 'px;transition:left .18s,background .18s;box-shadow:0 1px 3px rgba(0,0,0,.35);'
+      wrap: 'width:' + w + 'px;height:' + h + 'px;border-radius:' + Math.ceil(h / 2) + 'px;background:' + (on ? 'rgba(129,140,248,.24)' : 'rgba(113,113,122,.20)') + ';border:1px solid ' + (on ? 'rgba(129,140,248,.55)' : 'var(--li-line,#3f3f46)') + ';position:relative;cursor:pointer;flex-shrink:0;',
+      dot: 'width:' + dw + 'px;height:' + dw + 'px;border-radius:50%;background:' + (on ? 'var(--li-accent-strong,#c7d2fe)' : 'var(--li-muted,#a1a1aa)') + ';position:absolute;top:2px;left:' + (on ? leftOn : 2) + 'px;transition:left .18s,background .18s;'
     };
   }
 
@@ -98,7 +98,7 @@
             const disabledEntries = _w.__LoreInj.getDisabledEntriesForUrl ? _w.__LoreInj.getDisabledEntriesForUrl(C.getCurUrl()) : (settings.config.urlDisabledEntries?.[curUrl] || []);
             const allItemsEnabled = items.every(e => !disabledEntries.includes(e.id));
 
-            const packToggle = toggleStyle(allItemsEnabled, 34, 18, 12);
+            const packToggle = toggleStyle(allItemsEnabled, 32, 18, 12);
             const pkSw = document.createElement('div'); pkSw.style.cssText = packToggle.wrap;
             const pkDot = document.createElement('div'); pkDot.style.cssText = packToggle.dot;
             pkSw.appendChild(pkDot);
@@ -125,38 +125,36 @@
             headerRow.onclick = () => { isExpanded = !isExpanded; listContainer.style.display = isExpanded ? 'flex' : 'none'; arrow.textContent = isExpanded ? '▾' : '▸'; };
 
             for (const e of items) {
-              const row = document.createElement('div'); row.className = 'lore-v2-lore-entry'; row.style.cssText = 'padding:10px;border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-bg,#18181b);display:flex;flex-direction:column;';
+              const row = document.createElement('div'); row.className = 'lore-v2-lore-entry'; row.style.cssText = 'padding:10px;border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface,#232327);display:flex;flex-direction:column;';
               const header = document.createElement('div'); header.className = 'lore-v2-lore-entry-head'; header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
               const left = document.createElement('div'); left.style.cssText = 'display:flex;align-items:center;gap:9px;flex:1;min-width:0;';
               const isEnabled = isEntryEnabledForUrl(e);
-              const swWrap = document.createElement('div'); swWrap.style.cssText = 'display:flex;align-items:center;gap:7px;cursor:pointer;background:rgba(255,255,255,.035);padding:4px 8px;border-radius:999px;border:1px solid var(--li-line,#2f3b4f);flex-shrink:0;';
-              const swLabel = document.createElement('span'); swLabel.textContent = isEnabled ? 'ON' : 'OFF'; swLabel.style.cssText = 'font-size:10px;font-weight:900;width:22px;text-align:center;color:' + (isEnabled ? TONE.ok : TONE.muted) + ';';
               const entryToggle = toggleStyle(isEnabled, 28, 14, 10);
               const sw = document.createElement('div'); sw.style.cssText = entryToggle.wrap;
               const dot = document.createElement('div'); dot.style.cssText = entryToggle.dot;
-              sw.appendChild(dot); swWrap.appendChild(swLabel); swWrap.appendChild(sw);
-              swWrap.onclick = (ev) => { ev.stopPropagation(); const ns = !isEntryEnabledForUrl(e); setEntryEnabled(e, ns); const st = toggleStyle(ns, 28, 14, 10); swLabel.textContent = ns ? 'ON' : 'OFF'; swLabel.style.color = ns ? TONE.ok : TONE.muted; sw.style.cssText = st.wrap; dot.style.cssText = st.dot; };
+              sw.appendChild(dot);
+              sw.title = isEnabled ? '이 로어 사용 중' : '이 로어 꺼짐';
+              sw.onclick = (ev) => { ev.stopPropagation(); const ns = !isEntryEnabledForUrl(e); setEntryEnabled(e, ns); const st = toggleStyle(ns, 28, 14, 10); sw.title = ns ? '이 로어 사용 중' : '이 로어 꺼짐'; sw.style.cssText = st.wrap; dot.style.cssText = st.dot; };
               const nameSpan = document.createElement('span'); nameSpan.textContent = '[' + e.type + '] ' + e.name; nameSpan.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
 
               const embStatusSpan = document.createElement('span'); embStatusSpan.style.cssText = 'margin-left:7px;font-size:10px;padding:2px 6px;border-radius:999px;font-weight:900;';
               const updateEmbStatus = async () => { try { const emb = await db.embeddings.where({entryId: e.id, field: 'summary'}).first() || await db.embeddings.where('entryId').equals(e.id).first(); if (emb) { const ch = C.embeddingSourceHash ? C.embeddingSourceHash(e, emb.field || 'summary') : (emb.hash || ''); const targetModel = settings.config.embeddingModel || 'gemini-embedding-001'; if((emb.sourceHash||emb.hash)===ch && (!emb.packName || emb.packName===e.packName)){ const needsRegen=(emb.model && emb.model !== targetModel) || (emb.schemaVersion && emb.schemaVersion < 2) || (emb.taskType!=='RETRIEVAL_DOCUMENT'&&targetModel.includes('embedding-001')); if(needsRegen){setBadge(embStatusSpan,'재생성',TONE.warn,'rgba(231,181,111,.15)');}else{setBadge(embStatusSpan,'임베딩',TONE.ok,'rgba(120,213,168,.14)');} }else{setBadge(embStatusSpan,'변경됨',TONE.warn,'rgba(231,181,111,.15)');} }else{setBadge(embStatusSpan,'미임베딩',TONE.muted,'rgba(116,129,150,.16)');} }catch(ex){} };
               updateEmbStatus();
-              nameSpan.appendChild(embStatusSpan); left.appendChild(swWrap); left.appendChild(nameSpan);
+              nameSpan.appendChild(embStatusSpan); left.appendChild(sw); left.appendChild(nameSpan);
 
               const right = document.createElement('div'); right.className = 'lore-v2-lore-actions'; right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
               const B = BTN_BASE;
-              const embGenBtn = document.createElement('button'); embGenBtn.textContent = '임베딩'; embGenBtn.style.cssText = B + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);';
+              const embGenBtn = document.createElement('button'); embGenBtn.textContent = '임베딩'; embGenBtn.style.cssText = B;
               embGenBtn.onclick = async (ev) => { ev.stopPropagation(); embGenBtn.disabled = true; embGenBtn.textContent = '...'; try { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) throw new Error(miss); const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; await C.ensureEmbedding(e, apiOpts); embGenBtn.textContent = 'OK'; updateEmbStatus(); } catch (err) { embGenBtn.textContent = 'X'; alert('실패:' + err.message); } setTimeout(() => { embGenBtn.textContent = '임베딩'; embGenBtn.disabled = false; }, 1500); };
-              const copyBtn = document.createElement('button'); copyBtn.textContent = '복사'; copyBtn.style.cssText = B + 'color:' + TONE.ok + ';border-color:rgba(120,213,168,.45);'; copyBtn.onclick = (ev) => { ev.stopPropagation(); const clean = {...e}; delete clean.id; delete clean.packName; delete clean.project; delete clean.enabled; navigator.clipboard.writeText(JSON.stringify(clean, null, 2)).then(() => alert('복사됨.')).catch(() => alert('실패')); };
-              const editBtn = document.createElement('button'); editBtn.textContent = '수정'; editBtn.style.cssText = B + 'color:' + TONE.accent + ';border-color:rgba(90,167,255,.48);';
+              const copyBtn = document.createElement('button'); copyBtn.textContent = '복사'; copyBtn.style.cssText = B; copyBtn.onclick = (ev) => { ev.stopPropagation(); const clean = {...e}; delete clean.id; delete clean.packName; delete clean.project; delete clean.enabled; navigator.clipboard.writeText(JSON.stringify(clean, null, 2)).then(() => alert('복사됨.')).catch(() => alert('실패')); };
               const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:' + TONE.danger + ';border-color:rgba(239,107,107,.45);';
-              const histBtn = document.createElement('button'); histBtn.textContent = '이력'; histBtn.style.cssText = B + 'color:' + TONE.warn + ';border-color:rgba(231,181,111,.45);';
+              const histBtn = document.createElement('button'); histBtn.textContent = '이력'; histBtn.style.cssText = B;
               const anchorBtn = document.createElement('button');
-              const _renderAnchor = () => { const on = !!e.anchor; anchorBtn.textContent = on ? '앵커' : '앵커'; anchorBtn.title = on ? '앵커 해제 - 자동 추출 병합 시 보호 해제됨' : '앵커 지정 - summary/state/detail/call/inject 자동 덮어쓰기 차단, 재주입 우선도 최대'; anchorBtn.style.cssText = B + (on ? 'color:' + TONE.warn + ';border-color:rgba(231,181,111,.6);background:rgba(231,181,111,.13);' : 'color:' + TONE.muted + ';border-color:var(--li-line,#2f3b4f);'); };
+              const _renderAnchor = () => { const on = !!e.anchor; anchorBtn.textContent = '앵커'; anchorBtn.title = on ? '앵커 해제 - 자동 추출 병합 시 보호 해제됨' : '앵커 지정 - 자동 갱신에서 보호함'; anchorBtn.style.cssText = B + (on ? 'border-color:rgba(129,140,248,.55);background:var(--li-accent-bg,rgba(129,140,248,.14));' : ''); };
               _renderAnchor();
               anchorBtn.onclick = async (ev) => { ev.stopPropagation(); e.anchor = !e.anchor; try { await db.entries.put(e); _renderAnchor(); } catch(err) { alert('앵커 토글 실패: ' + err.message); e.anchor = !e.anchor; _renderAnchor(); } };
-              [embGenBtn, copyBtn, editBtn, delBtn, histBtn, anchorBtn].forEach(btn => btn.classList.add('lore-v2-compact-action'));
-              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(histBtn); right.appendChild(anchorBtn); right.appendChild(editBtn); right.appendChild(delBtn);
+              [embGenBtn, copyBtn, delBtn, histBtn, anchorBtn].forEach(btn => btn.classList.add('lore-v2-compact-action'));
+              right.appendChild(embGenBtn); right.appendChild(copyBtn); right.appendChild(histBtn); right.appendChild(anchorBtn); right.appendChild(delBtn);
               header.appendChild(left); header.appendChild(right); row.appendChild(header);
 
               // 버전 이력 패널
@@ -202,7 +200,7 @@
               btnRow.appendChild(cancelBtn); btnRow.appendChild(saveBtn); editContainer.appendChild(ta); editContainer.appendChild(btnRow); row.appendChild(editContainer);
 
               const toggleEdit = () => { editContainer.style.display = editContainer.style.display === 'none' ? 'flex' : 'none'; };
-              nameSpan.onclick = toggleEdit; editBtn.onclick = toggleEdit; cancelBtn.onclick = toggleEdit;
+              nameSpan.onclick = toggleEdit; cancelBtn.onclick = toggleEdit;
               saveBtn.onclick = async () => { try { const parsed = JSON.parse(ta.value); const updated = {...e, ...parsed}; await db.entries.put(updated); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(updated.id); } catch(_){} alert('수정됨. 임베딩은 변경됨으로 표시되며 필요 시 재생성하세요.'); Object.assign(e, updated); nameSpan.textContent = '[' + updated.type + '] ' + updated.name; nameSpan.appendChild(embStatusSpan); updateEmbStatus(); toggleEdit(); } catch (err) { alert('JSON 오류: ' + err.message); } };
               delBtn.onclick = async () => { if (confirm('[' + e.name + '] 삭제?')) { await db.entries.delete(e.id); try { await db.embeddings.where('entryId').equals(e.id).delete(); } catch(ex){} const count = await db.entries.where('packName').equals(e.packName).count(); if (count <= 0) { await db.packs.delete(e.packName); row.remove(); menuApi.replaceContentPanel(renderPanel, '로어 관리'); } else { await db.packs.update(e.packName, { entryCount: count }); row.remove(); title.textContent = pk + ' (' + count + '개)'; } } };
               listContainer.appendChild(row);

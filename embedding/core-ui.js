@@ -20,6 +20,8 @@
       [/Local migration failed:?/i, '저장 데이터 점검 실패:'],
       [/local migration/i, '저장 데이터 정리'],
       [/stale embedding/i, '검색 준비 갱신 필요'],
+      [/deepseek/ig, '딥식'],
+      [/gemini/ig, '잼민'],
       [/queued for refine/i, '응답 교정 대기 중'],
       [/\bqueued\b/i, '대기 중'],
       [/\brefining\b/i, '응답 교정 중'],

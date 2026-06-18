@@ -362,11 +362,11 @@
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
       const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';
-      Core.showStatusBadge(isDeepSeekRefiner ? '에리가 DeepSeek에게 묻는 중' : '에리가 잼민이에게 묻는 중');
-      showToast(isDeepSeekRefiner ? '에리가 DeepSeek에게 응답 검수 중' : '에리가 응답 검수 중', 'info');
+      Core.showStatusBadge(isDeepSeekRefiner ? '에리가 딥식에게 묻는 중' : '에리가 잼민에게 묻는 중');
+      showToast(isDeepSeekRefiner ? '에리가 딥식에게 응답 검수 중' : '에리가 잼민에게 응답 검수 중', 'info');
       if (isDeepSeekRefiner) {
         apiOpts.responseMimeType = 'application/json';
-        prompt += '\n\nStructured output instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
+        prompt += '\n\n응답 형식 지시:\n아래 형식 중 하나의 유효한 JSON만 반환할 것.\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
       }
 
       // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)
@@ -481,11 +481,17 @@
                 const newPlain = R.stripMarkdown ? R.stripMarkdown(serverText) : serverText;
                 let targetEl = null;
                 try {
+                  if (R.rememberAssistantMessage) R.rememberAssistantMessage(serverMessageId, originalForDom);
                   targetEl = (R.findMessageContainerById && R.findMessageContainerById(serverMessageId))
                           || (R.findDeepestMatchingElement && R.findDeepestMatchingElement(oldPlain))
                           || null;
                 } catch (_) {}
-                const storeOk = !!(targetEl && R.tryStoreUpdate && R.tryStoreUpdate(targetEl, serverMessageId, serverText));
+                const storeOk = !!(R.tryStoreUpdate && R.tryStoreUpdate(targetEl || null, serverMessageId, serverText));
+                if (!storeOk && R.tryStoreUpdate) {
+                  setTimeout(() => {
+                    try { R.tryStoreUpdate(null, serverMessageId, serverText); } catch (_) {}
+                  }, 250);
+                }
                 // v11: gate innerHTML stomp behind path A failure.
                 // When path A fired (RERENDER_HITS > 0), wrtn re-renders the bubble with its
                 // own native markdown pipeline, which handles wrtn-specific code-block boxes,

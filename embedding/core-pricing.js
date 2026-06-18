@@ -118,8 +118,9 @@
     const rawModel = String(ev.model || '');
     const model = normalizeModel(rawModel) || rawModel;
     const contextLen = Number(ev.contextLen) || inTok;
-    const usd = computeCostDetailed(rawModel, inTok, outTok, ev);
-    const unknown = usd == null;
+    const usageMissing = !!(ev.usageMissing || ev.estimated);
+    const usd = usageMissing ? null : computeCostDetailed(rawModel, inTok, outTok, ev);
+    const unknown = usageMissing || usd == null;
     const rec = {
       ts: Number(ev.ts) || Date.now(),
       chatKey: String(ev.chatKey || 'global'),
@@ -130,7 +131,8 @@
       cacheMissTok: Math.max(0, Number(ev.cacheMissTok) || 0),
       usd: unknown ? null : usd,
       unknown,
-      estimated: !!ev.estimated
+      estimated: false,
+      usageMissing
     };
     events.push(rec);
     // FIFO drop
@@ -142,7 +144,7 @@
     cumul.usd = (Number(cumul.usd) || 0) + (Number(rec.usd) || 0);
     cumul.count = (Number(cumul.count) || 0) + 1;
     if (rec.unknown) cumul.unknownCount = (Number(cumul.unknownCount) || 0) + 1;
-    if (rec.estimated) cumul.estimatedCount = (Number(cumul.estimatedCount) || 0) + 1;
+    if (rec.usageMissing) cumul.usageMissingCount = (Number(cumul.usageMissingCount) || 0) + 1;
     if (!cumul.firstTs || rec.ts < cumul.firstTs) cumul.firstTs = rec.ts;
     if (!cumul.lastTs || rec.ts > cumul.lastTs) cumul.lastTs = rec.ts;
     cumul.byFeature = cumul.byFeature || {};
@@ -163,6 +165,7 @@
       count: Number(c.count) || 0,
       unknownCount: Number(c.unknownCount) || 0,
       estimatedCount: Number(c.estimatedCount) || 0,
+      usageMissingCount: Number(c.usageMissingCount) || 0,
       firstTs: c.firstTs || null,
       lastTs: c.lastTs || null,
       byFeature: c.byFeature || {},

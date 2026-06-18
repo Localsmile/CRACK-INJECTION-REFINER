@@ -1015,9 +1015,9 @@
       if (cfg.refinerModel === '' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = fallback;
       if (cfg.autoExtDeepSeekThinking === undefined) cfg.autoExtDeepSeekThinking = true;
     } else {
-      if (!isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3-flash-preview';
-      if (!isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';
-      if (!isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite-preview';
+      if (!cfg.rerankModel || !isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3.1-flash-lite-preview';
+      if (!cfg.temporalRecallJudgeModel || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';
+      if (!cfg.refinerModel || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite-preview';
     }
     return cfg;
   }

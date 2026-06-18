@@ -14,7 +14,7 @@
     '자동 대화 정리', '변경분만 저장', '기존 로어 참고', '페르소나 정보 전송',
     '중요 장면 기억', '추출 후 임베딩', '추출 재시도', '배치 크기',
     '배치 오버랩', '배치 재시도', '수동 추출 실행', '전체 일괄 추출 실행',
-    'URL 변환', '텍스트 변환', '최근 AI 응답 재검수', '응답 교정 켜기',
+    '최근 AI 응답 재검수', '응답 교정 켜기',
     '다음 턴 후보 준비', 'AI로 참고 장면 고르기', 'API 키 테스트',
     '추출/정리용 모델', '후보 준비 모델', '과거 장면 판단 모델', '응답 교정 모델',
     '임베딩', '임베딩 일괄 생성', 'LLM 요약 병합', 'DeepSeek 추출 프롬프트',
@@ -81,7 +81,7 @@
     '추출/정리용 모델': '자동 추출, 수동 추출, 전체 로그 추출, 지식 변환에 사용할 생성 모델.',
     '후보 준비 모델': '다음 삽입 후보를 미리 고를 때 사용할 가벼운 판단 모델.',
     '과거 장면 판단 모델': '중요 장면 기억 중 지금 대화에 맞는 장면을 고를 때 사용할 모델.',
-    '응답 교정 모델': '최근 AI 응답을 검수/수정할 때 사용할 모델. 비우면 기본 모델 사용.',
+    '응답 교정 모델': '최근 AI 응답을 검수/수정할 때 사용할 모델. 선택한 API 종류에 맞는 기본값이 자동 적용됨.',
     '임베딩 모델': '의미 검색 벡터를 만들 모델. 변경하면 기존 임베딩 재생성 권장.',
     'Gemini 추출 프롬프트': 'Gemini API에 보낼 추출 템플릿. 기본 템플릿은 안전하게 보존됨.',
     'DeepSeek 추출 프롬프트': 'DeepSeek API에 보낼 별도 전체 프롬프트. Gemini 템플릿과 독립적으로 저장됨.',
@@ -100,6 +100,26 @@
     '일괄 병합 방식': '찾은 모든 후보를 한 번에 병합할 때 사용할 방식. LLM 방식은 API 비용 발생.',
     '최근 AI 응답 재검수': '현재 채팅의 마지막 AI 응답을 다시 검사함. 필요하면 교정 결과를 적용함.',
     '로어 목록': '현재 채팅에서 활성화된 로어팩과 로어를 확인하고 개별 ON/OFF, 수정, 삭제, 임베딩을 관리함.'
+  };
+
+  const OPTION_SEARCH_BY_PAGE = {
+    main: ['최근 AI 응답 재검수', '빠른 설정', '로어 목록', '추천 설정', '현재 상태'],
+    extract: ['자동 대화 정리', '변경분만 저장', '기존 로어 참고', '중요 장면 기억', '추출 후 임베딩', '추출 상태 배지', '수동 추출 실행', '전체 일괄 추출 실행', '배치 크기', '배치 오버랩', '배치 재시도', '저장할 로어팩', '자동 정리 주기', '읽을 최근 대화', '최근 제외', '중요 장면 최대'],
+    knowledge: ['지식 변환', 'URL', '원문', '팩 이름', 'URL 변환', '텍스트 변환'],
+    'injection-settings': ['로어 삽입', '삽입 위치', '한 번에 넣을 로어', '기본 삽입 문자 수', '최대 삽입 문자 수', '장면 상태 문자 수', '삽입 흔적 자동 정리', '정리 기준 문자 수', '삽입 쿨타임', '쿨타임 턴 수'],
+    'retrieval-settings': ['의미 검색', '의미 검색 비중', '정확한 단어 우선', '비슷한 단어 허용', '활성 인물 감지', '활성 인물 가중', '오래된 정보도 가끔 넣기', '다음 턴 후보 준비', 'AI로 참고 장면 고르기', '참고 장면 제한 시간', '검토할 장면 수'],
+    'memory-settings': ['호칭 정보', '첫 만남', '재회', '페르소나', '장면 상태'],
+    lore: ['로어 목록', '임베딩', '임베딩 일괄 생성', '앵커', '복사', '삭제', '이력'],
+    file: ['파일 관리', '로어 가져오기', '직접 JSON 입력', '내보내기', '검색 준비 정리'],
+    merge: ['중복 정리', '병합 후보', 'LLM 요약 병합', '긴 항목 유지', '유사도 임계값', '최대 글자수'],
+    backup: ['백업', '동기화', '서버 저장', '서버 병합', '서버 백업으로 교체', '선택 백업 삭제', '파일 백업', '파일로 병합', '파일로 교체 복원'],
+    refiner: ['응답 교정 켜기', '자동 반영', '상태 배지 표시', '로어 검색 모드', '검수 템플릿 선택', '참조 대화 턴 수', '최근 AI 응답 재검수'],
+    api: ['API 종류', 'DeepSeek API 키', 'DeepSeek 추론 사용', 'DeepSeek 추론 강도', '임베딩용 Gemini API 키', '추출/정리용 모델', '후보 준비 모델', '과거 장면 판단 모델', '응답 교정 모델', '임베딩 모델', 'API 키 테스트'],
+    prompts: ['Gemini 추출 프롬프트', 'DeepSeek 추출 프롬프트', '템플릿', '출력 형식(JSON)', '새 로어 추출 지시문', '기존 로어 참고 지시문', '새 로어 추출 전체 프롬프트', '기존 로어 참고 전체 프롬프트', '지식 변환 전체 프롬프트', '공통 규칙 블록', '후보 준비 지시문', '응답 교정 지시문'],
+    log: ['실행 로그', 'API 비용', '주입 기록', '추출 기록', '교정 기록', '모순 기록'],
+    session: ['세션 상태', '활성 로어팩', '쿨다운', '점수', '장면 상태'],
+    snapshot: ['스냅샷', '복원', '삭제'],
+    help: ['도움말', '기능 안내']
   };
 
   function kv() {
@@ -863,7 +883,8 @@
     pages: new Map(),
     activeRoot: '',
     activePage: '',
-    query: ''
+    query: '',
+    renderToken: 0
   };
 
   function normalizeText(text) {
@@ -881,7 +902,7 @@
   function pageMatches(root, page) {
     const q = normalizeText(state.query).trim();
     if (!q) return true;
-    return normalizeText(root.label + ' ' + root.desc + ' ' + page.label).includes(q);
+    return normalizeText(root.label + ' ' + root.desc + ' ' + page.label + ' ' + (page.searchText || '')).includes(q);
   }
 
   function ensureRoot(id, label, desc, order) {
@@ -905,19 +926,25 @@
     return state.roots.get(id);
   }
 
-  function makePanelAdapter(content) {
+  function makePanelAdapter(content, token) {
+    const isStale = () => token !== state.renderToken || !content.isConnected;
     return {
       addBoxedField: function (_label, _value, opts) {
         const box = document.createElement('div');
         box.className = 'lore-v2-field';
+        if (isStale()) return box;
         content.appendChild(box);
-        if (opts && typeof opts.onInit === 'function') opts.onInit(box);
+        if (opts && typeof opts.onInit === 'function') {
+          const out = opts.onInit(box);
+          if (out && typeof out.then === 'function') out.catch(e => console.error('[LoreShell] field render failed:', e));
+        }
         return box;
       },
       addText: function (text) {
         const p = document.createElement('div');
         p.textContent = text || '';
         p.className = 'lore-v2-empty';
+        if (isStale()) return p;
         content.appendChild(p);
         return p;
       }
@@ -1020,6 +1047,7 @@
       const key = textKeyOf(el);
       if (!key || !HELP_TEXTS[key]) return;
       if (el.tagName === 'BUTTON') {
+        if (key === 'URL 변환' || key === '텍스트 변환') return;
         const includeCost = API_HELP_LABELS.has(key);
         const isApiWarn = API_WARNING_ICON_LABELS.has(key);
         el.classList.add('lore-v2-button-helped');
@@ -1055,13 +1083,15 @@
     const root = state.roots.get(rootId) || ensureRoot(rootId, rootId, '', 1000);
     const id = rootId + ':' + (key || label);
     if (!state.pages.has(id)) {
-      state.pages.set(id, { id, key: key || label, rootId, label, action, order: order || 1000 });
+      const pageKey = key || label;
+      state.pages.set(id, { id, key: pageKey, rootId, label, action, order: order || 1000, searchText: (OPTION_SEARCH_BY_PAGE[pageKey] || []).join(' ') });
       root.pages.push(id);
       sortRootPages(root);
     } else {
       const page = state.pages.get(id);
       page.label = label;
       page.action = action;
+      page.searchText = (OPTION_SEARCH_BY_PAGE[page.key] || []).join(' ');
       page.order = order || page.order || 1000;
       sortRootPages(root);
     }
@@ -1094,21 +1124,45 @@
     const title = shell.querySelector('.lore-v2-title');
     const subtitle = shell.querySelector('.lore-v2-subtitle');
     const root = state.roots.get(page.rootId);
+    const pageToken = ++state.renderToken;
     content.scrollTop = 0;
     content.innerHTML = '';
     title.textContent = page.label;
     subtitle.textContent = root && root.desc ? root.desc : '필요한 설정과 작업을 이 화면에서 처리함';
     const menuApi = {
       replaceContentPanel: function (renderer, titleOverride) {
+        const token = ++state.renderToken;
         if (titleOverride) title.textContent = titleOverride;
         content.scrollTop = 0;
         content.innerHTML = '';
-        const panel = makePanelAdapter(content);
-        if (typeof renderer === 'function') renderer(panel);
-        requestAnimationFrame(() => {
-          decorateHelp(content);
-          content.scrollTop = 0;
-        });
+        const panel = makePanelAdapter(content, token);
+        const finish = () => {
+          if (token !== state.renderToken) return;
+          requestAnimationFrame(() => {
+            if (token !== state.renderToken) return;
+            decorateHelp(content);
+            content.scrollTop = 0;
+          });
+        };
+        try {
+          const out = typeof renderer === 'function' ? renderer(panel) : null;
+          if (out && typeof out.then === 'function') out.then(finish).catch((e) => {
+            if (token !== state.renderToken) return;
+            const err = document.createElement('div');
+            err.className = 'lore-v2-empty';
+            err.textContent = '화면 렌더링 실패: ' + (e && e.message ? e.message : String(e));
+            content.appendChild(err);
+            console.error('[LoreShell] async render failed:', e);
+          });
+          else finish();
+        } catch (e) {
+          if (token !== state.renderToken) return;
+          const err = document.createElement('div');
+          err.className = 'lore-v2-empty';
+          err.textContent = '화면 렌더링 실패: ' + (e && e.message ? e.message : String(e));
+          content.appendChild(err);
+          console.error('[LoreShell] render failed:', e);
+        }
       },
       openPage
     };
@@ -1122,6 +1176,7 @@
       console.error('[LoreShell] render failed:', page.id, e);
     }
     requestAnimationFrame(() => {
+      if (pageToken !== state.renderToken) return;
       decorateHelp(content);
       content.scrollTop = 0;
     });

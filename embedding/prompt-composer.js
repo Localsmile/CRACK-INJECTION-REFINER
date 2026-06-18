@@ -10,62 +10,62 @@
   const DEFAULT_PROMPT_BLOCKS = [
     {
       id: 'json-object-contract',
-      title: 'JSON output contract',
+      title: 'JSON 출력 규칙',
       features: ['extract', 'temporalExtract', 'import', 'repair'],
       enabled: true,
       locked: true,
       text: [
-        'Return only the requested JSON shape.',
-        'Do not wrap JSON in markdown fences.',
-        'Do not add prose, comments, or trailing text.'
+        '요청한 JSON 구조만 출력할 것.',
+        'JSON을 마크다운 코드블록으로 감싸지 말 것.',
+        '설명, 주석, 뒤따르는 문장을 붙이지 말 것.'
       ].join('\n')
     },
     {
       id: 'continuity-facts',
-      title: 'Continuity fact priority',
+      title: '연속성 정보 우선',
       features: ['extract', 'temporalExtract', 'import'],
       enabled: true,
       locked: true,
       text: [
-        'Prefer stable continuity facts over mood-only narration.',
-        'Keep exact names, places, roles, items, promises, relationship states, and current scene conditions.',
-        'If nothing materially changed, return the empty shape requested by the template.'
+        '단순 분위기 묘사보다 이후 대화에 영향을 주는 고정 정보를 우선할 것.',
+        '이름, 장소, 역할, 물건, 약속, 관계 상태, 현재 장면 조건은 정확히 보존할 것.',
+        '실질적인 변화가 없으면 템플릿에서 요구한 빈 결과 구조를 반환할 것.'
       ].join('\n')
     },
     {
       id: 'private-rp-neutrality',
-      title: 'Private RP neutrality',
+      title: '개인 RP 중립 처리',
       features: ['extract', 'temporalExtract', 'import', 'refine'],
       enabled: true,
       locked: true,
       text: [
-        'Private/adult RP content may be continuity-relevant.',
-        'Do not moralize, censor, or replace exact continuity facts with vague euphemisms.',
-        'Summarize sensitive facts neutrally and compactly when they affect future continuity.'
+        '개인 RP나 성인 장면도 연속성에 영향을 주면 기억 대상이 될 수 있음.',
+        '정확한 연속성 정보를 도덕 판단, 검열, 모호한 완곡어로 바꾸지 말 것.',
+        '민감한 정보는 이후 연속성에 필요할 때만 중립적이고 짧게 요약할 것.'
       ].join('\n')
     },
     {
       id: 'scene-state-patch',
-      title: 'Scene state patch',
+      title: '장면 상태 갱신',
       features: ['extract'],
       enabled: true,
       locked: true,
       text: [
-        'Also maintain sceneStatePatch as the current visible scene state.',
-        'Patch only changed fields: location, timeLabel, presentChars, honorifics, relationships, pending promises/hooks, and hard facts.',
-        'Use sceneStatePatch:{} when the visible state did not change.'
+        '현재 보이는 장면 상태를 sceneStatePatch로 함께 관리할 것.',
+        '장소, 시간표현, 등장 인물, 호칭, 관계, 미해결 약속/훅, 확정 사실 중 바뀐 필드만 갱신할 것.',
+        '보이는 장면 상태가 바뀌지 않았으면 sceneStatePatch:{}를 사용할 것.'
       ].join('\n')
     },
     {
       id: 'timeline-event-memory',
-      title: 'Timeline event memory',
+      title: '중요 장면 기억',
       features: ['extract', 'temporalExtract'],
       enabled: true,
       locked: true,
       text: [
-        'When important scene memory is enabled, put concrete long-term scene memories in the same entries array as type timeline_event.',
-        'Do not make a second temporal-only result. Normal lore, timeline_event entries, and sceneStatePatch are one extraction result.',
-        'Ignore routine chat; keep only events that change relationships, promises, conflicts, reveals, reunions, location state, or unresolved hooks.'
+        '중요 장면 기억이 켜져 있으면 장기적으로 필요한 장면 기억을 같은 entries 배열 안의 timeline_event 타입으로 넣을 것.',
+        '시간축 전용 결과를 따로 만들지 말 것. 일반 로어, timeline_event, sceneStatePatch는 하나의 추출 결과임.',
+        '평범한 잡담은 제외하고 관계, 약속, 갈등, 폭로, 재회, 장소 상태, 미해결 훅이 바뀐 사건만 남길 것.'
       ].join('\n')
     }
   ];
@@ -80,7 +80,14 @@
     for (const block of blocks) {
       if (!block || !block.id) continue;
       const base = byId.get(block.id) || {};
-      byId.set(block.id, Object.assign({}, base, clone(block)));
+      const incoming = clone(block);
+      if (base.locked) {
+        byId.set(block.id, Object.assign({}, incoming, base, {
+          enabled: incoming.enabled !== false
+        }));
+      } else {
+        byId.set(block.id, Object.assign({}, base, incoming));
+      }
     }
     return Array.from(byId.values());
   }
@@ -95,7 +102,7 @@
   function renderBlocks(feature, blocks) {
     const selected = blocksFor(feature, blocks);
     if (!selected.length) return '';
-    return '\n\nCOMPOSED RULE BLOCKS:\n' + selected.map(block => {
+    return '\n\n공통 규칙 블록:\n' + selected.map(block => {
       const title = String(block.title || block.id || 'Rule').trim();
       const text = String(block.text || '').trim();
       return '[' + title + ']\n' + text;

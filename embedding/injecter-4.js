@@ -733,7 +733,7 @@ Structured output reminder:
           outTok: (Number(firstCost.outTok) || 0) + (Number(retryCost.outTok) || 0),
           usd: unknown ? null : ((Number(firstCost.usd) || 0) + (Number(retryCost.usd) || 0)),
           unknown,
-          estimated: !!(firstCost.estimated || retryCost.estimated),
+          usageMissing: !!(firstCost.usageMissing || retryCost.usageMissing || firstCost.estimated || retryCost.estimated),
           repairRetry: true
         };
       }
@@ -1681,7 +1681,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (res && res.cost) {
             if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
             else _batchHasUnknown = true;
-            if (res.cost.estimated) _batchHasEstimated = true;
+            if (res.cost.usageMissing || res.cost.estimated) _batchHasEstimated = true;
           }
           if (!res || !res.text) {
             lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')';
@@ -1759,7 +1759,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               if (res && res.cost) {
                 if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
                 else _batchHasUnknown = true;
-                if (res.cost.estimated) _batchHasEstimated = true;
+                if (res.cost.usageMissing || res.cost.estimated) _batchHasEstimated = true;
               }
               if (!res || !res.text) {
                 lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')';
@@ -1839,7 +1839,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     }
     clearBatchCheckpoint(chatKey);
 
-    addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: report.entriesAdded, msgs: totalMsgs, isManual: true, status: '전체 추출 완료 (성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / ' + report.totalBatches + '개 배치, 병합 ' + report.entriesAdded + '건)', model: _batchModel, elapsedMs: _batchTotalElapsedMs, cost: { usd: _batchCostKnown ? _batchTotalUsd : null, estimated: _batchHasEstimated, hasUnknown: _batchHasUnknown, isBatchAggregate: true } });
+    addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: report.entriesAdded, msgs: totalMsgs, isManual: true, status: '전체 추출 완료 (성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / ' + report.totalBatches + '개 배치, 병합 ' + report.entriesAdded + '건)', model: _batchModel, elapsedMs: _batchTotalElapsedMs, cost: { usd: _batchCostKnown ? _batchTotalUsd : null, usageMissing: _batchHasEstimated, hasUnknown: _batchHasUnknown, isBatchAggregate: true } });
 
     if (settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false && report.entriesAdded > 0) {
       try {

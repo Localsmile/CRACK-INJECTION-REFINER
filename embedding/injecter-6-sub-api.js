@@ -129,13 +129,11 @@
     const apiType = settings.config.autoExtApiType || 'key';
     if (apiType === 'deepseek') {
       return [
-        ['기본 LLM과 동일', [['기본 LLM 사용', '']]],
         ['DeepSeek V4', [['V4 Flash', 'deepseek-v4-flash'], ['V4 Pro', 'deepseek-v4-pro']]],
         ['기타', [['직접 입력', '_custom']]]
       ];
     }
     return [
-      ['기본 LLM과 동일', [['기본 LLM 사용', '']]],
       ['Gemini 3.x', [['3.1 Flash Lite', 'gemini-3.1-flash-lite-preview'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]],
       ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]],
       ['기타', [['직접 입력', '_custom']]]
@@ -358,10 +356,11 @@
           nd.appendChild(modelSection);
           const isDeepSeekApi = (settings.config.autoExtApiType || 'key') === 'deepseek';
           const deepSeekDefault = 'deepseek-v4-flash';
+          const lightDefault = isDeepSeekApi ? deepSeekDefault : 'gemini-3.1-flash-lite-preview';
           addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || (isDeepSeekApi ? deepSeekDefault : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
-          addSelect(nd, '후보 준비 모델', settings.config.rerankModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
-          const judgeCtl = addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
-          addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
+          addSelect(nd, '후보 준비 모델', settings.config.rerankModel || lightDefault, getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
+          const judgeCtl = addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || lightDefault, getLightModelGroups(), (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
+          addSelect(nd, '응답 교정 모델', settings.config.refinerModel || lightDefault, getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
           addSimpleInput(nd, '임베딩 모델', settings.config.embeddingModel || 'gemini-embedding-001', (v) => { settings.config.embeddingModel = v || 'gemini-embedding-001'; settings.save(); }, { placeholder: 'gemini-embedding-001' });
   
           if ((settings.config.autoExtApiType || 'key') !== 'deepseek') {

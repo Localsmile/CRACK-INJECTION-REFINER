@@ -176,6 +176,83 @@
     };
   }
 
+  function summarizeBackupDetails(backup) {
+    const data = backup || {};
+    const db = data.db || {};
+    const packs = Array.isArray(db.packs) ? db.packs : [];
+    const entries = Array.isArray(db.entries) ? db.entries : [];
+    const packMap = new Map();
+    packs.forEach(p => {
+      if (p && p.name) packMap.set(p.name, { name: p.name, declaredCount: Number(p.entryCount || 0), entries: [] });
+    });
+    entries.forEach(e => {
+      const name = (e && e.packName) || '팩 이름 없음';
+      if (!packMap.has(name)) packMap.set(name, { name, declaredCount: 0, entries: [] });
+      packMap.get(name).entries.push(e);
+    });
+    return {
+      exportedAt: data.exportedAt || '',
+      includeSecrets: !!data.includeSecrets,
+      embeddingsExcluded: !!data.embeddingsExcluded,
+      settingsCount: data.settings ? Object.keys(data.settings).length : 0,
+      localStorageCount: data.localStorage ? Object.keys(data.localStorage).length : 0,
+      packs: Array.from(packMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+    };
+  }
+
+  function renderBackupDetails(target, backup) {
+    const detail = summarizeBackupDetails(backup);
+    target.textContent = '';
+    const head = document.createElement('div');
+    head.textContent = '백업 내용';
+    head.style.cssText = 'font-size:12px;font-weight:800;color:' + COLOR.text + ';margin-bottom:6px;';
+    target.appendChild(head);
+    const meta = document.createElement('div');
+    meta.textContent = [
+      detail.exportedAt ? ('생성 ' + formatTime(detail.exportedAt)) : '',
+      '설정 ' + detail.settingsCount + '개',
+      '채팅별 상태 ' + detail.localStorageCount + '개',
+      detail.embeddingsExcluded ? '검색 준비 제외' : '검색 준비 포함'
+    ].filter(Boolean).join(' / ');
+    meta.style.cssText = 'font-size:11px;color:' + COLOR.muted + ';margin-bottom:8px;line-height:1.45;';
+    target.appendChild(meta);
+    if (!detail.packs.length) {
+      addText(target, '로어팩 없음.', 'font-size:12px;color:' + COLOR.muted + ';');
+      return;
+    }
+    detail.packs.slice(0, 30).forEach(pack => {
+      const box = document.createElement('details');
+      box.style.cssText = 'border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface,#232327);padding:8px 10px;margin:6px 0;';
+      const sum = document.createElement('summary');
+      sum.textContent = pack.name + ' / 로어 ' + pack.entries.length + '개';
+      sum.style.cssText = 'cursor:pointer;font-size:12px;font-weight:700;color:' + COLOR.text + ';';
+      box.appendChild(sum);
+      const list = document.createElement('div');
+      list.style.cssText = 'margin-top:8px;display:flex;flex-direction:column;gap:6px;';
+      pack.entries.slice(0, 40).forEach(e => {
+        const row = document.createElement('div');
+        row.className = 'lore-v2-selectable';
+        const summary = e && e.summary && typeof e.summary === 'object'
+          ? (e.summary.compact || e.summary.full || e.summary.micro || '')
+          : (e && e.summary ? String(e.summary) : '');
+        row.textContent = '[' + ((e && e.type) || '?') + '] ' + ((e && e.name) || '(이름 없음)') + (summary ? '\n' + String(summary).slice(0, 240) : '');
+        row.style.cssText = 'font-size:11px;color:' + COLOR.soft + ';line-height:1.45;white-space:pre-wrap;word-break:break-word;border-top:1px dashed rgba(148,163,184,.18);padding-top:6px;-webkit-user-select:text;user-select:text;';
+        list.appendChild(row);
+      });
+      if (pack.entries.length > 40) {
+        const more = document.createElement('div');
+        more.textContent = '추가 ' + (pack.entries.length - 40) + '개는 복원/병합 후 로어 목록에서 확인 가능.';
+        more.style.cssText = 'font-size:11px;color:' + COLOR.muted + ';padding-top:4px;';
+        list.appendChild(more);
+      }
+      box.appendChild(list);
+      target.appendChild(box);
+    });
+    if (detail.packs.length > 30) {
+      addText(target, '추가 로어팩 ' + (detail.packs.length - 30) + '개는 복원/병합 후 확인 가능.', 'font-size:11px;color:' + COLOR.muted + ';margin-top:6px;');
+    }
+  }
+
   async function serverFetch(path, body, token) {
     const url = getServerUrl();
     const headers = { 'Content-Type': 'application/json' };
@@ -460,18 +537,43 @@
           for (const item of lastItems) {
             let meta = null;
             try { meta = item.encryptedMeta ? await decryptJson(item.encryptedMeta, serverSession.userId, activePassword) : null; } catch (_) {}
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'margin-bottom:8px;';
             const row = document.createElement('button');
             row.type = 'button';
+            row.dataset.serverBackupRow = '1';
             row.style.cssText = 'width:100%;text-align:left;border:1px solid var(--li-line,#3f3f46);background:var(--li-surface-2,#2b2b31);color:' + COLOR.soft + ';border-radius:8px;padding:9px 10px;cursor:pointer;line-height:1.45;';
             const label = meta ? ((meta.packs || []).slice(0, 4).join(', ') || '로어팩 없음') : (item.title || item.backupId);
             const embLabel = meta && meta.embeddingsExcluded ? ' / 검색 준비 제외' : '';
             row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
-            row.onclick = () => {
+            const detailBox = document.createElement('div');
+            detailBox.style.cssText = 'display:none;margin-top:6px;border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-bg,#18181b);padding:10px;';
+            row.onclick = async () => {
               selected = item;
-              Array.from(listBox.children).forEach(x => x.style.borderColor = 'var(--li-line,#2f3b4f)');
+              Array.from(listBox.querySelectorAll('[data-server-backup-row="1"]')).forEach(x => x.style.borderColor = 'var(--li-line,#2f3b4f)');
               row.style.borderColor = 'rgba(129,140,248,.75)';
+              const willOpen = detailBox.style.display === 'none';
+              Array.from(listBox.querySelectorAll('[data-server-backup-detail="1"]')).forEach(x => { if (x !== detailBox) x.style.display = 'none'; });
+              detailBox.style.display = willOpen ? 'block' : 'none';
+              if (!willOpen || detailBox.dataset.loaded === '1') return;
+              detailBox.textContent = '백업 내용 불러오는 중...';
+              setInlineStatus(workStatus, '선택 백업 내용 불러오는 중...', COLOR.accent);
+              try {
+                const res = await apiDownload(item.backupId);
+                const data = await decryptJson(res.payload, serverSession.userId, activePassword);
+                renderBackupDetails(detailBox, data);
+                detailBox.dataset.loaded = '1';
+                setInlineStatus(workStatus, '선택 백업 내용 확인 가능.', COLOR.ok);
+              } catch (e) {
+                detailBox.textContent = '백업 내용 확인 실패: ' + e.message;
+                detailBox.style.color = COLOR.danger;
+                setInlineStatus(workStatus, '백업 내용 확인 실패: ' + e.message, COLOR.danger);
+              }
             };
-            listBox.appendChild(row);
+            detailBox.dataset.serverBackupDetail = '1';
+            wrap.appendChild(row);
+            wrap.appendChild(detailBox);
+            listBox.appendChild(wrap);
           }
           setInlineStatus(workStatus, '목록 갱신 완료. 서버 백업 ' + lastItems.length + '개.', COLOR.ok);
         } catch (e) {
