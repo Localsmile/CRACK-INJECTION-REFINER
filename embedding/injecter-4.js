@@ -13,7 +13,7 @@
   const {
     C, db, _ls, settings,
     parseJsonLoose, createSnapshot,
-    getChatKey, getTurnCounter,
+    getChatKey, getTurnCounter, getServerTurnCounterFromLogs,
     getAutoExtPackForUrl,
     addExtLog, setPackEnabled,
     DEFAULT_AUTO_EXTRACT_SCHEMA,
@@ -50,13 +50,18 @@
 - Also return sceneStatePatch with only changed current scene fields. Use {} when unchanged.
 - Anchored entries: only append new triggers and eventHistory.`;
 
-  const UNIFIED_EXTRACT_SCHEMA = `${DEFAULT_SCENE_STATE_PATCH_SCHEMA || ''}
+  function buildUnifiedExtractSchema(timelineEnabled) {
+    return `${DEFAULT_SCENE_STATE_PATCH_SCHEMA || ''}
 
 Schema for objects inside entries:
 ${DEFAULT_AUTO_EXTRACT_SCHEMA}
 
+${timelineEnabled ? `Timeline event entries are emitted in the same entries array:
+${DEFAULT_TEMPORAL_EXTRACT_SCHEMA || '[]'}
+` : 'Timeline event extraction is disabled for this run. Do not output timeline_event entries.\n'}
 Patch-mode alternative when OUTPUT MODE asks for SAVE ONLY CHANGES:
 ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
+  }
 
   const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
 - Existing important scene memories are provided as compact digests with stable "id".
@@ -119,7 +124,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   }
 ]`;
 
-  function buildObjectOutputContract(kind, patchMode) {
+  function buildObjectOutputContract(kind, patchMode, opts = {}) {
     const isTemporal = kind === 'temporal';
     const noun = isTemporal ? 'important scene memory' : 'lore';
     const shape = isTemporal ? '{"entries":[...]}' : '{"entries":[...],"sceneStatePatch":{...}}';
@@ -130,12 +135,16 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     const unchanged = isTemporal
       ? '- If the conversation only repeats already stored scene memories, return exactly {"entries":[]}.\n'
       : '';
+    const timelineLine = (!isTemporal && opts.timelineEnabled)
+      ? '- Important scene memories must be emitted in the same entries array as type "timeline_event". Do not make a second temporal-only result.\n'
+      : '';
     if (patchMode) {
       return `OUTPUT MODE: SAVE ONLY CHANGES
 - Output exactly one JSON object: ${shape}.
 - If nothing changed at all, return exactly ${empty}.
 ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided as compact digests with stable "id".
 ${sceneLine}
+${timelineLine}
 - For unchanged existing ${isTemporal ? 'scene memories' : 'entries'}, add nothing to entries.
 - For an existing ${isTemporal ? 'scene memory' : 'entry'}, do NOT re-output the full object.
 - Put {"op":"patch","id":...} inside entries only when something changed.
@@ -147,15 +156,19 @@ ${sceneLine}
 - If nothing changed at all, return exactly ${empty}.
 ${unchanged}- Existing ${isTemporal ? 'scene memories' : 'entries'} are provided as compact digests with stable "id".
 ${sceneLine}
+${timelineLine}
 - For unchanged existing ${isTemporal ? 'scene memories' : 'entries'}, add nothing to entries.
 - For each NEW ${noun}, put the complete object inside entries.
 - For each UPDATED existing ${isTemporal ? 'scene memory' : 'entry'}, put the complete updated object inside entries and keep the same "name" when possible.
 - Do NOT use add/patch op format in this mode.`;
   }
 
-  function buildOutputModeText(baseText, apiOpts, kind, patchMode) {
-    if (apiOpts && apiOpts.apiType === 'deepseek') return buildObjectOutputContract(kind, patchMode);
-    return baseText;
+  function buildOutputModeText(baseText, apiOpts, kind, patchMode, opts = {}) {
+    const timelineLine = (!kind || kind === 'extract') && opts.timelineEnabled
+      ? '\n- Important scene memories must be emitted in the same entries array as type "timeline_event". Do not run or expect a second temporal-only result.'
+      : '';
+    if (apiOpts && apiOpts.apiType === 'deepseek') return buildObjectOutputContract(kind, patchMode, opts);
+    return String(baseText || '') + timelineLine;
   }
 
   function normalizeEntryForMerge(entry, turn) {
@@ -221,6 +234,26 @@ ${sceneLine}
   }
 
   function entryDigestForExtract(e) {
+    const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
+    if (e && e.type === TL_TYPE) {
+      const summary = e.summary && typeof e.summary === 'object'
+        ? { compact: e.summary.compact || e.summary.full || '', micro: e.summary.micro || '' }
+        : { compact: String(e.summary || '').slice(0, 180), micro: '' };
+      return {
+        id: e.id,
+        type: TL_TYPE,
+        eventId: e.eventId,
+        title: e.title || e.name,
+        name: e.name,
+        when: e.when ? { anchor: e.when.anchor || '', relative: e.when.relative || '', turnStart: e.when.turnStart || e.timeline?.eventTurn || 0 } : undefined,
+        participants: (e.participants || e.entities || []).slice(0, 8),
+        location: e.location || '',
+        actions: (e.actions || []).slice(0, 6),
+        hooks: (e.hooks || []).slice(0, 6),
+        recallTriggers: (e.recallTriggers || e.triggers || []).slice(0, 8),
+        summary
+      };
+    }
     const summary = e.summary && typeof e.summary === 'object'
       ? { compact: e.summary.compact || e.summary.full || '', micro: e.summary.micro || '' }
       : { compact: String(e.summary || e.inject?.compact || '').slice(0, 180), micro: '' };
@@ -242,7 +275,13 @@ ${sceneLine}
 
   function buildExistingLoreContext(entries, context, limit) {
     const selected = selectExistingForContext(entries, context, limit || 20);
-    return JSON.stringify(selected.map(entryDigestForExtract), null, 2);
+    const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
+    const seen = new Set(selected.map(e => e && e.id).filter(v => v != null));
+    const recentTimeline = [...(entries || [])]
+      .filter(e => e && e.type === TL_TYPE && !seen.has(e.id))
+      .sort((a, b) => (b.lastUpdated || b.ts || 0) - (a.lastUpdated || a.ts || 0))
+      .slice(0, 12);
+    return JSON.stringify([...selected, ...recentTimeline].map(entryDigestForExtract), null, 2);
   }
 
   function normKey(v) {
@@ -456,6 +495,17 @@ ${sceneLine}
     return 1;
   }
 
+  async function applyUnifiedPatchOp(op, packName, chatKey, turnHint, versionMeta = {}) {
+    if (!op || op.op !== 'patch' || op.id == null) return 0;
+    let existing = null;
+    try { existing = await db.entries.get(op.id); } catch (_) {}
+    const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
+    if (existing && existing.type === TL_TYPE) {
+      return await applyTemporalPatchOp(op, packName, chatKey, turnHint, versionMeta);
+    }
+    return await applyExtractPatchOp(op, packName, chatKey, turnHint, versionMeta);
+  }
+
   function isExtractItemObject(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
     if (item.op === 'patch' || item.op === 'add') return true;
@@ -613,6 +663,24 @@ ${sceneLine}
       })
       .filter(e => e.name)
       .slice(0, max);
+  }
+
+  function buildUnifiedExtractionPrefix(timelineEnabled) {
+    return `UNIFIED EXTRACTION PASS:
+- Return one JSON object only.
+- Put normal lore entries, timeline_event scene memories, and sceneStatePatch in the same result.
+- Do not create a separate temporal-only output.
+${timelineEnabled
+  ? '- Important scene memory is enabled: emit concrete long-term scene memories as entries with type "timeline_event".\n'
+  : '- Important scene memory is disabled: do not emit timeline_event entries.\n'}`;
+  }
+
+  function countTimelineItems(parsed) {
+    const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
+    return normalizeExtractItems(parsed).filter(item => {
+      const raw = item && item.op === 'add' && item.entry ? item.entry : item;
+      return raw && raw.type === TL_TYPE;
+    }).length;
   }
 
   const DEEPSEEK_JSON_MAX_OUTPUT_TOKENS = 65536;
@@ -858,7 +926,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     for (const item of normalizedItems) {
       if (!item) continue;
       if (item.op === 'patch') {
-        processedCount += await applyExtractPatchOp(item, packName, chatKey, ctxTurn(), versionMeta());
+        processedCount += await applyUnifiedPatchOp(item, packName, chatKey, ctxTurn(), versionMeta());
         continue;
       }
       let e = (item.op === 'add' && item.entry) ? item.entry : item;
@@ -1207,6 +1275,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     if (offsetCount > 0 && recentMsgs.length > offsetCount) recentMsgs = recentMsgs.slice(0, recentMsgs.length - offsetCount);
     const context = recentMsgs.map(m => m.role + ': ' + m.message).join('\n');
     const _patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
+    const timelineEnabled = settings.config.temporalExtractEnabled !== false;
     let entriesText = '[]';
     if (settings.config.autoExtIncludeDb) {
       const packName = await getAutoExtPackForUrl(_url);
@@ -1227,14 +1296,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           ? getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithDb', 'deepSeekPromptWithDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
           : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
       : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
-    const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
-    const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn) : '';
+    const extractSchema = buildUnifiedExtractSchema(timelineEnabled) || tpl.schema;
+    const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn, { timelineEnabled }) : '';
     const prompt = composeFeaturePrompt(promptTpl, {
       context,
       entries: entriesText,
       schema: extractSchema,
       outputMode: outputModeText
-    }, { feature: 'extract', prefix: personaPrefix });
+    }, { feature: 'extract', prefix: personaPrefix + buildUnifiedExtractionPrefix(timelineEnabled) + '\n' });
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let apiLog = null, _extElapsedMs = 0, _extCost = null;
@@ -1266,6 +1335,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (!parsed) throw new Error('JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       const parsedItems = normalizeExtractItems(parsed);
       const sceneStateChanged = hasSceneStatePatch(parsed);
+      const timelineParsedCount = countTimelineItems(parsed);
       let generalCount = 0;
       let generalStatus = '추출 내용 없음';
       let embedMsg = '';
@@ -1273,7 +1343,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (parsedItems.length > 0 || sceneStateChanged) {
         generalCount = await mergeExtractedData(parsed, _url, {
           source: isManual ? 'manual' : 'auto',
-          baseTurn: recentMsgs.filter(m => m && m.role === 'user').length,
+          baseTurn: calcWindowEndTurn(recentMsgs),
           msgId: lastMessageIdOf(recentMsgs)
         });
         generalStatus = generalCount > 0 ? '성공' : (sceneStateChanged ? '장면 상태 갱신' : '변경 없음');
@@ -1292,25 +1362,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       } else {
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '추출 내용 없음', api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
       }
-      let temporalResult = null;
-      if (settings.config.temporalExtractEnabled !== false) {
-        temporalResult = await runTemporalExtractPass({
-          context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length,
-          mergeOpts: {
-            source: isManual ? 'manual-temporal' : 'auto-temporal',
-            baseTurn: recentMsgs.filter(m => m && m.role === 'user').length,
-            msgId: lastMessageIdOf(recentMsgs)
-          }
-        });
-      }
       if (isManual) {
-        const temporalMsg = settings.config.temporalExtractEnabled !== false
-          ? ' / 중요 장면 ' + ((temporalResult && temporalResult.count) || 0) + '개'
-          : '';
         const baseMsg = generalCount > 0
-          ? generalCount + '개 로어 추출 및 병합됨'
+          ? generalCount + '개 항목 병합됨'
           : '새로운 일반 로어 없음';
-        alert(baseMsg + temporalMsg + embedMsg + '.');
+        const timelineMsg = timelineEnabled ? ' / 중요 장면 후보 ' + timelineParsedCount + '개' : '';
+        alert(baseMsg + timelineMsg + embedMsg + '.');
       }
     } catch (err) {
       addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '실패', error: err.message, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
@@ -1382,6 +1439,13 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     return 'fallback:' + index + ':' + (C.simpleHash ? C.simpleHash(sig) : sig);
   }
 
+  function batchMessageStableSig(m) {
+    if (!m) return '';
+    const text = String(m.message || m.content || '');
+    const sig = [m.role || '', text.length, text.slice(0, 40), text.slice(-40)].join('|');
+    return C.simpleHash ? C.simpleHash(sig) : sig;
+  }
+
   function lastMessageIdOf(msgs) {
     if (!Array.isArray(msgs) || !msgs.length) return '';
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -1389,6 +1453,42 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (id && !String(id).startsWith('fallback:') && !String(id).startsWith('missing:')) return id;
     }
     return '';
+  }
+
+  function countUserTurns(logs) {
+    return (Array.isArray(logs) ? logs : []).filter(m => m && m.role === 'user').length;
+  }
+
+  function calcWindowEndTurn(windowMsgs, allMsgs = null) {
+    const win = Array.isArray(windowMsgs) ? windowMsgs : [];
+    if (!win.length) return 0;
+    const all = Array.isArray(allMsgs) ? allMsgs : [];
+    if (all.length) {
+      const last = win[win.length - 1];
+      const lastId = batchMessageId(last, win.length - 1);
+      for (let i = all.length - 1; i >= 0; i--) {
+        if (all[i] === last) {
+          return countUserTurns(all.slice(0, i + 1));
+        }
+      }
+      if (lastId && !String(lastId).startsWith('fallback:') && !String(lastId).startsWith('missing:')) {
+        for (let i = all.length - 1; i >= 0; i--) {
+          if (batchMessageId(all[i], i) === lastId) {
+            return countUserTurns(all.slice(0, i + 1));
+          }
+        }
+      }
+      const lastSig = batchMessageStableSig(last);
+      if (lastSig) {
+        for (let i = all.length - 1; i >= 0; i--) {
+          if (batchMessageStableSig(all[i]) === lastSig) {
+            return countUserTurns(all.slice(0, i + 1));
+          }
+        }
+      }
+    }
+    if (getServerTurnCounterFromLogs) return getServerTurnCounterFromLogs(win, false);
+    return countUserTurns(win);
   }
 
   function buildBatchPlan(allMsgs, turnsPerBatch, overlap) {
@@ -1551,6 +1651,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
 
       const context = msgs.map(m => m.role + ': ' + m.message).join('\n');
       const _patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
+      const timelineEnabled = settings.config.temporalExtractEnabled !== false;
       let entriesText = '[]';
       if (settings.config.autoExtIncludeDb) {
         const packName = await getAutoExtPackForUrl(_url);
@@ -1559,14 +1660,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           entriesText = buildExistingLoreContext(existing, context, 20);
         }
       }
-      const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
-      const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn) : '';
+      const extractSchema = buildUnifiedExtractSchema(timelineEnabled) || tpl.schema;
+      const outputModeText = settings.config.autoExtIncludeDb ? buildOutputModeText(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract', _patchOn, { timelineEnabled }) : '';
       const prompt = composeFeaturePrompt(promptTpl, {
         context,
         entries: entriesText,
         schema: extractSchema,
         outputMode: outputModeText
-      }, { feature: 'extract', prefix: personaPrefix });
+      }, { feature: 'extract', prefix: personaPrefix + buildUnifiedExtractionPrefix(timelineEnabled) + '\n' });
 
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0; let lastFailureKind = ''; let forceThinkingOff = false;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
@@ -1604,7 +1705,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (parsedItems.length > 0 || sceneStateChanged) {
             mergedCount = await mergeExtractedData(parsed, _url, {
               source: 'batch',
-              baseTurn: msgs.filter(m => m && m.role === 'user').length,
+              baseTurn: calcWindowEndTurn(msgs, allMsgs),
               msgId: lastMessageIdOf(msgs)
             });
             report.entriesAdded += mergedCount;
@@ -1632,29 +1733,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (ok) {
         if (status === 'empty') report.empty++; else report.ok++;
         report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount });
-        // Phase 11: per-batch temporal pass so batch extraction also harvests timeline events.
-        if (settings.config.temporalExtractEnabled !== false) {
-          try {
-            const tApiOpts = buildBatchApiOpts(apiType, isDeepSeek, _patchOn, batchTimeoutMs, 'batchExtract', chatKey);
-            const tres = await runTemporalExtractPass({
-              context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true,
-              mergeOpts: {
-                source: 'batch-temporal',
-                baseTurn: msgs.filter(m => m && m.role === 'user').length,
-                msgId: lastMessageIdOf(msgs)
-              }
-            });
-            if (tres && tres.count) {
-              report.entriesAdded += tres.count;
-              report.batchResults.push({ batch: bi + 1, status: 'temporal_ok', attempts: 1, entries: tres.count });
-            } else if (tres && tres.error) {
-              report.batchResults.push({ batch: bi + 1, status: 'temporal_failed', attempts: 1, error: tres.error });
-            }
-          } catch (terr) {
-            console.warn('[Lore:batch] 시간축 추출 실패 (배치 ' + (bi + 1) + '):', terr.message || terr);
-            report.batchResults.push({ batch: bi + 1, status: 'temporal_failed', attempts: 1, error: terr.message || String(terr) });
-          }
-        }
       } else {
         report.failed++;
         report.batchResults.push({ batch: bi + 1, status: 'failed', attempts, error: lastErr, rawSnippet });
@@ -1705,7 +1783,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               if (parsedItems.length > 0 || sceneStateChanged) {
                 mergedCount = await mergeExtractedData(parsed, _url, {
                   source: 'batch-retry',
-                  baseTurn: msgs.filter(m => m && m.role === 'user').length,
+                  baseTurn: calcWindowEndTurn(msgs, allMsgs),
                   msgId: lastMessageIdOf(msgs)
                 });
                 report.entriesAdded += mergedCount;

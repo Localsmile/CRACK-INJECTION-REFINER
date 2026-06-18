@@ -213,7 +213,7 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('DeepSeek 추출 프롬프트', '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출, 중요 장면 추출, 지식 변환에 사용함.'));
+      nd.appendChild(C.createSectionTitle('DeepSeek 추출 프롬프트', '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출은 일반 로어, 중요 장면, 장면 상태를 한 번에 처리함.'));
       const defaults = _w.__LoreInj.defaultSettings || {};
       const saveDeepSeekTpl = (key, val) => {
         const id = settings.config.activeTemplateId || 'default';
@@ -229,9 +229,6 @@
       const ds2 = addPromptArea(nd, '기존 로어 참고 전체 프롬프트', '', (v) => {
         saveDeepSeekTpl('deepSeekPromptWithDb', v);
       }, { height: 230, reset: () => defaults.deepSeekPromptWithDb || '' });
-      const ds3 = addPromptArea(nd, '중요 장면 전체 프롬프트', '', (v) => {
-        saveDeepSeekTpl('deepSeekTemporalExtractPrompt', v);
-      }, { height: 190, reset: () => defaults.deepSeekTemporalExtractPrompt || '' });
       const ds4 = addPromptArea(nd, '지식 변환 전체 프롬프트', '', (v) => {
         saveDeepSeekTpl('deepSeekImportPrompt', v);
       }, { height: 190, reset: () => defaults.deepSeekImportPrompt || '' });
@@ -240,9 +237,8 @@
         if (!activeTpl) return;
         ds1.value = activeTpl.deepSeekPromptWithoutDb || defaults.deepSeekPromptWithoutDb || '';
         ds2.value = activeTpl.deepSeekPromptWithDb || defaults.deepSeekPromptWithDb || '';
-        ds3.value = activeTpl.deepSeekTemporalExtractPrompt || defaults.deepSeekTemporalExtractPrompt || '';
         ds4.value = activeTpl.deepSeekImportPrompt || defaults.deepSeekImportPrompt || '';
-        ds1.disabled = ds2.disabled = ds3.disabled = ds4.disabled = !!activeTpl.isDefault;
+        ds1.disabled = ds2.disabled = ds4.disabled = !!activeTpl.isDefault;
       };
       renderDeepSeekOptions();
     }});

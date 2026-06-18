@@ -350,7 +350,7 @@
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
-    temporalExtractEnabled: true, temporalExtractMode: 'after_general', temporalCriticEnabled: false, temporalMaxEventsPerPass: 5,
+    temporalExtractEnabled: true, temporalExtractMode: 'single_pass', temporalCriticEnabled: false, temporalMaxEventsPerPass: 5,
     temporalExtractPrompt: DEFAULT_TEMPORAL_EXTRACT_PROMPT, temporalExtractSchema: DEFAULT_TEMPORAL_EXTRACT_SCHEMA,
     timelineRetrievalEnabled: true, timelineRecallWeight: 0.32, timelineNoCuePenalty: 0.35, timelineRecallPoolLimit: 12,
     temporalInjectionEnabled: true, temporalRecallChars: 450, temporalRecallNaturalChars: 260,

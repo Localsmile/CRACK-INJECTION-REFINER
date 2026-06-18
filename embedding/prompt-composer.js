@@ -55,6 +55,18 @@
         'Patch only changed fields: location, timeLabel, presentChars, honorifics, relationships, pending promises/hooks, and hard facts.',
         'Use sceneStatePatch:{} when the visible state did not change.'
       ].join('\n')
+    },
+    {
+      id: 'timeline-event-memory',
+      title: 'Timeline event memory',
+      features: ['extract', 'temporalExtract'],
+      enabled: true,
+      locked: true,
+      text: [
+        'When important scene memory is enabled, put concrete long-term scene memories in the same entries array as type timeline_event.',
+        'Do not make a second temporal-only result. Normal lore, timeline_event entries, and sceneStatePatch are one extraction result.',
+        'Ignore routine chat; keep only events that change relationships, promises, conflicts, reveals, reunions, location state, or unresolved hooks.'
+      ].join('\n')
     }
   ];
 

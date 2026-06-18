@@ -34,6 +34,7 @@ EXTRACTION PRIORITIES (in order of importance):
 1. RELATIONSHIP EVENTS: Track ALL significant interactions between characters.
 2. PROMISE LIFECYCLE: Track promises/contracts/oaths between characters.
 3. CHARACTER STATE: Update each character's current situation.
+4. TIMELINE EVENTS: When an event may matter after the current context window, save it as a timeline_event entry in the same entries array.
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON object. No markdown. Use {"entries":[...],"sceneStatePatch":{}}. Return {"entries":[],"sceneStatePatch":{}} if nothing new.
@@ -67,7 +68,13 @@ CRITICAL RULES:
    - Maximum 3 new events per entry per extraction pass.
    - Summary must be concrete noun-ending Korean for search: "LO와 첫 키스, 카페에서" not "행복한 순간".
    - If no new significant event occurred, OMIT eventHistory for that entry.
-10. SCENE STATE PATCH:
+10. TIMELINE EVENT MEMORY:
+   - Important scene memories are not a separate API pass. Output them in entries with "type":"timeline_event".
+   - Include only concrete events that change relationships, promises, conflicts, reveals, reunions, location state, or unresolved hooks.
+   - Ignore routine chat, repeated affection with no new consequence, and generic mood-only narration.
+   - Use an RP-understandable "when.anchor"; never rely only on a turn number.
+   - If important scene memory is disabled by settings, the injector will ignore timeline_event entries.
+11. SCENE STATE PATCH:
    - In addition to lore entries, output a top-level "sceneStatePatch" object.
    - Track only the current visible scene state: location, timeLabel, presentChars, honorifics, relationships, pending promises/hooks, and hard facts.
    - Output only changed fields. If nothing changed, output "sceneStatePatch": {}.
@@ -164,6 +171,34 @@ Conversation Log:
     "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },
     "entities": ["Maker", "Target"],
     "imp": 5, "sur": 5, "emo": 5
+  },
+  {
+    "type": "timeline_event",
+    "title": "Short event title in the conversation language",
+    "name": "Stable recall handle",
+    "when": {
+      "turnStart": 0,
+      "turnEnd": 0,
+      "relative": "past|current|foreshadow",
+      "anchor": "RP-understandable time anchor such as 'after the club camp night'",
+      "inferredOrder": "after X before Y, if inferable",
+      "confidence": 0.8
+    },
+    "participants": ["characters involved"],
+    "location": "place if known",
+    "actions": ["walk", "confession attempt", "promise", "fight", "reunion"],
+    "emotions": {"Character": ["hesitation", "relief"]},
+    "summary": {
+      "full": "Self-contained event memory: who, where, what happened, why it matters, what changed, unresolved hook.",
+      "compact": "Event + consequence + hook.",
+      "micro": "Stable recall handle=current meaning"
+    },
+    "hooks": ["unresolved hook or future recall reason"],
+    "linkedLore": ["related character/relationship/promise/location names"],
+    "recallTriggers": ["literal words, aliases, scene cues, memory question cues"],
+    "importance": 8,
+    "emotional": 8,
+    "confidence": 0.8
   }
 ]`;
 
@@ -189,7 +224,7 @@ If no current scene state changed, use "sceneStatePatch": {}.`;
   {
     "op": "add",
     "entry": {
-      "type": "character|location|item|event|concept|setting|rel|prom",
+      "type": "character|location|item|event|concept|setting|rel|prom|timeline_event",
       "name": "Entity Name",
       "triggers": ["keyword1", "CharA&&CharB"],
       "summary": { "full": "self-contained continuity", "compact": "state + hook", "micro": "name=status" },
@@ -213,12 +248,20 @@ If no current scene state changed, use "sceneStatePatch": {}.`;
       "callState": {},
       "timeline": {},
       "entities": [],
-      "cond": ""
+      "cond": "",
+      "title": "",
+      "when": {},
+      "location": ""
     },
     "append": {
       "triggers": [],
       "eventHistory": [{"turn": 0, "summary": "new concrete event", "imp": 8, "emo": 8}],
-      "callHistory": [{"turn": 0, "from": "A", "to": "B", "term": "current", "prevTerm": "previous"}]
+      "callHistory": [{"turn": 0, "from": "A", "to": "B", "term": "current", "prevTerm": "previous"}],
+      "participants": [],
+      "actions": [],
+      "hooks": [],
+      "linkedLore": [],
+      "recallTriggers": []
     }
   }
 ]`;
@@ -352,6 +395,7 @@ EXTRACTION PRIORITIES (in order of importance):
 1. RELATIONSHIP EVENTS: Track ALL significant interactions.
 2. PROMISE LIFECYCLE: If a promise status changed, output the UPDATED entry.
 3. CHARACTER STATE: Update current situation.
+4. TIMELINE EVENTS: When an event may matter after the current context window, save it as a timeline_event entry in the same entries array.
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON object. No markdown. Use {"entries":[...],"sceneStatePatch":{}}. Return {"entries":[],"sceneStatePatch":{}} if nothing new.
@@ -400,7 +444,14 @@ CRITICAL RULES:
     - For "state": output only if the status actually changed (e.g. pending→fulfilled, 우호→적대). Stable states are preserved automatically.
     - For "call": output only changed or newly observed pairs. Previous terms are context only, not mandatory future speech.
     - If unsure whether a fact is new or old, output it as eventHistory instead of overwriting summary/state.
-13. SCENE STATE PATCH:
+13. TIMELINE EVENT MEMORY:
+    - Important scene memories are not a separate API pass. Output them in entries with "type":"timeline_event".
+    - Check existing timeline_event digests in the DB context. Do NOT duplicate scene memories already recorded.
+    - Include only concrete events that change relationships, promises, conflicts, reveals, reunions, location state, or unresolved hooks.
+    - Ignore routine chat, repeated affection with no new consequence, and generic mood-only narration.
+    - Use an RP-understandable "when.anchor"; never rely only on a turn number.
+    - If an existing timeline_event changed, output a patch op using the same stable "id".
+14. SCENE STATE PATCH:
     - In addition to lore entries, output a top-level "sceneStatePatch" object.
     - Track only the current visible scene state: location, timeLabel, presentChars, honorifics, relationships, pending promises/hooks, and hard facts.
     - Output only changed fields. If nothing changed, output "sceneStatePatch": {}.
