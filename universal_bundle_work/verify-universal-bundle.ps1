@@ -28,6 +28,9 @@ Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
 $projectRequireMatches = [regex]::Matches($bundle, '(?m)^// @require\s+https://raw\.githubusercontent\.com/Localsmile/CRACK-INJECTION-REFINER/')
 Assert-True ($projectRequireMatches.Count -eq 0) 'project-owned @require lines remain'
 
+$allRequireMatches = [regex]::Matches($bundle, '(?m)^// @require\s+')
+Assert-True ($allRequireMatches.Count -eq 0) 'external @require lines remain'
+
 foreach ($req in @($manifest.keepExternalRequires)) {
   Assert-True ($bundle.Contains('// @require     ' + $req)) "missing kept external @require: $req"
 }

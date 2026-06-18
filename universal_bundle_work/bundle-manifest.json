@@ -2,10 +2,9 @@
   "name": "erie_crack_inject_universal",
   "version": "1.4.0-universal.1",
   "baseScript": "embedding_pre/erie_crack_inject_chat.user.js",
-  "keepExternalRequires": [
-    "https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js"
-  ],
+  "keepExternalRequires": [],
   "modules": [
+    "embedding/vendor/dexie.min.js",
     "embedding/vendor/toastify-injection.js",
     "embedding/vendor/crack-shared-core.js",
     "embedding/env-compat.js",
