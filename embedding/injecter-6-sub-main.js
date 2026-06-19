@@ -59,7 +59,7 @@
   function appendQuickRefiner(panel) {
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
-      nd.appendChild(C.createSectionTitle('최근 AI 응답 재검수', '마지막 AI 응답을 로어 기준으로 다시 확인함.'));
+      nd.appendChild(C.createSectionTitle('교정 실행'));
       const btn = C.createActionButton('최근 AI 응답 재검수', 'primary');
       btn.style.width = '100%';
       btn.style.minHeight = '42px';

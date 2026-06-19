@@ -315,6 +315,24 @@ ${timelineLine}
     catch (_) { return String(entry && entry.name || '') + '|' + String(entry && entry.type || ''); }
   }
 
+  function entryReadableText(entry) {
+    if (!entry) return '';
+    const parts = [];
+    if (entry.name) parts.push('이름: ' + entry.name);
+    if (entry.state) parts.push('상태: ' + entry.state);
+    const summary = entry.summary;
+    if (summary && typeof summary === 'object' && !Array.isArray(summary)) {
+      const s = summary.full || summary.compact || summary.micro || '';
+      if (s) parts.push('요약: ' + s);
+    } else if (summary) {
+      parts.push('요약: ' + summary);
+    }
+    const detail = entry.detail || {};
+    const detailText = detail.current_status || detail.status || detail.relationship || detail.note || detail.text || '';
+    if (detailText && detailText !== entry.state) parts.push('상세: ' + detailText);
+    return parts.filter(Boolean).join('\n');
+  }
+
   function entryParties(e) {
     let parties = e.parties || e.entities || e.detail?.parties || [];
     if ((!Array.isArray(parties) || parties.length < 2) && typeof e.name === 'string') {
@@ -1005,7 +1023,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           const newS = e.state || e.detail?.current_status || e.detail?.status || null;
           if (oldS && newS && oldS !== newS) {
             const cLog = JSON.parse(_ls.getItem('lore-contradictions') || '[]');
-            cLog.unshift({ name: e.name, type: e.type, oldStatus: oldS, newStatus: newS, turn: ctxTurn(), time: Date.now() });
+            cLog.unshift({ name: e.name, type: e.type, oldStatus: oldS, newStatus: newS, oldText: entryReadableText(existing), newText: entryReadableText(e), turn: ctxTurn(), time: Date.now() });
             if (cLog.length > 50) cLog.length = 50;
             _ls.setItem('lore-contradictions', JSON.stringify(cLog));
           }

@@ -16,7 +16,7 @@
   function humanizeStatusText(text) {
     var s = String(text || '');
     var map = [
-      [/Local migration check complete\.?/i, '저장 데이터 점검 완료'],
+      [/Local migration check complete\.?/i, '저장 데이터 확인됨'],
       [/Local migration failed:?/i, '저장 데이터 점검 실패:'],
       [/local migration/i, '저장 데이터 정리'],
       [/stale embedding/i, '검색 준비 갱신 필요'],
@@ -148,6 +148,50 @@
     right.appendChild(swLabel); right.appendChild(sw);
     wrap.appendChild(left); wrap.appendChild(right);
     return wrap;
+  }
+
+  function createSwitch(initialValue, onChange, opts) {
+    opts = opts || {};
+    let current = !!initialValue;
+    const width = Number(opts.width) || 34;
+    const height = Number(opts.height) || 18;
+    const dotSize = Number(opts.dotSize) || Math.max(10, height - 6);
+    const pad = Math.max(3, Math.floor((height - dotSize) / 2));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = opts.className || 'lore-v2-switch';
+    btn.setAttribute('role', 'switch');
+    btn.setAttribute('aria-label', opts.label || '사용 여부');
+    const dot = document.createElement('span');
+    dot.setAttribute('aria-hidden', 'true');
+    btn.appendChild(dot);
+    const paint = (value) => {
+      current = !!value;
+      btn.setAttribute('aria-checked', current ? 'true' : 'false');
+      btn.title = current ? (opts.titleOn || '사용 중') : (opts.titleOff || '꺼짐');
+      btn.style.cssText =
+        'appearance:none;-webkit-appearance:none;box-shadow:none;outline:none;margin:0;padding:0;' +
+        'min-height:0!important;line-height:0;font-size:0;' +
+        'width:' + width + 'px;height:' + height + 'px;border-radius:' + Math.ceil(height / 2) + 'px;' +
+        'border:1px solid ' + (current ? 'rgba(129,140,248,.58)' : 'var(--li-line,#3f3f46)') + ';' +
+        'background:' + (current ? 'rgba(129,140,248,.24)' : 'rgba(113,113,122,.16)') + ';' +
+        'cursor:pointer;flex:0 0 auto;position:relative;display:inline-block;vertical-align:middle;' +
+        'transition:background .18s,border-color .18s;';
+      dot.style.cssText =
+        'position:absolute;top:50%;left:' + (current ? (width - dotSize - pad) : pad) + 'px;' +
+        'width:' + dotSize + 'px;height:' + dotSize + 'px;border-radius:50%;' +
+        'background:' + (current ? 'var(--li-accent-strong,#c7d2fe)' : 'var(--li-muted,#a1a1aa)') + ';' +
+        'transform:translateY(-50%);transition:left .18s,background .18s;';
+    };
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      const next = !current;
+      let result;
+      if (typeof onChange === 'function') result = await onChange(next, btn);
+      if (result !== false) paint(next);
+    };
+    paint(current);
+    return { el: btn, set: paint, get: () => current };
   }
 
   function createSectionTitle(title, desc) {
@@ -372,7 +416,7 @@
   Object.assign(C, {
     showStatusBadge, hideStatusBadge,
     humanizeStatusText,
-    UI, setFullWidth, createToggleRow, createSectionTitle, createMetricGrid,
+    UI, setFullWidth, createToggleRow, createSwitch, createSectionTitle, createMetricGrid,
     createSelectRow, createSegmentedRow, createActionButton, createApiInput,
     __uiLoaded: true
   });

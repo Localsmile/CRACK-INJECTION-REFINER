@@ -10,12 +10,13 @@
   const PAGE_ORDER = {
     main: 10,
     extract: 20,
-    knowledge: 30,
+    'knowledge-text': 30,
+    'knowledge-file': 31,
+    'knowledge-url': 32,
     'injection-settings': 100,
     'retrieval-settings': 110,
     'memory-settings': 120,
-    lore: 130,
-    file: 140,
+    file: 130,
     merge: 150,
     backup: 200,
     refiner: 300,
@@ -30,12 +31,12 @@
   const SETTINGS_GROUPS = {
     quick: { label: '빠른 설정', order: 10, keys: ['main'], desc: '최근 응답 재검수, 상태, 추천 설정, 로어 목록을 빠르게 처리함.' },
     extract: { label: '추출', order: 20, keys: ['extract'], desc: '최근 대화와 전체 로그를 로어로 정리함.' },
-    knowledge: { label: '지식 변환', order: 30, keys: ['knowledge'], desc: 'URL이나 긴 텍스트를 로어팩으로 변환함.' },
-    injection: { label: '로어 삽입 설정', order: 40, keys: ['injection-settings', 'retrieval-settings', 'memory-settings', 'lore', 'file', 'merge'], desc: '삽입 기준, 검색, 로어 목록, 중복 정리를 관리함.' },
+    knowledge: { label: '지식 변환', order: 30, keys: ['knowledge-text', 'knowledge-file', 'knowledge-url'], desc: '텍스트, 파일, URL을 로어팩으로 변환함.' },
+    injection: { label: '로어 삽입 설정', order: 40, keys: ['injection-settings', 'retrieval-settings', 'memory-settings', 'file', 'merge'], desc: '삽입 기준, 검색, 전체 로어팩, 중복 정리를 관리함.' },
     backup: { label: '백업/동기화', order: 50, keys: ['backup'], desc: '파일과 서버 백업을 수동으로 저장하거나 복원함.' },
     refiner: { label: '응답 교정', order: 60, keys: ['refiner'], desc: 'AI 응답 검수, 자동 반영, 상태 표시를 관리함.' },
     models: { label: 'API와 프롬프트', order: 70, keys: ['api', 'prompts'], desc: 'API 키, 모델, 프롬프트를 관리함.' },
-    diagnostics: { label: '진단과 도움말', order: 80, keys: ['log', 'session', 'snapshot', 'help'], desc: '실행 로그, 세션 상태, 스냅샷, 기능 안내를 확인함.' }
+    diagnostics: { label: '진단/도움말', order: 80, keys: ['log', 'session', 'snapshot', 'help'], desc: '실행 로그, 세션 상태, 스냅샷, 기능 안내를 확인함.' }
   };
 
   const KEY_TO_GROUP = Object.entries(SETTINGS_GROUPS).reduce((acc, [groupKey, group]) => {

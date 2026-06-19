@@ -254,8 +254,7 @@
                 '전체 로그를 배치로 분석함.\n\n' +
                 resumeText +
                 '대화 ' + plan.logs + '개 / 예상 배치 ' + plan.batches + '개\n' +
-                '모델: ' + plan.model + '\n\n' +
-                'API 비용은 완료 후 실제 사용량 정보가 있는 호출만 기록됨.\n계속?'
+                '모델: ' + plan.model + '\n\n계속?'
               );
               if (!ok) { bStatus.textContent = '취소됨'; bStatus.style.color = TONE.muted; return; }
             } catch (e) {
@@ -298,11 +297,10 @@
       }, '추출 실행');
   });
 
-  _w.__LoreInj.registerSettingsPage('knowledge', '지식 변환', (m) => {
-    m.replaceContentPanel((panel) => {
-      panel.addBoxedField('', '', { onInit: (nd) => {
+  function renderKnowledgeText(panel) {
+    panel.addBoxedField('', '', { onInit: (nd) => {
         C.setFullWidth(nd);
-        nd.appendChild(C.createSectionTitle('지식 변환', 'URL이나 긴 텍스트를 별도 로어팩으로 변환함. 추출/정리용 모델 사용.'));
+        nd.appendChild(C.createSectionTitle('텍스트 변환', '긴 원문을 로어팩으로 변환함. 추출/정리용 모델 사용.'));
         const S = FIELD_STYLE;
         const makeField = (label, node, grow) => {
           const wrap = document.createElement('label');
@@ -329,46 +327,6 @@
           row.style.cssText = 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;';
           return row;
         };
-
-        const urlCard = makeCard('URL 변환', '웹 문서 본문을 읽어 새 로어팩으로 정리함.');
-        const urlGrid = makeActionRow();
-        const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S;
-        const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S;
-        const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:104px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
-        const status = document.createElement('div'); status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:10px;line-height:1.45;min-height:18px;';
-        urlBtn.onclick = async () => {
-          if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩 이름 필요.'); return; }
-          urlBtn.disabled = true; const orig = urlBtn.textContent; urlBtn.textContent = '변환 중';
-          const startMs = Date.now();
-          let phaseMsg = 'URL 본문 가져오는 중';
-          const tick = setInterval(() => { status.textContent = phaseMsg + ' (' + Math.floor((Date.now() - startMs) / 1000) + '초)'; }, 1000);
-          try {
-            const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), requireGenerationApiOpts({}, { feature: 'urlImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
-              onProgress: (ev) => {
-                if (!ev) return;
-                if (ev.phase === 'fetch:start') phaseMsg = 'URL 본문 가져오는 중';
-                else if (ev.phase === 'parse') phaseMsg = '본문 정리 중';
-                else if (ev.phase === 'chunk') phaseMsg = '로어 변환 중: 청크 ' + ev.chunk + '/' + ev.total;
-              }
-            });
-            status.textContent = '완료: ' + cnt + '개 생성';
-            status.style.color = cnt ? TONE.ok : TONE.warn;
-            if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
-          } catch (e) {
-            status.textContent = '실패: ' + (e.message || String(e));
-            status.style.color = TONE.danger;
-          } finally {
-            clearInterval(tick);
-            urlBtn.textContent = orig;
-            urlBtn.disabled = false;
-          }
-        };
-        urlGrid.appendChild(makeField('URL', urlInp, true));
-        urlGrid.appendChild(makeField('팩 이름', nameInp, false));
-        urlGrid.appendChild(urlBtn);
-        urlCard.appendChild(urlGrid);
-        urlCard.appendChild(status);
-        nd.appendChild(urlCard);
 
         const textCard = makeCard('텍스트 변환', '설정 문서, 세계관, 긴 원문을 붙여넣어 로어팩으로 정리함.');
         const ta = document.createElement('textarea'); ta.placeholder = '설정, 소설 텍스트 등'; ta.style.cssText = S + ';height:130px;resize:vertical;';
@@ -406,8 +364,75 @@
         textCard.appendChild(status2);
         nd.appendChild(textCard);
       }});
-    }, '지식 변환');
-  });
+  }
+
+  function renderKnowledgeUrl(panel) {
+    panel.addBoxedField('', '', { onInit: (nd) => {
+        C.setFullWidth(nd);
+        nd.appendChild(C.createSectionTitle('URL 변환', '웹 문서 본문을 읽어 새 로어팩으로 정리함. 추출/정리용 모델 사용.'));
+        const S = FIELD_STYLE;
+        const makeField = (label, node, grow) => {
+          const wrap = document.createElement('label');
+          wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;min-width:0;' + (grow ? 'flex:1 1 260px;' : 'flex:0 1 220px;');
+          const cap = document.createElement('span'); cap.textContent = label; cap.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);font-weight:700;';
+          wrap.appendChild(cap); wrap.appendChild(node);
+          return wrap;
+        };
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;';
+        const urlInp = document.createElement('input'); urlInp.type = 'text'; urlInp.placeholder = 'URL 입력'; urlInp.style.cssText = S;
+        const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = '팩 이름'; nameInp.style.cssText = S;
+        const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = BTN_BASE + 'min-width:104px;background:var(--li-accent-bg,rgba(129,140,248,.14));border-color:rgba(129,140,248,.46);';
+        const status = document.createElement('div'); status.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);margin-top:10px;line-height:1.45;min-height:18px;';
+        urlBtn.onclick = async () => {
+          if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩 이름 필요.'); return; }
+          urlBtn.disabled = true; const orig = urlBtn.textContent; urlBtn.textContent = '변환 중';
+          const startMs = Date.now();
+          let phaseMsg = 'URL 본문 가져오는 중';
+          const tick = setInterval(() => { status.textContent = phaseMsg + ' (' + Math.floor((Date.now() - startMs) / 1000) + '초)'; }, 1000);
+          try {
+            const cnt = await C.importFromUrl(urlInp.value.trim(), nameInp.value.trim(), requireGenerationApiOpts({}, { feature: 'urlImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
+              onProgress: (ev) => {
+                if (!ev) return;
+                if (ev.phase === 'fetch:start') phaseMsg = 'URL 본문 가져오는 중';
+                else if (ev.phase === 'parse') phaseMsg = '본문 정리 중';
+                else if (ev.phase === 'chunk') phaseMsg = '로어 변환 중: 청크 ' + ev.chunk + '/' + ev.total;
+              }
+            });
+            status.textContent = '완료: ' + cnt + '개 생성';
+            status.style.color = cnt ? TONE.ok : TONE.warn;
+            if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
+          } catch (e) {
+            status.textContent = '실패: ' + (e.message || String(e));
+            status.style.color = TONE.danger;
+          } finally {
+            clearInterval(tick);
+            urlBtn.textContent = orig;
+            urlBtn.disabled = false;
+          }
+        };
+        row.appendChild(makeField('URL', urlInp, true));
+        row.appendChild(makeField('팩 이름', nameInp, false));
+        row.appendChild(urlBtn);
+        nd.appendChild(row);
+        nd.appendChild(status);
+      }});
+  }
+
+  _w.__LoreInj.registerSettingsPage('knowledge-text', '텍스트 변환', (m) => {
+    m.replaceContentPanel(renderKnowledgeText, '텍스트 변환');
+  }, { group: 'knowledge' });
+
+  _w.__LoreInj.registerSettingsPage('knowledge-file', '파일 관리', (m) => {
+    m.replaceContentPanel((panel) => {
+      if (_w.__LoreInj.renderLoreImportPanel) _w.__LoreInj.renderLoreImportPanel(panel, m);
+      else panel.addText('파일 관리 모듈 로딩 중. 잠시 뒤 다시 열어주세요.');
+    }, '파일 관리');
+  }, { group: 'knowledge' });
+
+  _w.__LoreInj.registerSettingsPage('knowledge-url', 'URL 변환', (m) => {
+    m.replaceContentPanel(renderKnowledgeUrl, 'URL 변환');
+  }, { group: 'knowledge' });
   
   _w.__LoreInj.__subExtractLoaded = true;
 })();

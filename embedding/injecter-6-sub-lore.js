@@ -22,13 +22,23 @@
     danger: '#ef6b6b'
   };
 
-  function toggleStyle(on, w, h, dot) {
-    const dw = dot || Math.max(8, h - 4);
-    const leftOn = Math.max(2, w - dw - 2);
-    return {
-      wrap: 'width:' + w + 'px;height:' + h + 'px;border-radius:' + Math.ceil(h / 2) + 'px;background:' + (on ? 'rgba(129,140,248,.24)' : 'rgba(113,113,122,.20)') + ';border:1px solid ' + (on ? 'rgba(129,140,248,.55)' : 'var(--li-line,#3f3f46)') + ';position:relative;cursor:pointer;flex-shrink:0;',
-      dot: 'width:' + dw + 'px;height:' + dw + 'px;border-radius:50%;background:' + (on ? 'var(--li-accent-strong,#c7d2fe)' : 'var(--li-muted,#a1a1aa)') + ';position:absolute;top:2px;left:' + (on ? leftOn : 2) + 'px;transition:left .18s,background .18s;'
-    };
+  function makeSwitch(initialValue, onChange, label) {
+    if (typeof C.createSwitch === 'function') {
+      return C.createSwitch(initialValue, onChange, {
+        label,
+        width: 32,
+        height: 18,
+        dotSize: 12,
+        titleOn: label + ' 사용 중',
+        titleOff: label + ' 꺼짐'
+      });
+    }
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.textContent = initialValue ? 'ON' : 'OFF';
+    el.style.cssText = BTN_BASE;
+    el.onclick = async (ev) => { ev.stopPropagation(); const next = el.textContent !== 'ON'; if (await onChange(next) !== false) el.textContent = next ? 'ON' : 'OFF'; };
+    return { el, set: (v) => { el.textContent = v ? 'ON' : 'OFF'; } };
   }
 
   function setBadge(el, label, color, bg) {
@@ -98,14 +108,7 @@
             const disabledEntries = _w.__LoreInj.getDisabledEntriesForUrl ? _w.__LoreInj.getDisabledEntriesForUrl(C.getCurUrl()) : (settings.config.urlDisabledEntries?.[curUrl] || []);
             const allItemsEnabled = items.every(e => !disabledEntries.includes(e.id));
 
-            const packToggle = toggleStyle(allItemsEnabled, 32, 18, 12);
-            const pkSw = document.createElement('div'); pkSw.style.cssText = packToggle.wrap;
-            const pkDot = document.createElement('div'); pkDot.style.cssText = packToggle.dot;
-            pkSw.appendChild(pkDot);
-
-            pkSw.onclick = async (ev) => {
-                ev.stopPropagation();
-                const newState = !allItemsEnabled;
+            const pkSwitch = makeSwitch(allItemsEnabled, async (newState) => {
                 const ud = JSON.parse(JSON.stringify(settings.config.urlDisabledEntries || {}));
                 ud[curUrl] = ud[curUrl] || [];
                 const itemIds = items.map(e => e.id);
@@ -113,11 +116,12 @@
                 else { for (const id of itemIds) { if (!ud[curUrl].includes(id)) ud[curUrl].push(id); } }
                 settings.config.urlDisabledEntries = ud; settings.save();
                 menuApi.replaceContentPanel(renderPanel, '로어 관리');
-            };
+                return false;
+            }, '로어팩');
 
             const title = document.createElement('div'); title.style.cssText = 'font-size:14px;font-weight:900;color:var(--li-text,#e7edf5);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; title.textContent = pk + ' (' + items.length + '개)';
             const arrow = document.createElement('span'); arrow.textContent = autoExpandPacks ? '▾' : '▸'; arrow.setAttribute('aria-hidden', 'true'); arrow.style.cssText = 'font-size:13px;color:var(--li-muted,#748196);width:16px;text-align:center;line-height:1;flex-shrink:0;';
-            headerRow.appendChild(pkSw); headerRow.appendChild(title); headerRow.appendChild(arrow); nd.appendChild(headerRow);
+            headerRow.appendChild(pkSwitch.el); headerRow.appendChild(title); headerRow.appendChild(arrow); nd.appendChild(headerRow);
 
             items.sort((a,b) => (a.type||'').localeCompare(b.type||''));
             const listContainer = document.createElement('div'); listContainer.style.cssText = 'display:' + (autoExpandPacks ? 'flex' : 'none') + ';flex-direction:column;gap:8px;';
@@ -129,18 +133,13 @@
               const header = document.createElement('div'); header.className = 'lore-v2-lore-entry-head'; header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
               const left = document.createElement('div'); left.style.cssText = 'display:flex;align-items:center;gap:9px;flex:1;min-width:0;';
               const isEnabled = isEntryEnabledForUrl(e);
-              const entryToggle = toggleStyle(isEnabled, 28, 14, 10);
-              const sw = document.createElement('div'); sw.style.cssText = entryToggle.wrap;
-              const dot = document.createElement('div'); dot.style.cssText = entryToggle.dot;
-              sw.appendChild(dot);
-              sw.title = isEnabled ? '이 로어 사용 중' : '이 로어 꺼짐';
-              sw.onclick = (ev) => { ev.stopPropagation(); const ns = !isEntryEnabledForUrl(e); setEntryEnabled(e, ns); const st = toggleStyle(ns, 28, 14, 10); sw.title = ns ? '이 로어 사용 중' : '이 로어 꺼짐'; sw.style.cssText = st.wrap; dot.style.cssText = st.dot; };
+              const entrySwitch = makeSwitch(isEnabled, (ns) => { setEntryEnabled(e, ns); }, '로어');
               const nameSpan = document.createElement('span'); nameSpan.textContent = '[' + e.type + '] ' + e.name; nameSpan.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
 
               const embStatusSpan = document.createElement('span'); embStatusSpan.style.cssText = 'margin-left:7px;font-size:10px;padding:2px 6px;border-radius:999px;font-weight:900;';
               const updateEmbStatus = async () => { try { const emb = await db.embeddings.where({entryId: e.id, field: 'summary'}).first() || await db.embeddings.where('entryId').equals(e.id).first(); if (emb) { const ch = C.embeddingSourceHash ? C.embeddingSourceHash(e, emb.field || 'summary') : (emb.hash || ''); const targetModel = settings.config.embeddingModel || 'gemini-embedding-001'; if((emb.sourceHash||emb.hash)===ch && (!emb.packName || emb.packName===e.packName)){ const needsRegen=(emb.model && emb.model !== targetModel) || (emb.schemaVersion && emb.schemaVersion < 2) || (emb.taskType!=='RETRIEVAL_DOCUMENT'&&targetModel.includes('embedding-001')); if(needsRegen){setBadge(embStatusSpan,'재생성',TONE.warn,'rgba(231,181,111,.15)');}else{setBadge(embStatusSpan,'임베딩',TONE.ok,'rgba(120,213,168,.14)');} }else{setBadge(embStatusSpan,'변경됨',TONE.warn,'rgba(231,181,111,.15)');} }else{setBadge(embStatusSpan,'미임베딩',TONE.muted,'rgba(116,129,150,.16)');} }catch(ex){} };
               updateEmbStatus();
-              nameSpan.appendChild(embStatusSpan); left.appendChild(sw); left.appendChild(nameSpan);
+              nameSpan.appendChild(embStatusSpan); left.appendChild(entrySwitch.el); left.appendChild(nameSpan);
 
               const right = document.createElement('div'); right.className = 'lore-v2-lore-actions'; right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
               const B = BTN_BASE;
@@ -216,11 +215,6 @@
     const renderPanel = createLoreListRenderer(menuApi || { replaceContentPanel: (renderer) => renderer(panel) });
     return renderPanel(panel);
   };
-
-  _w.__LoreInj.registerSettingsPage('lore', '로어 목록', (m) => {
-      const renderPanel = createLoreListRenderer(m);
-      m.replaceContentPanel(renderPanel, '로어 목록 관리');
-  });
 
   _w.__LoreInj.__subLoreLoaded = true;
 })();

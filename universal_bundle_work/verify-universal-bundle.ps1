@@ -53,7 +53,7 @@ foreach ($m in $markers) {
   Assert-True ($bundle.Contains($m)) "missing loaded marker: $m"
 }
 
-$menus = @('main','lore','file','backup','extract','merge','snapshot','refiner','log','session','api','prompts','help')
+$menus = @('main','file','backup','extract','knowledge-text','knowledge-file','knowledge-url','merge','snapshot','refiner','log','session','api','prompts','help')
 foreach ($m in $menus) {
   Assert-True ($bundle.Contains("registerSettingsPage('$m'") -or $bundle.Contains("registerSettingsPage(`"$m`"")) "missing settings page registration: $m"
 }

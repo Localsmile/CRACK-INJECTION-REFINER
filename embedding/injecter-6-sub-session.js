@@ -87,13 +87,12 @@
           nd.appendChild(headerRow);
 
           const mig = settings.config.migrationStatus;
-          if (mig && mig.message) {
-            const ok = !/failed/i.test(mig.message);
+          if (mig && mig.message && /failed/i.test(mig.message)) {
             const migBox = document.createElement('details');
-            migBox.style.cssText = `margin-bottom:12px;padding:9px 10px;border-radius:9px;border:1px solid ${ok ? 'rgba(129,140,248,.45)' : 'rgba(220,38,38,.45)'};background:var(--li-surface-2,#2b2b31);color:${COLOR.soft};font-size:11px;line-height:1.5;`;
+            migBox.style.cssText = `margin-bottom:12px;padding:9px 10px;border-radius:9px;border:1px solid rgba(220,38,38,.45);background:var(--li-surface-2,#2b2b31);color:${COLOR.soft};font-size:11px;line-height:1.5;`;
             const summary = document.createElement('summary');
-            summary.textContent = ok ? '저장 데이터 점검 완료' : '저장 데이터 점검 실패';
-            summary.style.cssText = 'cursor:pointer;color:' + (ok ? 'var(--li-accent-strong,#c7d2fe)' : COLOR.danger) + ';font-size:12px;font-weight:800;min-height:24px;';
+            summary.textContent = '저장 데이터 점검 실패';
+            summary.style.cssText = 'cursor:pointer;color:' + COLOR.danger + ';font-size:12px;font-weight:800;min-height:24px;';
             const detail = document.createElement('div');
             const humanMessage = C.humanizeStatusText ? C.humanizeStatusText(mig.message) : mig.message;
             detail.textContent = `상세: ${humanMessage}\n정리된 로어: ${mig.migratedEntries || 0}개\n갱신 필요 검색 데이터 삭제: ${mig.staleEmbeddingsRemoved || 0}개\n확인 시각: ${mig.checkedAt ? new Date(mig.checkedAt).toLocaleString() : '알 수 없음'}`;

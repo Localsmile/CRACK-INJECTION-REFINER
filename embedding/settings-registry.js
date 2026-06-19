@@ -22,12 +22,12 @@
   const SETTINGS_REGISTRY = [
     { key: 'enabled', type: 'boolean', label: '로어 삽입', help: '대화 전송 전에 관련 로어를 자동으로 붙임.', group: 'injection', level: 'basic' },
     { key: 'position', type: 'select', label: '삽입 위치', help: '로어를 유저 입력 앞 또는 뒤에 붙임.', group: 'injection', level: 'basic', options: [{ value: 'before', label: '입력 앞' }, { value: 'after', label: '입력 뒤' }] },
-    { key: 'maxEntries', type: 'number', label: '한 번에 넣을 로어', help: '한 번의 입력에 포함할 로어 최대 개수.', group: 'injection', level: 'basic', min: 1, max: 12, step: 1 },
-    { key: 'loreBudgetChars', type: 'number', label: '기본 삽입 문자 수', help: '삽입할 로어의 목표 문자 수.', group: 'injection', level: 'basic', min: 80, max: 1500, step: 10 },
-    { key: 'loreBudgetMax', type: 'number', label: '최대 삽입 문자 수', help: '필요할 때 허용할 로어 문자 상한.', group: 'injection', level: 'advanced', min: 120, max: 1800, step: 10 },
-    { key: 'stateBlockChars', type: 'number', label: '장면 상태 문자 수', help: '현재 장소, 인물, 미해결 정보를 항상 넣을 최대 문자 수.', group: 'injection', level: 'basic', min: 120, max: 900, step: 10 },
+    { key: 'maxEntries', type: 'number', label: '한 번에 넣을 로어', help: '예: 4이면 후보 중 최대 4개만 삽입.', group: 'injection', level: 'basic', min: 1, max: 12, step: 1 },
+    { key: 'loreBudgetChars', type: 'number', label: '기본 삽입 문자 수', help: '예: 300이면 관련 로어를 300자 안팎으로 맞춤.', group: 'injection', level: 'basic', min: 80, max: 1500, step: 10 },
+    { key: 'loreBudgetMax', type: 'number', label: '최대 삽입 문자 수', help: '예: 700이면 예산 초과 시 700자 근처에서 멈춤.', group: 'injection', level: 'advanced', min: 120, max: 1800, step: 10 },
+    { key: 'stateBlockChars', type: 'number', label: '장면 상태 문자 수', help: '예: 300이면 장소, 인물, 미해결 상태를 300자 안팎으로 압축.', group: 'injection', level: 'basic', min: 120, max: 900, step: 10 },
     { key: 'injectionCleanupEnabled', type: 'boolean', label: '삽입 흔적 자동 정리', help: '최근 창을 벗어난 로어 삽입문을 원문에서 제거함.', group: 'injection', level: 'basic', requiresCapability: 'canPatch' },
-    { key: 'windowExitChars', type: 'number', label: '정리 기준 문자 수', help: '삽입 뒤 이 문자 수만큼 대화가 지나면 정리 대상.', group: 'injection', level: 'basic', min: 1000, max: 20000, step: 100, requiresCapability: 'canReadLogs' },
+    { key: 'windowExitChars', type: 'number', label: '정리 기준 문자 수', help: '예: 7000이면 삽입 이후 대화 합계가 7000자를 넘을 때 이전 삽입 흔적만 정리.', group: 'injection', level: 'basic', min: 1000, max: 20000, step: 100, requiresCapability: 'canReadLogs' },
 
     { key: 'embeddingEnabled', type: 'boolean', label: '의미 검색', help: '단어가 달라도 의미가 가까운 로어를 찾음.', group: 'retrieval', level: 'basic' },
     { key: 'embeddingWeight', type: 'number', label: '의미 검색 비중', help: '트리거 검색 대비 의미 검색 영향도.', group: 'retrieval', level: 'advanced', min: 0, max: 1, step: 0.05 },

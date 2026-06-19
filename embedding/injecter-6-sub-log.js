@@ -79,6 +79,18 @@
           const added = b.filter(x => !setA.has(x)).slice(0, 6);
           return { removed, added };
         };
+        const isStatusOnlyText = (value) => {
+          const s = String(value || '')
+            .replace(/^(상태|status|state)\s*:\s*/ig, '')
+            .trim()
+            .toLowerCase();
+          return /^(pending|fulfilled|broken|expired|modified|-?\s*fulfilled\s*\+?\s*pending)?$/.test(s);
+        };
+        const readableChangeText = (value, fallback) => {
+          const s = String(value || '').trim();
+          if (!s || isStatusOnlyText(s)) return fallback || '상세 텍스트가 저장되지 않은 이전 기록';
+          return s;
+        };
         const iLog = getInjLog(chatKey); const eLog = getExtLog(chatKey); const cLog = JSON.parse(_ls.getItem('lore-contradictions') || '[]'); const rLog = settings.config.urlRefinerLogs?.[chatKey] || [];
   
         const makeLogBox = (title, color, items, renderer) => {
@@ -321,12 +333,7 @@
             if (Array.isArray(_tjQ.locations) && _tjQ.locations.length) _tjQParts.push('장소 ' + shortList(_tjQ.locations, 2));
             if (_tjQParts.length) h += `<br><span style="font-size:10px;color:#c2a4b8;">쿼리: ${_tjQParts.join(' / ')}</span>`;
           }
-          {
-            const optParts = [];
-            if(i.bundled) optParts.push(`<span style="color:${COLOR.ok};">번들 ${i.bundled}</span>`);
-            if(i.noveltySkipped) optParts.push(`<span style="color:${COLOR.warn};">반복 제외 ${i.noveltySkipped}</span>`);
-            if(optParts.length) h += `<br><span style="font-size:10px;color:${COLOR.soft};">최적화: ${optParts.join(' / ')}</span>`;
-          }
+          if(i.noveltySkipped) h += `<br><span style="font-size:10px;color:${COLOR.warn};">반복 제외 ${i.noveltySkipped}</span>`;
           if(i.budget) h += `<br><span style="font-size:10px;color:${COLOR.soft};">로어예산 ${i.used||0}/${i.budget}${i.level?' ('+i.level+')':''}</span>`;
           h += `<br><span style="font-size:11px;color:${COLOR.soft};">${i.count>0?i.count+'개: '+i.matched.join(', '):i.note||'매치없음'}</span>`;
           r.innerHTML = h; nd.appendChild(r);
@@ -383,7 +390,12 @@
           const body = document.createElement('div');
           body.className = 'lore-v2-selectable';
           body.style.cssText = 'display:none;margin-top:8px;padding:9px;border:1px solid var(--li-line,#2f3b4f);border-radius:8px;background:var(--li-bg,#18181b);font-size:11px;color:' + COLOR.soft + ';white-space:pre-wrap;word-break:break-word;-webkit-user-select:text;user-select:text;';
-          body.textContent = '변경 전\n' + String(i.oldStatus || '') + '\n\n변경 후\n' + String(i.newStatus || '') + '\n\n변경된 텍스트\n- ' + String(i.oldStatus || '') + '\n+ ' + String(i.newStatus || '');
+          const beforeText = readableChangeText(i.oldText || i.before || i.oldSummary || '', i.oldStatus ? '이전 기록에 상세 텍스트 없음' : '');
+          const afterText = readableChangeText(i.newText || i.after || i.newSummary || '', i.newStatus ? '이전 기록에 상세 텍스트 없음' : '');
+          const changed = diffChangedOnly(beforeText, afterText);
+          const removed = changed.removed.length ? changed.removed.map(x => '- ' + x).join('\n') : '- 변경 전 항목 없음';
+          const added = changed.added.length ? changed.added.map(x => '+ ' + x).join('\n') : '+ 변경 후 항목 없음';
+          body.textContent = '변경된 텍스트\n' + removed + '\n' + added + '\n\n변경 전\n' + String(beforeText || '') + '\n\n변경 후\n' + String(afterText || '');
           head.onclick = () => {
             const open = body.style.display !== 'none';
             body.style.display = open ? 'none' : 'block';

@@ -21,13 +21,23 @@
     danger: '#ef6b6b'
   };
 
-  function toggleStyle(on, w, h, dot) {
-    const dw = dot || Math.max(8, h - 4);
-    const leftOn = Math.max(2, w - dw - 2);
-    return {
-      wrap: 'width:' + w + 'px;height:' + h + 'px;border-radius:' + Math.ceil(h / 2) + 'px;background:' + (on ? 'rgba(129,140,248,.24)' : 'rgba(113,113,122,.20)') + ';border:1px solid ' + (on ? 'rgba(129,140,248,.55)' : 'var(--li-line,#3f3f46)') + ';position:relative;cursor:pointer;flex-shrink:0;',
-      dot: 'width:' + dw + 'px;height:' + dw + 'px;border-radius:50%;background:' + (on ? 'var(--li-accent-strong,#c7d2fe)' : 'var(--li-muted,#a1a1aa)') + ';position:absolute;top:2px;left:' + (on ? leftOn : 2) + 'px;transition:left .18s,background .18s;'
-    };
+  function makeSwitch(initialValue, onChange, label) {
+    if (typeof C.createSwitch === 'function') {
+      return C.createSwitch(initialValue, onChange, {
+        label,
+        width: 32,
+        height: 18,
+        dotSize: 12,
+        titleOn: label + ' 사용 중',
+        titleOff: label + ' 꺼짐'
+      });
+    }
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.textContent = initialValue ? 'ON' : 'OFF';
+    el.style.cssText = BTN_BASE;
+    el.onclick = async (ev) => { ev.stopPropagation(); const next = el.textContent !== 'ON'; if (await onChange(next) !== false) el.textContent = next ? 'ON' : 'OFF'; };
+    return { el, set: (v) => { el.textContent = v ? 'ON' : 'OFF'; } };
   }
 
   const _ls = (_w.__LoreEnv && _w.__LoreEnv.kv) || _w.localStorage;
@@ -65,6 +75,66 @@
 
   function safeFileName(s) {
     return String(s || 'backup').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
+  }
+
+  function renderLoreImportPanel(panel, m) {
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      const title = document.createElement('div'); title.textContent = '로어 가져오기'; title.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;'; nd.appendChild(title);
+      const hint = document.createElement('div'); hint.textContent = 'JSON 파일이나 직접 입력으로 로어팩을 추가함. 같은 이름 로어는 갱신됨.'; hint.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);line-height:1.5;margin-bottom:10px;'; nd.appendChild(hint);
+      const row = document.createElement('div'); row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:8px;';
+      if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) row.style.gridTemplateColumns = '1fr';
+      const nameInput = document.createElement('input'); nameInput.placeholder = '로어팩 이름'; nameInput.style.cssText = FIELD_STYLE + 'font-size:12px;'; row.appendChild(nameInput);
+      const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
+      const importBtn = document.createElement('button'); importBtn.textContent = 'JSON 파일 선택'; importBtn.style.cssText = BTN_BASE + 'min-height:34px;padding:7px 14px;color:#fff;background:var(--li-accent,#5aa7ff);border-color:transparent;white-space:nowrap;'; importBtn.onclick = () => fileInput.click();
+      fileInput.onchange = async (ev) => {
+        const file = ev.target.files[0]; if (!file) return;
+        const packName = nameInput.value.trim() || file.name.replace('.json', '');
+        try {
+          const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let count = 0;
+          for (let e of arr) {
+            if (!e || !e.name) continue;
+            if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
+            if (!e.triggers) e.triggers = [e.name];
+            e.packName = packName; e.project = settings.config.activeProject || ''; e.enabled = true;
+            e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
+            const existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name).first();
+            if (existing) { await db.entries.update(existing.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch(_){} }
+            else { await db.entries.add(e); count++; }
+          }
+          const totalCount = await db.entries.where('packName').equals(packName).count(); let pack = await db.packs.get(packName); if (pack) await db.packs.update(packName, { entryCount: totalCount }); else await db.packs.put({ name: packName, entryCount: totalCount, project: settings.config.activeProject || '' });
+          await setPackEnabled(packName, true); alert(arr.length + '개 항목 처리 완료 (신규 ' + count + '개)');
+          if (m && m.replaceContentPanel) m.replaceContentPanel((p) => renderLoreImportPanel(p, m), '파일 관리');
+        } catch (err) { alert('가져오기 실패: ' + err.message); } fileInput.value = '';
+      };
+      row.appendChild(fileInput); row.appendChild(importBtn); nd.appendChild(row);
+
+      const manualLbl = document.createElement('div'); manualLbl.textContent = '직접 JSON 입력'; manualLbl.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:800;margin:12px 0 5px;'; nd.appendChild(manualLbl);
+      const manualTa = document.createElement('textarea'); manualTa.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":"설명","detail":{}}]'; manualTa.style.cssText = FIELD_STYLE + 'height:112px;font-size:12px;font-family:monospace;resize:vertical;'; nd.appendChild(manualTa);
+      const manualBtnRow = document.createElement('div'); manualBtnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+      const manualBtn = document.createElement('button'); manualBtn.textContent = '입력 내용 추가'; manualBtn.style.cssText = BTN_BASE + 'min-height:34px;padding:7px 14px;background:rgba(120,213,168,.18);border-color:rgba(120,213,168,.55);color:' + TONE.ok + ';';
+      manualBtn.onclick = async () => {
+        const pn = nameInput.value.trim() || '수동추가';
+        try {
+          const txt = manualTa.value.trim(); if (!txt) { alert('JSON을 입력할 것.'); return; }
+          const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let cnt = 0;
+          for (let e of arr) {
+            if (!e || !e.name) continue;
+            if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
+            if (!e.triggers) e.triggers = [e.name];
+            e.packName = pn; e.project = settings.config.activeProject || ''; e.enabled = true;
+            e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
+            const ex = await db.entries.where('packName').equals(pn).and(x => x.name === e.name).first();
+            if (ex) { await db.entries.update(ex.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch(_){} }
+            else { await db.entries.add(e); cnt++; }
+          }
+          const tc = await db.entries.where('packName').equals(pn).count(); let pk = await db.packs.get(pn); if (pk) await db.packs.update(pn, { entryCount: tc }); else await db.packs.put({ name: pn, entryCount: tc, project: settings.config.activeProject || '' });
+          await setPackEnabled(pn, true); alert(arr.length + '개 처리 (신규 ' + cnt + '개)'); manualTa.value = '';
+          if (m && m.replaceContentPanel) m.replaceContentPanel((p) => renderLoreImportPanel(p, m), '파일 관리');
+        } catch (err) { alert('JSON 파싱 실패: ' + err.message); }
+      };
+      manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
+    }});
   }
 
   async function exportFullBackup(opts = {}) {
@@ -474,6 +544,7 @@
   }
 
   Object.assign(_w.__LoreInj, {
+    renderLoreImportPanel,
     backupTools: {
       schema: BACKUP_SCHEMA,
       version: BACKUP_VERSION,
@@ -487,66 +558,12 @@
     }
   });
 
-  _w.__LoreInj.registerSettingsPage('file', '파일 관리', (m) => {
+  _w.__LoreInj.registerSettingsPage('file', '전체 로어팩', (m) => {
       const renderPackUI = async (panel) => {
-        panel.addBoxedField('', '', { onInit: (nd) => {
-          C.setFullWidth(nd);
-          const title = document.createElement('div'); title.textContent = '로어 가져오기'; title.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;'; nd.appendChild(title);
-          const hint = document.createElement('div'); hint.textContent = 'JSON 파일이나 직접 입력으로 로어팩을 추가함. 같은 이름 로어는 갱신됨.'; hint.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);line-height:1.5;margin-bottom:10px;'; nd.appendChild(hint);
-          const row = document.createElement('div'); row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:8px;';
-          if (typeof matchMedia === 'function' && matchMedia('(max-width: 620px)').matches) row.style.gridTemplateColumns = '1fr';
-          const nameInput = document.createElement('input'); nameInput.placeholder = '로어팩 이름'; nameInput.style.cssText = FIELD_STYLE + 'font-size:12px;'; row.appendChild(nameInput);
-          const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
-          const importBtn = document.createElement('button'); importBtn.textContent = 'JSON 파일 선택'; importBtn.style.cssText = BTN_BASE + 'min-height:34px;padding:7px 14px;color:#fff;background:var(--li-accent,#5aa7ff);border-color:transparent;white-space:nowrap;'; importBtn.onclick = () => fileInput.click();
-          fileInput.onchange = async (ev) => {
-            const file = ev.target.files[0]; if (!file) return;
-            const packName = nameInput.value.trim() || file.name.replace('.json', '');
-            try {
-              const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let count = 0;
-              for (let e of arr) {
-                if (!e || !e.name) continue;
-                if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
-                if (!e.triggers) e.triggers = [e.name];
-                e.packName = packName; e.project = settings.config.activeProject || ''; e.enabled = true;
-                e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
-                const existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name).first();
-                if (existing) { await db.entries.update(existing.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch(_){} }
-                else { await db.entries.add(e); count++; }
-              }
-              const totalCount = await db.entries.where('packName').equals(packName).count(); let pack = await db.packs.get(packName); if (pack) await db.packs.update(packName, { entryCount: totalCount }); else await db.packs.put({ name: packName, entryCount: totalCount, project: settings.config.activeProject || '' });
-              await setPackEnabled(packName, true); alert(arr.length + '개 항목 처리 완료 (신규 ' + count + '개)'); m.replaceContentPanel(renderPackUI, '파일 관리');
-            } catch (err) { alert('가져오기 실패: ' + err.message); } fileInput.value = '';
-          };
-          row.appendChild(fileInput); row.appendChild(importBtn); nd.appendChild(row);
-
-          const manualLbl = document.createElement('div'); manualLbl.textContent = '직접 JSON 입력'; manualLbl.style.cssText = 'font-size:12px;color:var(--li-text-soft,#a9b6c7);font-weight:800;margin:12px 0 5px;'; nd.appendChild(manualLbl);
-          const manualTa = document.createElement('textarea'); manualTa.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":"설명","detail":{}}]'; manualTa.style.cssText = FIELD_STYLE + 'height:112px;font-size:12px;font-family:monospace;resize:vertical;'; nd.appendChild(manualTa);
-          const manualBtnRow = document.createElement('div'); manualBtnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
-          const manualBtn = document.createElement('button'); manualBtn.textContent = '입력 내용 추가'; manualBtn.style.cssText = BTN_BASE + 'min-height:34px;padding:7px 14px;background:rgba(120,213,168,.18);border-color:rgba(120,213,168,.55);color:' + TONE.ok + ';';
-          manualBtn.onclick = async () => {
-            const pn = nameInput.value.trim() || '수동추가';
-            try {
-              const txt = manualTa.value.trim(); if (!txt) { alert('JSON을 입력할 것.'); return; }
-              const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let cnt = 0;
-              for (let e of arr) {
-                if (!e || !e.name) continue;
-                if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
-                if (!e.triggers) e.triggers = [e.name];
-                e.packName = pn; e.project = settings.config.activeProject || ''; e.enabled = true;
-                e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
-                const ex = await db.entries.where('packName').equals(pn).and(x => x.name === e.name).first();
-                if (ex) { await db.entries.update(ex.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch(_){} }
-                else { await db.entries.add(e); cnt++; }
-              }
-              const tc = await db.entries.where('packName').equals(pn).count(); let pk = await db.packs.get(pn); if (pk) await db.packs.update(pn, { entryCount: tc }); else await db.packs.put({ name: pn, entryCount: tc, project: settings.config.activeProject || '' });
-              await setPackEnabled(pn, true); alert(arr.length + '개 처리 (신규 ' + cnt + '개)'); manualTa.value = ''; m.replaceContentPanel(renderPackUI, '파일 관리');
-            } catch (err) { alert('JSON 파싱 실패: ' + err.message); }
-          };
-          manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
-        }});
-
         panel.addBoxedField('', '', { onInit: async (nd) => {
           C.setFullWidth(nd);
+          const title = document.createElement('div'); title.textContent = '전체 로어팩'; title.style.cssText = 'font-size:15px;color:var(--li-text,#e7edf5);font-weight:900;margin-bottom:6px;'; nd.appendChild(title);
+          const hint = document.createElement('div'); hint.textContent = '저장된 모든 로어팩을 확인하고 활성화, 내보내기, 임베딩, 삭제를 관리함.'; hint.style.cssText = 'font-size:11px;color:var(--li-muted,#748196);line-height:1.5;margin-bottom:10px;'; nd.appendChild(hint);
           const rawPacks = await db.packs.toArray();
           const packs = [];
           for (const p of rawPacks) {
@@ -565,29 +582,78 @@
             const header = document.createElement('div'); header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:11px 12px;gap:10px;';
             const leftSide = document.createElement('div'); leftSide.style.cssText = 'display:flex;align-items:center;gap:9px;flex:1;min-width:0;';
             const isEnabled = enabledPacks.includes(pack.name);
-            const initialToggle = toggleStyle(isEnabled, 28, 14, 10);
-            const sw = document.createElement('div'); sw.style.cssText = initialToggle.wrap;
-            const dot = document.createElement('div'); dot.style.cssText = initialToggle.dot;
-            sw.appendChild(dot);
-            sw.title = isEnabled ? '이 로어팩 사용 중' : '이 로어팩 꺼짐';
-            sw.onclick = async () => { const curEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name); await setPackEnabled(pack.name, !curEnabled); const nowEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name); const st = toggleStyle(nowEnabled, 28, 14, 10); sw.title = nowEnabled ? '이 로어팩 사용 중' : '이 로어팩 꺼짐'; sw.style.cssText = st.wrap; dot.style.cssText = st.dot; };
-            leftSide.appendChild(sw);
+            const packSwitch = makeSwitch(isEnabled, async (next) => {
+              const curEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name);
+              await setPackEnabled(pack.name, !curEnabled);
+              const nowEnabled = ((_w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : (settings.config.urlPacks?.[C.getCurUrl()] || []))).includes(pack.name);
+              packSwitch.set(nowEnabled);
+              return false;
+            }, '로어팩');
+            leftSide.appendChild(packSwitch.el);
             const nameEl = document.createElement('span'); nameEl.textContent = pack.name + ' (' + (pack.entryCount || 0) + '개)'; nameEl.style.cssText = 'font-size:13px;color:var(--li-text,#e7edf5);font-weight:900;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'; leftSide.appendChild(nameEl);
             header.appendChild(leftSide);
             const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
             const B = BTN_BASE;
             const exportBtn = document.createElement('button'); exportBtn.textContent = '내보내기'; exportBtn.style.cssText = B;
-            exportBtn.onclick = async () => { const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert('항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
-            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B; embBtn.onclick = async () => { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) { alert(miss || 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; const cnt = await C.embedPack(pack.name, apiOpts, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = 'OK' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('실패:' + e.message); } };
+            exportBtn.onclick = async (ev) => { ev.stopPropagation(); const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert('항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
+            const embBtn = document.createElement('button'); embBtn.textContent = '임베딩'; embBtn.style.cssText = B; embBtn.onclick = async (ev) => { ev.stopPropagation(); const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) { alert(miss || 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 임베딩 생성?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; const cnt = await C.embedPack(pack.name, apiOpts, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = 'OK' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('실패:' + e.message); } };
             const cleanBtn = document.createElement('button'); cleanBtn.textContent = '검색 준비 정리'; cleanBtn.title = 'API 호출 없이 오래된 검색 준비 데이터를 정리함'; cleanBtn.style.cssText = B;
-            cleanBtn.onclick = async () => { cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('오래된 검색 준비 데이터 정리 완료: ' + (rpt.removed || 0) + '개'); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
+            cleanBtn.onclick = async (ev) => { ev.stopPropagation(); cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('오래된 검색 준비 데이터 정리 완료: ' + (rpt.removed || 0) + '개'); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
             const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:' + TONE.danger + ';border-color:rgba(239,107,107,.45);';
-            delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
-            actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
+            delBtn.onclick = async (ev) => { ev.stopPropagation(); if (!confirm('[' + pack.name + '] 삭제?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); m.replaceContentPanel(renderPackUI, '전체 로어팩'); };
+            actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header);
+            const body = document.createElement('div');
+            body.style.cssText = 'display:none;border-top:1px solid var(--li-line,#3f3f46);padding:10px;gap:8px;flex-direction:column;';
+            let loaded = false;
+            const renderEntries = async () => {
+              if (loaded) return;
+              loaded = true;
+              body.textContent = '';
+              const entries = await db.entries.where('packName').equals(pack.name).toArray();
+              if (!entries.length) {
+                const empty = document.createElement('div');
+                empty.textContent = '로어 없음.';
+                empty.style.cssText = 'font-size:12px;color:var(--li-muted,#748196);padding:10px;';
+                body.appendChild(empty);
+                return;
+              }
+              entries.sort((a,b) => String(a.name || '').localeCompare(String(b.name || '')));
+              for (const entry of entries) {
+                const eRow = document.createElement('div');
+                eRow.style.cssText = 'border:1px solid var(--li-line,#3f3f46);border-radius:8px;background:var(--li-surface-2,#2b2b31);padding:9px;display:flex;flex-direction:column;gap:8px;';
+                const eHead = document.createElement('div');
+                eHead.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+                const eTitle = document.createElement('div');
+                eTitle.textContent = '[' + (entry.type || '?') + '] ' + (entry.name || '(이름 없음)');
+                eTitle.style.cssText = 'font-size:12px;font-weight:900;color:var(--li-text,#e7edf5);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                const eActions = document.createElement('div');
+                eActions.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
+                const editBtn = document.createElement('button'); editBtn.textContent = '▾'; editBtn.title = '내용 보기/편집'; editBtn.style.cssText = BTN_BASE + 'width:30px;padding:4px 0;';
+                const delEntryBtn = document.createElement('button'); delEntryBtn.textContent = '삭제'; delEntryBtn.style.cssText = BTN_BASE + 'color:' + TONE.danger + ';border-color:rgba(239,107,107,.45);';
+                eActions.appendChild(editBtn); eActions.appendChild(delEntryBtn);
+                eHead.appendChild(eTitle); eHead.appendChild(eActions); eRow.appendChild(eHead);
+                const editor = document.createElement('div');
+                editor.style.cssText = 'display:none;flex-direction:column;gap:8px;';
+                const ta = document.createElement('textarea');
+                const clean = { ...entry }; delete clean.id; delete clean.packName; delete clean.project; delete clean.enabled;
+                ta.value = JSON.stringify(clean, null, 2);
+                ta.style.cssText = FIELD_STYLE + 'height:170px;font-size:12px;font-family:monospace;resize:vertical;';
+                const saveRow = document.createElement('div'); saveRow.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;';
+                const saveBtn = document.createElement('button'); saveBtn.textContent = '저장'; saveBtn.style.cssText = BTN_BASE + 'background:rgba(120,213,168,.18);border-color:rgba(120,213,168,.55);color:' + TONE.ok + ';';
+                saveRow.appendChild(saveBtn); editor.appendChild(ta); editor.appendChild(saveRow); eRow.appendChild(editor);
+                editBtn.onclick = (ev) => { ev.stopPropagation(); const open = editor.style.display !== 'none'; editor.style.display = open ? 'none' : 'flex'; editBtn.textContent = open ? '▾' : '▴'; };
+                saveBtn.onclick = async (ev) => { ev.stopPropagation(); try { const parsed = JSON.parse(ta.value); const updated = { ...entry, ...parsed, id: entry.id, packName: pack.name }; await db.entries.put(updated); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(updated.id); } catch(_){} Object.assign(entry, updated); eTitle.textContent = '[' + (entry.type || '?') + '] ' + (entry.name || '(이름 없음)'); alert('저장됨.'); } catch(err) { alert('JSON 오류: ' + err.message); } };
+                delEntryBtn.onclick = async (ev) => { ev.stopPropagation(); if (!confirm('[' + (entry.name || '') + '] 삭제?')) return; await db.entries.delete(entry.id); try { await db.embeddings.where('entryId').equals(entry.id).delete(); } catch(_){} eRow.remove(); const count = await db.entries.where('packName').equals(pack.name).count(); await db.packs.update(pack.name, { entryCount: count }); nameEl.textContent = pack.name + ' (' + count + '개)'; };
+                body.appendChild(eRow);
+              }
+            };
+            header.onclick = async () => { const open = body.style.display !== 'none'; body.style.display = open ? 'none' : 'flex'; if (!open) await renderEntries(); };
+            packDiv.appendChild(body);
+            nd.appendChild(packDiv);
           }
         }});
       };
-      m.replaceContentPanel(renderPackUI, '파일 관리');
+      m.replaceContentPanel(renderPackUI, '전체 로어팩');
   });
 
   _w.__LoreInj.__subFileLoaded = true;

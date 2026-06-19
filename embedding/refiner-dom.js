@@ -45,6 +45,15 @@
         || el;
   }
 
+  function isExtensionUiNode(el) {
+    return !!(el && el.closest && (
+      el.closest('#lore-settings-shell') ||
+      el.closest('#refiner-confirm-overlay') ||
+      el.closest('#refiner-reload-action') ||
+      el.closest('#lore-status-badge')
+    ));
+  }
+
   function findMessageContainerById(messageId) {
     if (!messageId) return null;
     const id = String(messageId);
@@ -77,6 +86,7 @@
       if (!text || !text.includes(snippet)) continue;
       if (el.tagName === 'BODY' || el.tagName === 'HTML') continue;
       if (el.id === '__next' || el.id === 'root') continue;
+      if (isExtensionUiNode(el)) continue;
 
       const childCount = el.querySelectorAll('*').length;
       const score = text.length + childCount * 50;
@@ -161,11 +171,25 @@
     const newSnippet = normalizeText(newPlain.length > 36 ? newPlain.slice(-36) : newPlain);
     const renderedHTML = renderMarkdownHTML(newText);
 
-    // Locate the bubble's own .wrtn-markdown directly (one per message bubble in wrtn DOM).
-    // Closest() walking + substring class matching could land on a chat-wide wrapper, which
-    // produced the stacked old+user+new render after React reconciled detached children.
     let targetEl = null;
     const allMds = document.querySelectorAll('.wrtn-markdown');
+    const pickTextHost = (scope) => {
+      if (!scope || !scope.querySelectorAll || !oldSnippet) return null;
+      const candidates = Array.from(scope.querySelectorAll('.wrtn-markdown, [class*="markdown"], [class*="Markdown"], [class*="content"], [class*="Content"], p, span, div'))
+        .filter(el => {
+          if (!el || el === document.body || el.id === '__next' || el.id === 'root') return false;
+          if (isExtensionUiNode(el)) return false;
+          if (['TEXTAREA', 'INPUT', 'SCRIPT', 'STYLE'].includes(el.tagName)) return false;
+          const text = normalizeText(el.textContent);
+          return text && text.includes(oldSnippet) && (!newSnippet || !text.includes(newSnippet));
+        })
+        .sort((a, b) => {
+          const at = normalizeText(a.textContent).length + (a.querySelectorAll ? a.querySelectorAll('*').length * 80 : 0);
+          const bt = normalizeText(b.textContent).length + (b.querySelectorAll ? b.querySelectorAll('*').length * 80 : 0);
+          return at - bt;
+        });
+      return candidates[0] || null;
+    };
 
     // pass 1: prefer the wrtn-markdown that contains old text but not new text (pre-edit bubble)
     if (oldSnippet) {
@@ -183,6 +207,16 @@
       for (const md of allMds) {
         if (normalizeText(md.textContent).includes(oldSnippet)) { targetEl = md; break; }
       }
+    }
+
+    if (!targetEl) {
+      const byId = findMessageContainerById(messageId);
+      targetEl = pickTextHost(byId) || null;
+    }
+
+    if (!targetEl) {
+      const byText = findDeepestMatchingElement(oldPlain);
+      targetEl = pickTextHost(getMessageContainer(byText)) || byText || null;
     }
 
     // pass 3: already showing new text in some bubble -- treat as visible done
@@ -206,7 +240,8 @@
 
     // one-shot apply at the bubble level only -- never on chat-wide wrappers
     try {
-      targetEl.innerHTML = renderedHTML;
+      if (targetEl.matches && targetEl.matches('p, span')) targetEl.textContent = newPlain || newText;
+      else targetEl.innerHTML = renderedHTML;
       try {
         if (messageId) {
           const c = getMessageContainer(targetEl);
@@ -849,7 +884,7 @@
     if (old) old.remove();
     const overlay = document.createElement('div');
     overlay.id = 'refiner-confirm-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:2147483647;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;overflow:auto;';
+    overlay.style.cssText = 'position:fixed!important;inset:0!important;background:rgba(2,6,12,.74);backdrop-filter:blur(8px);z-index:2147483647!important;display:flex;justify-content:center;align-items:center;padding:20px;box-sizing:border-box;overflow:auto;isolation:isolate;';
 
     const box = document.createElement('div');
     box.style.cssText = 'background:linear-gradient(180deg,#101a2a,#0a111d);border:1px solid var(--li-line,#2f3b4f);border-radius:14px;width:min(440px,100%);max-height:min(680px,calc(100vh - 40px));padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;gap:12px;box-sizing:border-box;overflow:auto;';
