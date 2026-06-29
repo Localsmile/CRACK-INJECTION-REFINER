@@ -665,7 +665,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (!skipEmbedding && count > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
         try {
           const epName = await getAutoExtPackForUrl(url);
-          extBadgeShow('에리가 시간축 임베딩 갱신 중');
+          extBadgeShow('에리가 장면 기억 검색 준비 중');
           const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
             ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
             : {
@@ -680,10 +680,10 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               costContext: { feature: 'embed', chatKey: chatKey || 'global' }
             };
           embedCount = await C.embedPack(epName, embedOpts);
-          embedMsg = ' / 임베딩 ' + embedCount + '개 완료';
+          embedMsg = ' / 검색 준비 ' + embedCount + '개 완료';
         } catch(embErr) {
           console.warn('[Lore] 시간축 자동임베딩 실패:', embErr.message);
-          embedMsg = ' / 임베딩 실패';
+          embedMsg = ' / 검색 준비 실패';
         }
       }
       addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count, msgs: msgCount, isManual, status: '시간축 추출 성공' + embedMsg, api: apiLog, model: _tmpModel, elapsedMs: _tmpElapsedMs, cost: _tmpCost });
@@ -1121,24 +1121,26 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         if (generalCount > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
           try {
             const epName = await getAutoExtPackForUrl(_url);
-            extBadgeShow('에리가 임베딩 갱신 중');
+            extBadgeShow('에리가 검색 준비 중');
             const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
               ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
               : { ...apiOpts, apiType: apiType === 'deepseek' ? 'key' : apiType, key: apiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
             embedCount = await C.embedPack(epName, embedOpts);
-            embedMsg = ' (임베딩 ' + embedCount + '개 완료)';
-          } catch(embErr) { console.warn('[Lore] 자동임베딩 실패:', embErr.message); embedMsg = ' (자동 임베딩 실패)'; }
+            embedMsg = ' (검색 준비 ' + embedCount + '개 완료)';
+          } catch(embErr) { console.warn('[Lore] 자동임베딩 실패:', embErr.message); embedMsg = ' (검색 준비 실패)'; }
         }
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: generalCount, msgs: recentMsgs.length, isManual, status: generalStatus, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
       } else {
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '추출 내용 없음', api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
       }
       let temporalResult = null;
-      if (settings.config.temporalExtractEnabled !== false) {
+      const shouldRunTemporalExtract = settings.config.temporalExtractEnabled !== false &&
+        (isManual || settings.config.temporalExtractAutoEnabled === true);
+      if (shouldRunTemporalExtract) {
         temporalResult = await runTemporalExtractPass({ context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length });
       }
       if (isManual) {
-        const temporalMsg = settings.config.temporalExtractEnabled !== false
+        const temporalMsg = shouldRunTemporalExtract
           ? ' / 중요 장면 ' + ((temporalResult && temporalResult.count) || 0) + '개'
           : '';
         const baseMsg = generalCount > 0
@@ -1269,7 +1271,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         if (status === 'empty') report.empty++; else report.ok++;
         report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount });
         // Phase 11: per-batch temporal pass so batch extraction also harvests timeline events.
-        if (settings.config.temporalExtractEnabled !== false) {
+        if (settings.config.temporalExtractEnabled !== false && settings.config.temporalExtractBatchEnabled === true) {
           try {
             const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
               model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
@@ -1370,7 +1372,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     if (settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false && report.entriesAdded > 0) {
       try {
         const epName = await getAutoExtPackForUrl(_url);
-        extBadgeShow('에리가 임베딩 갱신 중');
+        extBadgeShow('에리가 검색 준비 중');
         const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
           ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
           : {

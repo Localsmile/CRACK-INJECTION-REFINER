@@ -92,7 +92,7 @@
           const modeWrap = document.createElement('div'); modeWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
           const modeLbl = document.createElement('div'); modeLbl.textContent = '로어 검색 모드'; modeLbl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
           const modeSel = document.createElement('select'); modeSel.style.cssText = 'width:160px;padding:4px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
-          [{v:'matchedOnly', l:'키워드 매칭만'}, {v:'semantic', l:'임베딩 (의미 검색)'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; modeSel.appendChild(opt); });
+          [{v:'matchedOnly', l:'키워드 매칭만'}, {v:'semantic', l:'의미 검색'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; modeSel.appendChild(opt); });
           modeSel.value = settings.config.refinerLoreMode || 'matchedOnly';
           modeSel.onchange = () => { settings.config.refinerLoreMode = modeSel.value; settings.save(); };
           modeWrap.appendChild(modeLbl); modeWrap.appendChild(modeSel); nd.appendChild(modeWrap);

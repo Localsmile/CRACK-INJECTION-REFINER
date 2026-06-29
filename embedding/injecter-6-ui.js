@@ -29,12 +29,12 @@
     if (document.getElementById('lore-inj-boot-error')) return;
     const btn = document.createElement('button');
     btn.id = 'lore-inj-boot-error';
-    btn.textContent = 'Lore Injector 로딩 진단';
+    btn.textContent = '로어 도구 로딩 오류';
     btn.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:999999;background:#833;color:#fff;border:0;border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.35);';
     btn.onclick = () => {
       const L = _w.__LoreInj || {};
       const payload = { gate, moduleStatus: L.moduleStatus || {}, missingSubs: L.missingSubs || [], menuOrder: L.__menuOrder || null, route: L.route || null };
-      alert(JSON.stringify(payload, null, 2).slice(0, 3000));
+      alert(('로어 도구 일부가 아직 준비되지 않았습니다. 페이지를 새로고침한 뒤 다시 열어 주세요.\n\n상세 정보:\n' + JSON.stringify(payload, null, 2)).slice(0, 3000));
     };
     document.body.appendChild(btn);
   }
@@ -84,6 +84,8 @@
 
   const { C, R, settings } = _w.__LoreInj;
   const VER = _w.__LoreInj.VER;
+  const ENTRY_BUTTON_ID = 'lore-inj-entry-button';
+  const ENTRY_BUTTON_CLASS = 'burner-button lore-inj-entry-button';
 
   // ModalManager 해결
   const MM = await waitForModalManager(10000);
@@ -109,6 +111,67 @@
     _w.__LoreInj.setupSubMenus(modal);
   }
 
+  function openLoreModal() {
+    MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+  }
+
+  function isElementVisible(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden';
+  }
+
+  function visibleButtonLikes(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    return Array.from(scope.querySelectorAll('button,a,[role="button"]')).filter(isElementVisible);
+  }
+
+  function createEntryButton() {
+    const btn = document.createElement('button');
+    btn.id = ENTRY_BUTTON_ID;
+    btn.type = 'button';
+    btn.className = ENTRY_BUTTON_CLASS;
+    btn.textContent = 'Lore';
+    btn.title = '로어 인젝터 열기';
+    btn.setAttribute('aria-label', '로어 인젝터 열기');
+    btn.style.cssText = [
+      'height:32px',
+      'min-width:0',
+      'padding:0 10px',
+      'border:1px solid rgba(127,127,127,.35)',
+      'border-radius:999px',
+      'background:rgba(127,127,127,.08)',
+      'color:inherit',
+      'font-size:12px',
+      'font-weight:700',
+      'line-height:1',
+      'display:inline-flex',
+      'align-items:center',
+      'justify-content:center',
+      'white-space:nowrap',
+      'cursor:pointer',
+      'margin-right:6px',
+      'box-sizing:border-box'
+    ].join(';');
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openLoreModal();
+    });
+    return btn;
+  }
+
+  function mountEntryButton(target) {
+    if (!target || !target.host || document.getElementById(ENTRY_BUTTON_ID)) return false;
+    const btn = createEntryButton();
+    const before = target.before && target.before.parentElement === target.host ? target.before : null;
+    if (before) target.host.insertBefore(btn, before);
+    else target.host.appendChild(btn);
+    return true;
+  }
+
   // === DOM 진입점 ===
   // 1) 좌측 설정 메뉴에 "결정화 캐즘" 링크 추가
   function __updateModalMenu() {
@@ -124,7 +187,7 @@
           clonedElement.setAttribute('href', 'javascript: void(0)');
           clonedElement.onclick = (event) => {
             event.preventDefault(); event.stopPropagation();
-            MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+            openLoreModal();
           };
           item.parentElement?.append(clonedElement);
           break;
@@ -133,27 +196,82 @@
     }
   }
 
-  // 2) 채팅창 상단 패널에 "🔥 Chasm Tools" 버튼 삽입
-  async function injectBannerButton() {
-    const selected = document.getElementsByClassName('burner-button');
-    if (selected && selected.length > 0) return;
+  function findLegacyBannerTarget() {
+    const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
+    const topPanel = document.getElementsByClassName(isStory ? 'css-1c5w7et' : 'css-l8r172');
+    if (!topPanel || topPanel.length <= 0) return null;
     try {
-      const isStory = /\/stories\/[a-f0-9]+\/episodes\/[a-f0-9]+/.test(location.pathname) || /\/u\/[a-f0-9]+\/c\/[a-f0-9]+/.test(location.pathname);
-      const topPanel = document.getElementsByClassName(isStory ? 'css-1c5w7et' : 'css-l8r172');
-      if (topPanel && topPanel.length > 0) {
-        const topContainer = topPanel[0].childNodes[topPanel.length - 1]?.getElementsByTagName('div');
-        if (!topContainer || topContainer.length <= 0) return;
-        const topList = topContainer[0].children[0].children;
-        const top = topList[topList.length - 1];
-        if (!top) return;
-        const buttonCloned = document.createElement('button');
-        buttonCloned.innerHTML = '<p></p>'; buttonCloned.style.cssText = 'margin-right: 10px'; buttonCloned.className = 'burner-button';
-        const textNode = buttonCloned.getElementsByTagName('p');
-        top.insertBefore(buttonCloned, top.childNodes[0]); textNode[0].innerText = '🔥  Chasm Tools';
-        buttonCloned.removeAttribute('onClick');
-        buttonCloned.addEventListener('click', () => { MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light'); });
+      const topContainer = topPanel[0].childNodes[topPanel.length - 1]?.getElementsByTagName('div');
+      if (!topContainer || topContainer.length <= 0) return null;
+      const topList = topContainer[0].children[0].children;
+      const top = topList[topList.length - 1];
+      return top ? { host: top, before: top.childNodes[0] || null } : null;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function findModernHeaderTarget() {
+    const minLeft = Math.max(260, Math.floor(window.innerWidth * 0.35));
+    const controls = visibleButtonLikes(document)
+      .filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.top >= 48 && r.top <= 125 && r.left >= minLeft && r.right <= window.innerWidth + 8;
+      })
+      .sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right);
+
+    for (const control of controls) {
+      let node = control.parentElement;
+      while (node && node !== document.body) {
+        const r = node.getBoundingClientRect();
+        if (r.top >= 40 && r.top <= 130 && r.height >= 28 && r.height <= 72 &&
+            r.width > 28 && r.width <= Math.min(620, window.innerWidth * 0.5) &&
+            r.right >= window.innerWidth * 0.55) {
+          const childControls = visibleButtonLikes(node)
+            .filter(child => {
+              const cr = child.getBoundingClientRect();
+              return cr.top >= 40 && cr.top <= 130;
+            })
+            .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+          if (childControls.length > 0) return { host: node, before: childControls[0] };
+        }
+        node = node.parentElement;
       }
-    } catch(e) {}
+    }
+    return null;
+  }
+
+  function findComposerToolbarTarget() {
+    const editors = Array.from(document.querySelectorAll('[contenteditable="true"], .ProseMirror'))
+      .filter(isElementVisible)
+      .sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+    for (const editor of editors) {
+      let node = editor.parentElement;
+      while (node && node !== document.body) {
+        const r = node.getBoundingClientRect();
+        if (r.bottom >= window.innerHeight - 160 && r.height <= 220 && r.width >= 280) {
+          const bottomControls = visibleButtonLikes(node)
+            .filter(child => child.getBoundingClientRect().top >= editor.getBoundingClientRect().bottom - 4)
+            .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+          if (bottomControls.length > 0) return { host: bottomControls[0].parentElement || node, before: bottomControls[0] };
+        }
+        node = node.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // 2) 채팅창 헤더/입력 영역에 컴팩트 진입 버튼 삽입
+  async function injectBannerButton() {
+    if (document.getElementById(ENTRY_BUTTON_ID)) return;
+    const targets = [
+      findLegacyBannerTarget(),
+      findModernHeaderTarget(),
+      findComposerToolbarTarget()
+    ];
+    for (const target of targets) {
+      if (mountEntryButton(target)) return;
+    }
   }
 
   async function doInjection() {

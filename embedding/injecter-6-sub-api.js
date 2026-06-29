@@ -298,8 +298,8 @@
             dss.value = settings.config.autoExtDeepSeekReasoning || 'high';
             dss.onchange = () => { settings.config.autoExtDeepSeekReasoning = dss.value; settings.save(); };
             nd.appendChild(dss);
-            const embNote = document.createElement('div'); embNote.textContent = '의미 검색/임베딩은 Gemini API 키 사용함.'; embNote.style.cssText = 'font-size:11px;color:#d96;margin:8px 0;line-height:1.4;'; nd.appendChild(embNote);
-            addSimpleInput(nd, '임베딩용 Gemini API 키', settings.config.autoExtFirebaseEmbedKey || '', (v) => { settings.config.autoExtFirebaseEmbedKey = v; settings.save(); }, { placeholder: 'AIza...' });
+            const embNote = document.createElement('div'); embNote.textContent = '의미 검색 준비에는 Gemini API 키를 사용함.'; embNote.style.cssText = 'font-size:11px;color:#d96;margin:8px 0;line-height:1.4;'; nd.appendChild(embNote);
+            addSimpleInput(nd, '의미 검색용 Gemini API 키', settings.config.autoExtFirebaseEmbedKey || '', (v) => { settings.config.autoExtFirebaseEmbedKey = v; settings.save(); }, { placeholder: 'AIza...' });
           } else {
             C.createApiInput(settings.config, 'autoExt', nd, () => settings.save());
           }

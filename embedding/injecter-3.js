@@ -350,7 +350,7 @@
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
-    temporalExtractEnabled: true, temporalExtractMode: 'after_general', temporalCriticEnabled: false, temporalMaxEventsPerPass: 5,
+    temporalExtractEnabled: true, temporalExtractAutoEnabled: false, temporalExtractBatchEnabled: false, temporalExtractMode: 'after_general', temporalCriticEnabled: false, temporalMaxEventsPerPass: 5,
     temporalExtractPrompt: DEFAULT_TEMPORAL_EXTRACT_PROMPT, temporalExtractSchema: DEFAULT_TEMPORAL_EXTRACT_SCHEMA,
     timelineRetrievalEnabled: true, timelineRecallWeight: 0.32, timelineNoCuePenalty: 0.35, timelineRecallPoolLimit: 12,
     temporalInjectionEnabled: true, temporalRecallChars: 450, temporalRecallNaturalChars: 260,
@@ -746,15 +746,15 @@
         status.staleEmbeddingsRemoved = clean.removed || 0;
       }
       status.message = status.oldFormatDetected
-        ? 'Old lore format detected and locally migrated. Review recommended.'
-        : 'Local migration check complete.';
+        ? '이전 형식의 로어를 현재 방식에 맞게 정리했습니다.'
+        : '로어 상태 점검 완료.';
       settings.config.localMigrationVersion = target;
       settings.config.migrationStatus = status;
       settings.save();
       _ls.setItem('lore-local-migration-version', target);
       _ls.setItem('lore-local-migration-status', JSON.stringify(status));
     } catch (e) {
-      status.message = 'Local migration failed: ' + (e.message || String(e));
+      status.message = '로어 상태 점검 실패: ' + (e.message || String(e));
       settings.config.migrationStatus = status;
       settings.save();
       console.warn('[LoreInj:migration] failed:', e);
@@ -1013,10 +1013,10 @@
     const cfg = config || settings.config || {};
     if (purpose === 'embed') {
       if ((cfg.autoExtApiType || 'key') === 'deepseek') {
-        return cfg.autoExtFirebaseEmbedKey ? '' : '임베딩용 Gemini API 키 필요.';
+        return cfg.autoExtFirebaseEmbedKey ? '' : '의미 검색용 Gemini API 키 필요.';
       }
       if ((cfg.autoExtApiType || 'key') === 'vertex') return cfg.autoExtVertexJson ? '' : 'Vertex JSON 필요.';
-      if ((cfg.autoExtApiType || 'key') === 'firebase') return cfg.autoExtFirebaseEmbedKey ? '' : '임베딩용 Gemini API 키 필요.';
+      if ((cfg.autoExtApiType || 'key') === 'firebase') return cfg.autoExtFirebaseEmbedKey ? '' : '의미 검색용 Gemini API 키 필요.';
       return cfg.autoExtKey ? '' : 'Gemini API 키 필요.';
     }
     const apiType = cfg.autoExtApiType || 'key';

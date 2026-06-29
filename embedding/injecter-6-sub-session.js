@@ -8,6 +8,14 @@
   
   const { C, db, settings, getChatKey, getTurnCounter, getCooldownMap, isEntryEnabledForUrl } = _w.__LoreInj;
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
+
+  function userMigrationMessage(msg) {
+    const text = String(msg || '');
+    if (/Local migration check complete/i.test(text)) return '로어 상태 점검 완료.';
+    if (/Old lore format detected/i.test(text)) return '이전 형식의 로어를 현재 방식에 맞게 정리했습니다.';
+    if (/Local migration failed/i.test(text)) return text.replace(/Local migration failed/i, '로어 상태 점검 실패');
+    return text;
+  }
   
   _w.__LoreInj.registerSubMenu('session', function(modal) {
     modal.createSubMenu('세션 상태 관리', (m) => {
@@ -77,7 +85,7 @@
             const migBox = document.createElement('div');
             const ok = !/failed/i.test(mig.message);
             migBox.style.cssText = `margin-bottom:10px;padding:8px;border-radius:6px;border:1px solid ${ok ? '#285' : '#833'};background:#111;color:#ccc;font-size:11px;line-height:1.5;`;
-            migBox.textContent = `마이그레이션: ${mig.message} / 엔트리 ${mig.migratedEntries || 0}개 정리 / stale embedding ${mig.staleEmbeddingsRemoved || 0}개 삭제`;
+            migBox.textContent = `로어 점검: ${userMigrationMessage(mig.message)} / 로어 ${mig.migratedEntries || 0}개 정리 / 검색 준비 ${mig.staleEmbeddingsRemoved || 0}개 갱신`;
             nd.appendChild(migBox);
           }
   

@@ -154,6 +154,7 @@
       packs: Array.from(packNames).sort(),
       entryCount: entries.length,
       embeddingCount: Array.isArray(db.embeddings) ? db.embeddings.length : 0,
+      embeddingExcluded: !!backup.embeddingExcluded,
       settingCount: backup.settings ? Object.keys(backup.settings).length : 0,
       localStorageCount: backup.localStorage ? Object.keys(backup.localStorage).length : 0
     };
@@ -278,6 +279,49 @@
     return B.importFullBackup(data, mode, { includeSecrets, importSettings: mode === 'replace', conflictPlan });
   }
 
+  function formatEmbedRestoreSuffix(result) {
+    if (!result) return '';
+    if (result.skipped) return result.reason ? (' / 검색 준비 생략: ' + result.reason.replace('임베딩용', '의미 검색용')) : '';
+    if (result.failed) return ' / 검색 준비 실패: ' + result.error;
+    return ' / 검색 준비 ' + (result.count || 0) + '개 완료';
+  }
+
+  async function embedRestoredPacks(report, statusEl) {
+    const packs = Array.from(new Set(((report && report.touchedPacks) || []).filter(Boolean)));
+    if (!packs.length) return { skipped: true, reason: '복원된 로어팩 없음' };
+    const missing = typeof _w.__LoreInj.getApiMissingReason === 'function'
+      ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed')
+      : '';
+    if (missing) return { skipped: true, reason: missing };
+    if (!C || typeof C.embedPack !== 'function') return { skipped: true, reason: '검색 준비 기능을 찾을 수 없음' };
+    const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'serverRestoreEmbed', chatKey: 'global' })
+      : {
+        apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'),
+        key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey,
+        vertexJson: settings.config.autoExtVertexJson,
+        vertexLocation: settings.config.autoExtVertexLocation || 'global',
+        vertexProjectId: settings.config.autoExtVertexProjectId,
+        firebaseScript: settings.config.autoExtFirebaseScript,
+        firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+        model: settings.config.embeddingModel || 'gemini-embedding-001',
+        costContext: { feature: 'serverRestoreEmbed', chatKey: 'global' }
+      };
+    let count = 0;
+    try {
+      for (let i = 0; i < packs.length; i++) {
+        const packName = packs[i];
+        setInlineStatus(statusEl, '검색 준비 중: ' + packName + ' (' + (i + 1) + '/' + packs.length + ')', '#8bc');
+        count += await C.embedPack(packName, apiOpts, (done, total) => {
+          setInlineStatus(statusEl, '검색 준비 중: ' + packName + ' ' + done + '/' + total, '#8bc');
+        });
+      }
+      return { packs: packs.length, count };
+    } catch (e) {
+      return { failed: true, error: e.message || String(e), packs: packs.length, count };
+    }
+  }
+
   function renderBackupUI(panel) {
     restoreStoredSession();
     panel.addBoxedField('', '', { onInit: (nd) => {
@@ -334,7 +378,7 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div'); title.textContent = '서버 동기화'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 수동 저장/가져오기만 지원함.');
+      addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 서버에는 로어 본문만 저장하고, 복원 후 필요한 로어팩만 다시 검색 준비함.');
       const cfg = getCfg();
       const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid #292929;border-radius:6px;background:#111;padding:10px;margin-top:10px;';
       const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
@@ -408,7 +452,8 @@
             row.type = 'button';
             row.style.cssText = 'width:100%;text-align:left;border:1px solid #333;background:#111;color:#ccc;border-radius:4px;padding:8px;cursor:pointer;';
             const label = meta ? ((meta.packs || []).slice(0, 4).join(', ') || '로어팩 없음') : (item.title || item.backupId);
-            row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개 / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
+            const embLabel = meta && meta.embeddingExcluded ? ' / 검색 준비는 복원 후 생성' : (meta ? ' / 검색 준비 ' + (meta.embeddingCount || 0) + '개' : '');
+            row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
             row.onclick = () => {
               selected = item;
               Array.from(listBox.children).forEach(x => x.style.borderColor = '#333');
@@ -497,7 +542,7 @@
           const list = await apiList();
           if ((list.items || []).length >= 10) throw new Error('서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.');
           setInlineStatus(workStatus, '현재 백업 만드는 중...', '#8bc');
-          const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true });
+          const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true, includeEmbeddings: false });
           const meta = backupSummary(data);
           setInlineStatus(workStatus, '백업 암호화 중...', '#8bc');
           const payload = await encryptJson(data, serverSession.userId, activePassword);
@@ -516,14 +561,22 @@
         setInlineStatus(workStatus, '백업 복호화 중...', '#8bc');
         const data = await decryptJson(res.payload, serverSession.userId, activePassword);
         setInlineStatus(workStatus, mode === 'replace' ? '교체 복원 처리 중...' : '병합 처리 중...', '#8bc');
-        return importBackupWithMode(data, mode, false);
+        const report = await importBackupWithMode(data, mode, false);
+        if (!report) return null;
+        const embedReport = await embedRestoredPacks(report, workStatus);
+        return { report, embedReport };
       };
       mergeBtn.onclick = async () => {
         const done = beginServerWork(mergeBtn, '병합 중...', '서버 병합 준비 중...');
         if (!done) return;
         try {
-          const report = await pullSelected('merge');
-          if (report) { done('서버 병합 완료. 로어 ' + report.entries + '개.', '#8a9'); alert('서버 병합 완료: 로어 ' + report.entries + '개'); }
+          const result = await pullSelected('merge');
+          if (result) {
+            const report = result.report;
+            const embedMsg = formatEmbedRestoreSuffix(result.embedReport);
+            done('서버 병합 완료. 로어 ' + report.entries + '개' + embedMsg + '.', '#8a9');
+            alert('서버 병합 완료: 로어 ' + report.entries + '개' + embedMsg);
+          }
           else done('서버 병합 취소됨.', '#d8a');
         } catch (e) { done('서버 병합 실패: ' + e.message, '#d88'); alert('서버 병합 실패: ' + e.message); }
       };
@@ -532,8 +585,13 @@
         const done = beginServerWork(replaceBtn, '교체 중...', '서버 교체 복원 준비 중...');
         if (!done) return;
         try {
-          const report = await pullSelected('replace');
-          if (report) { done('서버 교체 복원 완료. 로어 ' + report.entries + '개.', '#8a9'); alert('서버 교체 복원 완료: 로어 ' + report.entries + '개'); }
+          const result = await pullSelected('replace');
+          if (result) {
+            const report = result.report;
+            const embedMsg = formatEmbedRestoreSuffix(result.embedReport);
+            done('서버 교체 복원 완료. 로어 ' + report.entries + '개' + embedMsg + '.', '#8a9');
+            alert('서버 교체 복원 완료: 로어 ' + report.entries + '개' + embedMsg);
+          }
           else done('서버 교체 복원 취소됨.', '#d8a');
         } catch (e) { done('서버 교체 복원 실패: ' + e.message, '#d88'); alert('서버 교체 복원 실패: ' + e.message); }
       };

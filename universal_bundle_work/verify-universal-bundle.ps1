@@ -39,7 +39,7 @@ $markers = @(
   '__searchLoaded', '__embeddingLoaded', '__pricingLoaded', '__importerLoaded',
   '__interceptorLoaded', '__constLoaded', '__settingsLoaded', '__extractLoaded',
   '__injectLoaded', '__inject6Loaded', '__subMainLoaded', '__subLoreLoaded',
-  '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subExtractLoaded',
+  '__subMergeLoaded', '__subSnapshotLoaded', '__subFileLoaded', '__subBackupLoaded', '__subExtractLoaded',
   '__subRefinerLoaded', '__subLogLoaded', '__subSessionLoaded', '__subApiLoaded',
   '__subHelpLoaded'
 )
@@ -47,7 +47,7 @@ foreach ($m in $markers) {
   Assert-True ($bundle.Contains($m)) "missing loaded marker: $m"
 }
 
-$menus = @('main','lore','file','extract','merge','snapshot','refiner','log','session','api','help')
+$menus = @('main','lore','file','backup','extract','merge','snapshot','refiner','log','session','api','help')
 foreach ($m in $menus) {
   Assert-True ($bundle.Contains("registerSubMenu('$m'") -or $bundle.Contains("registerSubMenu(`"$m`"") -or $bundle.Contains("registerMenu('$m'") -or $bundle.Contains("registerMenu(`"$m`"")) "missing menu registration: $m"
 }

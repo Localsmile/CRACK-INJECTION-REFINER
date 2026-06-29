@@ -116,7 +116,7 @@ foreach ($rel in @($manifest.modules)) {
 }
 
 $requiredCore = @("'__interceptorLoaded'", "'__constLoaded'", "'__settingsLoaded'", "'__extractLoaded'", "'__injectLoaded'", "'__inject6Loaded'") -join ', '
-$requiredSubs = @("'__subMainLoaded'", "'__subLoreLoaded'", "'__subMergeLoaded'", "'__subSnapshotLoaded'", "'__subFileLoaded'", "'__subExtractLoaded'", "'__subRefinerLoaded'", "'__subLogLoaded'", "'__subSessionLoaded'", "'__subApiLoaded'", "'__subHelpLoaded'") -join ', '
+$requiredSubs = @("'__subMainLoaded'", "'__subLoreLoaded'", "'__subMergeLoaded'", "'__subSnapshotLoaded'", "'__subFileLoaded'", "'__subBackupLoaded'", "'__subExtractLoaded'", "'__subRefinerLoaded'", "'__subLogLoaded'", "'__subSessionLoaded'", "'__subApiLoaded'", "'__subHelpLoaded'") -join ', '
 
 $gate = @"
 

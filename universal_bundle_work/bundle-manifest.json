@@ -36,6 +36,7 @@
     "embedding/injecter-6-sub-merge.js",
     "embedding/injecter-6-sub-snapshot.js",
     "embedding/injecter-6-sub-file.js",
+    "embedding/injecter-6-sub-backup.js",
     "embedding/injecter-6-sub-extract.js",
     "embedding/injecter-6-sub-refiner.js",
     "embedding/injecter-6-sub-log.js",
@@ -45,4 +46,3 @@
     "embedding/injecter-6-ui.js"
   ]
 }
-

@@ -200,7 +200,7 @@
               if (estCalls) subParts.push('추정 ' + estCalls);
               subSpan.textContent = ' (' + subParts.join(' · ') + ')';
   
-              const featureLabels = { autoExtract:'자동추출', batchExtract:'배치추출', temporalExtract:'시간축추출', urlImport:'URL 가져오기', textImport:'텍스트 변환', refine:'교정', rerank:'리랭킹', judge:'판단 AI', embed:'임베딩', apiTest:'API 테스트' };
+              const featureLabels = { autoExtract:'자동추출', batchExtract:'전체추출', temporalExtract:'장면 기억', urlImport:'URL 가져오기', textImport:'텍스트 변환', refine:'교정', rerank:'리랭킹', judge:'판단 AI', embed:'검색 준비', apiTest:'API 테스트' };
               const renderTable = (title, bucket, keyLabel, labelMap) => {
                 const rows = Object.entries(bucket).sort((a, b) => (b[1].usd - a[1].usd) || (b[1].calls - a[1].calls));
                 if (!rows.length) return '';

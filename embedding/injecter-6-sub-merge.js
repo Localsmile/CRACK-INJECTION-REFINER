@@ -98,7 +98,7 @@
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           const t = document.createElement('div'); t.textContent = '중복 로어 병합'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:4px;'; nd.appendChild(t);
-          const d = document.createElement('div'); d.innerHTML = '임베딩 유사도로 중복 후보를 찾아 그룹별 수동 승인. 캐릭터/관계/약속/장소/사건처럼 대분류가 다른 로어는 유사해도 한 엔트리로 접지 않고 같은 대분류 안에서만 병합 후보를 만든다.<br><span style="color:#da8;">※ 현재 페이지에서 활성화(ON)된 팩의 엔트리만 대상 — 다른 페이지나 비활성 팩의 로어는 건드리지 않음.</span>'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
+          const d = document.createElement('div'); d.innerHTML = '의미 검색 유사도로 중복 후보를 찾아 그룹별로 확인함. 캐릭터/관계/약속/장소/사건처럼 대분류가 다른 로어는 유사해도 한 항목으로 합치지 않고 같은 대분류 안에서만 후보로 묶음.<br><span style="color:#da8;">현재 페이지에서 켠 팩의 로어만 대상으로 함. 다른 페이지나 꺼진 팩의 로어는 건드리지 않음.</span>'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
 
           const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const mk = (label, getter, setter, min, max, step) => {
@@ -134,7 +134,7 @@
                 embMap[eb.entryId] = eb.vector;
               }
               const withEmb = entries.filter(e => embMap[e.id]);
-              if (withEmb.length < 2) { runStatus.textContent = '임베딩 있는 엔트리 2개 미만. 먼저 파일 탭에서 임베딩 생성 필요.'; runStatus.style.color = '#d66'; return; }
+              if (withEmb.length < 2) { runStatus.textContent = '검색 준비된 로어가 2개 미만입니다. 파일 탭에서 검색 준비를 먼저 실행하세요.'; runStatus.style.color = '#d66'; return; }
               const cos = (a, b) => { let d = 0, na = 0, nb = 0; const L = Math.min(a.length, b.length); for (let i = 0; i < L; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return d / ((Math.sqrt(na) * Math.sqrt(nb)) || 1); };
               // v1.4.0-test.40 B12 fix: union-find path compression을 재귀 → 반복문으로 전환.
               //   대규모 로어 DB(수천 건)에서 긴 체인 형성 시 스택 오버플로우 위험 제거.
@@ -308,9 +308,9 @@
                     : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
                   const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
                   const hasApi = !miss;
-                  if (hasApi) { await C.ensureEmbedding(finalEntry, apiOpts); embedMsg = '임베딩 재생성 완료.'; }
-                  else { embedMsg = 'API 미설정 — 파일 탭에서 수동 임베딩 필요.'; }
-                } catch(embErr) { embedMsg = '임베딩 재생성 실패: ' + (embErr.message || embErr); }
+                  if (hasApi) { await C.ensureEmbedding(finalEntry, apiOpts); embedMsg = '검색 준비 갱신 완료.'; }
+                  else { embedMsg = 'API 미설정 - 파일 탭에서 검색 준비를 수동 실행하세요.'; }
+                } catch(embErr) { embedMsg = '검색 준비 갱신 실패: ' + (embErr.message || embErr); }
                 alert('병합 완료. ' + embedMsg);
                 m.replaceContentPanel(renderMerge, '로어 병합');
               } catch(e) { alert('실패: ' + e.message); }
