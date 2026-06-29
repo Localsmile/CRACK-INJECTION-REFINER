@@ -2,7 +2,7 @@
 // @name        에리의 크랙 로어 인젝터 (Universal)
 // @namespace   에리의 크랙 로어 인젝터
 // @version     1.4.0-universal.1
-// @description 단일 번들로 로드 안정성을 높인 범용 로어 인젝터
+// @description 에리를 죽인 크랙을 때린다
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/stories/*/episodes/*
 // @match       https://crack.wrtn.ai/characters/*/chats/*
