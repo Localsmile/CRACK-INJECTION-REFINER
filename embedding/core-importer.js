@@ -71,6 +71,9 @@
     if (out.deepSeekThinking === undefined) out.deepSeekThinking = liveCfg.autoExtDeepSeekThinking !== false;
     if (!out.deepSeekReasoning && liveCfg.autoExtDeepSeekReasoning) out.deepSeekReasoning = liveCfg.autoExtDeepSeekReasoning;
     if (!out.deepSeekJsonSystemPrompt && liveCfg.deepSeekJsonSystemPrompt) out.deepSeekJsonSystemPrompt = liveCfg.deepSeekJsonSystemPrompt;
+    if (!out.importPrompt && liveCfg.importPrompt) out.importPrompt = liveCfg.importPrompt;
+    if (!out.importSchema && liveCfg.importSchema) out.importSchema = liveCfg.importSchema;
+    if (out.deepSeekPromptOverridesEnabled === undefined) out.deepSeekPromptOverridesEnabled = liveCfg.deepSeekPromptOverridesEnabled !== false;
     if (!out.deepSeekImportPrompt && _w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.getActiveTemplate) {
       try {
         const activeTpl = _w.__LoreInj.settings.getActiveTemplate();
@@ -176,7 +179,7 @@
   const DEEPSEEK_IMPORT_MAX_OUTPUT_TOKENS = 65536;
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
-    if (!apiOpts || apiOpts.apiType !== 'deepseek') return prompt;
+    if (!apiOpts || apiOpts.apiType !== 'deepseek' || apiOpts.deepSeekPromptOverridesEnabled === false) return prompt;
     const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
     if (fullPrompt) {
       return fullPrompt
@@ -216,8 +219,8 @@
     };
     for (let ci = 0; ci < chunks.length; ci++) {
       const chunk = chunks[ci];
-      const schemaText = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n');
-      const promptTpl = IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n');
+      const schemaText = String(safeApiOpts.importSchema || IMPORT_SCHEMA).replace(/<br\s*\/?>/gi, '\n');
+      const promptTpl = String(safeApiOpts.importPrompt || IMPORT_PROMPT_TEMPLATE).replace(/<br\s*\/?>/gi, '\n');
       const prompt = adaptImportPromptForProvider(
         promptTpl.replace('{source}', chunk).replace('{schema}', schemaText).replace('{maxEntries}', String(maxEntries)),
         safeApiOpts,
@@ -385,10 +388,19 @@
     return duplicates;
   }
 
+  const DEFAULT_IMPORT_PROMPT_TEXT = IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n');
+  const DEFAULT_IMPORT_SCHEMA_TEXT = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n');
+
   Object.assign(C, {
     importFromText, importFromJson, importFromUrl, detectDuplicatesInSummary,
     normalizeLoreEntry, normalizeSummaryValue, mergeLoreSummary,
+    DEFAULT_IMPORT_PROMPT: DEFAULT_IMPORT_PROMPT_TEXT,
+    DEFAULT_IMPORT_SCHEMA: DEFAULT_IMPORT_SCHEMA_TEXT,
     __importerLoaded: true
+  });
+  Object.assign(_w.__LoreInj || (_w.__LoreInj = {}), {
+    DEFAULT_IMPORT_PROMPT: DEFAULT_IMPORT_PROMPT_TEXT,
+    DEFAULT_IMPORT_SCHEMA: DEFAULT_IMPORT_SCHEMA_TEXT
   });
   console.log('[LoreCore:importer] loaded');
 })();

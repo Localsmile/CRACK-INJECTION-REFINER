@@ -47,10 +47,13 @@
 - For unchanged existing entries, output nothing.
 - Anchored entries: only append new triggers and eventHistory.`;
 
-  const UNIFIED_EXTRACT_SCHEMA = `${DEFAULT_AUTO_EXTRACT_SCHEMA}
+  function buildExtractSchema(tpl) {
+    const baseSchema = (tpl && tpl.schema) || DEFAULT_AUTO_EXTRACT_SCHEMA;
+    return `${baseSchema}
 
 Patch-mode alternative when OUTPUT MODE asks for SAVE ONLY CHANGES:
 ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
+  }
 
   const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
 - Existing important scene memories are provided as compact digests with stable "id".
@@ -595,6 +598,19 @@ DEDUP RULE:
     return fallback || '';
   }
 
+  function shouldUseDeepSeekPromptOverride(apiType) {
+    return apiType === 'deepseek' && settings.config.deepSeekPromptOverridesEnabled !== false;
+  }
+
+  function getLoreExtractPrompt(tpl, includeDb, apiType) {
+    if (shouldUseDeepSeekPromptOverride(apiType)) {
+      return includeDb
+        ? getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithDb', 'deepSeekPromptWithDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || (tpl && tpl.promptWithDb))
+        : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || (tpl && tpl.promptWithoutDb));
+    }
+    return includeDb ? tpl.promptWithDb : tpl.promptWithoutDb;
+  }
+
   async function runTemporalExtractPass(opts = {}) {
     if (settings.config.temporalExtractEnabled === false) return { count: 0, skipped: true };
     const context = opts.context || '';
@@ -606,7 +622,7 @@ DEDUP RULE:
     const skipEmbedding = !!opts.skipEmbedding;
     const isDeepSeekTemporal = apiOpts && apiOpts.apiType === 'deepseek';
     const activeTpl = settings.getActiveTemplate ? settings.getActiveTemplate() : null;
-    const promptTpl = isDeepSeekTemporal
+    const promptTpl = isDeepSeekTemporal && settings.config.deepSeekPromptOverridesEnabled !== false
       ? getDeepSeekTemplatePrompt(activeTpl, 'deepSeekTemporalExtractPrompt', 'deepSeekTemporalExtractPrompt', _w.__LoreInj.DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT || DEFAULT_TEMPORAL_EXTRACT_PROMPT)
       : (settings.config.temporalExtractPrompt || DEFAULT_TEMPORAL_EXTRACT_PROMPT);
     const baseTemporalSchema = settings.config.temporalExtractSchema || DEFAULT_TEMPORAL_EXTRACT_SCHEMA;
@@ -1074,13 +1090,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (pName) personaPrefix = `[User Persona: "${pName}"] All "user" role messages are from this character. Use "${pName}" as the character name, NOT "user".\n\n`;
     }
     const tpl = settings.getActiveTemplate();
-    const isDeepSeekExtract = apiType === 'deepseek';
-    const promptTpl = isDeepSeekExtract
-      ? (settings.config.autoExtIncludeDb
-          ? getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithDb', 'deepSeekPromptWithDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
-          : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
-      : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
-    const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
+    const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
+    const extractSchema = buildExtractSchema(tpl);
     const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
     const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 
@@ -1198,11 +1209,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       } catch(e) {}
     }
     const tpl = settings.getActiveTemplate();
-    const promptTpl = isDeepSeek
-      ? (settings.config.autoExtIncludeDb
-          ? getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithDb', 'deepSeekPromptWithDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB || tpl.promptWithDb)
-          : getDeepSeekTemplatePrompt(tpl, 'deepSeekPromptWithoutDb', 'deepSeekPromptWithoutDb', _w.__LoreInj.DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB || tpl.promptWithoutDb))
-      : (settings.config.autoExtIncludeDb ? tpl.promptWithDb : tpl.promptWithoutDb);
+    const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
 
     const _batchModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let _batchTotalElapsedMs = 0, _batchTotalUsd = 0;
@@ -1223,7 +1230,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           entriesText = buildExistingLoreContext(existing, context, 20);
         }
       }
-      const extractSchema = UNIFIED_EXTRACT_SCHEMA || tpl.schema;
+      const extractSchema = buildExtractSchema(tpl);
       const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
       const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
 

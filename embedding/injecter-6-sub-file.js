@@ -1,4 +1,4 @@
-// injecter / sub-file — 로어 관리 (파일)
+// injecter / sub-file - 로어팩 파일
 // 역할: JSON 가져오기/내보내기, 팩 활성화/비활성화, 임베딩 생성, 삭제
 // 의존: injecter-3 (settings, db, C, setPackEnabled)
 (async function(){
@@ -458,7 +458,7 @@
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   _w.__LoreInj.registerSubMenu('file', function(modal) {
-    modal.createSubMenu('로어 관리 (파일)', (m) => {
+    modal.createSubMenu('로어팩 파일', (m) => {
       const renderPackUI = async (panel) => {
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -556,7 +556,7 @@
           }
         }});
       };
-      m.replaceContentPanel(renderPackUI, '파일 관리');
+        m.replaceContentPanel(renderPackUI, '로어팩 파일');
     });
   });
 

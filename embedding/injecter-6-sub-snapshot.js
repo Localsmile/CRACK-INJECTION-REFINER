@@ -1,4 +1,4 @@
-// injecter / sub-snapshot — 로어 스냅샷 (백업)
+// injecter / sub-snapshot - 스냅샷
 // 역할: 스냅샷 목록, 복원, 삭제
 // 의존: injecter-3 (settings, db, C, restoreSnapshot)
 (async function(){
@@ -15,7 +15,7 @@
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   _w.__LoreInj.registerSubMenu('snapshot', function(modal) {
-    modal.createSubMenu('로어 스냅샷 (백업)', (m) => {
+    modal.createSubMenu('스냅샷', (m) => {
       const renderSnapshotUI = async (panel) => {
         panel.addBoxedField('', '', { onInit: async (nd) => {
           C.setFullWidth(nd);

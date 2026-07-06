@@ -125,18 +125,20 @@
 
   function addFeatureThinkingControls(nd) {
     const apiType = settings.config.autoExtApiType || 'key';
-    if (apiType === 'deepseek') return;
     const isOpenAI = apiType === 'openai';
+    const isDeepSeek = apiType === 'deepseek';
     const details = document.createElement('details');
     details.style.cssText = 'margin:12px 0;border:1px solid #292929;border-radius:6px;padding:8px;background:#080808;';
     const summary = document.createElement('summary');
-    summary.textContent = isOpenAI ? '기능별 추론 강도' : '기능별 Gemini 생각 설정';
+    summary.textContent = isOpenAI ? '기능별 추론 강도' : (isDeepSeek ? '기능별 DeepSeek 추론 설정' : '기능별 Gemini 생각 설정');
     summary.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;cursor:pointer;';
     details.appendChild(summary);
     const note = document.createElement('div');
     note.textContent = isOpenAI
       ? '기본값은 추론 파라미터를 보내지 않음. 설정을 켠 경우 호환 서버가 거부하면 자동으로 빼고 재시도함.'
-      : 'Gemini 모델별 지원값에 맞춰 적용함. 맞지 않는 모델에는 생각 설정을 보내지 않음.';
+      : (isDeepSeek
+        ? '기본값은 위 DeepSeek 추론 설정을 따름. 기능별로 끄거나 High/Max를 따로 지정할 수 있음.'
+        : 'Gemini 모델별 지원값에 맞춰 적용함. 맞지 않는 모델에는 생각 설정을 보내지 않음.');
     note.style.cssText = 'font-size:10px;color:#888;margin:8px 0;line-height:1.4;';
     details.appendChild(note);
     const grid = document.createElement('div');
@@ -144,7 +146,9 @@
     details.appendChild(grid);
     const opts = isOpenAI
       ? [['기본값', 'default'], ['보내지 않음', 'off'], ['None', 'none'], ['Minimal', 'minimal'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high'], ['XHigh', 'xhigh'], ['Max', 'max']]
-      : [['기본값', 'default'], ['끄기(2.5)', 'off'], ['최소', 'minimal'], ['낮음', 'low'], ['보통', 'medium'], ['높음', 'high'], ['예산', 'budget']];
+      : (isDeepSeek
+        ? [['기본값', 'default'], ['끄기', 'off'], ['High', 'high'], ['Max', 'max']]
+        : [['기본값', 'default'], ['끄기(2.5)', 'off'], ['최소', 'minimal'], ['낮음', 'low'], ['보통', 'medium'], ['높음', 'high'], ['예산', 'budget']]);
     const rows = [
       ['추출/정리', 'autoExt'],
       ['전체 추출', 'batchExt'],
@@ -156,7 +160,7 @@
       ['로어 병합', 'merge']
     ];
     rows.forEach(([label, key]) => {
-      const reasonKey = isOpenAI ? (key + 'OpenAIReasoning') : (key + 'Reasoning');
+      const reasonKey = isOpenAI ? (key + 'OpenAIReasoning') : (isDeepSeek ? (key + 'DeepSeekReasoning') : (key + 'Reasoning'));
       const budgetKey = key + 'Budget';
       const lab = document.createElement('div');
       lab.textContent = label;
@@ -164,16 +168,23 @@
       const sel = document.createElement('select');
       sel.style.cssText = FIELD_STYLE + 'padding:4px 6px;font-size:11px;';
       opts.forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o); });
-      sel.value = settings.config[reasonKey] || (isOpenAI ? 'off' : (key === 'autoExt' ? (settings.config.autoExtReasoning || 'medium') : 'default'));
+      sel.value = isDeepSeek && key === 'autoExt'
+        ? (settings.config.autoExtDeepSeekThinking === false ? 'off' : (settings.config.autoExtDeepSeekReasoning || 'high'))
+        : (settings.config[reasonKey] || (isOpenAI ? 'off' : (key === 'autoExt' ? (settings.config.autoExtReasoning || 'medium') : 'default')));
       const budget = document.createElement('input');
       budget.type = 'number';
       budget.min = '-1';
       budget.step = '256';
       budget.value = settings.config[budgetKey] || (key === 'autoExt' ? (settings.config.autoExtBudget || 2048) : 1024);
-      budget.style.cssText = FIELD_STYLE + 'padding:4px 6px;font-size:11px;' + ((sel.value === 'budget' && !isOpenAI) ? '' : 'visibility:hidden;');
+      budget.style.cssText = FIELD_STYLE + 'padding:4px 6px;font-size:11px;' + ((sel.value === 'budget' && !isOpenAI && !isDeepSeek) ? '' : 'visibility:hidden;');
       sel.onchange = () => {
-        settings.config[reasonKey] = sel.value;
-        budget.style.visibility = (sel.value === 'budget' && !isOpenAI) ? 'visible' : 'hidden';
+        if (isDeepSeek && key === 'autoExt') {
+          settings.config.autoExtDeepSeekThinking = sel.value !== 'off';
+          if (sel.value === 'high' || sel.value === 'max') settings.config.autoExtDeepSeekReasoning = sel.value;
+        } else {
+          settings.config[reasonKey] = sel.value;
+        }
+        budget.style.visibility = (sel.value === 'budget' && !isOpenAI && !isDeepSeek) ? 'visible' : 'hidden';
         settings.save();
       };
       budget.onchange = () => { settings.config[budgetKey] = parseInt(budget.value, 10) || 0; settings.save(); };
@@ -231,11 +242,11 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
-      title.textContent = 'Gemini 추출 프롬프트';
+      title.textContent = '공통 로어 추출 프롬프트';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       const note = document.createElement('div');
-      note.textContent = '템플릿 선택은 Gemini와 DeepSeek 프롬프트 세트에 함께 적용됨. 기본 템플릿은 직접 수정 안 됨.';
+      note.textContent = 'Gemini, OpenAI 호환, DeepSeek 공통으로 쓸 수 있는 로어 추출 템플릿. DeepSeek 전용 프롬프트를 켜면 DeepSeek만 아래 전용 템플릿을 사용함.';
       note.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;';
       nd.appendChild(note);
 
@@ -253,7 +264,7 @@
 
       const promptStyle = FIELD_STYLE + 'height:150px;font-family:monospace;resize:vertical;margin-bottom:12px;';
       const mkLabel = (txt) => { const l = document.createElement('div'); l.textContent = txt; l.style.cssText = 'font-size:12px;color:#ccc;margin-bottom:4px;'; nd.appendChild(l); };
-      mkLabel('출력 형식(JSON)');
+      mkLabel('로어 출력 구조(JSON)');
       const taSchema = document.createElement('textarea'); taSchema.style.cssText = promptStyle; nd.appendChild(taSchema);
       mkLabel('새 로어 추출 지시문');
       const ta1 = document.createElement('textarea'); ta1.style.cssText = promptStyle; nd.appendChild(ta1);
@@ -303,14 +314,69 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
-      title.textContent = 'DeepSeek 추출 프롬프트';
+      title.textContent = '장면/변환/판단 프롬프트';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       const note = document.createElement('div');
-      note.textContent = '선택한 템플릿의 DeepSeek 전용 프롬프트. 자동/수동/전체 추출, 중요 장면 추출, 지식 변환에 사용함.';
+      note.textContent = '로어 추출 외에 실제 API 호출에서 쓰는 프롬프트. 기본값으로 돌릴 수 있고, JSON 구조는 프롬프트 작성 시 참고용으로 그대로 확인 가능함.';
       note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:8px;';
       nd.appendChild(note);
+      const details = document.createElement('details');
+      details.style.cssText = 'border:1px solid #292929;border-radius:6px;padding:8px;background:#080808;';
+      const summary = document.createElement('summary');
+      summary.textContent = '고급 프롬프트 편집';
+      summary.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;cursor:pointer;';
+      details.appendChild(summary);
+      const body = document.createElement('div');
+      body.style.cssText = 'margin-top:8px;';
+      details.appendChild(body);
+      nd.appendChild(details);
       const defaults = _w.__LoreInj.defaultSettings || {};
+      addPromptArea(body, '중요 장면 추출 지시문', settings.config.temporalExtractPrompt || defaults.temporalExtractPrompt || '', (v) => {
+        settings.config.temporalExtractPrompt = v; settings.save();
+      }, { height: 170, reset: () => defaults.temporalExtractPrompt || '' });
+      addPromptArea(body, '중요 장면 출력 구조(JSON)', settings.config.temporalExtractSchema || defaults.temporalExtractSchema || '', (v) => {
+        settings.config.temporalExtractSchema = v; settings.save();
+      }, { height: 150, reset: () => defaults.temporalExtractSchema || '' });
+      addPromptArea(body, '지식 변환 지시문', settings.config.importPrompt || defaults.importPrompt || '', (v) => {
+        settings.config.importPrompt = v; settings.save();
+      }, { height: 190, reset: () => defaults.importPrompt || '' });
+      addPromptArea(body, '지식 변환 출력 구조(JSON)', settings.config.importSchema || defaults.importSchema || '', (v) => {
+        settings.config.importSchema = v; settings.save();
+      }, { height: 150, reset: () => defaults.importSchema || '' });
+      addPromptArea(body, '과거 장면 판단 지시문', settings.config.temporalRecallJudgePrompt || defaults.temporalRecallJudgePrompt || '', (v) => {
+        settings.config.temporalRecallJudgePrompt = v; settings.save();
+      }, { height: 150, reset: () => defaults.temporalRecallJudgePrompt || '' });
+      addPromptArea(body, '과거 장면 판단 출력 구조(JSON)', settings.config.temporalRecallJudgeSchema || defaults.temporalRecallJudgeSchema || '', (v) => {
+        settings.config.temporalRecallJudgeSchema = v; settings.save();
+      }, { height: 120, reset: () => defaults.temporalRecallJudgeSchema || '' });
+    }});
+
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      const title = document.createElement('div');
+      title.textContent = 'DeepSeek 전용 프롬프트';
+      title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
+      nd.appendChild(title);
+      const note = document.createElement('div');
+      note.textContent = 'DeepSeek에서 JSON 객체 출력을 더 강하게 요구할 때 쓰는 전용값. 끄면 DeepSeek도 위 공통 프롬프트를 사용하고, JSON 객체 보정은 호출 직전에 자동으로 붙음.';
+      note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;margin-bottom:8px;';
+      nd.appendChild(note);
+      nd.appendChild(C.createToggleRow('DeepSeek 전용 프롬프트 사용', '끄면 로어 추출, 중요 장면, 지식 변환도 공통 프롬프트를 사용함.', settings.config.deepSeekPromptOverridesEnabled !== false, (v) => { settings.config.deepSeekPromptOverridesEnabled = v; settings.save(); }));
+      const dsDetails = document.createElement('details');
+      dsDetails.style.cssText = 'border:1px solid #292929;border-radius:6px;padding:8px;background:#080808;margin-top:8px;';
+      const dsSummary = document.createElement('summary');
+      dsSummary.textContent = 'DeepSeek 전용값 편집';
+      dsSummary.style.cssText = 'font-size:12px;color:#ccc;font-weight:bold;cursor:pointer;';
+      dsDetails.appendChild(dsSummary);
+      const dsBody = document.createElement('div');
+      dsBody.style.cssText = 'margin-top:8px;';
+      dsDetails.appendChild(dsBody);
+      nd.appendChild(dsDetails);
+      const defaults = _w.__LoreInj.defaultSettings || {};
+      addPromptArea(dsBody, 'DeepSeek JSON 응답 보정 지시문', settings.config.deepSeekJsonSystemPrompt || defaults.deepSeekJsonSystemPrompt || '', (v) => {
+        settings.config.deepSeekJsonSystemPrompt = v; settings.save();
+      }, { height: 90, reset: () => defaults.deepSeekJsonSystemPrompt || '' });
       const saveDeepSeekTpl = (key, val) => {
         const id = settings.config.activeTemplateId || 'default';
         const idx = (settings.config.templates || []).findIndex(t => t.id === id);
@@ -319,16 +385,16 @@
           settings.save();
         }
       };
-      const ds1 = addPromptArea(nd, '새 로어 추출 전체 프롬프트', '', (v) => {
+      const ds1 = addPromptArea(dsBody, '새 로어 추출 전체 프롬프트', '', (v) => {
         saveDeepSeekTpl('deepSeekPromptWithoutDb', v);
       }, { height: 190, reset: () => defaults.deepSeekPromptWithoutDb || '' });
-      const ds2 = addPromptArea(nd, '기존 로어 참고 전체 프롬프트', '', (v) => {
+      const ds2 = addPromptArea(dsBody, '기존 로어 참고 전체 프롬프트', '', (v) => {
         saveDeepSeekTpl('deepSeekPromptWithDb', v);
       }, { height: 230, reset: () => defaults.deepSeekPromptWithDb || '' });
-      const ds3 = addPromptArea(nd, '중요 장면 전체 프롬프트', '', (v) => {
+      const ds3 = addPromptArea(dsBody, '중요 장면 전체 프롬프트', '', (v) => {
         saveDeepSeekTpl('deepSeekTemporalExtractPrompt', v);
       }, { height: 190, reset: () => defaults.deepSeekTemporalExtractPrompt || '' });
-      const ds4 = addPromptArea(nd, '지식 변환 전체 프롬프트', '', (v) => {
+      const ds4 = addPromptArea(dsBody, '지식 변환 전체 프롬프트', '', (v) => {
         saveDeepSeekTpl('deepSeekImportPrompt', v);
       }, { height: 190, reset: () => defaults.deepSeekImportPrompt || '' });
       renderDeepSeekOptions = () => {
@@ -367,7 +433,7 @@
           const t = document.createElement('div'); t.textContent = 'API 연결'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(t);
           const apiSummary = document.createElement('div');
           const apiTypeLabel = (settings.config.autoExtApiType || 'key') === 'deepseek' ? 'DeepSeek' : (settings.config.autoExtApiType || 'key') === 'openai' ? 'OpenAI 호환' : (settings.config.autoExtApiType || 'key') === 'vertex' ? 'Vertex JSON' : (settings.config.autoExtApiType || 'key') === 'firebase' ? 'Firebase' : 'Gemini API Key';
-          apiSummary.textContent = '현재 방식: ' + apiTypeLabel + ' · 추출/정리, 변환, 중요 장면 추출이 이 연결 사용함.';
+          apiSummary.textContent = '현재 방식: ' + apiTypeLabel + ' · 추출, 변환, 장면 판단, 후보 재정렬, 응답 교정, 병합 호출이 이 연결을 사용함.';
           apiSummary.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;';
           nd.appendChild(apiSummary);
           const providerLabel = document.createElement('div'); providerLabel.textContent = 'API 종류'; providerLabel.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(providerLabel);

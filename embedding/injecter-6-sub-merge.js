@@ -91,7 +91,7 @@
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   _w.__LoreInj.registerSubMenu('merge', function(modal) {
-    modal.createSubMenu('로어 병합 (중복 정리)', (m) => {
+    modal.createSubMenu('로어 병합', (m) => {
       const renderMerge = async (panel) => {
         const state = _w.__loreMergeState || (_w.__loreMergeState = { threshold: 0.88, maxChars: 1200, groups: null });
 

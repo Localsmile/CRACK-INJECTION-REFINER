@@ -58,7 +58,7 @@
   }
   
   _w.__LoreInj.registerSubMenu('extract', function(modal) {
-    modal.createSubMenu('추출/변환 설정', (m) => {
+    modal.createSubMenu('대화 정리/변환', (m) => {
       m.replaceContentPanel((panel) => {
         // === 자동 대화 추출 ===
         panel.addBoxedField('', '', { onInit: (nd) => {
@@ -84,16 +84,6 @@
           row1.appendChild(makeInput('자동 정리 주기', 'autoExtTurns', 8)); row1.appendChild(makeInput('읽을 최근 대화', 'autoExtScanRange', 6)); row1.appendChild(makeInput('최근 제외', 'autoExtOffset', 5)); row1.appendChild(makeInput('장면 기억 최대', 'temporalMaxEventsPerPass', 5));
           nd.appendChild(row1);
 
-          const injTitle = document.createElement('div'); injTitle.textContent = '삽입 옵션'; injTitle.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:12px 0 6px;padding-top:10px;border-top:1px solid #333;'; nd.appendChild(injTitle);
-          nd.appendChild(C.createToggleRow('삽입 쿨타임 사용', '같은 로어가 너무 자주 들어가지 않게 막음.', settings.config.cooldownEnabled !== false, (v) => { settings.config.cooldownEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('오래된 정보도 가끔 넣기', '직접 관련이 약해도 중요한 과거 정보를 주기적으로 넣음.', settings.config.periodicRecallEnabled !== false, (v) => { settings.config.periodicRecallEnabled = v; settings.config.decayEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('삽입 흔적 자동 정리', '지난 로어 참조문을 나중에 걷어내 대화 기록을 깔끔하게 유지함.', settings.config.injectionCleanupEnabled !== false, (v) => { settings.config.injectionCleanupEnabled = v; settings.save(); }));
-          const injRow = document.createElement('div'); injRow.style.cssText = 'display:flex;gap:12px;margin:8px 0 12px;align-items:center;';
-          injRow.appendChild(makeInput('삽입 쿨타임(턴)', 'cooldownTurns', 3));
-          injRow.appendChild(makeInput('한 번에 넣을 로어', 'maxEntries', 3));
-          injRow.appendChild(makeInput('삽입 흔적 정리(턴)', 'injectionCleanupTurns', 8));
-          nd.appendChild(injRow);
-  
           const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
           const f3 = document.createElement('div'); f3.style.flex = '1';
           const l3 = document.createElement('div'); l3.textContent = '저장할 로어팩'; l3.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
@@ -346,7 +336,7 @@
           };
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
-      }, '추출/변환 설정');
+      }, '대화 정리/변환');
     });
   });
   

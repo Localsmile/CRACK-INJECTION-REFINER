@@ -1,4 +1,4 @@
-// injecter-6-sub-session.js: 세션 상태 관리
+// injecter-6-sub-session.js: 현재 세션
 (async function(){
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   const _ls = _w.localStorage;
@@ -18,7 +18,7 @@
   }
   
   _w.__LoreInj.registerSubMenu('session', function(modal) {
-    modal.createSubMenu('세션 상태 관리', (m) => {
+    modal.createSubMenu('현재 세션', (m) => {
       const renderSessionStatus = async (panel) => {
         const chatKey = getChatKey();
         const turnCounter = getTurnCounter(chatKey);
@@ -70,7 +70,7 @@
 
               try { if (db.workingMemory) await db.workingMemory.delete(curUrl); } catch(_) {}
               settings.save();
-              m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+              m.replaceContentPanel(renderSessionStatus, '현재 세션');
             } catch (e) {
               console.error('[LoreInj:session] 전체 초기화 실패:', e);
               alert('세션 초기화 실패: ' + (e.message || e));
@@ -180,7 +180,7 @@
                 _ls.setItem('lore-last-mention', JSON.stringify(allMentions));
               }
               settings.save();
-              m.replaceContentPanel(renderSessionStatus, '세션 상태 관리');
+              m.replaceContentPanel(renderSessionStatus, '현재 세션');
             };
   
             row.appendChild(info);

@@ -36,6 +36,8 @@
     DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
     DEFAULT_TEMPORAL_EXTRACT_SCHEMA,
     DEFAULT_DEEPSEEK_IMPORT_PROMPT,
+    DEFAULT_IMPORT_PROMPT,
+    DEFAULT_IMPORT_SCHEMA,
     DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
     DEFAULT_TEMPORAL_RECALL_JUDGE_SCHEMA,
     AUTO_EXTRACT_PROMPT_VERSION,
@@ -158,6 +160,9 @@
       'autoExtDeepSeekReasoning', 'autoExtOpenAIBaseUrl', 'autoExtOpenAIKey', 'autoExtOpenAIReasoning',
       'batchExtOpenAIReasoning', 'temporalExtractOpenAIReasoning', 'importOpenAIReasoning',
       'mergeOpenAIReasoning', 'rerankOpenAIReasoning', 'temporalRecallJudgeOpenAIReasoning', 'refinerOpenAIReasoning',
+      'batchExtDeepSeekReasoning', 'temporalExtractDeepSeekReasoning', 'importDeepSeekReasoning',
+      'mergeDeepSeekReasoning', 'rerankDeepSeekReasoning', 'temporalRecallJudgeDeepSeekReasoning', 'refinerDeepSeekReasoning',
+      'deepSeekPromptOverridesEnabled', 'deepSeekJsonSystemPrompt',
       'autoExtModel', 'autoExtCustomModel',
       'autoExtReasoning', 'autoExtBudget', 'batchExtReasoning', 'batchExtBudget',
       'temporalExtractReasoning', 'temporalExtractBudget', 'importReasoning', 'importBudget',
@@ -175,6 +180,8 @@
       'urlPacks', 'urlDisabledEntries', 'urlAutoExtPacks', 'urlCooldownMaps',
       'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs', 'urlTurnCounters',
       'autoPacks', 'templates', 'activeTemplateId',
+      'temporalExtractPrompt', 'temporalExtractSchema', 'importPrompt', 'importSchema',
+      'temporalRecallJudgePrompt', 'temporalRecallJudgeSchema',
       'refinerCustomPrompt', 'refinerUseDynamic', 'refinerTopics', 'refinerPromptVersion',
       'prefix', 'suffix', 'oocFormat', 'oocPromptVersion',
       'autoExtractPromptVersion', 'migrationStatus', 'localMigrationVersion'
@@ -380,6 +387,7 @@
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '', autoExtGeminiEmbedKey: '',
     autoExtDeepSeekKey: '', autoExtDeepSeekThinking: false, autoExtDeepSeekReasoning: 'high',
     autoExtOpenAIBaseUrl: '', autoExtOpenAIKey: '', autoExtOpenAIReasoning: 'off',
+    deepSeekPromptOverridesEnabled: true,
     deepSeekJsonSystemPrompt: 'Return only one valid json object. Do not output markdown fences, explanations, comments, or trailing text. Preserve the language of the source content. Follow the exact object shape requested by the user.',
     deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
     deepSeekPromptWithDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
@@ -392,6 +400,8 @@
     temporalExtractEnabled: true, temporalExtractAutoEnabled: false, temporalExtractBatchEnabled: false, temporalExtractMode: 'after_general', temporalCriticEnabled: false, temporalMaxEventsPerPass: 5,
     temporalExtractReasoning: 'medium', temporalExtractBudget: 2048,
     temporalExtractPrompt: DEFAULT_TEMPORAL_EXTRACT_PROMPT, temporalExtractSchema: DEFAULT_TEMPORAL_EXTRACT_SCHEMA,
+    importPrompt: DEFAULT_IMPORT_PROMPT || C.DEFAULT_IMPORT_PROMPT || DEFAULT_DEEPSEEK_IMPORT_PROMPT,
+    importSchema: DEFAULT_IMPORT_SCHEMA || C.DEFAULT_IMPORT_SCHEMA || '',
     timelineRetrievalEnabled: true, timelineRecallWeight: 0.32, timelineNoCuePenalty: 0.35, timelineRecallPoolLimit: 12,
     temporalInjectionEnabled: true, temporalRecallChars: 450, temporalRecallNaturalChars: 260,
     temporalRecallMaxEvents: 2, temporalRecallExplicitMaxEvents: 3, temporalRecallReserveChars: 120,
@@ -1108,6 +1118,20 @@
     return direct || 'off';
   }
 
+  function deepSeekReasoningForFeature(config, feature) {
+    const key = featureThinkingKey(feature);
+    const globalThinking = config.autoExtDeepSeekThinking !== false;
+    const globalReasoning = config.autoExtDeepSeekReasoning || 'high';
+    const direct = key === 'autoExt'
+      ? (globalThinking ? globalReasoning : 'off')
+      : String(config[key + 'DeepSeekReasoning'] || 'default').trim();
+    const selected = direct || 'default';
+    if (selected === 'default') return { thinking: globalThinking, reasoning: globalReasoning };
+    if (selected === 'off') return { thinking: false, reasoning: globalReasoning };
+    if (['high', 'max'].includes(selected)) return { thinking: true, reasoning: selected };
+    return { thinking: globalThinking, reasoning: globalReasoning };
+  }
+
   function getGeminiEmbeddingKey(config, opts = {}) {
     const cfg = config || settings.config || {};
     const key = String(cfg.autoExtGeminiEmbedKey || cfg.autoExtFirebaseEmbedKey || '').trim();
@@ -1178,13 +1202,15 @@
     const cfg = settings.config || {};
     const fallback = getGenerationFallbackModel(cfg);
     const model = resolveConfiguredModel(cfg.autoExtModel, cfg.autoExtCustomModel, fallback);
+    const deepSeekReasoning = deepSeekReasoningForFeature(cfg, costContext && costContext.feature);
     const opts = {
       apiType: cfg.autoExtApiType || 'key',
       key: cfg.autoExtKey,
       deepSeekKey: cfg.autoExtDeepSeekKey,
-      deepSeekThinking: cfg.autoExtDeepSeekThinking !== false,
-      deepSeekReasoning: cfg.autoExtDeepSeekReasoning || 'high',
+      deepSeekThinking: deepSeekReasoning.thinking,
+      deepSeekReasoning: deepSeekReasoning.reasoning,
       deepSeekJsonSystemPrompt: cfg.deepSeekJsonSystemPrompt || '',
+      deepSeekPromptOverridesEnabled: cfg.deepSeekPromptOverridesEnabled !== false,
       openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
       openAIKey: cfg.autoExtOpenAIKey || '',
       openAIReasoning: openAIReasoningForFeature(cfg, costContext && costContext.feature),

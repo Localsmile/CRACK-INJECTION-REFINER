@@ -15,12 +15,24 @@
   _w.__LoreInj.registerMenu = _w.__LoreInj.registerMenu || function() {};
 
   _w.__LoreInj.registerMenu('main', function(modal) {
-    modal.createMenu('로어 설정', (m) => {
+    modal.createMenu('홈/주입 설정', (m) => {
       m.replaceContentPanel(async (panel) => {
         const PRESETS = {
           beginner: { name: '기본 추천', desc: '의미 검색 + 8턴마다 대화 정리. 일반 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: false, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true } },
           minimal: { name: '수동 검색', desc: '자동 추출을 끄고 수동 추출만 사용함. API 호출을 최소화함.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: false, autoEmbedOnExtract: true, scanOffset: 2, maxEntries: 3, cooldownTurns: 6, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 250, loreBudgetMax: 400, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: false, importanceGating: true, importanceThreshold: 12, rerankEnabled: false, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true } },
           advanced: { name: '정밀', desc: '5턴마다 대화 정리 + 후보 재정렬 + 응답 교정. 장문 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.4, autoExtEnabled: true, autoExtTurns: 5, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 5, cooldownTurns: 8, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 400, loreBudgetMax: 700, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 10, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: true, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true, refinerEnabled: true, refinerLoreMode: 'semantic' } }
+        };
+        const makeNumberField = (label, key, defaultVal, opts = {}) => {
+          const f = document.createElement('div'); f.style.flex = '1';
+          const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;';
+          const i = document.createElement('input'); i.type = 'number';
+          i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal;
+          if (opts.min !== undefined) i.min = opts.min;
+          if (opts.max !== undefined) i.max = opts.max;
+          i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+          const save = () => { const v = parseInt(i.value, 10); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } };
+          i.oninput = save; i.onchange = save;
+          f.appendChild(l); f.appendChild(i); return f;
         };
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
@@ -108,10 +120,11 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;';
+          const title = document.createElement('div'); title.textContent = '주입 제어'; title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(title);
+          const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:10px;';
           const left = document.createElement('div'); left.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
           const t = document.createElement('div'); t.textContent = '주입 위치'; t.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
-          const d = document.createElement('div'); d.textContent = '메시지 기준 로어 삽입 위치.'; d.style.cssText = 'font-size:11px;color:#888;';
+          const d = document.createElement('div'); d.textContent = '사용자 메시지 기준으로 로어를 넣을 위치.'; d.style.cssText = 'font-size:11px;color:#888;';
           left.appendChild(t); left.appendChild(d);
           const right = document.createElement('div'); right.style.cssText = 'display:flex;gap:6px;';
           const b1 = document.createElement('button'), b2 = document.createElement('button');
@@ -119,6 +132,13 @@
           b1.textContent = '메시지 앞'; b1.onclick = () => { settings.config.position = 'before'; settings.save(); updateBtns(); };
           b2.textContent = '메시지 뒤'; b2.onclick = () => { settings.config.position = 'after'; settings.save(); updateBtns(); };
           updateBtns(); right.appendChild(b1); right.appendChild(b2); wrap.appendChild(left); wrap.appendChild(right); nd.appendChild(wrap);
+          nd.appendChild(C.createToggleRow('삽입 쿨타임 사용', '같은 로어가 너무 자주 들어가지 않게 막음.', settings.config.cooldownEnabled !== false, (v) => { settings.config.cooldownEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('삽입 흔적 자동 정리', '지난 로어 참조문을 나중에 걷어내 대화 기록을 깔끔하게 유지함.', settings.config.injectionCleanupEnabled !== false, (v) => { settings.config.injectionCleanupEnabled = v; settings.save(); }));
+          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;margin-top:8px;align-items:center;';
+          row.appendChild(makeNumberField('삽입 쿨타임(턴)', 'cooldownTurns', 3, { min: 1 }));
+          row.appendChild(makeNumberField('한 번에 넣을 로어', 'maxEntries', 3, { min: 1 }));
+          row.appendChild(makeNumberField('흔적 정리(턴)', 'injectionCleanupTurns', 8, { min: 1 }));
+          nd.appendChild(row);
         }});
 
         panel.addBoxedField('', '', { onInit: (nd) => {
@@ -178,7 +198,7 @@
             location.reload();
           }; nd.appendChild(resetBtn);
         }});
-      }, '메인 설정');
+      }, '홈/주입 설정');
     });
   });
 
