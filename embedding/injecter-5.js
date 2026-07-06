@@ -25,8 +25,12 @@
   const CLEANUP_MAX_ITEMS = 160;
   const CLEANUP_RECONCILE_LIMIT = 40;
   const CLEANUP_LOG_LIMIT = 90;
+  const CLEANUP_FALLBACK_MAX_EDITS = 2;
+  const CLEANUP_FALLBACK_MIN_INTERVAL_MS = 20000;
+  const LORE_CONTEXT_TAG_PATTERN = /\s*<ooc_lore_context>[\s\S]*?<\/ooc_lore_context>\s*/gi;
   let _cleanupTimer = null;
   let _cleanupRunning = false;
+  const _fallbackCleanupLastByChat = new Map();
 
   function cleanupHash(text) {
     try { return C.simpleHash(String(text || '')); } catch (_) { return String(String(text || '').length); }
@@ -253,6 +257,48 @@
     return { ok: false, reason: 'unsafe_partial' };
   }
 
+  function cleanLoreContextTags(currentText) {
+    const cur = String(currentText || '');
+    if (!cur || cur.indexOf('<ooc_lore_context>') < 0) return null;
+    LORE_CONTEXT_TAG_PATTERN.lastIndex = 0;
+    const next = cur.replace(LORE_CONTEXT_TAG_PATTERN, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (!next || next === cur) return null;
+    return next;
+  }
+
+  function shouldRunFallbackCleanupScan(chatKey, reason, queuedCount, queueCleaned) {
+    const now = Date.now();
+    const last = _fallbackCleanupLastByChat.get(chatKey) || 0;
+    if (now - last < CLEANUP_FALLBACK_MIN_INTERVAL_MS) return false;
+    const r = String(reason || '');
+    if (!queuedCount) return true;
+    if (queueCleaned < CLEANUP_FALLBACK_MAX_EDITS) return true;
+    return r === 'module-load' || r === 'pending-reconcile';
+  }
+
+  async function runFallbackTagCleanup(chatId, chatKey, logs, maxEdits) {
+    const configuredTurns = Math.max(1, parseInt(settings.config.injectionCleanupTurns || 8, 10) || 8);
+    const availableLogs = Array.isArray(logs) && logs.length ? logs : await fetchRawLogs(chatId, CLEANUP_LOG_LIMIT, true);
+    const userMsgs = availableLogs.filter(log => log && messageRoleOf(log) === 'user' && messageIdOf(log) && messageTextOf(log) != null);
+    if (userMsgs.length <= configuredTurns) return 0;
+    const candidates = userMsgs.slice(0, Math.max(0, userMsgs.length - configuredTurns));
+    const currentTurn = getTurnCounter(chatKey);
+    let cleaned = 0;
+    for (const log of candidates) {
+      if (cleaned >= maxEdits) break;
+      const cleanText = cleanLoreContextTags(messageTextOf(log));
+      if (!cleanText) continue;
+      const patched = await patchUserMessage(chatId, messageIdOf(log), cleanText);
+      if (patched.ok) {
+        cleaned++;
+        addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_fallback_done', note: `${configuredTurns}턴 지난 삽입 태그 흔적 정리`, messageId: messageIdOf(log) });
+      } else {
+        addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_fallback_failed', note: '삽입 태그 흔적 정리 실패', status: patched.status });
+      }
+    }
+    return cleaned;
+  }
+
   function countUserTurnsAfter(logs, item) {
     if (!Array.isArray(logs) || !logs.length) return null;
     const full = item.finalText || buildInjectedMessage(item.originalText, item.injectedText, item.position);
@@ -311,7 +357,6 @@
     try {
       const state = await loadCleanupState();
       const items = state.items.filter(it => it && (it.chatId === chatId || it.chatKey === chatKey) && it.status !== 'done' && it.status !== 'failed' && it.status !== 'stale');
-      if (!items.length) return;
       const logs = await fetchRawLogs(chatId, Math.max(CLEANUP_RECONCILE_LIMIT, CLEANUP_LOG_LIMIT), true);
       let changed = false;
       for (const item of items) {
@@ -376,6 +421,11 @@
           addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_failed', note: '삽입 흔적 정리 실패', status: patched.status });
         }
         changed = true;
+      }
+      const fallbackBudget = Math.max(0, CLEANUP_FALLBACK_MAX_EDITS - cleaned);
+      if (fallbackBudget > 0 && shouldRunFallbackCleanupScan(chatKey, reason, items.length, cleaned)) {
+        _fallbackCleanupLastByChat.set(chatKey, Date.now());
+        await runFallbackTagCleanup(chatId, chatKey, logs, fallbackBudget);
       }
       if (changed) await saveCleanupState(state);
       if (items.some(it => it && !it.messageId && it.status !== 'stale')) scheduleInjectionCleanup('pending-reconcile', 10000);
