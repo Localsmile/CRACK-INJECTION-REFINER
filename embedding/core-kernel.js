@@ -9,7 +9,7 @@
 
   // 버전 / 최종 마이그레이션 타깃
   const VER = '1.4.0-test';
-  const DB_SCHEMA_VERSION = 9;
+  const DB_SCHEMA_VERSION = 10;
   const LOCAL_MIGRATION_VERSION = '1.4.0-test-pass11-local';
   const TIMELINE_EVENT_TYPE = 'timeline_event';
   const TIMELINE_SCHEMA_VERSION = 1;
@@ -174,29 +174,50 @@ Entries:
       encounters: '++id, &[char1+char2], lastSeenTurn',
       entryVersions: '++id, entryId, ts, turn'
     });
+    // v10: insertion cleanup queue moved from localStorage to IndexedDB so pending cleanup tasks are not dropped by quota recovery.
+    _db.version(10).stores({
+      entries: '++id, name, type, packName, project, rootId, isCurrentArc, createdTurn, updatedTurn, lastMentionedTurn, eventTurn, sceneId, arcId, realTimestamp, *entities, *subjects, *objects, *locations, *promises, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, packName, model, field, sourceHash, entryUpdatedAt, schemaVersion, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, &[char1+char2], lastSeenTurn',
+      entryVersions: '++id, entryId, ts, turn',
+      cleanupQueue: 'id, chatId, chatKey, status, createdAt, completedAt'
+    });
     return _db;
   }
 
   // 네트워크
   const _GM_xhr = (typeof GM_xmlhttpRequest !== 'undefined') ? GM_xmlhttpRequest : ((typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest.bind(GM) : null);
   // AbortSignal forwarding: GM_xmlhttpRequest의 abort() 호출로 실제 요청 취소.
-  function gmFetch(url, opts) {
+  function gmFetch(url, opts = {}) {
     const signal = opts && opts.signal;
     if (!_GM_xhr) {
       return fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: signal || undefined });
     }
+    const fetchFallback = () => fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: signal || undefined });
     return new Promise((resolve, reject) => {
       if (signal && signal.aborted) { reject(new Error('aborted')); return; }
       let xhrHandle = null;
       let cleanedUp = false;
       const cleanup = () => { if (cleanedUp) return; cleanedUp = true; if (signal) { try { signal.removeEventListener('abort', onAbort); } catch (_) {} } };
       const onAbort = () => { try { xhrHandle && xhrHandle.abort && xhrHandle.abort(); } catch (_) {} cleanup(); reject(new Error('aborted')); };
+      const retryWithFetch = (fallbackError) => {
+        if (!opts.fetchFallbackOnError) { cleanup(); reject(fallbackError); return; }
+        if (signal && signal.aborted) { cleanup(); reject(new Error('aborted')); return; }
+        fetchFallback().then((r) => { cleanup(); resolve(r); }).catch((e) => {
+          cleanup();
+          reject(fallbackError || e);
+        });
+      };
       if (signal) { try { signal.addEventListener('abort', onAbort, { once: true }); } catch (_) {} }
       xhrHandle = _GM_xhr({
         method: opts.method || 'GET', url, headers: opts.headers || {}, data: opts.body || null, responseType: 'text',
+        timeout: opts.timeout || opts.timeoutMs || 0,
         onload: (r) => { cleanup(); resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: () => Promise.resolve(r.responseText), json: () => Promise.resolve(JSON.parse(r.responseText)) }); },
-        onerror: () => { cleanup(); reject(new Error('네트워크 오류')); },
-        ontimeout: () => { cleanup(); reject(new Error('타임아웃')); },
+        onerror: () => { retryWithFetch(new Error('네트워크 오류')); },
+        ontimeout: () => { retryWithFetch(new Error('타임아웃')); },
         onabort: () => { cleanup(); reject(new Error('aborted')); }
       });
     });
@@ -423,11 +444,111 @@ Entries:
     return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
   }
 
+  function normalizeOpenAICompatUrl(baseUrl) {
+    let base = String(baseUrl || '').trim();
+    if (!base) return '';
+    base = base.replace(/\/+$/, '');
+    if (/\/chat\/completions$/i.test(base)) return base;
+    return base + '/chat/completions';
+  }
+
+  function openAICompatReasoningVariants(openAIBaseUrl, reasoning) {
+    const raw = String(reasoning || '').trim().toLowerCase();
+    if (!raw || raw === 'off' || raw === 'default') return ['none'];
+    const nestedFirst = /openrouter\.ai/i.test(String(openAIBaseUrl || ''));
+    return nestedFirst ? ['nested', 'flat', 'none'] : ['flat', 'nested', 'none'];
+  }
+
+  function applyOpenAICompatReasoning(bodyObj, style, reasoning) {
+    const value = String(reasoning || '').trim();
+    if (!value || style === 'none') return;
+    if (style === 'nested') bodyObj.reasoning = { effort: value };
+    else if (style === 'flat') bodyObj.reasoning_effort = value;
+  }
+
+  async function callOpenAICompatApi(prompt, opts = {}) {
+    const {
+      key = '', openAIBaseUrl = '', model = '', maxRetries = 1, responseMimeType,
+      costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null,
+      openAIReasoning = ''
+    } = opts;
+    const url = normalizeOpenAICompatUrl(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl);
+    if (!url) return { text: null, status: 0, error: 'OpenAI 호환 Base URL 누락', retries: 0 };
+    if (!key) return { text: null, status: 0, error: 'OpenAI 호환 API 키 누락', retries: 0 };
+    if (!model) return { text: null, status: 0, error: 'OpenAI 호환 모델명 누락', retries: 0 };
+
+    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key };
+    const jsonMode = !!(responseMimeType && String(responseMimeType).includes('json'));
+    const messages = [];
+    if (jsonMode) messages.push({ role: 'system', content: 'Return only valid JSON. Do not output markdown fences, explanations, comments, or trailing text.' });
+    messages.push({ role: 'user', content: String(prompt || '') });
+    const reasoning = String(openAIReasoning || '').trim();
+    const makeBody = (withJsonMode, tokenField, reasoningStyle) => {
+      const bodyObj = { model, messages, stream: false };
+      if (maxOutputTokens != null && tokenField) bodyObj[tokenField] = maxOutputTokens;
+      if (withJsonMode && jsonMode) bodyObj.response_format = { type: 'json_object' };
+      applyOpenAICompatReasoning(bodyObj, reasoningStyle, reasoning);
+      return JSON.stringify(bodyObj);
+    };
+    const bodyVariants = [];
+    const tokenFields = maxOutputTokens != null ? ['max_tokens', 'max_completion_tokens'] : [null];
+    const reasoningStyles = openAICompatReasoningVariants(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl, reasoning);
+    for (const tokenField of tokenFields) {
+      for (const reasoningStyle of reasoningStyles) {
+        if (jsonMode) bodyVariants.push({ withJsonMode: true, tokenField, reasoningStyle });
+        bodyVariants.push({ withJsonMode: false, tokenField, reasoningStyle });
+      }
+    }
+
+    let lastStatus = 0, lastError = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      for (const variant of bodyVariants) {
+        try {
+          if (signal && signal.aborted) { lastError = 'aborted'; break; }
+          const r = await gmFetch(url, { method: 'POST', headers, body: makeBody(variant.withJsonMode, variant.tokenField, variant.reasoningStyle), signal, timeout: timeoutMs });
+          lastStatus = r.status;
+          if (!r.ok) {
+            const errBody = r.text ? await r.text().catch(() => '') : '';
+            lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\n/g, ' ')}`;
+            if (r.status === 400 && (variant.withJsonMode || variant.tokenField === 'max_tokens' || variant.reasoningStyle !== 'none')) continue;
+            if ([400, 401, 403, 404].includes(r.status)) break;
+            if ((r.status === 429 || r.status >= 500) && attempt < maxRetries) break;
+          } else {
+            const json = await r.json();
+            const choice = json.choices && json.choices[0];
+            const msg = choice && choice.message;
+            let text = msg && msg.content != null ? msg.content : null;
+            if (Array.isArray(text)) {
+              text = text.map(p => typeof p === 'string' ? p : (p && (p.text || p.content) || '')).join('');
+            }
+            text = text != null ? String(text) : null;
+            const finishReason = choice && choice.finish_reason;
+            const usage = json.usage || null;
+            const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
+            const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
+            const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
+            if (text) return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
+            lastError = finishReason === 'length'
+              ? 'OpenAI 호환 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
+              : ('OpenAI 호환 최종 응답이 비어 있음' + (finishReason ? ' [' + finishReason + ']' : ''));
+          }
+        } catch (e) { lastError = e.message; }
+        break;
+      }
+      if (attempt < maxRetries) {
+        const waitMs = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
+        await new Promise(res => setTimeout(res, waitMs));
+      }
+    }
+    return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
+  }
+
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
+      openAIBaseUrl = '', openAIKey = '', openAIReasoning = '',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 
@@ -436,6 +557,12 @@ Entries:
         key: deepSeekKey || key, model, maxRetries, responseMimeType, costContext, signal,
         timeoutMs, maxOutputTokens, deepSeekThinking, deepSeekReasoning,
         deepSeekJsonSystemPrompt: opts.deepSeekJsonSystemPrompt
+      });
+    }
+    if (apiType === 'openai') {
+      return await callOpenAICompatApi(prompt, {
+        key: openAIKey || key, openAIBaseUrl, model, maxRetries, responseMimeType, costContext, signal,
+        timeoutMs, maxOutputTokens, openAIReasoning
       });
     }
 
@@ -615,6 +742,38 @@ Entries:
     };
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
+    const maxEmbedRetries = Math.max(0, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 1);
+    const retryableEmbeddingError = (e) => /네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(e && e.message || e || ''));
+    const waitEmbeddingRetry = (attempt) => new Promise(res => setTimeout(res, Math.min(3000, 600 * Math.pow(2, attempt)) + Math.random() * 250));
+    const fetchEmbeddingJson = async (url, fetchOpts, errorPrefix) => {
+      let lastError = null;
+      for (let attempt = 0; attempt <= maxEmbedRetries; attempt++) {
+        try {
+          const r = await gmFetch(url, {
+            ...fetchOpts,
+            timeout: fetchOpts.timeout || opts.timeoutMs || 45000,
+            fetchFallbackOnError: true
+          });
+          if (!r.ok) {
+            lastError = new Error(errorPrefix + ': ' + r.status);
+            if ((r.status === 429 || r.status >= 500 || r.status === 0) && attempt < maxEmbedRetries) {
+              await waitEmbeddingRetry(attempt);
+              continue;
+            }
+            throw lastError;
+          }
+          return await r.json();
+        } catch (e) {
+          lastError = e;
+          if (attempt < maxEmbedRetries && retryableEmbeddingError(e)) {
+            await waitEmbeddingRetry(attempt);
+            continue;
+          }
+          throw e;
+        }
+      }
+      throw lastError || new Error(errorPrefix);
+    };
     if (isFirebase) {
       // Firebase SDK는 임베딩 미지원 → 별도 Gemini API Key 로 REST 우회 (embedding-001 한정, 무료 티어 OK)
       if (!firebaseEmbedKey) throw new Error('Firebase 모드 임베딩: 별도 Gemini API Key 필요 (embedding-001 한정)');
@@ -638,9 +797,7 @@ Entries:
       const embLoc = (!vertexLocation || vertexLocation === 'global') ? 'us-central1' : vertexLocation;
       const host = `${embLoc}-aiplatform.googleapis.com`;
       const url = `https://${host}/v1/projects/${projId}/locations/${embLoc}/publishers/google/models/${model}:predict`;
-      const r = await gmFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ instances: arr.map(t => ({ content: t })), parameters: { outputDimensionality: dimensions } }) });
-      if (!r.ok) throw new Error('Vertex 임베딩 실패: ' + r.status);
-      const json = await r.json();
+      const json = await fetchEmbeddingJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ instances: arr.map(t => ({ content: t })), parameters: { outputDimensionality: dimensions } }) }, 'Vertex 임베딩 실패');
       _trackEmbedCost(arr, model);
       return json.predictions.map(p => normalizeVector(p.embeddings.values));
     } else {
@@ -650,9 +807,7 @@ Entries:
         const url = _gBase + model + ':embedContent';
         const bodyObj = { content: { parts: [{ text: arr[0] }] }, output_dimensionality: dimensions };
         if (model.includes('embedding-001')) bodyObj.taskType = taskType;
-        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) });
-        if (!r.ok) throw new Error('임베딩 API 실패: ' + r.status);
-        const json = await r.json();
+        const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) }, '임베딩 API 실패');
         const embs = json.embeddings || [json.embedding];
         _trackEmbedCost(arr, model);
         return embs.map(e => normalizeVector(e.values));
@@ -663,9 +818,7 @@ Entries:
           if (model.includes('embedding-001')) req.taskType = taskType;
           return req;
         });
-        const r = await gmFetch(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }) });
-        if (!r.ok) throw new Error('배치 임베딩 API 실패: ' + r.status);
-        const json = await r.json();
+        const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }) }, '배치 임베딩 API 실패');
         if (!json.embeddings) throw new Error('임베딩 결과가 없습니다.');
         _trackEmbedCost(arr, model);
         return json.embeddings.map(e => normalizeVector(e.values));

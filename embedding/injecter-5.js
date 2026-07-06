@@ -32,29 +32,81 @@
     try { return C.simpleHash(String(text || '')); } catch (_) { return String(String(text || '').length); }
   }
 
-  function loadCleanupState() {
+  function compactCleanupItems(items) {
+    const now = Date.now();
+    const source = Array.isArray(items) ? items.filter(Boolean) : [];
+    const live = source.filter(it => it.status !== 'done' && it.status !== 'stale' && it.status !== 'failed');
+    const done = source
+      .filter(it => it.status === 'done' || it.status === 'stale' || it.status === 'failed')
+      .filter(it => !it.completedAt || now - it.completedAt < 7 * 24 * 60 * 60 * 1000)
+      .sort((a, b) => (a.completedAt || a.createdAt || 0) - (b.completedAt || b.createdAt || 0))
+      .slice(-80);
+    return live.concat(done).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  }
+
+  function mergeCleanupItems(primary, secondary) {
+    const merged = new Map();
+    const add = (item) => {
+      if (!item) return;
+      const id = item.id || cleanupHash([item.chatId, item.turn, item.createdAt, item.finalHash || item.finalText].join('|'));
+      const prev = merged.get(id);
+      if (!prev || (item.completedAt || item.updatedAt || item.createdAt || 0) >= (prev.completedAt || prev.updatedAt || prev.createdAt || 0)) {
+        merged.set(id, { ...item, id });
+      }
+    };
+    (Array.isArray(primary) ? primary : []).forEach(add);
+    (Array.isArray(secondary) ? secondary : []).forEach(add);
+    return Array.from(merged.values());
+  }
+
+  async function loadCleanupState() {
+    let legacyItems = [];
     try {
       const raw = _ls.getItem(CLEANUP_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
-      if (parsed && Array.isArray(parsed.items)) return parsed;
+      if (parsed && Array.isArray(parsed.items)) legacyItems = parsed.items.filter(Boolean);
     } catch (_) {}
-    return { version: 1, items: [] };
+    try {
+      if (db.cleanupQueue) {
+        const rows = await db.cleanupQueue.toArray();
+        if (legacyItems.length) {
+          await db.cleanupQueue.bulkPut(legacyItems);
+          try { _ls.removeItem(CLEANUP_KEY); } catch (_) {}
+        }
+        const merged = mergeCleanupItems(rows, legacyItems);
+        return { version: 2, items: compactCleanupItems(merged) };
+      }
+    } catch (e) {
+      console.warn('[Lore] cleanup state DB load failed:', e);
+    }
+    return { version: 1, items: compactCleanupItems(legacyItems) };
   }
 
-  function saveCleanupState(state) {
+  async function saveCleanupState(state) {
+    const kept = compactCleanupItems(state && state.items);
+    try {
+      if (db.cleanupQueue) {
+        await db.cleanupQueue.clear();
+        if (kept.length) await db.cleanupQueue.bulkPut(kept);
+        return true;
+      }
+    } catch (e) {
+      console.warn('[Lore] cleanup state DB save failed:', e);
+    }
     try {
       const now = Date.now();
-      const items = Array.isArray(state.items) ? state.items.slice() : [];
-      const live = items.filter(it => it && it.status !== 'done' && it.status !== 'stale' && it.status !== 'failed');
-      const done = items
-        .filter(it => it && !live.includes(it))
-        .filter(it => !it.completedAt || now - it.completedAt < 7 * 24 * 60 * 60 * 1000)
-        .slice(-40);
-      const kept = live.slice(-CLEANUP_MAX_ITEMS).concat(done);
       _ls.setItem(CLEANUP_KEY, JSON.stringify({ version: 1, updatedAt: now, items: kept }));
       return true;
     } catch (e) {
-      console.warn('[Lore] cleanup state save failed:', e);
+      try {
+        const now = Date.now();
+        const live = kept.filter(it => it && it.status !== 'done' && it.status !== 'stale' && it.status !== 'failed');
+        _ls.setItem(CLEANUP_KEY, JSON.stringify({ version: 1, updatedAt: now, compacted: true, items: live }));
+        console.warn('[Lore] cleanup state save recovered after compacting:', e && e.message ? e.message : e);
+        return true;
+      } catch (e2) {
+        console.warn('[Lore] cleanup state save failed:', e2);
+      }
       return false;
     }
   }
@@ -85,33 +137,101 @@
         if (msg && !(msg instanceof Error)) return msg;
       }
     } catch (_) {}
+    let token = '';
+    try {
+      const CU = getCrackUtilSafe();
+      token = CU && CU.cookie ? CU.cookie().getAuthToken() : '';
+    } catch (_) {}
+    if (!token || !chatId || !messageId) return null;
+    const urls = [
+      `https://contents-api.wrtn.ai/character-chat/v3/chats/${chatId}/messages/${messageId}`,
+      `https://contents-api.wrtn.ai/character-chat/character-chats/${chatId}/messages/${messageId}`,
+      `https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatId}/messages/${messageId}`
+    ];
+    for (const url of urls) {
+      try {
+        const fetcher = C.gmFetch || fetch;
+        const res = await fetcher(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+            'platform': 'web',
+            'wrtn-locale': 'ko-KR'
+          }
+        });
+        if (!res || !res.ok) continue;
+        const json = await res.json().catch(() => null);
+        const data = json && (json.data || json.result || json);
+        if (data && !(data instanceof Error)) return data;
+      } catch (_) {}
+    }
     return null;
   }
 
   async function patchUserMessage(chatId, messageId, nextText) {
+    try {
+      const CU = getCrackUtilSafe();
+      if (CU && CU.chatRoom && typeof CU.chatRoom().editMessage === 'function') {
+        const edited = await CU.chatRoom().editMessage(chatId, messageId, nextText);
+        if (edited === true) return { ok: true, status: 200, via: 'CrackUtil.editMessage' };
+      }
+    } catch (_) {}
     let token = '';
     try {
       const CU = getCrackUtilSafe();
       token = CU && CU.cookie ? CU.cookie().getAuthToken() : '';
     } catch (_) {}
     if (!token || !chatId || !messageId) return { ok: false, status: 0, error: 'auth_or_id_missing' };
-    try {
-      const res = await fetch(`https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatId}/messages/${messageId}`, {
-        method: 'PATCH',
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token,
-          'platform': 'web',
-          'wrtn-locale': 'ko-KR'
-        },
-        body: JSON.stringify({ message: nextText })
-      });
-      const body = await res.text().catch(() => '');
-      return { ok: res.ok, status: res.status, body: body.slice(0, 300) };
-    } catch (e) {
-      return { ok: false, status: 0, error: e && e.message ? e.message : String(e) };
+    const urls = [
+      `https://contents-api.wrtn.ai/character-chat/v3/chats/${chatId}/messages/${messageId}`,
+      `https://contents-api.wrtn.ai/character-chat/character-chats/${chatId}/messages/${messageId}`,
+      `https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatId}/messages/${messageId}`
+    ];
+    let last = { ok: false, status: 0, error: 'not_attempted' };
+    for (const url of urls) {
+      try {
+        const fetcher = C.gmFetch || fetch;
+        const res = await fetcher(url, {
+          method: 'PATCH',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+            'platform': 'web',
+            'wrtn-locale': 'ko-KR'
+          },
+          body: JSON.stringify({ message: nextText })
+        });
+        const body = await res.text().catch(() => '');
+        let parsed = null;
+        try { parsed = body ? JSON.parse(body) : null; } catch (_) {}
+        const ok = !!(res.ok && (!parsed || parsed.result === 'SUCCESS' || parsed.ok !== false));
+        last = { ok, status: res.status, body: body.slice(0, 300), via: url };
+        if (ok) return last;
+      } catch (e) {
+        last = { ok: false, status: 0, error: e && e.message ? e.message : String(e), via: url };
+      }
     }
+    return last;
+  }
+
+  function messageIdOf(log) {
+    return log && (log.id || log._id || log.messageId || log.msgId);
+  }
+
+  function messageTextOf(log) {
+    if (!log) return null;
+    if (typeof log.content === 'string') return log.content;
+    if (typeof log.message === 'string') return log.message;
+    if (log.data) return messageTextOf(log.data);
+    return null;
+  }
+
+  function messageRoleOf(log) {
+    if (!log) return '';
+    return log.role || log.speaker || log.data?.role || '';
   }
 
   function buildInjectedMessage(originalText, injectedText, position) {
@@ -139,8 +259,9 @@
     let idx = -1;
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];
-      if (!log || log.role !== 'user') continue;
-      if ((item.messageId && log.id === item.messageId) || log.content === full) { idx = i; break; }
+      if (!log || messageRoleOf(log) !== 'user') continue;
+      const body = messageTextOf(log);
+      if ((item.messageId && messageIdOf(log) === item.messageId) || body === full) { idx = i; break; }
     }
     if (idx < 0) return null;
     let count = 0;
@@ -153,8 +274,10 @@
     const full = item.finalText || buildInjectedMessage(item.originalText, item.injectedText, item.position);
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];
-      if (log && log.role === 'user' && log.content === full && log.id) {
-        item.messageId = log.id;
+      const body = messageTextOf(log);
+      const msgId = messageIdOf(log);
+      if (log && messageRoleOf(log) === 'user' && body === full && msgId) {
+        item.messageId = msgId;
         item.status = 'tracked';
         item.linkedAt = Date.now();
         return true;
@@ -177,7 +300,7 @@
     if (!chatId || !chatKey) return;
     _cleanupRunning = true;
     try {
-      const state = loadCleanupState();
+      const state = await loadCleanupState();
       const items = state.items.filter(it => it && (it.chatId === chatId || it.chatKey === chatKey) && it.status !== 'done' && it.status !== 'failed' && it.status !== 'stale');
       if (!items.length) return;
       const logs = await fetchRawLogs(chatId, Math.max(CLEANUP_RECONCILE_LIMIT, CLEANUP_LOG_LIMIT), true);
@@ -196,8 +319,8 @@
         if (!(serverTurns != null ? serverTurns >= configuredTurns : fallbackExpired)) continue;
 
         const cur = await getMessageById(item.chatId || chatId, item.messageId);
-        const currentText = cur && typeof cur.content === 'string' ? cur.content : null;
-        if (!cur || cur.role !== 'user' || currentText == null) {
+        const currentText = messageTextOf(cur);
+        if (!cur || messageRoleOf(cur) !== 'user' || currentText == null) {
           item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
           item.lastCleanupAttemptAt = Date.now();
           changed = true;
@@ -229,7 +352,7 @@
         }
         changed = true;
       }
-      if (changed) saveCleanupState(state);
+      if (changed) await saveCleanupState(state);
       if (items.some(it => it && !it.messageId && it.status !== 'stale')) scheduleInjectionCleanup('pending-reconcile', 10000);
     } finally {
       _cleanupRunning = false;
@@ -245,12 +368,12 @@
     }, Math.max(250, delayMs || 2500));
   }
 
-  function queueInjectionCleanup(chatKey, chatId, originalText, injectedText, finalText, turnCounter, position) {
+  async function queueInjectionCleanup(chatKey, chatId, originalText, injectedText, finalText, turnCounter, position) {
     if (settings.config.injectionCleanupEnabled === false) return;
     const cleanupTurns = Math.max(1, parseInt(settings.config.injectionCleanupTurns || 8, 10) || 8);
     if (!chatId || !originalText || !injectedText || !finalText) return;
     const now = Date.now();
-    const state = loadCleanupState();
+    const state = await loadCleanupState();
     const item = {
       id: cleanupHash([chatId, turnCounter, now, finalText].join('|')),
       chatKey, chatId, messageId: null,
@@ -264,7 +387,7 @@
       linkAttempts: 0, cleanupAttempts: 0
     };
     state.items.push(item);
-    saveCleanupState(state);
+    await saveCleanupState(state);
     scheduleInjectionCleanup('link-after-send', 3500);
   }
 
@@ -336,21 +459,31 @@
       // kernel 미지원 시 abort는 user-land race만 끊고, fetch 자체는 끝까지 실행됨(추후 kernel 보강 필요).
       const _judgeTimeoutMs = Math.max(0, Number(config.temporalRecallJudgeTimeoutMs || 0));
       const _judgeModel = (config.temporalRecallJudgeModel === '_custom' ? config.temporalRecallJudgeCustomModel : config.temporalRecallJudgeModel)
+        || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : config.autoExtModel)
         || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3.1-flash-lite-preview');
       const _judgeAbortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-      const _judgeCall = C.callGeminiApi(prompt, {
-        ...apiOpts,
-        model: _judgeModel,
-        responseMimeType: 'application/json',
-        maxRetries: 1,
-        timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
-        maxOutputTokens: 512,
-        thinkingConfig: (apiOpts && apiOpts.apiType) === 'deepseek' ? undefined : { thinkingLevel: config.temporalRecallJudgeReasoning || 'minimal' },
-        deepSeekThinking: config.autoExtDeepSeekThinking !== false,
-        deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
-        costContext: { feature: 'judge', chatKey: getChatKey() || 'global' },
-        signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
-      });
+      const _judgeOpts = _w.__LoreInj.buildGenerationApiOpts
+        ? _w.__LoreInj.buildGenerationApiOpts({
+          model: _judgeModel,
+          responseMimeType: 'application/json',
+          maxRetries: 1,
+          timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
+          maxOutputTokens: 512,
+          signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
+        }, { feature: 'judge', chatKey: getChatKey() || 'global' })
+        : {
+          ...apiOpts,
+          model: _judgeModel,
+          responseMimeType: 'application/json',
+          maxRetries: 1,
+          timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
+          maxOutputTokens: 512,
+          deepSeekThinking: config.autoExtDeepSeekThinking !== false,
+          deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
+          costContext: { feature: 'judge', chatKey: getChatKey() || 'global' },
+          signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
+        };
+      const _judgeCall = C.callGeminiApi(prompt, _judgeOpts);
       let _judgeTimer = null;
       const res = _judgeTimeoutMs > 0
         ? await Promise.race([
@@ -881,7 +1014,7 @@
 
     const finalMessage = buildInjectedMessage(userInput, injected, config.position);
     try {
-      queueInjectionCleanup(chatKey, currentChatIdSafe(), userInput, injected, finalMessage, turnCounter, config.position);
+      await queueInjectionCleanup(chatKey, currentChatIdSafe(), userInput, injected, finalMessage, turnCounter, config.position);
     } catch (e) {
       console.warn('[Lore] cleanup queue failed:', e);
     }
@@ -892,7 +1025,7 @@
 
   scheduleInjectionCleanup('module-load', 4000);
 
-  Object.assign(_w.__LoreInj, { inject, runInjectionCleanup, __injectLoaded: true });
+  Object.assign(_w.__LoreInj, { inject, runInjectionCleanup, queueInjectionCleanup, __injectLoaded: true });
   console.log('[LoreInj:5] inject loaded & registered');
   } catch(fatal) {
     console.error('[LoreInj:5] FATAL — inject 등록 실패:', fatal, fatal?.stack);

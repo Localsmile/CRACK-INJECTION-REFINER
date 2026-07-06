@@ -10,7 +10,7 @@
   if (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded && _w.__LoreInj.backupTools)) { console.error('[LoreInj:sub-backup] backupTools 미로드'); return; }
   if (_w.__LoreInj.__subBackupLoaded) return;
 
-  const { C, settings } = _w.__LoreInj;
+  const { C, db, settings } = _w.__LoreInj;
   const B = _w.__LoreInj.backupTools;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
@@ -262,6 +262,42 @@
       btn.disabled = !!disabled;
       btn.style.opacity = disabled ? '.65' : '';
     });
+  }
+
+  async function clearLocalInstallData() {
+    try {
+      if (db && db.tables) {
+        for (const table of db.tables) {
+          try { await table.clear(); } catch (_) {}
+        }
+      }
+      if (db && typeof db.close === 'function') {
+        try { db.close(); } catch (_) {}
+      }
+      if (typeof indexedDB !== 'undefined' && indexedDB.deleteDatabase) {
+        await new Promise((resolve) => {
+          const req = indexedDB.deleteDatabase('lore-injector');
+          req.onsuccess = req.onerror = req.onblocked = () => resolve();
+        });
+      }
+    } catch (_) {}
+    const shouldRemove = (key) => {
+      const k = String(key || '');
+      return k === 'lore-injector-v5'
+        || k === 'lore-hybrid-stats'
+        || k.startsWith('lore-')
+        || k.startsWith('speech-refiner-');
+    };
+    try {
+      const keys = [];
+      for (let i = 0; i < _w.localStorage.length; i++) keys.push(_w.localStorage.key(i));
+      keys.filter(shouldRemove).forEach(k => { try { _w.localStorage.removeItem(k); } catch (_) {} });
+    } catch (_) {}
+    try {
+      const skeys = [];
+      for (let i = 0; i < _w.sessionStorage.length; i++) skeys.push(_w.sessionStorage.key(i));
+      skeys.filter(shouldRemove).forEach(k => { try { _w.sessionStorage.removeItem(k); } catch (_) {} });
+    } catch (_) {}
   }
 
   function formatTime(ts) {
@@ -611,6 +647,28 @@
       };
       btns.appendChild(refreshBtn); btns.appendChild(uploadBtn); btns.appendChild(mergeBtn); btns.appendChild(replaceBtn); btns.appendChild(deleteBtn); nd.appendChild(btns);
       setTimeout(renderList, 0);
+    }});
+
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
+      const title = document.createElement('div'); title.textContent = '로컬 데이터 삭제'; title.style.cssText = 'font-size:14px;color:#e88;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
+      addText(nd, '이 브라우저에 저장된 로어, 설정, 검색 준비, 로그를 모두 삭제함. 서버 백업은 삭제되지 않음.');
+      const btn = makeBtn('이 브라우저의 로어 데이터 삭제', 'border-color:#833;color:#f99;margin-top:10px;');
+      btn.onclick = async () => {
+        if (!confirm('이 브라우저의 로어/설정/검색 준비/로그가 모두 삭제됨. 서버 백업은 남음. 계속할까요?')) return;
+        const typed = prompt('정말 삭제하려면 "삭제"를 입력하세요.');
+        if (typed !== '삭제') return;
+        const done = setButtonBusy(btn, '삭제 중...');
+        try {
+          await clearLocalInstallData();
+          alert('로컬 데이터 삭제 완료. 페이지를 새로고침합니다.');
+          location.reload();
+        } catch (e) {
+          done();
+          alert('로컬 데이터 삭제 실패: ' + (e && e.message ? e.message : e));
+        }
+      };
+      nd.appendChild(btn);
     }});
   }
 

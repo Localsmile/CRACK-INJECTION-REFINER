@@ -14,29 +14,45 @@
       return _w.__LoreInj.buildGenerationApiOpts(overrides, costContext);
     }
     const cfg = settings.config || {};
+    const apiType = cfg.autoExtApiType || 'key';
     const model = cfg.autoExtModel === '_custom'
       ? cfg.autoExtCustomModel
       : cfg.autoExtModel;
     const opts = {
-      apiType: cfg.autoExtApiType || 'key',
-      key: cfg.autoExtKey,
+      apiType,
+      key: apiType === 'openai' ? (cfg.autoExtOpenAIKey || cfg.autoExtKey) : cfg.autoExtKey,
+      deepSeekKey: cfg.autoExtDeepSeekKey,
+      openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
+      openAIKey: cfg.autoExtOpenAIKey || '',
+      openAIReasoning: cfg.autoExtOpenAIReasoning || 'off',
       vertexJson: cfg.autoExtVertexJson,
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,
       firebaseScript: cfg.autoExtFirebaseScript,
       firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
-      model: model || 'gemini-3-flash-preview',
+      model: model || (apiType === 'openai' ? '' : (apiType === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview')),
       maxRetries: cfg.autoExtMaxRetries || 1,
       responseMimeType: 'application/json',
       costContext,
       ...overrides
     };
-    const reasoning = cfg.autoExtReasoning || 'medium';
-    if (String(opts.model || '').includes('gemini-3') && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
-      opts.thinkingConfig = { thinkingLevel: reasoning };
-    }
-    if (String(opts.model || '').includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') {
-      opts.thinkingConfig.thinkingLevel = 'low';
+    const reasoning = cfg.importReasoning || cfg.autoExtReasoning || 'medium';
+    const budget = Number(cfg.importBudget || cfg.autoExtBudget || 2048);
+    const modelName = String(opts.model || '').toLowerCase();
+    if (apiType !== 'deepseek' && apiType !== 'openai') {
+      if (modelName.includes('gemini-3') && reasoning !== 'off') {
+        opts.thinkingConfig = { thinkingLevel: reasoning === 'budget'
+          ? (budget >= 4096 ? 'high' : (budget >= 2048 ? 'medium' : (budget >= 1024 ? 'low' : 'minimal')))
+          : (['minimal', 'low', 'medium', 'high'].includes(reasoning) ? reasoning : 'medium') };
+      } else if (modelName.includes('gemini-2.5')) {
+        const budgetMap = { minimal: 512, low: 1024, medium: 2048, high: 4096 };
+        if (reasoning === 'off') opts.thinkingConfig = modelName.includes('pro') ? {} : { thinkingBudget: 0 };
+        else if (reasoning === 'budget') opts.thinkingConfig = { thinkingBudget: Math.max(-1, Number.isFinite(budget) ? budget : 2048) };
+        else if (budgetMap[reasoning] != null) opts.thinkingConfig = { thinkingBudget: budgetMap[reasoning] };
+      }
+      if (modelName.includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') {
+        opts.thinkingConfig.thinkingLevel = 'low';
+      }
     }
     return opts;
   }
@@ -51,8 +67,8 @@
           nd.appendChild(C.createToggleRow('기존 로어 참고', '저장된 로어를 같이 참고해 중복 저장 줄임.', settings.config.autoExtIncludeDb, (v) => { settings.config.autoExtIncludeDb = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('변경분만 저장', '바뀐 내용만 받아 저장해 비용과 시간을 줄임.', settings.config.autoExtPatchMode !== false, (v) => { settings.config.autoExtPatchMode = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('내 캐릭터 이름 함께 사용', '대화 정리 때 현재 페르소나 이름을 참고함.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('수동 추출에 장면 기억 포함', '수동 추출을 실행할 때 사건/약속도 따로 저장함.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('자동 정리에도 장면 기억 포함', '자동 정리 때 사건/약속도 함께 저장함. 시간이 더 걸리고 비용이 늘 수 있음.', settings.config.temporalExtractAutoEnabled === true, (v) => { settings.config.temporalExtractAutoEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('수동 정리에서 장면 기억 저장', '수동으로 대화를 정리할 때 중요한 사건과 약속도 별도로 남김.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('자동 정리에서 장면 기억 저장', '자동 대화 정리 때 중요한 사건과 약속도 함께 남김. 응답까지 시간이 조금 늘 수 있음.', settings.config.temporalExtractAutoEnabled === true, (v) => { settings.config.temporalExtractAutoEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('진행 상태 표시', '추출, 전체 정리, 검색 준비 진행 상태를 화면에 띄움. 모바일에서 겹치면 끄기.', settings.config.extractStatusBadgeEnabled !== false, (v) => { settings.config.extractStatusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
   
           const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
@@ -137,16 +153,16 @@
           nd.appendChild(C.createToggleRow('AI가 참고 장면 고르기', '관련 장면을 한 번 더 추려 정확도를 높임. 시간이 조금 더 걸릴 수 있음.', settings.config.temporalRecallJudgeEnabled, (v) => { settings.config.temporalRecallJudgeEnabled = v; settings.save(); }));
           const jrow = document.createElement('div'); jrow.style.cssText = 'display:flex;gap:12px;margin-top:10px;';
           const jmkNum = (label, key, defaultVal, min, max) => { const f = document.createElement('div'); f.style.flex = '1'; const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:#999;margin-bottom:4px;'; const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal; if (min !== undefined) i.min = min; if (max !== undefined) i.max = max; i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;'; const save = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } }; i.oninput = save; i.onchange = save; f.appendChild(l); f.appendChild(i); return f; };
-          jrow.appendChild(jmkNum('판단 대기 시간(ms)', 'temporalRecallJudgeTimeoutMs', 8000, 1000, 60000));
+          jrow.appendChild(jmkNum('판단 제한 시간(ms)', 'temporalRecallJudgeTimeoutMs', 8000, 1000, 60000));
           jrow.appendChild(jmkNum('검토할 장면 수', 'temporalRecallJudgeCandidateLimit', 6, 1, 30));
           nd.appendChild(jrow);
         }});
   
-        // === 전체 로그 일괄 추출 ===
+        // === 전체 대화 정리 ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const bTitle = document.createElement('div'); bTitle.textContent = '전체 로그 일괄 추출'; bTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(bTitle);
-          const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 배치로 나눠 정리함. API 비용 큼. 초기 정리용.'; bDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(bDesc);
+          const bTitle = document.createElement('div'); bTitle.textContent = '전체 대화 정리'; bTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(bTitle);
+          const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 여러 묶음으로 나눠 로어에 저장함. 처음 정리할 때 사용함.'; bDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(bDesc);
   
           const bRow = document.createElement('div'); bRow.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const mkNum = (label, getter, setter, defaultVal) => {
@@ -162,16 +178,16 @@
           bRow.appendChild(mkNum('겹쳐 읽을 턴', () => settings.config.batchExtOverlap, v => settings.config.batchExtOverlap = v, 5));
           bRow.appendChild(mkNum('재시도', () => settings.config.batchExtMaxAttempts, v => settings.config.batchExtMaxAttempts = v, 3));
           nd.appendChild(bRow);
-          nd.appendChild(C.createToggleRow('전체 추출에도 장면 기억 포함', '전체 로그를 정리할 때 사건/약속도 함께 저장함. 오래 걸리고 비용이 늘 수 있음.', settings.config.temporalExtractBatchEnabled === true, (v) => { settings.config.temporalExtractBatchEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('전체 정리에서 장면 기억 저장', '전체 대화를 정리하면서 중요한 사건과 약속도 함께 남김. 오래 걸릴 수 있음.', settings.config.temporalExtractBatchEnabled === true, (v) => { settings.config.temporalExtractBatchEnabled = v; settings.save(); }));
   
-          const bBtn = document.createElement('button'); bBtn.textContent = '전체 일괄 추출 실행';
+          const bBtn = document.createElement('button'); bBtn.textContent = '전체 대화 정리 실행';
           bBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:none;font-weight:bold;width:100%;margin-top:6px;';
           const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.5;';
           bBtn.onclick = async () => {
-            if (!confirm('전체 로그를 배치로 분석함. API 비용 큼. 계속?')) return;
+            if (!confirm('전체 대화를 여러 묶음으로 분석함. 오래 걸릴 수 있음. 계속?')) return;
             settings.save();
             bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 중...';
-            bStatus.textContent = '전체 로그 가져오는 중'; bStatus.style.color = '#4a9';
+            bStatus.textContent = '전체 대화 가져오는 중'; bStatus.style.color = '#4a9';
             const start = Date.now();
             try {
               const report = await _w.__LoreInj.runBatchExtract({
@@ -180,12 +196,12 @@
                 maxAttempts: settings.config.batchExtMaxAttempts || 3,
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);
-                  if (ev.phase === 'batch') bStatus.textContent = '배치 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                  if (ev.phase === 'batch') bStatus.textContent = '묶음 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
                 }
               });
               const sec = Math.floor((Date.now() - start) / 1000);
-              let msg = '완료 (' + sec + '초) — ' + report.totalBatches + '개 배치 / 성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / 병합 ' + report.entriesAdded + '건';
-              if (report.failed > 0) { msg += ' ⚠️ 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
+              let msg = '완료 (' + sec + '초) - ' + report.totalBatches + '개 묶음 / 성공 ' + report.ok + ' / 빈 결과 ' + report.empty + ' / 실패 ' + report.failed + ' / 저장 ' + report.entriesAdded + '건';
+              if (report.failed > 0) { msg += ' / 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
               else { bStatus.style.color = '#4a9'; }
               bStatus.textContent = msg;
             } catch(e) {
@@ -249,7 +265,7 @@
                       setBusy('URL 가져오기 실패 — 모든 경로 컷', '#d66');
                       break;
                     case 'chunk':
-                      setBusy(`에리가 URL 내용을 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
+                      setBusy(`URL 내용을 로어로 변환 중: 구간 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
                       break;
                   }
                 }
@@ -259,9 +275,9 @@
               if (rpt) {
                 if (rpt.failed > 0) {
                   const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || '';
-                  msg += ' ⚠️ 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
+                  msg += ' / 일부 구간 실패 ' + rpt.failed + '/' + rpt.chunks + ': ' + firstErr.slice(0, 80);
                 } else if (cnt === 0 && rpt.empty === rpt.chunks) {
-                  msg = '⚠️ 0개 — 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
+                  msg = '0개 - 모든 구간(' + rpt.chunks + '개)에서 저장할 내용을 찾지 못함';
                 }
               }
               rDiv.textContent = msg;
@@ -302,7 +318,7 @@
               const cnt = await C.importFromText(ta.value.trim(), nameInp2.value.trim(), buildGenerationApiOpts({}, { feature: 'textImport', chatKey: (C.getCurrentChatId && C.getCurrentChatId()) || 'global' }), {
                 onProgress: (ev) => {
                   if (ev && ev.phase === 'chunk') {
-                    setBusy(`에리가 텍스트를 로어로 변환 중: 청크 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
+                    setBusy(`텍스트를 로어로 변환 중: 구간 ${ev.chunk}/${ev.total} · 시도 ${ev.attempt}/${ev.maxAttempts}`);
                   }
                 }
               });
@@ -311,9 +327,9 @@
               if (rpt) {
                 if (rpt.failed > 0) {
                   const firstErr = (rpt.chunkResults.find(r => r.status === 'failed') || {}).error || '';
-                  msg += ' ⚠️ 청크 ' + rpt.failed + '/' + rpt.chunks + ' 실패: ' + firstErr.slice(0, 80);
+                  msg += ' / 일부 구간 실패 ' + rpt.failed + '/' + rpt.chunks + ': ' + firstErr.slice(0, 80);
                 } else if (cnt === 0 && rpt.empty === rpt.chunks) {
-                  msg = '⚠️ 0개 — 모든 청크(' + rpt.chunks + '개)에서 AI가 추출 가능한 내용 없다고 판단';
+                  msg = '0개 - 모든 구간(' + rpt.chunks + '개)에서 저장할 내용을 찾지 못함';
                 }
               }
               rDiv2.textContent = msg;

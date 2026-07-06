@@ -75,6 +75,49 @@
     };
   }
 
+  async function patchChatMessage(chatId, messageId, nextText) {
+    try {
+      if (typeof CrackUtil !== 'undefined' && CrackUtil.chatRoom && typeof CrackUtil.chatRoom().editMessage === 'function') {
+        const edited = await CrackUtil.chatRoom().editMessage(chatId, messageId, nextText);
+        if (edited === true) return { ok: true, status: 200, data: { content: nextText, id: messageId }, via: 'CrackUtil.editMessage' };
+      }
+    } catch (_) {}
+    let token = '';
+    try { token = CrackUtil.cookie().getAuthToken(); } catch (_) {}
+    if (!token) return { ok: false, status: 0, error: 'auth_missing' };
+    const urls = [
+      `https://contents-api.wrtn.ai/character-chat/v3/chats/${chatId}/messages/${messageId}`,
+      `https://contents-api.wrtn.ai/character-chat/character-chats/${chatId}/messages/${messageId}`,
+      `https://crack-api.wrtn.ai/crack-gen/v3/chats/${chatId}/messages/${messageId}`
+    ];
+    let last = { ok: false, status: 0, error: 'not_attempted' };
+    for (const editUrl of urls) {
+      try {
+        const editResult = await Core.gmFetch(editUrl, {
+          method: 'PATCH',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+            'platform': 'web',
+            'wrtn-locale': 'ko-KR'
+          },
+          body: JSON.stringify({ message: nextText })
+        });
+        let text = '';
+        let json = null;
+        try { text = editResult.text ? await editResult.text() : ''; } catch (_) {}
+        try { json = text ? JSON.parse(text) : null; } catch (_) {}
+        const ok = !!(editResult.ok && (!json || json.result === 'SUCCESS' || json.ok !== false));
+        last = { ok, status: editResult.status, text, json, data: json && (json.data || json.result), via: editUrl };
+        if (ok) return last;
+      } catch (e) {
+        last = { ok: false, status: 0, error: e && e.message ? e.message : String(e), via: editUrl };
+      }
+    }
+    return last;
+  }
+
   function formatCallStateForRefiner(entry) {
     const out = [];
     const addState = (key, raw) => {
@@ -342,13 +385,6 @@
         prompt += '\n\nStructured output instruction:\nReturn valid json only. Use exactly one of these formats:\n{"pass":true,"reason":"PASS"}\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n{"reason":"교정 이유","refined_text":"전체 교정본"}';
       }
 
-      // 추론 최소화 (3.x: thinkingLevel, 2.x: 생략)
-      const is3x = apiOpts.model.includes('gemini-3') || apiOpts.model.includes('gemini-2.0-flash-thinking');
-      if (apiOpts.apiType !== 'deepseek' && is3x) {
-        const isPro = apiOpts.model.includes('pro');
-        apiOpts.thinkingConfig = isPro ? { thinkingLevel: 'low' } : { thinkingLevel: 'minimal' };
-      }
-
       const _refT0 = Date.now();
       const response = await Core.callGeminiApi(prompt, apiOpts);
       _refElapsedMs = Date.now() - _refT0;
@@ -426,27 +462,13 @@
             if (!_cid) throw new Error('채팅방 ID 없음');
             const lastBot = targetLog && !(targetLog instanceof Error) ? targetLog : await CrackUtil.chatRoom().findLastBotMessage(_cid);
             if (lastBot && !(lastBot instanceof Error)) {
-              const token = CrackUtil.cookie().getAuthToken();
-              const editUrl = `https://crack-api.wrtn.ai/crack-gen/v3/chats/${_cid}/messages/${lastBot.id}`;
-              const editResult = await Core.gmFetch(editUrl, {
-                method: 'PATCH',
-                headers: {
-                  'Accept': 'application/json, text/plain, */*',
-                  'Authorization': 'Bearer ' + token,
-                  'Content-Type': 'application/json',
-                  'platform': 'web',
-                  'wrtn-locale': 'ko-KR'
-                },
-                body: JSON.stringify({ message: newText })
-              });
-
-              let editText = '';
-              let editJson = null;
-              try { editText = editResult.text ? await editResult.text() : ''; } catch (_) {}
-              try { editJson = editText ? JSON.parse(editText) : null; } catch (_) {}
-              const serverOk = !!(editResult.ok && (!editJson || editJson.result === 'SUCCESS'));
-              const serverText = (editJson && editJson.data && typeof editJson.data.content === 'string') ? editJson.data.content : newText;
-              const serverMessageId = (editJson && editJson.data && (editJson.data._id || editJson.data.id)) || lastBot.id;
+              const editResult = await patchChatMessage(_cid, lastBot.id, newText);
+              const editText = editResult.text || '';
+              const editJson = editResult.json || null;
+              const serverOk = !!editResult.ok;
+              const editData = editResult.data || (editJson && editJson.data) || null;
+              const serverText = (editData && typeof editData.content === 'string') ? editData.content : newText;
+              const serverMessageId = (editData && (editData._id || editData.id)) || lastBot.id;
 
               if (serverOk) {
                 const newFp = serverMessageId || serverText.slice(0, 40);

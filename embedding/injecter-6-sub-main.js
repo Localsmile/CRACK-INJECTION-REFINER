@@ -35,7 +35,7 @@
           };
           const cfg = settings.config || {};
           const apiType = cfg.autoExtApiType || 'key';
-          const apiReady = apiType === 'deepseek' ? !!cfg.autoExtDeepSeekKey : apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
+          const apiReady = apiType === 'deepseek' ? !!cfg.autoExtDeepSeekKey : apiType === 'openai' ? (!!cfg.autoExtOpenAIBaseUrl && !!cfg.autoExtOpenAIKey) : apiType === 'vertex' ? !!cfg.autoExtVertexJson : apiType === 'firebase' ? !!cfg.autoExtFirebaseScript : !!cfg.autoExtKey;
           const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(C.getCurUrl()) : ((cfg.urlPacks && cfg.urlPacks[C.getCurUrl()]) || []);
           const storageHealth = _w.__LoreInj.getSettingsStorageHealth ? _w.__LoreInj.getSettingsStorageHealth() : { ok: true, configBytes: 0 };
           chip('API', apiReady ? '설정됨' : '미설정', apiReady);
@@ -165,6 +165,10 @@
                 autoExtVertexProjectId: settings.config.autoExtVertexProjectId,
                 autoExtFirebaseScript: settings.config.autoExtFirebaseScript,
                 autoExtFirebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
+                autoExtGeminiEmbedKey: settings.config.autoExtGeminiEmbedKey,
+                autoExtDeepSeekKey: settings.config.autoExtDeepSeekKey,
+                autoExtOpenAIBaseUrl: settings.config.autoExtOpenAIBaseUrl,
+                autoExtOpenAIKey: settings.config.autoExtOpenAIKey,
                 embeddingModel: settings.config.embeddingModel
               };
               _ls.removeItem('lore-injector-v5');

@@ -206,10 +206,15 @@
     fbEmbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;line-height:1.4;';
     firebaseArea.appendChild(fbEmbNote);
     const fbEmbInput = document.createElement('input'); fbEmbInput.type = 'text';
-    fbEmbInput.value = config[fbEmbKey] || ''; fbEmbInput.placeholder = 'AIzaSy...';
+    fbEmbInput.value = config.autoExtGeminiEmbedKey || config[fbEmbKey] || ''; fbEmbInput.placeholder = 'AIzaSy...';
     fbEmbInput.setAttribute('autocomplete', 'off');
     fbEmbInput.style.cssText = S + '-webkit-text-security:disc;';
-    fbEmbInput.onchange = () => { config[fbEmbKey] = fbEmbInput.value.trim(); triggerSave(); };
+    fbEmbInput.onchange = () => {
+      const val = fbEmbInput.value.trim();
+      config.autoExtGeminiEmbedKey = val;
+      config[fbEmbKey] = val;
+      triggerSave();
+    };
     firebaseArea.appendChild(fbEmbInput);
     nd.appendChild(firebaseArea);
     updateBtns();

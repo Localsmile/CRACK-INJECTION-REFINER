@@ -85,7 +85,7 @@
   const { C, R, settings } = _w.__LoreInj;
   const VER = _w.__LoreInj.VER;
   const ENTRY_BUTTON_ID = 'lore-inj-entry-button';
-  const ENTRY_BUTTON_CLASS = 'burner-button lore-inj-entry-button';
+  const ENTRY_BUTTON_CLASS = 'lore-inj-entry-button';
 
   // ModalManager 해결
   const MM = await waitForModalManager(10000);
@@ -133,6 +133,7 @@
     btn.id = ENTRY_BUTTON_ID;
     btn.type = 'button';
     btn.className = ENTRY_BUTTON_CLASS;
+    btn.setAttribute('data-lore-inj-entry', 'true');
     btn.textContent = 'Lore';
     btn.title = '로어 인젝터 열기';
     btn.setAttribute('aria-label', '로어 인젝터 열기');
@@ -161,6 +162,24 @@
       openLoreModal();
     });
     return btn;
+  }
+
+  function mountFloatingEntryButton() {
+    if (document.getElementById(ENTRY_BUTTON_ID)) return false;
+    const btn = createEntryButton();
+    btn.style.cssText += [
+      'position:fixed',
+      'right:12px',
+      'bottom:calc(76px + env(safe-area-inset-bottom, 0px))',
+      'z-index:2147483646',
+      'height:34px',
+      'min-width:52px',
+      'margin:0',
+      'box-shadow:0 4px 14px rgba(0,0,0,.35)',
+      'backdrop-filter:blur(8px)'
+    ].join(';');
+    document.body.appendChild(btn);
+    return true;
   }
 
   function mountEntryButton(target) {
@@ -272,6 +291,7 @@
     for (const target of targets) {
       if (mountEntryButton(target)) return;
     }
+    mountFloatingEntryButton();
   }
 
   async function doInjection() {

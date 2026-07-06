@@ -635,14 +635,16 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const prompt = injectTemporalExistingBlock(promptTpl.replace('{context}', context).replace('{schema}', schema), existingTemporalText, outputModeText);
       const _tmpT0 = Date.now();
       // v1.4.0-test.41 (B20 fix): 시간축 추출 패스는 'autoExtract'가 아닌 별도 feature로 기록. 이전에는 _doExtract의 apiOpts.costContext가 그대로 전달돼 자동추출 비용과 잡혀 분석 증감.
-      const temporalApiOpts = {
-        ...apiOpts,
+      const temporalOverrides = {
+        model: (apiOpts && apiOpts.model) || (settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel),
         responseMimeType: 'application/json',
         maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
         timeoutMs: apiOpts.timeoutMs || (isDeepSeekTemporal ? 150000 : 120000),
         maxOutputTokens: isDeepSeekTemporal ? deepSeekJsonMaxOutput(apiOpts) : (_patchOn ? (apiOpts.maxOutputTokens || 4096) : null),
-        costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' }
       };
+      const temporalApiOpts = _w.__LoreInj.buildGenerationApiOpts
+        ? _w.__LoreInj.buildGenerationApiOpts(temporalOverrides, { feature: 'temporalExtract', chatKey: chatKey || 'global' })
+        : { ...apiOpts, ...temporalOverrides, costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } };
       const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
       _tmpElapsedMs = Date.now() - _tmpT0;
       _tmpCost = (res && res.cost) || null;

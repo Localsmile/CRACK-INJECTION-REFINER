@@ -121,13 +121,49 @@
     return R ? R.DEFAULT_PROMPT : '';
   }
 
+  function cloneJsonSafe(value) {
+    try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
+  }
+
+  function pruneLogMapForStorage(map, maxKeys, maxItems) {
+    if (!map || typeof map !== 'object') return map || {};
+    const out = {};
+    const keys = Object.keys(map).slice(-Math.max(1, maxKeys || 20));
+    for (const key of keys) {
+      const arr = Array.isArray(map[key]) ? map[key] : [];
+      out[key] = arr.slice(-Math.max(0, maxItems || 20));
+    }
+    return out;
+  }
+
+  function pruneConfigForStorage(config, hard = false) {
+    const cfg = cloneJsonSafe(config || {});
+    const softKeys = hard ? 12 : 30;
+    cfg.urlExtLogs = pruneLogMapForStorage(cfg.urlExtLogs, softKeys, hard ? 8 : 20);
+    cfg.urlInjLogs = pruneLogMapForStorage(cfg.urlInjLogs, softKeys, hard ? 20 : 60);
+    cfg.urlRefinerLogs = pruneLogMapForStorage(cfg.urlRefinerLogs, softKeys, hard ? 8 : 20);
+    return cfg;
+  }
+
+  function persistStorageIfPossible() {
+    try {
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    } catch (_) {}
+  }
+
   function getApiConfigSnapshot(config) {
     const keys = [
       'autoExtApiType', 'autoExtKey', 'autoExtVertexJson', 'autoExtVertexLocation', 'autoExtVertexProjectId',
-      'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtDeepSeekKey', 'autoExtDeepSeekThinking',
-      'autoExtDeepSeekReasoning', 'autoExtModel', 'autoExtCustomModel',
-      'autoExtReasoning', 'autoExtBudget', 'embeddingModel', 'rerankModel', 'rerankCustomModel', 'refinerModel', 'refinerCustomModel',
-      'temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel', 'temporalRecallJudgeReasoning'
+      'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtGeminiEmbedKey', 'autoExtDeepSeekKey', 'autoExtDeepSeekThinking',
+      'autoExtDeepSeekReasoning', 'autoExtOpenAIBaseUrl', 'autoExtOpenAIKey', 'autoExtOpenAIReasoning',
+      'batchExtOpenAIReasoning', 'temporalExtractOpenAIReasoning', 'importOpenAIReasoning',
+      'mergeOpenAIReasoning', 'rerankOpenAIReasoning', 'temporalRecallJudgeOpenAIReasoning', 'refinerOpenAIReasoning',
+      'autoExtModel', 'autoExtCustomModel',
+      'autoExtReasoning', 'autoExtBudget', 'batchExtReasoning', 'batchExtBudget',
+      'temporalExtractReasoning', 'temporalExtractBudget', 'importReasoning', 'importBudget',
+      'mergeReasoning', 'mergeBudget', 'embeddingModel', 'rerankModel', 'rerankCustomModel',
+      'rerankReasoning', 'rerankBudget', 'refinerModel', 'refinerCustomModel', 'refinerReasoning', 'refinerBudget',
+      'temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel', 'temporalRecallJudgeReasoning', 'temporalRecallJudgeBudget'
     ];
     const out = {};
     keys.forEach(k => { if (config && config[k] !== undefined) out[k] = config[k]; });
@@ -267,11 +303,12 @@
   }
 
   async function createSnapshot(packName, label, type = 'auto') {
+    const maxSnapshotsPerPack = 5;
     const entries = await db.entries.where('packName').equals(packName).toArray();
     const clean = entries.map(({ id, ...rest }) => rest);
     await db.snapshots.add({ packName, timestamp: Date.now(), label: label || '자동 저장', type, data: clean });
     const all = await db.snapshots.where('packName').equals(packName).sortBy('timestamp');
-    if (all.length > 10) await db.snapshots.bulkDelete(all.slice(0, all.length - 10).map(s => s.id));
+    if (all.length > maxSnapshotsPerPack) await db.snapshots.bulkDelete(all.slice(0, all.length - maxSnapshotsPerPack).map(s => s.id));
   }
 
   async function restoreSnapshot(snapshotId) {
@@ -340,17 +377,20 @@
 
     autoExtEnabled: true, autoExtTurns: 5, autoExtScanRange: 5, autoExtOffset: 3, autoExtPack: '자동추출', autoExtMaxRetries: 2,
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
-    autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '',
+    autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '', autoExtGeminiEmbedKey: '',
     autoExtDeepSeekKey: '', autoExtDeepSeekThinking: false, autoExtDeepSeekReasoning: 'high',
+    autoExtOpenAIBaseUrl: '', autoExtOpenAIKey: '', autoExtOpenAIReasoning: 'off',
     deepSeekJsonSystemPrompt: 'Return only one valid json object. Do not output markdown fences, explanations, comments, or trailing text. Preserve the language of the source content. Follow the exact object shape requested by the user.',
     deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
     deepSeekPromptWithDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
     deepSeekTemporalExtractPrompt: DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
     deepSeekImportPrompt: DEFAULT_DEEPSEEK_IMPORT_PROMPT,
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
+    batchExtReasoning: 'medium', batchExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
     temporalExtractEnabled: true, temporalExtractAutoEnabled: false, temporalExtractBatchEnabled: false, temporalExtractMode: 'after_general', temporalCriticEnabled: false, temporalMaxEventsPerPass: 5,
+    temporalExtractReasoning: 'medium', temporalExtractBudget: 2048,
     temporalExtractPrompt: DEFAULT_TEMPORAL_EXTRACT_PROMPT, temporalExtractSchema: DEFAULT_TEMPORAL_EXTRACT_SCHEMA,
     timelineRetrievalEnabled: true, timelineRecallWeight: 0.32, timelineNoCuePenalty: 0.35, timelineRecallPoolLimit: 12,
     temporalInjectionEnabled: true, temporalRecallChars: 450, temporalRecallNaturalChars: 260,
@@ -359,7 +399,7 @@
     temporalCompressionApiEnabled: false, temporalCompressionTargetChars: 140,
     temporalCompressionPreserveFields: ['participants', 'location', 'hooks'],
     temporalRecallJudgeEnabled: false, temporalRecallJudgeModel: 'gemini-3.1-flash-lite-preview', temporalRecallJudgeCustomModel: '',
-    temporalRecallJudgeReasoning: 'minimal', temporalRecallJudgeTimeoutMs: 8000,
+    temporalRecallJudgeReasoning: 'minimal', temporalRecallJudgeBudget: 512, temporalRecallJudgeTimeoutMs: 8000,
     temporalRecallJudgeCandidateLimit: 6,
     temporalRecallFallbackMode: 'deterministic',
     temporalRecallJudgePrompt: DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
@@ -387,10 +427,12 @@
     embeddingModel: 'gemini-embedding-001', autoEmbedOnExtract: true, extractStatusBadgeEnabled: true,
     aiMemoryTurns: 3, importanceGating: true, importanceThreshold: 12, pendingPromiseBoost: true,
     oocFormat: 'default', oocPromptVersion: OOC_FORMAT_VERSION, autoExtractPromptVersion: AUTO_EXTRACT_PROMPT_VERSION, rerankEnabled: false, rerankModel: 'gemini-3-flash-preview', rerankCustomModel: '',
+    rerankReasoning: 'minimal', rerankBudget: 512, importReasoning: 'medium', importBudget: 2048, mergeReasoning: 'medium', mergeBudget: 2048,
     rerankPrompt: C.DEFAULTS.rerankPrompt,
 
     refinerEnabled: false, refinerAutoMode: false, refinerPassKeyword: 'PASS',
     refinerModel: 'gemini-3.1-flash-lite-preview', refinerCustomModel: '',
+    refinerReasoning: 'minimal', refinerBudget: 512,
     refinerContextTurns: 3, refinerCustomPrompt: defaultRefinerPrompt(), refinerLoreMode: 'semantic', refinerMatchTurns: 5,
     refinerUseDynamic: true, refinerTopics: defaultRefinerTopics(), refinerPromptVersion: R ? R.PROMPT_VERSION : '',
     urlRefinerLogs: {},
@@ -406,7 +448,9 @@
     _lastSaveError: '',
     save: function() {
       try {
-        const payload = JSON.stringify(this.config);
+        persistStorageIfPossible();
+        const storable = pruneConfigForStorage(this.config, false);
+        const payload = JSON.stringify(storable);
         _ls.setItem('lore-injector-v5', payload);
         this._lastSaveTime = Date.now();
         this._lastSaveOk = true;
@@ -414,12 +458,23 @@
         try { _ls.removeItem('lore-injector-last-save-error'); } catch (_) {}
         return true;
       } catch(e) {
-        this._lastSaveOk = false;
-        this._lastSaveError = e && e.message ? e.message : String(e);
         try {
-          _ls.setItem('lore-injector-last-save-error', JSON.stringify({ ts: Date.now(), message: this._lastSaveError }));
-        } catch (_) {}
-        console.warn('[LoreInj:settings] save failed:', e);
+          const compact = pruneConfigForStorage(this.config, true);
+          _ls.setItem('lore-injector-v5', JSON.stringify(compact));
+          this._lastSaveTime = Date.now();
+          this._lastSaveOk = true;
+          this._lastSaveError = '';
+          try { _ls.removeItem('lore-injector-last-save-error'); } catch (_) {}
+          console.warn('[LoreInj:settings] save recovered after compacting logs:', e && e.message ? e.message : e);
+          return true;
+        } catch(e2) {
+          this._lastSaveOk = false;
+          this._lastSaveError = e2 && e2.message ? e2.message : String(e2);
+          try {
+            _ls.setItem('lore-injector-last-save-error', JSON.stringify({ ts: Date.now(), message: this._lastSaveError }));
+          } catch (_) {}
+          console.warn('[LoreInj:settings] save failed:', e2);
+        }
         return false;
       }
     },
@@ -981,19 +1036,97 @@
   }
 
   function getGenerationFallbackModel(config) {
-    return (config && config.autoExtApiType) === 'deepseek' ? 'deepseek-v4-flash' : 'gemini-3-flash-preview';
+    const apiType = config && config.autoExtApiType;
+    if (apiType === 'deepseek') return 'deepseek-v4-flash';
+    if (apiType === 'openai') return '';
+    return 'gemini-3-flash-preview';
   }
 
   function isModelCompatibleWithApi(model, apiType) {
     const m = String(model || '');
     if (!m || m === '_custom') return true;
-    return apiType === 'deepseek' ? m.startsWith('deepseek-') : !m.startsWith('deepseek-');
+    if (apiType === 'deepseek') return m.startsWith('deepseek-');
+    if (apiType === 'openai') return !m.startsWith('gemini-') && !m.startsWith('deepseek-');
+    return !m.startsWith('deepseek-');
+  }
+
+  function featureThinkingKey(feature) {
+    const f = String(feature || '');
+    if (f === 'batchExtract' || f === 'batchExtractRetry') return 'batchExt';
+    if (f === 'temporalExtract') return 'temporalExtract';
+    if (f === 'urlImport' || f === 'textImport' || f === 'import') return 'import';
+    if (f === 'merge') return 'merge';
+    if (f === 'rerank') return 'rerank';
+    if (f === 'judge') return 'temporalRecallJudge';
+    if (f === 'refine') return 'refiner';
+    return 'autoExt';
+  }
+
+  function thinkingModeForFeature(config, feature) {
+    const key = featureThinkingKey(feature);
+    return {
+      key,
+      mode: config[key + 'Reasoning'] || config.autoExtReasoning || 'default',
+      budget: Number(config[key + 'Budget'] || config.autoExtBudget || 2048) || 2048
+    };
+  }
+
+  function geminiThinkingConfigForModel(model, mode, budget) {
+    const m = String(model || '').toLowerCase();
+    const raw = String(mode || 'default').toLowerCase();
+    if (!raw || raw === 'default') return {};
+    const isGemini3 = /^gemini-3/.test(m);
+    const isGemini25 = m.includes('gemini-2.5');
+    const isThinking20 = m.includes('gemini-2.0-flash-thinking');
+    if (!isGemini3 && !isGemini25 && !isThinking20) return {};
+    if (isGemini3 || isThinking20) {
+      if (raw === 'budget') {
+        const b = Math.max(0, Number(budget) || 0);
+        return { thinkingLevel: b >= 4096 ? 'high' : (b >= 2048 ? 'medium' : (b >= 1024 ? 'low' : 'minimal')) };
+      }
+      if (raw === 'off') return { thinkingLevel: 'minimal' };
+      if (['minimal', 'low', 'medium', 'high'].includes(raw)) return { thinkingLevel: raw };
+      return {};
+    }
+    if (isGemini25) {
+      if (raw === 'off') return m.includes('pro') ? {} : { thinkingBudget: 0 };
+      if (raw === 'budget') return { thinkingBudget: Math.max(-1, Number(budget) || 0) };
+      const map = { minimal: 512, low: 1024, medium: 2048, high: 4096 };
+      if (map[raw] != null) return { thinkingBudget: map[raw] };
+    }
+    return {};
+  }
+
+  function openAIReasoningForFeature(config, feature) {
+    const key = featureThinkingKey(feature);
+    const direct = String(config[key + 'OpenAIReasoning'] || config.autoExtOpenAIReasoning || '').trim();
+    const selected = direct || 'off';
+    if (!selected || selected === 'default' || selected === 'budget') return 'off';
+    if (selected === 'off') return 'off';
+    if (selected === 'minimal') return 'minimal';
+    if (['none', 'low', 'medium', 'high', 'xhigh', 'max'].includes(selected)) return selected;
+    return direct || 'off';
+  }
+
+  function getGeminiEmbeddingKey(config, opts = {}) {
+    const cfg = config || settings.config || {};
+    const key = String(cfg.autoExtGeminiEmbedKey || cfg.autoExtFirebaseEmbedKey || '').trim();
+    if (key) return key;
+    return opts.allowGenerationKey ? String(cfg.autoExtKey || '').trim() : '';
   }
 
   function normalizeApiModelDefaults(config) {
     const cfg = config || settings.config || {};
     const apiType = cfg.autoExtApiType || 'key';
     const fallback = getGenerationFallbackModel(cfg);
+    const forceOpenAICustom = (modelKey, customKey) => {
+      const current = cfg[modelKey];
+      const oldDefault = 'gpt-' + '4.1-mini';
+      if (current && current !== '_custom' && current !== oldDefault && !String(current).startsWith('gemini-') && !String(current).startsWith('deepseek-') && !cfg[customKey]) {
+        cfg[customKey] = current;
+      }
+      cfg[modelKey] = '_custom';
+    };
     if (!isModelCompatibleWithApi(cfg.autoExtModel, apiType)) cfg.autoExtModel = fallback;
     if (apiType === 'deepseek') {
       if (!cfg.autoExtModel || cfg.autoExtModel === '_custom') cfg.autoExtModel = fallback;
@@ -1001,10 +1134,16 @@
       if (!cfg.temporalRecallJudgeModel || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = fallback;
       if (cfg.refinerModel === '' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = fallback;
       if (cfg.autoExtDeepSeekThinking === undefined) cfg.autoExtDeepSeekThinking = false;
+    } else if (apiType === 'openai') {
+      forceOpenAICustom('autoExtModel', 'autoExtCustomModel');
+      forceOpenAICustom('rerankModel', 'rerankCustomModel');
+      forceOpenAICustom('temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel');
+      forceOpenAICustom('refinerModel', 'refinerCustomModel');
     } else {
-      if (!isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3-flash-preview';
-      if (!isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';
-      if (!isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite-preview';
+      if (!cfg.autoExtModel || cfg.autoExtModel === '_custom' || !isModelCompatibleWithApi(cfg.autoExtModel, apiType)) cfg.autoExtModel = fallback;
+      if (!cfg.rerankModel || cfg.rerankModel === '_custom' || !isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3-flash-preview';
+      if (!cfg.temporalRecallJudgeModel || cfg.temporalRecallJudgeModel === '_custom' || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';
+      if (cfg.refinerModel === '' || cfg.refinerModel === '_custom' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite-preview';
     }
     return cfg;
   }
@@ -1013,14 +1152,23 @@
     const cfg = config || settings.config || {};
     if (purpose === 'embed') {
       if ((cfg.autoExtApiType || 'key') === 'deepseek') {
-        return cfg.autoExtFirebaseEmbedKey ? '' : '의미 검색용 Gemini API 키 필요.';
+        return getGeminiEmbeddingKey(cfg) ? '' : '의미 검색용 Gemini API 키 필요.';
+      }
+      if ((cfg.autoExtApiType || 'key') === 'openai') {
+        return getGeminiEmbeddingKey(cfg) ? '' : '의미 검색용 Gemini API 키 필요.';
       }
       if ((cfg.autoExtApiType || 'key') === 'vertex') return cfg.autoExtVertexJson ? '' : 'Vertex JSON 필요.';
-      if ((cfg.autoExtApiType || 'key') === 'firebase') return cfg.autoExtFirebaseEmbedKey ? '' : '의미 검색용 Gemini API 키 필요.';
-      return cfg.autoExtKey ? '' : 'Gemini API 키 필요.';
+      if ((cfg.autoExtApiType || 'key') === 'firebase') return getGeminiEmbeddingKey(cfg) ? '' : '의미 검색용 Gemini API 키 필요.';
+      return getGeminiEmbeddingKey(cfg, { allowGenerationKey: true }) ? '' : 'Gemini API 키 필요.';
     }
     const apiType = cfg.autoExtApiType || 'key';
     if (apiType === 'deepseek') return cfg.autoExtDeepSeekKey ? '' : 'DeepSeek API 키 필요.';
+    if (apiType === 'openai') {
+      if (!cfg.autoExtOpenAIBaseUrl) return 'OpenAI 호환 Base URL 필요.';
+      if (!cfg.autoExtOpenAIKey) return 'OpenAI 호환 API 키 필요.';
+      if (!resolveConfiguredModel(cfg.autoExtModel, cfg.autoExtCustomModel, '')) return 'OpenAI 호환 모델명 필요.';
+      return '';
+    }
     if (apiType === 'vertex') return cfg.autoExtVertexJson ? '' : 'Vertex JSON 필요.';
     if (apiType === 'firebase') return cfg.autoExtFirebaseScript ? '' : 'Firebase 설정 필요.';
     return cfg.autoExtKey ? '' : 'Gemini API 키 필요.';
@@ -1037,11 +1185,14 @@
       deepSeekThinking: cfg.autoExtDeepSeekThinking !== false,
       deepSeekReasoning: cfg.autoExtDeepSeekReasoning || 'high',
       deepSeekJsonSystemPrompt: cfg.deepSeekJsonSystemPrompt || '',
+      openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
+      openAIKey: cfg.autoExtOpenAIKey || '',
+      openAIReasoning: openAIReasoningForFeature(cfg, costContext && costContext.feature),
       vertexJson: cfg.autoExtVertexJson,
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,
       firebaseScript: cfg.autoExtFirebaseScript,
-      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
+      firebaseEmbedKey: getGeminiEmbeddingKey(cfg, { allowGenerationKey: (cfg.autoExtApiType || 'key') === 'key' }),
       model,
       maxRetries: cfg.autoExtMaxRetries || 1,
       responseMimeType: 'application/json',
@@ -1049,12 +1200,14 @@
       ...overrides
     };
     const m = String(opts.model || '');
-    if (opts.apiType !== 'deepseek') {
-      const reasoning = cfg.autoExtReasoning || 'medium';
-      if ((m.includes('gemini-3') || m.includes('gemini-2.0-flash-thinking')) && reasoning && reasoning !== 'off' && reasoning !== 'budget') {
-        opts.thinkingConfig = { thinkingLevel: reasoning };
-      }
+    if (opts.apiType !== 'deepseek' && opts.apiType !== 'openai') {
+      const t = thinkingModeForFeature(cfg, costContext && costContext.feature);
+      opts.thinkingConfig = {
+        ...(opts.thinkingConfig || {}),
+        ...geminiThinkingConfigForModel(m, t.mode, t.budget)
+      };
       if (m.includes('pro') && opts.thinkingConfig?.thinkingLevel === 'minimal') opts.thinkingConfig.thinkingLevel = 'low';
+      if (!Object.keys(opts.thinkingConfig || {}).length) delete opts.thinkingConfig;
     }
     return opts;
   }
@@ -1062,6 +1215,7 @@
   function buildEmbeddingApiOpts(overrides = {}, costContext = null) {
     const cfg = settings.config || {};
     const apiType = cfg.autoExtApiType || 'key';
+    const geminiEmbedKey = getGeminiEmbeddingKey(cfg, { allowGenerationKey: apiType === 'key' });
     const opts = {
       apiType,
       key: cfg.autoExtKey,
@@ -1069,15 +1223,24 @@
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,
       firebaseScript: cfg.autoExtFirebaseScript,
-      firebaseEmbedKey: cfg.autoExtFirebaseEmbedKey,
+      firebaseEmbedKey: geminiEmbedKey,
       model: cfg.embeddingModel || 'gemini-embedding-001',
       costContext,
       ...overrides
     };
     if (apiType === 'deepseek') {
       opts.apiType = 'key';
-      opts.key = cfg.autoExtFirebaseEmbedKey || cfg.autoExtKey || '';
+      opts.key = geminiEmbedKey || '';
       delete opts.deepSeekKey;
+    } else if (apiType === 'openai') {
+      opts.apiType = 'key';
+      opts.key = geminiEmbedKey || '';
+      delete opts.openAIKey;
+      delete opts.openAIBaseUrl;
+    } else if (apiType === 'firebase') {
+      opts.firebaseEmbedKey = geminiEmbedKey || '';
+    } else if (apiType === 'key') {
+      opts.key = geminiEmbedKey || cfg.autoExtKey || '';
     }
     return opts;
   }
@@ -1097,7 +1260,7 @@
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
     getApiConfigSnapshot, resetSettingsKeepApi,
-    resolveConfiguredModel, getGenerationFallbackModel, normalizeApiModelDefaults, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts,
+    resolveConfiguredModel, getGenerationFallbackModel, normalizeApiModelDefaults, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts, getGeminiEmbeddingKey,
     getStableChatStateKey, applyPresetKeepState, backupSettings, getSettingsStorageHealth,
     runLocalMigration, getMigrationStatus, ensureHeavyRuntimeInit,
     __settingsLoaded: true

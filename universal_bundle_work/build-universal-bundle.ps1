@@ -69,7 +69,7 @@ if (!$metaMatch.Success) { throw "UserScript metadata block not found in $($mani
 $meta = $metaMatch.Value
 $meta = [regex]::Replace($meta, '// @name\s+.*', '// @name        에리의 크랙 로어 인젝터 (Universal)')
 $meta = [regex]::Replace($meta, '// @version\s+.*', '// @version     ' + [string]$manifest.version)
-$meta = [regex]::Replace($meta, '// @description\s+.*', '// @description 단일 번들로 로드 안정성을 높인 범용 로어 인젝터')
+$meta = [regex]::Replace($meta, '// @description\s+.*', '// @description 에리를 죽인 크랙을 때린다.')
 $meta = [regex]::Replace($meta, '// @updateURL\s+.*\r?\n', '')
 $meta = [regex]::Replace($meta, '// @downloadURL\s+.*\r?\n', '')
 

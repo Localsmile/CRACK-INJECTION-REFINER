@@ -16,7 +16,7 @@
   const BACKUP_VERSION = 1;
   const DB_TABLES = ['packs', 'entries', 'embeddings', 'workingMemory', 'encounters', 'entryVersions', 'snapshots'];
   const LS_KEYS = ['lore-turn-counters', 'lore-last-mention', 'lore-api-cost-log', 'lore-api-cost-cumulative', 'lore-local-migration-version', 'lore-local-migration-status'];
-  const SECRET_SETTING_KEYS = ['autoExtKey', 'autoExtVertexJson', 'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtDeepSeekKey', 'backupServerPassword', 'backupServerToken'];
+  const SECRET_SETTING_KEYS = ['autoExtKey', 'autoExtVertexJson', 'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtGeminiEmbedKey', 'autoExtDeepSeekKey', 'autoExtOpenAIKey', 'backupServerPassword', 'backupServerToken'];
   const PAGE_SETTING_KEYS = ['urlPacks', 'urlDisabledEntries', 'urlAutoExtPacks', 'urlCooldownMaps', 'urlExtLogs', 'urlInjLogs', 'urlRefinerLogs'];
   const PAGE_LS_KEYS = ['lore-turn-counters', 'lore-last-mention'];
 

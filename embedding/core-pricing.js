@@ -76,7 +76,7 @@
 
   // === 이벤트 로깅 ===
   const STORAGE_KEY = 'lore-api-cost-log';
-  const MAX_EVENTS = 5000;
+  const MAX_EVENTS = 1500;
   let _cache = null;
 
   // 이벤트는 기간 필터용(FIFO 5000), 누적은 전체 기간 합계용으로 분리.
@@ -106,7 +106,13 @@
   }
 
   function _persist() {
-    try { _w.localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache)); } catch (_) {}
+    try { _w.localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache)); }
+    catch (_) {
+      try {
+        _cache = (_cache || []).slice(-400);
+        _w.localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache));
+      } catch (_) {}
+    }
   }
 
   function recordApiCost(ev) {
