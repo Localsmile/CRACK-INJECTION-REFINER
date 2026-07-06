@@ -276,7 +276,16 @@
       const log = logs[i];
       const body = messageTextOf(log);
       const msgId = messageIdOf(log);
-      if (log && messageRoleOf(log) === 'user' && body === full && msgId) {
+      if (!log || messageRoleOf(log) !== 'user' || body == null) continue;
+      if ((body === item.originalText || cleanupHash(body) === item.originalHash)) {
+        if (msgId) item.messageId = msgId;
+        item.status = 'done';
+        item.cleanedMode = 'already_clean';
+        item.completedAt = Date.now();
+        item.linkedAt = Date.now();
+        return true;
+      }
+      if (body === full && msgId) {
         item.messageId = msgId;
         item.status = 'tracked';
         item.linkedAt = Date.now();
@@ -306,7 +315,23 @@
       const logs = await fetchRawLogs(chatId, Math.max(CLEANUP_RECONCILE_LIMIT, CLEANUP_LOG_LIMIT), true);
       let changed = false;
       for (const item of items) {
-        if (!item.messageId) changed = (await reconcileCleanupItem(item, logs)) || changed;
+        if (!item.messageId) {
+          const before = {
+            messageId: item.messageId || null,
+            status: item.status || null,
+            linkAttempts: item.linkAttempts || 0,
+            lastLinkAttemptAt: item.lastLinkAttemptAt || 0,
+            completedAt: item.completedAt || 0
+          };
+          const linked = await reconcileCleanupItem(item, logs);
+          changed = linked
+            || changed
+            || before.messageId !== (item.messageId || null)
+            || before.status !== (item.status || null)
+            || before.linkAttempts !== (item.linkAttempts || 0)
+            || before.lastLinkAttemptAt !== (item.lastLinkAttemptAt || 0)
+            || before.completedAt !== (item.completedAt || 0);
+        }
       }
       const currentTurn = getTurnCounter(chatKey);
       let cleaned = 0;
