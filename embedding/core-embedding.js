@@ -10,6 +10,12 @@
   const { getDB, embedText, embedTexts, simpleHash, DEFAULTS } = C;
 
   const EMB_SCHEMA_VERSION = 2;
+  const EMBED_BATCH_SIZE = 5;
+  const EMBED_BATCH_GAP_MS = 350;
+
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
   function summaryText(entry, level) {
     const s = entry && entry.summary;
@@ -248,8 +254,10 @@
     });
 
     let done = 0;
-    for (let i = 0; i < pending.length; i += 5) {
-      const batch = pending.slice(i, i + 5);
+    const batchSize = Math.max(1, Number(apiOpts.embeddingBatchSize || EMBED_BATCH_SIZE) || EMBED_BATCH_SIZE);
+    const batchGapMs = Math.max(0, Number(apiOpts.embeddingBatchGapMs != null ? apiOpts.embeddingBatchGapMs : EMBED_BATCH_GAP_MS) || 0);
+    for (let i = 0; i < pending.length; i += batchSize) {
+      const batch = pending.slice(i, i + batchSize);
       const texts = batch.map(e => buildEmbeddingText(e, 'summary'));
       try {
         const vecs = await embedTexts(texts, { ...apiOpts, taskType: docTaskType, model: targetModel });
@@ -268,6 +276,7 @@
       }
       done += batch.length;
       if (onProgress) onProgress(done, pending.length, cleanup);
+      if (batchGapMs > 0 && i + batchSize < pending.length) await wait(batchGapMs);
     }
     return done;
   }
