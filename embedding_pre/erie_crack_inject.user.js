@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Router)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0.260706.5
+// @version     1.4.0.260706.6
 // @description 채팅방 전용 본체로 진입시키는 초경량 라우터
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/*
@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  const ROUTER_VERSION = '1.4.0.260706.5';
+  const ROUTER_VERSION = '1.4.0.260706.6';
   const CHAT_SCRIPT_URL = 'https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260706-hotfix/embedding_pre/erie_crack_inject_chat.user.js';
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   _w.__LoreInjRouter = _w.__LoreInjRouter || {};

@@ -198,7 +198,10 @@
   async function importFromText(text, packName, apiOpts, opts = {}) {
     const maxEntries = opts.maxEntries || DEFAULTS.importMaxEntries;
     const chunkSize = opts.chunkSize || DEFAULTS.importChunkSize;
-    const maxAttempts = opts.maxAttempts !== undefined ? opts.maxAttempts : 3;
+    const requestedAttempts = opts.maxAttempts !== undefined ? opts.maxAttempts : 3;
+    const maxAttempts = Math.max(3, requestedAttempts);
+    const maxRecoveryRounds = Math.max(2, Number(opts.maxRecoveryRounds != null ? opts.maxRecoveryRounds : 4));
+    const maxTotalAttempts = maxAttempts * (1 + maxRecoveryRounds);
     const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
     const allEntries = [];
     const chunks = [];
@@ -227,9 +230,9 @@
         { source: chunk, schema: schemaText, maxEntries }
       );
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let gotEntries = 0;
-      for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
+      for (let attempt = 0; attempt < maxTotalAttempts && !ok; attempt++) {
         attempts++;
-        if (onProgress) { try { onProgress({ phase: 'chunk', chunk: ci + 1, total: chunks.length, attempt: attempts, maxAttempts }); } catch(_){} }
+        if (onProgress) { try { onProgress({ phase: 'chunk', chunk: ci + 1, total: chunks.length, attempt: attempts, maxAttempts: maxTotalAttempts }); } catch(_){} }
         try {
           const res = await callGeminiApi(prompt, { ...safeApiOpts, responseMimeType: 'application/json', maxRetries: 0, maxOutputTokens: safeApiOpts.apiType === 'deepseek' ? Math.max(Number(safeApiOpts.maxOutputTokens) || 0, DEEPSEEK_IMPORT_MAX_OUTPUT_TOKENS) : safeApiOpts.maxOutputTokens });
           if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
@@ -251,6 +254,9 @@
           allEntries.push(...parsed);
           status = 'ok'; ok = true;
         } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
+        if (!ok && attempt + 1 < maxTotalAttempts) {
+          await new Promise(r => setTimeout(r, Math.min(12000, 1000 * Math.pow(2, Math.min(4, attempt))) + Math.random() * 500));
+        }
       }
       const row = { index: ci, status, attempts, entries: gotEntries };
       if (!ok) {
@@ -258,6 +264,14 @@
         console.warn('[LoreCore:importer] chunk ' + (ci + 1) + '/' + chunks.length + ' 실패 (' + attempts + '회 시도): ' + lastErr + (rawSnippet ? ' | 응답 스니핏: ' + rawSnippet : ''));
       }
       chunkResults.push(row);
+    }
+    const okCount = chunkResults.filter(r => r.status === 'ok').length;
+    const emptyCount = chunkResults.filter(r => r.status === 'empty').length;
+    const failedCount = chunkResults.filter(r => r.status === 'failed').length;
+    C.__lastImportReport = { added: failedCount > 0 ? 0 : allEntries.length, chunks: chunks.length, ok: okCount, empty: emptyCount, failed: failedCount, chunkResults };
+    if (failedCount > 0) {
+      const firstFailed = chunkResults.find(r => r.status === 'failed');
+      throw new Error('지식 변환 실패: 일부 구간 처리 실패로 저장을 취소함 (' + failedCount + '/' + chunks.length + ', ' + ((firstFailed && firstFailed.error) || '알 수 없음') + ')');
     }
     if (allEntries.length > 0) {
       const db = getDB();
@@ -275,10 +289,6 @@
       const count = await db.entries.where('packName').equals(packName).count();
       await db.packs.update(packName, { entryCount: count });
     }
-    const okCount = chunkResults.filter(r => r.status === 'ok').length;
-    const emptyCount = chunkResults.filter(r => r.status === 'empty').length;
-    const failedCount = chunkResults.filter(r => r.status === 'failed').length;
-    C.__lastImportReport = { added: allEntries.length, chunks: chunks.length, ok: okCount, empty: emptyCount, failed: failedCount, chunkResults };
     return allEntries.length;
   }
 
