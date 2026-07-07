@@ -1128,19 +1128,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       let generalStatus = '추출 내용 없음';
       let embedMsg = '';
       let embedCount = 0;
+      let shouldEmbedAfterExtract = false;
       if (parsedItems.length > 0) {
         generalCount = await mergeExtractedData(parsedItems, _url);
         generalStatus = generalCount > 0 ? '성공' : '변경 없음';
         if (generalCount > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
-          try {
-            const epName = await getAutoExtPackForUrl(_url);
-            extBadgeShow('에리가 검색 준비 중');
-            const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
-              ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
-              : { ...apiOpts, apiType: apiType === 'deepseek' ? 'key' : apiType, key: apiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-            embedCount = await C.embedPack(epName, embedOpts);
-            embedMsg = ' (검색 준비 ' + embedCount + '개 완료)';
-          } catch(embErr) { console.warn('[Lore] 자동임베딩 실패:', embErr.message); embedMsg = ' (검색 준비 실패)'; }
+          shouldEmbedAfterExtract = true;
         }
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: generalCount, msgs: recentMsgs.length, isManual, status: generalStatus, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
       } else {
@@ -1150,7 +1143,24 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const shouldRunTemporalExtract = settings.config.temporalExtractEnabled !== false &&
         (isManual || settings.config.temporalExtractAutoEnabled === true);
       if (shouldRunTemporalExtract) {
-        temporalResult = await runTemporalExtractPass({ context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length });
+        temporalResult = await runTemporalExtractPass({ context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length, skipEmbedding: true });
+        if (temporalResult && temporalResult.count > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
+          shouldEmbedAfterExtract = true;
+        }
+      }
+      if (shouldEmbedAfterExtract) {
+        try {
+          const epName = await getAutoExtPackForUrl(_url);
+          extBadgeShow('에리가 검색 준비 중');
+          const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
+            ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
+            : { ...apiOpts, apiType: apiType === 'deepseek' ? 'key' : apiType, key: apiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+          embedCount = await C.embedPack(epName, embedOpts);
+          embedMsg = ' (검색 준비 ' + embedCount + '개 완료)';
+        } catch(embErr) {
+          console.warn('[Lore] 자동임베딩 실패:', embErr.message);
+          embedMsg = ' (검색 준비 실패)';
+        }
       }
       if (isManual) {
         const temporalMsg = shouldRunTemporalExtract

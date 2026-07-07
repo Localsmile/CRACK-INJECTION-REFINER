@@ -378,6 +378,48 @@ Entries:
     } catch (_) { return null; }
   }
 
+  let _generationApiQueue = Promise.resolve();
+  let _lastGenerationApiAt = 0;
+  const _openAICompatVariantCache = new Map();
+
+  function sleep(ms) {
+    return new Promise(res => setTimeout(res, ms));
+  }
+
+  function generationRetryLimit(maxRetries, opts = {}) {
+    const raw = Math.max(0, Number.isFinite(Number(maxRetries)) ? Number(maxRetries) : 1);
+    return opts.retryOnServerError === false ? raw : Math.max(raw, 1);
+  }
+
+  function retryableGenerationStatus(status) {
+    return status === 0 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+  }
+
+  function retryableGenerationError(error) {
+    return /503|502|504|429|네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(error && error.message || error || ''));
+  }
+
+  function generationRetryDelay(attempt, capMs = 10000) {
+    return Math.min(capMs, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
+  }
+
+  function enqueueGenerationApi(task, opts = {}) {
+    if (opts.skipGenerationQueue === true) return task();
+    const minGap = Math.max(0, Number(opts.generationMinGapMs != null ? opts.generationMinGapMs : 250) || 0);
+    const queued = _generationApiQueue.catch(() => {}).then(async () => {
+      const waitMs = Math.max(0, _lastGenerationApiAt + minGap - Date.now());
+      if (waitMs > 0) await sleep(waitMs);
+      if (opts.signal && opts.signal.aborted) return { text: null, status: 0, error: 'aborted', retries: 0 };
+      try {
+        return await task();
+      } finally {
+        _lastGenerationApiAt = Date.now();
+      }
+    });
+    _generationApiQueue = queued.catch(() => {});
+    return queued;
+  }
+
   async function callDeepSeekApi(prompt, opts = {}) {
     const {
       key = '', model = 'deepseek-v4-flash', maxRetries = 1, responseMimeType,
@@ -405,7 +447,8 @@ Entries:
     if (thinkingOn) bodyObj.reasoning_effort = deepSeekReasoning === 'max' || deepSeekReasoning === 'xhigh' ? 'max' : 'high';
     const body = JSON.stringify(bodyObj);
     let lastStatus = 0, lastError = null;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
+    for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
         const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
@@ -414,9 +457,8 @@ Entries:
           const errBody = r.text ? await r.text().catch(() => '') : '';
           lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\\n/g, ' ')}`;
           if ([400, 401, 403, 404].includes(r.status)) break;
-          if ((r.status === 429 || r.status >= 500) && attempt < maxRetries) {
-            const waitMs = Math.min(10000, 1000 * Math.pow(2, attempt + 1)) + Math.random() * 500;
-            await new Promise(res => setTimeout(res, waitMs));
+          if (retryableGenerationStatus(r.status) && attempt < effectiveMaxRetries) {
+            await sleep(generationRetryDelay(attempt + 1, 10000));
             continue;
           }
         } else {
@@ -435,13 +477,13 @@ Entries:
             ? 'DeepSeek 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
             : ('DeepSeek 최종 응답이 비어 있음' + (reasoning ? ' (reasoning_content만 반환됨)' : '') + (finishReason ? ' [' + finishReason + ']' : ''));
         }
-      } catch (e) { lastError = e.message; }
-      if (attempt < maxRetries) {
-        const waitMs = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
-        await new Promise(res => setTimeout(res, waitMs));
+      } catch (e) {
+        lastError = e.message;
+        if (!(attempt < effectiveMaxRetries && retryableGenerationError(e))) break;
       }
+      if (attempt < effectiveMaxRetries) await sleep(generationRetryDelay(attempt, 8000));
     }
-    return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
+    return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
   }
 
   function normalizeOpenAICompatUrl(baseUrl) {
@@ -464,6 +506,14 @@ Entries:
     if (!value || style === 'none') return;
     if (style === 'nested') bodyObj.reasoning = { effort: value };
     else if (style === 'flat') bodyObj.reasoning_effort = value;
+  }
+
+  function openAICompatVariantKey(url, model, jsonMode, hasMaxOutputTokens, reasoning) {
+    return [url, model, jsonMode ? 'json' : 'text', hasMaxOutputTokens ? 'tokens' : 'no_tokens', String(reasoning || '').trim().toLowerCase()].join('|');
+  }
+
+  function variantId(variant) {
+    return [variant.withJsonMode ? 'json' : 'plain', variant.tokenField || 'no_token', variant.reasoningStyle || 'none'].join('|');
   }
 
   async function callOpenAICompatApi(prompt, opts = {}) {
@@ -499,10 +549,16 @@ Entries:
         bodyVariants.push({ withJsonMode: false, tokenField, reasoningStyle });
       }
     }
+    const variantCacheKey = openAICompatVariantKey(url, model, jsonMode, maxOutputTokens != null, reasoning);
+    const cachedVariantId = _openAICompatVariantCache.get(variantCacheKey);
+    const orderedVariants = cachedVariantId
+      ? bodyVariants.filter(v => variantId(v) === cachedVariantId).concat(bodyVariants.filter(v => variantId(v) !== cachedVariantId))
+      : bodyVariants;
 
     let lastStatus = 0, lastError = null;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      for (const variant of bodyVariants) {
+    const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
+    for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
+      for (const variant of orderedVariants) {
         try {
           if (signal && signal.aborted) { lastError = 'aborted'; break; }
           const r = await gmFetch(url, { method: 'POST', headers, body: makeBody(variant.withJsonMode, variant.tokenField, variant.reasoningStyle), signal, timeout: timeoutMs });
@@ -512,7 +568,7 @@ Entries:
             lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\n/g, ' ')}`;
             if (r.status === 400 && (variant.withJsonMode || variant.tokenField === 'max_tokens' || variant.reasoningStyle !== 'none')) continue;
             if ([400, 401, 403, 404].includes(r.status)) break;
-            if ((r.status === 429 || r.status >= 500) && attempt < maxRetries) break;
+            if (retryableGenerationStatus(r.status) && attempt < effectiveMaxRetries) break;
           } else {
             const json = await r.json();
             const choice = json.choices && json.choices[0];
@@ -527,24 +583,32 @@ Entries:
             const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
             const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
             const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
-            if (text) return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
+            if (text) {
+              _openAICompatVariantCache.set(variantCacheKey, variantId(variant));
+              return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
+            }
             lastError = finishReason === 'length'
               ? 'OpenAI 호환 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
               : ('OpenAI 호환 최종 응답이 비어 있음' + (finishReason ? ' [' + finishReason + ']' : ''));
           }
-        } catch (e) { lastError = e.message; }
+        } catch (e) {
+          lastError = e.message;
+          if (!(attempt < effectiveMaxRetries && retryableGenerationError(e))) break;
+        }
         break;
       }
-      if (attempt < maxRetries) {
-        const waitMs = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
-        await new Promise(res => setTimeout(res, waitMs));
-      }
+      if (attempt < effectiveMaxRetries && retryableGenerationStatus(lastStatus)) await sleep(generationRetryDelay(attempt, 8000));
+      else if (attempt < effectiveMaxRetries && retryableGenerationError(lastError)) await sleep(generationRetryDelay(attempt, 8000));
+      else break;
     }
-    return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
+    return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
   }
 
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
+    if (opts.skipGenerationQueue !== true) {
+      return enqueueGenerationApi(() => callGeminiApi(prompt, { ...opts, skipGenerationQueue: true }), opts);
+    }
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
@@ -604,7 +668,9 @@ Entries:
       }
       // Firebase SDK는 generateContent에 signal 미지원: 진입 시점만 검사.
       if (signal && signal.aborted) return { text: null, status: 0, error: 'aborted', retries: 0 };
-      try {
+      const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
+      let fbLastError = null;
+      for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) try {
         const sdk = await loadFirebaseSdk();
         const fb_is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
         const fb_loc = fb_is3x ? 'global' : 'us-central1';
@@ -632,10 +698,13 @@ Entries:
         const result = await gm.generateContent(prompt);
         const fbText = result.response.text();
         const _fbCost = _trackCost(result.response && result.response.usageMetadata, prompt, fbText);
-        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: 0, cost: _fbCost };
+        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: attempt, cost: _fbCost };
       } catch (fbErr) {
-        return { text: null, status: 0, error: 'Firebase: ' + (fbErr.message || String(fbErr)), retries: 0 };
+        fbLastError = fbErr;
+        if (!(attempt < effectiveMaxRetries && retryableGenerationError(fbErr))) break;
+        await sleep(generationRetryDelay(attempt, 8000));
       }
+      return { text: null, status: 0, error: 'Firebase: ' + ((fbLastError && fbLastError.message) || String(fbLastError)), retries: effectiveMaxRetries };
       // (도달 불가, 구파서 호환용 잔존)
       const fbKey = firebaseKey || key;
       if (!fbKey) return { text: null, status: 0, error: 'Firebase Web API Key 누락', retries: 0 };
@@ -670,7 +739,8 @@ Entries:
     const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
 
     let lastStatus = 0, lastError = null;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
+    for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
         const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
@@ -679,7 +749,7 @@ Entries:
         // 401 토큰 갱신
         if (r.status === 401 && isVertex) {
           if (_tokenCaches[cacheKey]) { _tokenCaches[cacheKey].token = null; _tokenCaches[cacheKey].expiry = 0; }
-          if (attempt < maxRetries) {
+          if (attempt < effectiveMaxRetries) {
             try {
               const sa2 = parseServiceAccountJson(vertexJson);
               const newToken = await getVertexAccessToken(sa2, cacheKey);
@@ -693,10 +763,8 @@ Entries:
           const errBody = r.text ? await r.text().catch(() => '') : '';
           lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\\n/g, ' ')}`;
           if ([400, 403, 404].includes(r.status)) break;
-          // 429 지수 백오프
-          if (r.status === 429 && attempt < maxRetries) {
-            const waitMs = Math.pow(2, attempt + 1) * 1000 + Math.random() * 500;
-            await new Promise(res => setTimeout(res, waitMs));
+          if (retryableGenerationStatus(r.status) && attempt < effectiveMaxRetries) {
+            await sleep(generationRetryDelay(attempt + 1, 10000));
             continue;
           }
         } else {
@@ -708,13 +776,13 @@ Entries:
           if (text) return { text, status: r.status, error: null, retries: attempt, cost: _restCost };
           lastError = '응답 파싱 실패';
         }
-      } catch (e) { lastError = e.message; }
-      if (attempt < maxRetries) {
-        const waitMs = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
-        await new Promise(res => setTimeout(res, waitMs));
+      } catch (e) {
+        lastError = e.message;
+        if (!(attempt < effectiveMaxRetries && retryableGenerationError(e))) break;
       }
+      if (attempt < effectiveMaxRetries) await sleep(generationRetryDelay(attempt, 8000));
     }
-    return { text: null, status: lastStatus, error: lastError, retries: maxRetries };
+    return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
   }
 
   async function embedTexts(texts, opts = {}) {
