@@ -1421,10 +1421,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           let temporalOk = false;
           let temporalLastErr = '';
           let temporalAttempts = 0;
-          for (let ta = 1; ta <= maxAttempts && !temporalOk; ta++) {
+          const temporalMaxAttempts = maxAttempts * (1 + maxRecoveryRounds);
+          for (let ta = 1; ta <= temporalMaxAttempts && !temporalOk; ta++) {
             temporalAttempts = ta;
             try {
-              extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 장면 기억 분석 중 (' + ta + '/' + maxAttempts + ')');
+              extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 장면 기억 분석 중 (' + ta + '/' + temporalMaxAttempts + ')');
               const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
                 model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
                 maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
@@ -1453,7 +1454,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             } catch (terr) {
               temporalLastErr = terr.message || String(terr);
             }
-            if (!temporalOk && ta < maxAttempts) {
+            if (!temporalOk && ta < temporalMaxAttempts) {
               await new Promise(r => setTimeout(r, Math.min(12000, 1500 * ta) + Math.random() * 500));
             }
           }
