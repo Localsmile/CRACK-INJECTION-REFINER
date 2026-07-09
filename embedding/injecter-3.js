@@ -47,6 +47,9 @@
   const db = C.getDB();
   const _ls = _w.localStorage;
   const ACTIVE_PACKS_STORAGE_KEY = 'lore-active-packs-v1';
+  const MAX_SNAPSHOTS_PER_PACK = 3;
+  const ORPHAN_STORAGE_CLEANUP_KEY = 'lore-orphan-storage-cleanup-v1';
+  const EMBEDDING_MODEL_CLEANUP_KEY = 'lore-embedding-model-cleanup-v1';
 
   function isChatRoute() {
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
@@ -311,18 +314,24 @@
   }
 
   async function createSnapshot(packName, label, type = 'auto') {
-    const maxSnapshotsPerPack = 5;
     const entries = await db.entries.where('packName').equals(packName).toArray();
     const clean = entries.map(({ id, ...rest }) => rest);
     await db.snapshots.add({ packName, timestamp: Date.now(), label: label || '자동 저장', type, data: clean });
     const all = await db.snapshots.where('packName').equals(packName).sortBy('timestamp');
-    if (all.length > maxSnapshotsPerPack) await db.snapshots.bulkDelete(all.slice(0, all.length - maxSnapshotsPerPack).map(s => s.id));
+    if (all.length > MAX_SNAPSHOTS_PER_PACK) await db.snapshots.bulkDelete(all.slice(0, all.length - MAX_SNAPSHOTS_PER_PACK).map(s => s.id));
   }
 
   async function restoreSnapshot(snapshotId) {
     const snap = await db.snapshots.get(snapshotId);
     if (!snap) return false;
-    await db.transaction('rw', db.packs, db.entries, async () => {
+    const previousEntries = await db.entries.where('packName').equals(snap.packName).toArray();
+    const previousIds = previousEntries.map(entry => entry && entry.id).filter(id => id != null);
+    const tables = [db.packs, db.entries];
+    if (db.embeddings) tables.push(db.embeddings);
+    if (db.entryVersions) tables.push(db.entryVersions);
+    await db.transaction('rw', ...tables, async () => {
+      if (previousIds.length && db.embeddings) await db.embeddings.where('entryId').anyOf(previousIds).delete();
+      if (previousIds.length && db.entryVersions) await db.entryVersions.where('entryId').anyOf(previousIds).delete();
       await db.entries.where('packName').equals(snap.packName).delete();
       for (const e of snap.data) await db.entries.add(e);
       await db.packs.update(snap.packName, { entryCount: snap.data.length });
@@ -334,6 +343,148 @@
       await runLocalMigration();
     } catch (e) { console.warn('[LoreInj:3] restore 후 마이그레이션 재실행 실패:', e); }
     return true;
+  }
+
+  function removeDeletedPackReferences(packName, entryIds = []) {
+    if (!packName || !settings || !settings.config) return;
+    const config = settings.config;
+    const removedIds = new Set(entryIds.map(String));
+    let settingsChanged = false;
+    const packMap = config.urlPacks || {};
+    for (const key of Object.keys(packMap)) {
+      const current = Array.isArray(packMap[key]) ? packMap[key] : [];
+      const next = current.filter(name => name !== packName);
+      if (next.length !== current.length) { packMap[key] = next; settingsChanged = true; }
+    }
+    const disabledMap = config.urlDisabledEntries || {};
+    if (removedIds.size) {
+      for (const key of Object.keys(disabledMap)) {
+        const current = Array.isArray(disabledMap[key]) ? disabledMap[key] : [];
+        const next = current.filter(id => !removedIds.has(String(id)));
+        if (next.length !== current.length) { disabledMap[key] = next; settingsChanged = true; }
+      }
+    }
+    if (settingsChanged) settings.save();
+
+    const activeMap = readActivePackMap();
+    let activeChanged = false;
+    for (const key of Object.keys(activeMap)) {
+      const current = Array.isArray(activeMap[key]) ? activeMap[key] : [];
+      const next = current.filter(name => name !== packName);
+      if (next.length !== current.length) { activeMap[key] = next; activeChanged = true; }
+    }
+    if (activeChanged) saveActivePackMap(activeMap);
+  }
+
+  async function deletePackData(packName) {
+    if (!packName) return { deleted: false, entries: 0 };
+    const entries = await db.entries.where('packName').equals(packName).toArray();
+    const entryIds = entries.map(entry => entry && entry.id).filter(id => id != null);
+    const tables = [db.packs, db.entries];
+    if (db.embeddings) tables.push(db.embeddings);
+    if (db.entryVersions) tables.push(db.entryVersions);
+    if (db.snapshots) tables.push(db.snapshots);
+    await db.transaction('rw', ...tables, async () => {
+      if (entryIds.length && db.embeddings) await db.embeddings.where('entryId').anyOf(entryIds).delete();
+      if (entryIds.length && db.entryVersions) await db.entryVersions.where('entryId').anyOf(entryIds).delete();
+      if (db.snapshots) await db.snapshots.where('packName').equals(packName).delete();
+      await db.entries.where('packName').equals(packName).delete();
+      await db.packs.delete(packName);
+    });
+    removeDeletedPackReferences(packName, entryIds);
+    return { deleted: true, entries: entryIds.length };
+  }
+
+  async function deleteEntryData(entryId) {
+    const entry = await db.entries.get(entryId);
+    if (!entry) return { deleted: false, packDeleted: false, remaining: 0 };
+    const packName = entry.packName;
+    const tables = [db.packs, db.entries];
+    if (db.embeddings) tables.push(db.embeddings);
+    if (db.entryVersions) tables.push(db.entryVersions);
+    if (db.snapshots) tables.push(db.snapshots);
+    let remaining = 0;
+    await db.transaction('rw', ...tables, async () => {
+      if (db.embeddings) await db.embeddings.where('entryId').equals(entryId).delete();
+      if (db.entryVersions) await db.entryVersions.where('entryId').equals(entryId).delete();
+      await db.entries.delete(entryId);
+      remaining = await db.entries.where('packName').equals(packName).count();
+      if (remaining <= 0) {
+        if (db.snapshots) await db.snapshots.where('packName').equals(packName).delete();
+        await db.packs.delete(packName);
+      } else {
+        await db.packs.update(packName, { entryCount: remaining });
+      }
+    });
+    if (remaining <= 0) removeDeletedPackReferences(packName, [entryId]);
+    return { deleted: true, packDeleted: remaining <= 0, remaining };
+  }
+
+  async function cleanupUnusedLoreStorage(opts = {}) {
+    const trimSnapshots = opts.trimSnapshots === true;
+    const maxSnapshots = Math.max(1, Number(opts.maxSnapshotsPerPack || MAX_SNAPSHOTS_PER_PACK) || MAX_SNAPSHOTS_PER_PACK);
+    const entries = await db.entries.toArray();
+    const packs = await db.packs.toArray();
+    const entryIds = new Set(entries.map(entry => String(entry.id)));
+    const entryPackNames = new Set(entries.map(entry => entry.packName).filter(Boolean));
+    const emptyPackNames = packs.filter(pack => pack && !entryPackNames.has(pack.name)).map(pack => pack.name);
+    const embeddings = db.embeddings ? await db.embeddings.toArray() : [];
+    const entryVersions = db.entryVersions ? await db.entryVersions.toArray() : [];
+    const snapshots = db.snapshots ? await db.snapshots.toArray() : [];
+    const orphanEmbeddingIds = embeddings.filter(row => !entryIds.has(String(row.entryId))).map(row => row.id);
+    const orphanVersionIds = entryVersions.filter(row => !entryIds.has(String(row.entryId))).map(row => row.id);
+    const orphanSnapshotIds = snapshots.filter(row => !entryPackNames.has(row.packName)).map(row => row.id);
+    const snapshotsToTrim = [];
+    if (trimSnapshots) {
+      const byPack = new Map();
+      for (const snapshot of snapshots) {
+        if (!snapshot || orphanSnapshotIds.includes(snapshot.id)) continue;
+        const rows = byPack.get(snapshot.packName) || [];
+        rows.push(snapshot);
+        byPack.set(snapshot.packName, rows);
+      }
+      for (const rows of byPack.values()) {
+        rows.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+        if (rows.length > maxSnapshots) snapshotsToTrim.push(...rows.slice(0, rows.length - maxSnapshots).map(row => row.id));
+      }
+    }
+    const tables = [db.packs];
+    if (db.embeddings) tables.push(db.embeddings);
+    if (db.entryVersions) tables.push(db.entryVersions);
+    if (db.snapshots) tables.push(db.snapshots);
+    await db.transaction('rw', ...tables, async () => {
+      if (orphanEmbeddingIds.length && db.embeddings) await db.embeddings.bulkDelete(orphanEmbeddingIds);
+      if (orphanVersionIds.length && db.entryVersions) await db.entryVersions.bulkDelete(orphanVersionIds);
+      if (db.snapshots) {
+        const snapshotIds = orphanSnapshotIds.concat(snapshotsToTrim);
+        if (snapshotIds.length) await db.snapshots.bulkDelete(snapshotIds);
+      }
+      if (emptyPackNames.length) await db.packs.bulkDelete(emptyPackNames);
+    });
+    for (const packName of emptyPackNames) removeDeletedPackReferences(packName);
+    return {
+      orphanEmbeddingsRemoved: orphanEmbeddingIds.length,
+      orphanEntryVersionsRemoved: orphanVersionIds.length,
+      orphanSnapshotsRemoved: orphanSnapshotIds.length,
+      snapshotsTrimmed: snapshotsToTrim.length,
+      emptyPacksRemoved: emptyPackNames.length
+    };
+  }
+
+  async function cleanupOrphanedLoreStorageOnce() {
+    if (_ls.getItem(ORPHAN_STORAGE_CLEANUP_KEY) === 'done') return null;
+    const report = await cleanupUnusedLoreStorage();
+    _ls.setItem(ORPHAN_STORAGE_CLEANUP_KEY, 'done');
+    return report;
+  }
+
+  async function cleanupEmbeddingsForSelectedModel() {
+    const model = settings.config.embeddingModel || C.DEFAULTS.embeddingModel;
+    if (_ls.getItem(EMBEDDING_MODEL_CLEANUP_KEY) === model) return 0;
+    if (!C.cleanupStaleEmbeddings) return 0;
+    const report = await C.cleanupStaleEmbeddings(null, { model });
+    _ls.setItem(EMBEDDING_MODEL_CLEANUP_KEY, model);
+    return report.removed || 0;
   }
 
   // Phase 12: legacy 'event' / 'scene' 엔트리를 timeline_event 스키마로 변환하는 옵트인 헬퍼.
@@ -791,7 +942,34 @@
   async function runLocalMigration() {
     const target = C.LOCAL_MIGRATION_VERSION || '1.4.0-test-pass11-local';
     const last = _ls.getItem('lore-local-migration-version') || settings.config.localMigrationVersion || '';
-    const status = { version: target, oldFormatDetected: false, migratedEntries: 0, staleEmbeddingsRemoved: 0, checkedAt: Date.now(), message: '' };
+    if (last === target) {
+      let prior = settings.config.migrationStatus || null;
+      if (!prior) {
+        try { prior = JSON.parse(_ls.getItem('lore-local-migration-status') || 'null'); } catch (_) {}
+      }
+      try {
+        const staleEmbeddingsRemoved = await cleanupEmbeddingsForSelectedModel();
+        const orphanCleanup = await cleanupOrphanedLoreStorageOnce();
+        if (orphanCleanup || staleEmbeddingsRemoved) {
+          const removed = staleEmbeddingsRemoved + (orphanCleanup?.orphanEmbeddingsRemoved || 0) + (orphanCleanup?.orphanEntryVersionsRemoved || 0) + (orphanCleanup?.orphanSnapshotsRemoved || 0) + (orphanCleanup?.emptyPacksRemoved || 0);
+          prior = {
+            ...(prior || {}),
+            version: target,
+            staleEmbeddingsRemoved,
+            orphanedHistoryRemoved: (orphanCleanup?.orphanEntryVersionsRemoved || 0) + (orphanCleanup?.orphanSnapshotsRemoved || 0),
+            checkedAt: Date.now(),
+            message: removed ? '로어 상태 점검 완료. 사용하지 않는 저장 데이터 ' + removed + '개를 정리했습니다.' : '로어 상태 점검 완료.'
+          };
+          settings.config.migrationStatus = prior;
+          settings.save();
+          _ls.setItem('lore-local-migration-status', JSON.stringify(prior));
+        }
+      } catch (e) {
+        console.warn('[LoreInj:migration] orphan storage cleanup failed:', e);
+      }
+      return prior || { version: target, oldFormatDetected: false, migratedEntries: 0, staleEmbeddingsRemoved: 0, orphanedHistoryRemoved: 0, checkedAt: Date.now(), message: '로어 상태 점검 완료.' };
+    }
+    const status = { version: target, oldFormatDetected: false, migratedEntries: 0, staleEmbeddingsRemoved: 0, orphanedHistoryRemoved: 0, checkedAt: Date.now(), message: '' };
     try {
       const currentTurn = getTurnCounter(getChatKey());
       const entries = await db.entries.toArray();
@@ -808,12 +986,18 @@
         }
       }
       if (C.cleanupStaleEmbeddings) {
-        const clean = await C.cleanupStaleEmbeddings(null, { model: settings.config.embeddingModel || C.DEFAULTS.embeddingModel });
+        const model = settings.config.embeddingModel || C.DEFAULTS.embeddingModel;
+        const clean = await C.cleanupStaleEmbeddings(null, { model });
         status.staleEmbeddingsRemoved = clean.removed || 0;
+        _ls.setItem(EMBEDDING_MODEL_CLEANUP_KEY, model);
+      }
+      const orphanCleanup = await cleanupOrphanedLoreStorageOnce();
+      if (orphanCleanup) {
+        status.orphanedHistoryRemoved = (orphanCleanup.orphanEntryVersionsRemoved || 0) + (orphanCleanup.orphanSnapshotsRemoved || 0);
       }
       status.message = status.oldFormatDetected
         ? '이전 형식의 로어를 현재 방식에 맞게 정리했습니다.'
-        : '로어 상태 점검 완료.';
+        : (status.orphanedHistoryRemoved ? '로어 상태 점검 완료. 사용하지 않는 이력 ' + status.orphanedHistoryRemoved + '개를 정리했습니다.' : '로어 상태 점검 완료.');
       settings.config.localMigrationVersion = target;
       settings.config.migrationStatus = status;
       settings.save();
@@ -1392,7 +1576,7 @@
   Object.assign(_w.__LoreInj, {
     C, R, db, _ls,
     defaultSettings, settings,
-    parseJsonLoose, createSnapshot, restoreSnapshot, convertLegacyEventToTimeline,
+    parseJsonLoose, createSnapshot, restoreSnapshot, deleteEntryData, deletePackData, cleanupUnusedLoreStorage, convertLegacyEventToTimeline,
     getChatKey, incrementTurnCounter, recordEntryMention,
     getTurnCounter, setTurnCounter,
     getCooldownMap, setCooldownLastTurn,

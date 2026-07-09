@@ -810,9 +810,18 @@ Entries:
     };
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
-    const maxEmbedRetries = Math.max(0, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 1);
-    const retryableEmbeddingError = (e) => /네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(e && e.message || e || ''));
-    const waitEmbeddingRetry = (attempt) => new Promise(res => setTimeout(res, Math.min(3000, 600 * Math.pow(2, attempt)) + Math.random() * 250));
+    const maxEmbedRetries = Math.max(0, Math.min(3, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 3));
+    const retryableEmbeddingError = (e) => /\b(?:408|409|425|429|5\d{2})\b|네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(e && e.message || e || ''));
+    const waitEmbeddingRetry = (attempt) => new Promise(res => setTimeout(res, Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500));
+    const validateEmbeddingVectors = (vectors, expectedCount) => {
+      if (!Array.isArray(vectors) || vectors.length !== expectedCount) {
+        throw new Error('임베딩 결과 수가 요청 수와 다릅니다.');
+      }
+      if (vectors.some(vector => !Array.isArray(vector) || !vector.length || vector.some(value => !Number.isFinite(value)))) {
+        throw new Error('임베딩 결과에 사용할 수 없는 벡터가 포함되어 있습니다.');
+      }
+      return vectors;
+    };
     const fetchEmbeddingJson = async (url, fetchOpts, errorPrefix) => {
       let lastError = null;
       for (let attempt = 0; attempt <= maxEmbedRetries; attempt++) {
@@ -856,7 +865,7 @@ Entries:
       const r = await gmFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': fbKey }, body });
       if (!r.ok) throw new Error('Firebase 임베딩 실패: ' + r.status);
       const json = await r.json();
-      return json.predictions.map(p => normalizeVector(p.embeddings.values));
+      return validateEmbeddingVectors(json.predictions.map(p => normalizeVector(p.embeddings.values)), arr.length);
     } else if (isVertex) {
       const sa = parseServiceAccountJson(vertexJson);
       if (!sa.ok) throw new Error(sa.error);
@@ -878,7 +887,7 @@ Entries:
         const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) }, '임베딩 API 실패');
         const embs = json.embeddings || [json.embedding];
         _trackEmbedCost(arr, model);
-        return embs.map(e => normalizeVector(e.values));
+        return validateEmbeddingVectors(embs.map(e => normalizeVector(e.values)), arr.length);
       } else {
         const url = _gBase + model + ':batchEmbedContents';
         const requests = arr.map(t => {
@@ -889,7 +898,7 @@ Entries:
         const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }) }, '배치 임베딩 API 실패');
         if (!json.embeddings) throw new Error('임베딩 결과가 없습니다.');
         _trackEmbedCost(arr, model);
-        return json.embeddings.map(e => normalizeVector(e.values));
+        return validateEmbeddingVectors(json.embeddings.map(e => normalizeVector(e.values)), arr.length);
       }
     }
   }

@@ -174,11 +174,23 @@
 
   async function deletePackData(packName) {
     if (!packName) return;
+    if (typeof _w.__LoreInj.deletePackData === 'function') {
+      return await _w.__LoreInj.deletePackData(packName);
+    }
     try {
       const es = await db.entries.where('packName').equals(packName).toArray();
-      for (const e of es) if (e && e.id != null) await db.embeddings.where('entryId').equals(e.id).delete();
-      await db.entries.where('packName').equals(packName).delete();
-      await db.packs.delete(packName);
+      const ids = es.map(e => e && e.id).filter(id => id != null);
+      const tables = [db.packs, db.entries];
+      if (db.embeddings) tables.push(db.embeddings);
+      if (db.entryVersions) tables.push(db.entryVersions);
+      if (db.snapshots) tables.push(db.snapshots);
+      await db.transaction('rw', ...tables, async () => {
+        if (ids.length && db.embeddings) await db.embeddings.where('entryId').anyOf(ids).delete();
+        if (ids.length && db.entryVersions) await db.entryVersions.where('entryId').anyOf(ids).delete();
+        if (db.snapshots) await db.snapshots.where('packName').equals(packName).delete();
+        await db.entries.where('packName').equals(packName).delete();
+        await db.packs.delete(packName);
+      });
     } catch (_) {}
   }
 
@@ -343,7 +355,7 @@
     const allPacks = await db.packs.toArray();
     for (const p of allPacks) {
       const count = await db.entries.where('packName').equals(p.name).count();
-      if (count <= 0) await db.packs.delete(p.name);
+      if (count <= 0) await deletePackData(p.name);
       else await db.packs.update(p.name, { entryCount: count });
     }
 
@@ -534,7 +546,7 @@
           for (const p of rawPacks) {
             const count = await db.entries.where('packName').equals(p.name).count();
             if (count <= 0) {
-              await db.packs.delete(p.name);
+              await deletePackData(p.name);
               continue;
             }
             if ((p.entryCount || 0) !== count) await db.packs.update(p.name, { entryCount: count });
@@ -564,7 +576,7 @@
             const cleanBtn = document.createElement('button'); cleanBtn.textContent = '정리'; cleanBtn.title = 'API 호출 없이 오래된 검색 준비 데이터를 삭제'; cleanBtn.style.cssText = B + 'color:#da8;border-color:#642;';
             cleanBtn.onclick = async () => { cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('검색 준비 정리 완료: ' + (rpt.removed || 0) + '개 삭제'); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
             const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
-            delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제?')) return; const es = await db.entries.where('packName').equals(pack.name).toArray(); for (const e of es) await db.embeddings.where('entryId').equals(e.id).delete(); await db.entries.where('packName').equals(pack.name).delete(); await db.packs.delete(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
+            delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제? 이 팩의 로어, 검색 준비, 되돌리기 기록도 함께 삭제됩니다.')) return; await deletePackData(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
             actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
           }
         }});

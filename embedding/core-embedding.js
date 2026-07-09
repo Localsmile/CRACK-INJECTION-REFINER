@@ -174,12 +174,34 @@
     return { removed, missingEntry, staleHash, wrongModel, wrongPack, checked: all.length };
   }
 
+  function isEmbeddingFresh(existing, entry, field, text, targetModel, taskType) {
+    if (!existing || !text) return false;
+    const taskTypeMismatch = taskType != null && existing.taskType != null && existing.taskType !== taskType;
+    return (existing.sourceHash || existing.hash) === simpleHash(text) &&
+      !(existing.model && existing.model !== targetModel) &&
+      !taskTypeMismatch &&
+      existing.schemaVersion === EMB_SCHEMA_VERSION &&
+      existing.packName === entry.packName;
+  }
+
+  function needsConditionEmbedding(entry) {
+    return !!(entry && (entry.type === 'promise' || entry.type === 'prom') && buildEmbeddingText(entry, 'condition'));
+  }
+
+  function assertEmbeddingVectors(vectors, expectedCount) {
+    if (!Array.isArray(vectors) || vectors.length !== expectedCount) {
+      throw new Error('임베딩 결과 수가 요청 수와 다릅니다.');
+    }
+    if (vectors.some(vector => !Array.isArray(vector) || !vector.length || vector.some(value => !Number.isFinite(value)))) {
+      throw new Error('임베딩 결과에 사용할 수 없는 벡터가 포함되어 있습니다.');
+    }
+  }
+
   async function ensureEmbedding(entry, apiOpts) {
     const db = getDB();
     const field = 'summary';
     const text = buildEmbeddingText(entry, field);
     if (!text) return;
-    const hash = simpleHash(text);
     const docTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
     const targetModel = apiOpts.model || DEFAULTS.embeddingModel;
     const existing = await db.embeddings.where({ entryId: entry.id, field }).first();
@@ -189,15 +211,11 @@
     //   RETRIEVAL_QUERY로 생성된 stale 임베딩이 그대로 유지되는 결함.
     //   수정: docTaskType이 정의되어 있고 existing.taskType과 다르면 일률적으로 stale.
     //   둘 중 하나가 null/undefined면 비교 생략 (구버전 호환).
-    const taskTypeMismatch = (docTaskType != null && existing && existing.taskType != null && existing.taskType !== docTaskType);
-    const summaryFresh = existing && (existing.sourceHash || existing.hash) === hash &&
-      !(existing.model && existing.model !== targetModel) &&
-      !taskTypeMismatch &&
-      existing.schemaVersion === EMB_SCHEMA_VERSION &&
-      existing.packName === entry.packName;
+    const summaryFresh = isEmbeddingFresh(existing, entry, field, text, targetModel, docTaskType);
 
     if (!summaryFresh) {
       const vec = await embedText(text, { ...apiOpts, taskType: docTaskType });
+      assertEmbeddingVectors([vec], 1);
       const data = {
         ...embeddingMeta(entry, field, text, { ...apiOpts, model: targetModel }, docTaskType),
         vector: vec
@@ -208,18 +226,10 @@
 
     const condText = buildEmbeddingText(entry, 'condition');
     if ((entry.type === 'promise' || entry.type === 'prom') && condText) {
-      const condHash = simpleHash(condText);
       const existingCond = await db.embeddings.where({ entryId: entry.id, field: 'condition' }).first();
-      if (existingCond && (existingCond.sourceHash || existingCond.hash) === condHash) {
-        // B22 fix(test.42): 위 summaryFresh와 동일한 일반화 적용.
-        const condTaskTypeMismatch = (docTaskType != null && existingCond.taskType != null && existingCond.taskType !== docTaskType);
-        const needsRegenCond = (existingCond.model && existingCond.model !== targetModel) ||
-          condTaskTypeMismatch ||
-          existingCond.schemaVersion !== EMB_SCHEMA_VERSION ||
-          existingCond.packName !== entry.packName;
-        if (!needsRegenCond) return;
-      }
+      if (isEmbeddingFresh(existingCond, entry, 'condition', condText, targetModel, docTaskType)) return;
       const condVec = await embedText(condText, { ...apiOpts, taskType: docTaskType });
+      assertEmbeddingVectors([condVec], 1);
       const condData = {
         ...embeddingMeta(entry, 'condition', condText, { ...apiOpts, model: targetModel }, docTaskType),
         vector: condVec
@@ -237,48 +247,114 @@
     const targetModel = apiOpts.model || DEFAULTS.embeddingModel;
 
     const allEmbs = entries.length ? await db.embeddings.where('entryId').anyOf(entries.map(e => e.id)).toArray() : [];
-    const embMap = {};
-    for (const eb of allEmbs) { if (eb.field === 'summary') embMap[eb.entryId] = eb; }
+    const summaryMap = {};
+    const conditionMap = {};
+    for (const eb of allEmbs) {
+      if (eb.field === 'summary') summaryMap[eb.entryId] = eb;
+      else if (eb.field === 'condition') conditionMap[eb.entryId] = eb;
+    }
 
-    const pending = entries.filter(e => {
-      const text = buildEmbeddingText(e, 'summary');
-      const hash = simpleHash(text);
-      const existing = embMap[e.id];
-      // B22 fix(test.42): taskType mismatch를 모든 임베딩 모델로 확장.
-      return !existing ||
-        (existing.sourceHash || existing.hash) !== hash ||
-        existing.model !== targetModel ||
-        existing.schemaVersion !== EMB_SCHEMA_VERSION ||
-        (existing.taskType != null && docTaskType != null && existing.taskType !== docTaskType) ||
-        existing.packName !== e.packName;
+    const pendingSummary = entries.filter(entry => {
+      const text = buildEmbeddingText(entry, 'summary');
+      return !!text && !isEmbeddingFresh(summaryMap[entry.id], entry, 'summary', text, targetModel, docTaskType);
     });
+    const initiallyPendingConditions = entries.filter(entry => {
+      if (!needsConditionEmbedding(entry)) return false;
+      const text = buildEmbeddingText(entry, 'condition');
+      return !isEmbeddingFresh(conditionMap[entry.id], entry, 'condition', text, targetModel, docTaskType);
+    });
+    const requiredFields = new Map();
+    for (const entry of pendingSummary) requiredFields.set(entry.id, new Set(['summary']));
+    for (const entry of initiallyPendingConditions) {
+      const fields = requiredFields.get(entry.id) || new Set();
+      fields.add('condition');
+      requiredFields.set(entry.id, fields);
+    }
+    const total = requiredFields.size;
+    if (!total) {
+      if (onProgress) onProgress(0, 0, cleanup);
+      return 0;
+    }
 
-    let done = 0;
+    const completed = new Set();
+    const failed = [];
+    const failedEntryIds = new Set();
+    const markFieldComplete = (entry, field) => {
+      const fields = requiredFields.get(entry.id);
+      if (!fields) return;
+      fields.delete(field);
+      if (!fields.size) completed.add(entry.id);
+      if (onProgress) onProgress(completed.size, total, cleanup);
+    };
     const batchSize = Math.max(1, Number(apiOpts.embeddingBatchSize || EMBED_BATCH_SIZE) || EMBED_BATCH_SIZE);
     const batchGapMs = Math.max(0, Number(apiOpts.embeddingBatchGapMs != null ? apiOpts.embeddingBatchGapMs : EMBED_BATCH_GAP_MS) || 0);
-    for (let i = 0; i < pending.length; i += batchSize) {
-      const batch = pending.slice(i, i + batchSize);
-      const texts = batch.map(e => buildEmbeddingText(e, 'summary'));
-      try {
-        const vecs = await embedTexts(texts, { ...apiOpts, taskType: docTaskType, model: targetModel });
-        for (let j = 0; j < batch.length; j++) {
-          const existing = embMap[batch[j].id];
-          const data = {
-            ...embeddingMeta(batch[j], 'summary', texts[j], { ...apiOpts, model: targetModel }, docTaskType),
-            vector: vecs[j]
-          };
-          if (existing) data.id = existing.id;
-          await db.embeddings.put(data);
-        }
-      } catch (e) {
-        console.warn('[LoreCore] 배치 임베딩 실패, 개별 처리:', e.message);
-        for (const entry of batch) { try { await ensureEmbedding(entry, { ...apiOpts, model: targetModel }); } catch (e2) {} }
+
+    const writeBatch = async (batch, field, map) => {
+      const texts = batch.map(entry => buildEmbeddingText(entry, field));
+      const vecs = await embedTexts(texts, { ...apiOpts, taskType: docTaskType, model: targetModel });
+      assertEmbeddingVectors(vecs, batch.length);
+      for (let index = 0; index < batch.length; index++) {
+        const entry = batch[index];
+        const existing = map[entry.id];
+        const data = {
+          ...embeddingMeta(entry, field, texts[index], { ...apiOpts, model: targetModel }, docTaskType),
+          vector: vecs[index]
+        };
+        if (existing) data.id = existing.id;
+        await db.embeddings.put(data);
+        map[entry.id] = data;
+        markFieldComplete(entry, field);
       }
-      done += batch.length;
-      if (onProgress) onProgress(done, pending.length, cleanup);
-      if (batchGapMs > 0 && i + batchSize < pending.length) await wait(batchGapMs);
+    };
+
+    const runBatches = async (pending, field, map) => {
+      for (let i = 0; i < pending.length; i += batchSize) {
+        const batch = pending.slice(i, i + batchSize);
+        try {
+          await writeBatch(batch, field, map);
+        } catch (batchError) {
+          console.warn('[LoreCore] 배치 임베딩 실패, 개별 재시도:', batchError && batchError.message ? batchError.message : batchError);
+          for (const entry of batch) {
+            try {
+              await ensureEmbedding(entry, { ...apiOpts, model: targetModel });
+              markFieldComplete(entry, field);
+              if (field === 'summary' && requiredFields.get(entry.id)?.has('condition')) {
+                const condition = await db.embeddings.where({ entryId: entry.id, field: 'condition' }).first();
+                const text = buildEmbeddingText(entry, 'condition');
+                if (isEmbeddingFresh(condition, entry, 'condition', text, targetModel, docTaskType)) {
+                  conditionMap[entry.id] = condition;
+                  markFieldComplete(entry, 'condition');
+                }
+              }
+            } catch (entryError) {
+              failedEntryIds.add(entry.id);
+              failed.push({ entry, field, error: entryError });
+            }
+          }
+        }
+        if (batchGapMs > 0 && i + batchSize < pending.length) await wait(batchGapMs);
+      }
+    };
+
+    await runBatches(pendingSummary, 'summary', summaryMap);
+
+    const refreshedConditions = entries.length ? await db.embeddings.where('entryId').anyOf(entries.map(e => e.id)).toArray() : [];
+    for (const embedding of refreshedConditions) if (embedding.field === 'condition') conditionMap[embedding.entryId] = embedding;
+    const pendingConditions = initiallyPendingConditions.filter(entry => {
+      if (failedEntryIds.has(entry.id)) return false;
+      const text = buildEmbeddingText(entry, 'condition');
+      const fresh = isEmbeddingFresh(conditionMap[entry.id], entry, 'condition', text, targetModel, docTaskType);
+      if (fresh) markFieldComplete(entry, 'condition');
+      return !fresh;
+    });
+    await runBatches(pendingConditions, 'condition', conditionMap);
+
+    if (failed.length) {
+      const names = failed.slice(0, 3).map(item => item.entry && item.entry.name || '이름 없는 로어').join(', ');
+      const detail = failed[0].error && (failed[0].error.message || String(failed[0].error));
+      throw new Error('검색 준비 실패: ' + failed.length + '개 항목 (' + names + ')' + (detail ? ' / ' + detail : ''));
     }
-    return done;
+    return completed.size;
   }
 
   async function convertLegacyPack(packName, apiOpts, onProgress) {

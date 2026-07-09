@@ -682,6 +682,28 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
+      const title = document.createElement('div'); title.textContent = '저장 공간 정리'; title.style.cssText = 'font-size:14px;color:#da8;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
+      addText(nd, '사용하지 않는 검색 준비와 삭제된 로어의 기록을 지움. 스냅샷은 각 로어팩의 최근 3개만 남김. 현재 로어 본문과 최근 복원 지점은 유지함.');
+      const btn = makeBtn('사용하지 않는 데이터 정리', 'border-color:#642;color:#da8;margin-top:10px;');
+      btn.onclick = async () => {
+        if (!confirm('삭제된 로어의 남은 기록과 각 로어팩의 오래된 스냅샷을 정리합니다. 현재 로어와 최근 스냅샷 3개는 유지합니다. 계속할까요?')) return;
+        const done = setButtonBusy(btn, '정리 중...');
+        try {
+          if (typeof _w.__LoreInj.cleanupUnusedLoreStorage !== 'function') throw new Error('저장 공간 정리 기능을 찾을 수 없음.');
+          const report = await _w.__LoreInj.cleanupUnusedLoreStorage({ trimSnapshots: true, maxSnapshotsPerPack: 3 });
+          const removed = (report.orphanEmbeddingsRemoved || 0) + (report.orphanEntryVersionsRemoved || 0) + (report.orphanSnapshotsRemoved || 0) + (report.snapshotsTrimmed || 0) + (report.emptyPacksRemoved || 0);
+          done();
+          alert(removed ? ('저장 공간 정리 완료: ' + removed + '개 항목 정리됨.') : '정리할 사용하지 않는 데이터가 없습니다.');
+        } catch (e) {
+          done();
+          alert('저장 공간 정리 실패: ' + (e && e.message ? e.message : e));
+        }
+      };
+      nd.appendChild(btn);
+    }});
+
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
       const title = document.createElement('div'); title.textContent = '로컬 데이터 삭제'; title.style.cssText = 'font-size:14px;color:#e88;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
       addText(nd, '이 브라우저에 저장된 로어, 설정, 검색 준비, 로그를 모두 삭제함. 서버 백업은 삭제되지 않음.');
       const btn = makeBtn('이 브라우저의 로어 데이터 삭제', 'border-color:#833;color:#f99;margin-top:10px;');
