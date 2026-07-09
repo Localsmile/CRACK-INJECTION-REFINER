@@ -87,6 +87,20 @@
     return out;
   }
 
+  async function transformBytes(bytes, StreamCtor) {
+    if (typeof Blob === 'undefined' || typeof Response === 'undefined' || typeof StreamCtor !== 'function') throw new Error('compression unsupported');
+    const stream = new Blob([bytes]).stream().pipeThrough(new StreamCtor('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function gzipBytes(bytes) {
+    return transformBytes(bytes, typeof CompressionStream !== 'undefined' ? CompressionStream : null);
+  }
+
+  async function gunzipBytes(bytes) {
+    return transformBytes(bytes, typeof DecompressionStream !== 'undefined' ? DecompressionStream : null);
+  }
+
   async function sha256Text(text) {
     return b64url(await crypto.subtle.digest('SHA-256', enc.encode(text)));
   }
@@ -105,20 +119,31 @@
     }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   }
 
-  async function encryptJson(obj, userId, password) {
+  async function encryptJson(obj, userId, password, opts = {}) {
     const key = await deriveBackupKey(userId, password);
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const plain = enc.encode(JSON.stringify(obj));
+    let format = 'v1';
+    let plain = enc.encode(JSON.stringify(obj));
+    if (opts.compress) {
+      try {
+        plain = await gzipBytes(plain);
+        format = 'v2gzip';
+      } catch (_) {
+        format = 'v1';
+      }
+    }
     const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
-    return 'v1.' + b64url(iv) + '.' + b64url(data);
+    return format + '.' + b64url(iv) + '.' + b64url(data);
   }
 
   async function decryptJson(cipher, userId, password) {
     const parts = String(cipher || '').split('.');
-    if (parts.length !== 3 || parts[0] !== 'v1') throw new Error('지원하지 않는 암호화 형식.');
+    if (parts.length !== 3 || (parts[0] !== 'v1' && parts[0] !== 'v2gzip')) throw new Error('지원하지 않는 암호화 형식.');
     const key = await deriveBackupKey(userId, password);
     const data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64url(parts[1]) }, key, fromB64url(parts[2]));
-    return JSON.parse(dec.decode(data));
+    let bytes = new Uint8Array(data);
+    if (parts[0] === 'v2gzip') bytes = await gunzipBytes(bytes);
+    return JSON.parse(dec.decode(bytes));
   }
 
   function localizeServerError(message, status) {
@@ -151,10 +176,13 @@
       exportedAt: backup.exportedAt,
       appVersion: backup.appVersion || '',
       includeSecrets: !!backup.includeSecrets,
+      serverSlim: !!backup.serverSlim,
       packs: Array.from(packNames).sort(),
       entryCount: entries.length,
       embeddingCount: Array.isArray(db.embeddings) ? db.embeddings.length : 0,
       embeddingExcluded: !!backup.embeddingExcluded,
+      historyExcluded: !!backup.historyExcluded,
+      logsExcluded: !!backup.logsExcluded,
       settingCount: backup.settings ? Object.keys(backup.settings).length : 0,
       localStorageCount: backup.localStorage ? Object.keys(backup.localStorage).length : 0
     };
@@ -414,7 +442,7 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div'); title.textContent = '서버 동기화'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 서버에는 로어 본문만 저장하고, 복원 후 필요한 로어팩만 다시 검색 준비함.');
+      addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 서버에는 로어/팩/채팅별 활성 상태 중심으로 저장하고, 검색 준비/이력/로그는 복원 후 필요한 만큼 다시 생성함.');
       const cfg = getCfg();
       const accountBox = document.createElement('div'); accountBox.style.cssText = 'border:1px solid #292929;border-radius:6px;background:#111;padding:10px;margin-top:10px;';
       const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
@@ -489,7 +517,9 @@
             row.style.cssText = 'width:100%;text-align:left;border:1px solid #333;background:#111;color:#ccc;border-radius:4px;padding:8px;cursor:pointer;';
             const label = meta ? ((meta.packs || []).slice(0, 4).join(', ') || '로어팩 없음') : (item.title || item.backupId);
             const embLabel = meta && meta.embeddingExcluded ? ' / 검색 준비는 복원 후 생성' : (meta ? ' / 검색 준비 ' + (meta.embeddingCount || 0) + '개' : '');
-            row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
+            const slimLabel = meta && meta.historyExcluded ? ' / 이력 제외' : '';
+            const compressedLabel = meta && meta.payloadCompressed ? ' / 압축됨' : '';
+            row.textContent = formatTime(item.createdAt) + ' / ' + label + ' / 로어 ' + (meta ? meta.entryCount : '?') + '개' + embLabel + slimLabel + compressedLabel + ' / ' + Math.ceil((item.payloadBytes || 0) / 1024) + 'KB';
             row.onclick = () => {
               selected = item;
               Array.from(listBox.children).forEach(x => x.style.borderColor = '#333');
@@ -578,10 +608,11 @@
           const list = await apiList();
           if ((list.items || []).length >= 10) throw new Error('서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.');
           setInlineStatus(workStatus, '현재 백업 만드는 중...', '#8bc');
-          const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: true, includeEmbeddings: false });
+          const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: false, includeEmbeddings: false, includeHistory: false, serverSlim: true });
           const meta = backupSummary(data);
-          setInlineStatus(workStatus, '백업 암호화 중...', '#8bc');
-          const payload = await encryptJson(data, serverSession.userId, activePassword);
+          setInlineStatus(workStatus, '백업 압축/암호화 중...', '#8bc');
+          const payload = await encryptJson(data, serverSession.userId, activePassword, { compress: true });
+          meta.payloadCompressed = payload.startsWith('v2gzip.');
           const encryptedMeta = await encryptJson(meta, serverSession.userId, activePassword);
           setInlineStatus(workStatus, '서버에 업로드 중...', '#8bc');
           await apiUpload('backup-' + new Date().toISOString().slice(0, 19), payload, encryptedMeta);

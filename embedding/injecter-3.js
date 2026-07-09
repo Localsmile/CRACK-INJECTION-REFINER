@@ -46,6 +46,7 @@
 
   const db = C.getDB();
   const _ls = _w.localStorage;
+  const ACTIVE_PACKS_STORAGE_KEY = 'lore-active-packs-v1';
 
   function isChatRoute() {
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
@@ -841,8 +842,8 @@
     if (_w.__LoreInj && typeof _w.__LoreInj.runWhenChatRoute === 'function') _w.__LoreInj.runWhenChatRoute(bootHeavy);
     else runWhenChatRouteLocal(bootHeavy);
   }
-  window.addEventListener('storage', (e) => { if (e.key === 'lore-injector-v5') settings.load(); });
-  window.addEventListener('focus', () => { if (Date.now() - (settings._lastSaveTime || 0) > 3000) settings.load(); });
+  window.addEventListener('storage', (e) => { if (e.key === 'lore-injector-v5' || e.key === ACTIVE_PACKS_STORAGE_KEY) reloadSettingsFromStorage(); });
+  window.addEventListener('focus', () => { if (Date.now() - (settings._lastSaveTime || 0) > 3000) reloadSettingsFromStorage(); });
 
   function getChatKey() {
     try { const id = C.getCurrentChatId(); if (id) return 'chat:' + id; } catch(e) {}
@@ -851,12 +852,22 @@
     return C.getCurUrl();
   }
 
+  function extractChatStateKeyFromText(text) {
+    const m = String(text || '').match(/\/(?:chats|episodes|c)\/([a-f0-9]+)/);
+    return m ? ('chat:' + m[1]) : '';
+  }
+
   function getStableChatStateKey(url) {
-    const chatKey = getChatKey();
-    if (chatKey && chatKey.startsWith('chat:')) return chatKey;
-    const cur = url || C.getCurUrl();
-    const m = String(cur || window.location.pathname || '').match(/\/(?:chats|episodes|c)\/([a-f0-9]+)/);
-    if (m) return 'chat:' + m[1];
+    const hasProvidedUrl = url !== undefined && url !== null;
+    const cur = hasProvidedUrl ? String(url || '') : C.getCurUrl();
+    const fromProvided = extractChatStateKeyFromText(cur);
+    if (fromProvided) return fromProvided;
+    if (!hasProvidedUrl) {
+      const chatKey = getChatKey();
+      if (chatKey && chatKey.startsWith('chat:')) return chatKey;
+    }
+    const fromPath = extractChatStateKeyFromText(window.location.pathname || '');
+    if (!hasProvidedUrl && fromPath) return fromPath;
     return cur;
   }
 
@@ -878,6 +889,70 @@
       }
     } catch (_) {}
     return keys;
+  }
+
+  function readActivePackMap() {
+    try {
+      const raw = _ls.getItem(ACTIVE_PACKS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveActivePackMap(map) {
+    try {
+      _ls.setItem(ACTIVE_PACKS_STORAGE_KEY, JSON.stringify(map || {}));
+      return true;
+    } catch (e) {
+      console.warn('[LoreInj:settings] active pack state save failed:', e && e.message ? e.message : e);
+      return false;
+    }
+  }
+
+  function normalizePackList(list) {
+    return Array.from(new Set((Array.isArray(list) ? list : []).filter(Boolean).map(String)));
+  }
+
+  function hasOwn(obj, key) {
+    return !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
+  function getActivePackStateKeys(url) {
+    const keys = [];
+    const add = (k) => { if (k && !keys.includes(k)) keys.push(k); };
+    add(getStableChatStateKey(url));
+    getLegacyStateKeys(url).forEach(add);
+    return keys;
+  }
+
+  function writeActivePacksForUrl(url, list) {
+    const normalized = normalizePackList(list);
+    const activeMap = readActivePackMap();
+    for (const key of getActivePackStateKeys(url)) activeMap[key] = normalized;
+    saveActivePackMap(activeMap);
+    return normalized;
+  }
+
+  function syncActivePackStateToSettings(url) {
+    if (!settings.config.urlPacks) settings.config.urlPacks = {};
+    const activeMap = readActivePackMap();
+    const keys = getActivePackStateKeys(url);
+    for (const key of keys) {
+      if (!hasOwn(activeMap, key)) continue;
+      const normalized = normalizePackList(activeMap[key]);
+      if (JSON.stringify(settings.config.urlPacks[key] || []) !== JSON.stringify(normalized)) {
+        settings.config.urlPacks[key] = normalized;
+      }
+      return normalized;
+    }
+    return null;
+  }
+
+  function reloadSettingsFromStorage() {
+    settings.load();
+    syncActivePackStateToSettings();
   }
 
   function migrateMapValueToStableKey(mapName, stableKey, legacyKey) {
@@ -963,8 +1038,23 @@
   }
 
   function getActivePacksForUrl(url) {
+    const stableKey = getStableChatStateKey(url);
+    const activeMap = readActivePackMap();
+    if (hasOwn(activeMap, stableKey)) return normalizePackList(activeMap[stableKey]);
+    for (const legacyKey of getLegacyStateKeys(url)) {
+      if (hasOwn(activeMap, legacyKey)) {
+        const migrated = writeActivePacksForUrl(url, activeMap[legacyKey]);
+        if (!settings.config.urlPacks) settings.config.urlPacks = {};
+        settings.config.urlPacks[stableKey] = migrated;
+        return migrated;
+      }
+    }
     const key = getUrlStateKey(url);
-    return (settings.config.urlPacks && settings.config.urlPacks[key]) || [];
+    const fromSettings = normalizePackList(settings.config.urlPacks && settings.config.urlPacks[key]);
+    if (fromSettings.length) {
+      writeActivePacksForUrl(url, fromSettings);
+    }
+    return fromSettings;
   }
 
   function getDisabledEntriesForUrl(url) {
@@ -1011,10 +1101,18 @@
   }
 
   async function setPackEnabled(packName, state) {
-    const curUrl = getUrlStateKey();
+    const url = C.getCurUrl();
+    const curUrl = getUrlStateKey(url);
+    const stableKey = getStableChatStateKey(url);
+    const activeMap = readActivePackMap();
     const up = JSON.parse(JSON.stringify(settings.config.urlPacks || {}));
     const ud = JSON.parse(JSON.stringify(settings.config.urlDisabledEntries || {}));
     up[curUrl] = up[curUrl] || []; ud[curUrl] = ud[curUrl] || [];
+    const currentActive = normalizePackList(
+      hasOwn(activeMap, curUrl) ? activeMap[curUrl] :
+      (hasOwn(activeMap, stableKey) ? activeMap[stableKey] : up[curUrl])
+    );
+    up[curUrl] = normalizePackList(up[curUrl].length ? up[curUrl] : currentActive);
     if (state) {
       if (!up[curUrl].includes(packName)) up[curUrl].push(packName);
       const its = await db.entries.where('packName').equals(packName).toArray();
@@ -1023,20 +1121,36 @@
     } else {
       up[curUrl] = up[curUrl].filter(p => p !== packName);
     }
+    up[curUrl] = normalizePackList(up[curUrl]);
+    if (stableKey !== curUrl) up[stableKey] = up[curUrl];
+    if (stableKey !== curUrl) ud[stableKey] = ud[curUrl];
+    writeActivePacksForUrl(url, up[curUrl]);
     settings.config.urlPacks = up; settings.config.urlDisabledEntries = ud; settings.save();
   }
 
   function setEntryEnabled(entry, state) {
-    const curUrl = getUrlStateKey();
+    const url = C.getCurUrl();
+    const curUrl = getUrlStateKey(url);
+    const stableKey = getStableChatStateKey(url);
+    const activeMap = readActivePackMap();
     const up = JSON.parse(JSON.stringify(settings.config.urlPacks || {}));
     const ud = JSON.parse(JSON.stringify(settings.config.urlDisabledEntries || {}));
     up[curUrl] = up[curUrl] || []; ud[curUrl] = ud[curUrl] || [];
+    const currentActive = normalizePackList(
+      hasOwn(activeMap, curUrl) ? activeMap[curUrl] :
+      (hasOwn(activeMap, stableKey) ? activeMap[stableKey] : up[curUrl])
+    );
+    up[curUrl] = normalizePackList(up[curUrl].length ? up[curUrl] : currentActive);
     if (state) {
       ud[curUrl] = ud[curUrl].filter(id => id !== entry.id);
       if (!up[curUrl].includes(entry.packName)) up[curUrl].push(entry.packName);
     } else {
       if (!ud[curUrl].includes(entry.id)) ud[curUrl].push(entry.id);
     }
+    up[curUrl] = normalizePackList(up[curUrl]);
+    if (stableKey !== curUrl) up[stableKey] = up[curUrl];
+    if (stableKey !== curUrl) ud[stableKey] = ud[curUrl];
+    writeActivePacksForUrl(url, up[curUrl]);
     settings.config.urlPacks = up; settings.config.urlDisabledEntries = ud; settings.save();
   }
 
@@ -1273,6 +1387,8 @@
 
   // R.init은 ensureHeavyRuntimeInit()에서 채팅 경로 진입 시점에만 실행한다.
 
+  try { syncActivePackStateToSettings(); } catch (_) {}
+
   Object.assign(_w.__LoreInj, {
     C, R, db, _ls,
     defaultSettings, settings,
@@ -1285,6 +1401,7 @@
     getExtLog, addExtLog, clearExtLog,
     getInjLog, addInjLog, clearInjLog,
     isEntryEnabledForUrl, setPackEnabled, setEntryEnabled,
+    readActivePackMap, saveActivePackMap, syncActivePackStateToSettings,
     getApiConfigSnapshot, resetSettingsKeepApi,
     resolveConfiguredModel, getGenerationFallbackModel, normalizeApiModelDefaults, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts, getGeminiEmbeddingKey,
     getStableChatStateKey, applyPresetKeepState, backupSettings, getSettingsStorageHealth,
