@@ -26,7 +26,8 @@
           for (const s of snaps) {
             const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px;background:#1a1a1a;border:1px solid #333;border-radius:4px;';
             const info = document.createElement('div'); info.style.cssText = 'display:flex;flex-direction:column;';
-            const sTitle = document.createElement('span'); sTitle.textContent = `[${s.packName}] ${s.label} (${s.data.length}개)`; sTitle.style.cssText = 'font-size:12px;color:#4a9;font-weight:bold;';
+            const itemCount = Number.isFinite(Number(s.itemCount)) ? Number(s.itemCount) : (Array.isArray(s.data) ? s.data.length : '?');
+            const sTitle = document.createElement('span'); sTitle.textContent = `[${s.packName}] ${s.label} (${itemCount}개)`; sTitle.style.cssText = 'font-size:12px;color:#4a9;font-weight:bold;';
             const sTime = document.createElement('span'); sTime.textContent = new Date(s.timestamp).toLocaleString(); sTime.style.cssText = 'font-size:10px;color:#888;';
             info.appendChild(sTitle); info.appendChild(sTime);
             const btnWrap = document.createElement('div'); btnWrap.style.cssText = 'display:flex;gap:4px;';

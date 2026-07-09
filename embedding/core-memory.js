@@ -7,7 +7,7 @@
   const C = _w.__LoreCore;
   if (!C || !C.__kernelLoaded) { console.error('[LoreCore:memory] kernel 미로드'); return; }
   if (C.__memoryLoaded) return;
-  const { getDB, DEFAULTS } = C;
+  const { getDB, DEFAULTS, packJsonForStorage, unpackJsonFromStorage } = C;
 
   // 시간 감쇠
   function calcForgottenScore(turnsSinceLastMention, halfLife) {
@@ -668,12 +668,17 @@
       if (!db.entryVersions) return; // v7 미만 fallback
       const snap = JSON.parse(JSON.stringify(entry));
       delete snap.id;
+      const packed = typeof packJsonForStorage === 'function'
+        ? await packJsonForStorage(snap)
+        : { value: snap, encoding: '', gzip: '' };
       await db.entryVersions.put({
         entryId: entry.id,
         ts: Date.now(),
         turn: 0,
         reason: reason || 'auto',
-        snapshot: snap
+        snapshot: packed.value,
+        snapshotGzip: packed.gzip || '',
+        snapshotEncoding: packed.encoding || ''
       });
       const all = await db.entryVersions.where('entryId').equals(entry.id).sortBy('ts');
       if (all.length > 20) {
@@ -687,17 +692,26 @@
     try {
       const db = getDB();
       if (!db.entryVersions) return [];
-      return await db.entryVersions.where('entryId').equals(entryId).reverse().sortBy('ts');
+      const rows = await db.entryVersions.where('entryId').equals(entryId).reverse().sortBy('ts');
+      return await Promise.all(rows.map(async (row) => {
+        if (!row || !row.snapshotGzip || typeof unpackJsonFromStorage !== 'function') return row;
+        try { return { ...row, snapshot: await unpackJsonFromStorage(row, 'snapshot', 'snapshotGzip', 'snapshotEncoding') }; }
+        catch (e) { return { ...row, snapshot: null, snapshotError: e.message || String(e) }; }
+      }));
     } catch(e) { return []; }
   }
 
   async function restoreEntryVersion(versionId) {
     const db = getDB();
     const v = await db.entryVersions.get(versionId);
-    if (!v || !v.snapshot) throw new Error('버전 없음');
+    if (!v) throw new Error('버전 없음');
+    const snapshot = (v.snapshotGzip && typeof unpackJsonFromStorage === 'function')
+      ? await unpackJsonFromStorage(v, 'snapshot', 'snapshotGzip', 'snapshotEncoding')
+      : v.snapshot;
+    if (!snapshot || typeof snapshot !== 'object') throw new Error('버전 데이터가 손상됨');
     const cur = await db.entries.get(v.entryId);
     if (cur) await saveEntryVersion(cur, 'pre_restore');
-    const restored = { ...v.snapshot, id: v.entryId };
+    const restored = { ...snapshot, id: v.entryId };
     await db.entries.put(restored);
     return restored;
   }

@@ -663,11 +663,17 @@
   }
 
   async function inject(userInput) {
-    if (!settings.config.enabled) return userInput;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const turnCounter = incrementTurnCounter(chatKey);
     scheduleInjectionCleanup('turn-start', 2500);
     if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
+    if (settings.config.enabled === false) {
+      addInjLog(chatKey, {
+        time: new Date().toLocaleTimeString(), turn: turnCounter,
+        matched: [], count: 0, note: '자동 삽입 꺼짐', reason: 'injection_disabled', url: _url
+      });
+      return userInput;
+    }
 
     const activePacksArr = typeof _w.__LoreInj.getActivePacksForUrl === 'function'
       ? _w.__LoreInj.getActivePacksForUrl(_url)

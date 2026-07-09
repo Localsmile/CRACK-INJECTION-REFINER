@@ -56,6 +56,7 @@
           chip('설정 저장', settings._lastSaveOk === false ? '실패' : '정상', settings._lastSaveOk !== false);
           chip('저장 공간', storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', storageHealth.ok);
           chip('자동 대화 정리', cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', !!cfg.autoExtEnabled);
+          chip('로어 자동 삽입', cfg.enabled !== false ? '켜짐' : '꺼짐', cfg.enabled !== false);
           chip('의미 검색', cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', !!cfg.embeddingEnabled);
           db.entries.toArray().then(entries => {
             const active = new Set(activePacks);
@@ -87,7 +88,8 @@
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          nd.appendChild(C.createToggleRow('로어 인젝션 활성화', '대화에 설정 정보를 자동 삽입함.', settings.config.enabled, (v) => { settings.config.enabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('로어 자동 삽입', '현재 메시지에 관련 로어를 자동으로 넣음.', settings.config.enabled !== false, (v) => { settings.config.enabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('로어 자동 추출', '일정 턴마다 대화 내용을 로어로 정리함. 수동 추출은 이 설정과 관계없이 실행할 수 있음.', settings.config.autoExtEnabled !== false, (v) => { settings.config.autoExtEnabled = v; settings.save(); }));
 
           nd.appendChild(C.createToggleRow('적응형 로어 압축', '주입 공간 부족 시 텍스트를 자동으로 짧게 줄임.', settings.config.useCompressedFormat !== false, (v) => { settings.config.useCompressedFormat = v; settings.save(); }));
           const cmpWrap = document.createElement('div'); cmpWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-left:10px;';

@@ -56,6 +56,32 @@
     }
     return opts;
   }
+
+  async function prepareImportedPackEmbedding(packName, chatKey, setBusy) {
+    if (!settings.config.embeddingEnabled) return { skipped: true, reason: '의미 검색이 꺼져 있음' };
+    const missing = typeof _w.__LoreInj.getApiMissingReason === 'function'
+      ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed')
+      : '';
+    if (missing) return { skipped: true, reason: missing };
+    if (!C || typeof C.embedPack !== 'function') return { skipped: true, reason: '검색 준비 기능을 찾을 수 없음' };
+    try {
+      setBusy('생성한 로어를 검색 준비 중');
+      const opts = typeof _w.__LoreInj.buildEmbeddingApiOpts === 'function'
+        ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'importEmbed', chatKey: chatKey || 'global' })
+        : { apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+      const count = await C.embedPack(packName, opts, (done, total) => setBusy('생성한 로어를 검색 준비 중: ' + done + '/' + total));
+      return { count };
+    } catch (e) {
+      return { failed: true, error: e && e.message ? e.message : String(e) };
+    }
+  }
+
+  function appendEmbeddingResult(message, result) {
+    if (!result) return message;
+    if (result.failed) return message + ' / 검색 준비 실패: ' + String(result.error || '알 수 없음').slice(0, 80);
+    if (result.skipped) return message + ' / 검색 준비 생략: ' + result.reason;
+    return message + ' / 검색 준비 ' + (result.count || 0) + '개 완료';
+  }
   
   _w.__LoreInj.registerSubMenu('extract', function(modal) {
     modal.createSubMenu('대화 정리/변환', (m) => {
@@ -270,9 +296,13 @@
                   msg = '0개 - 모든 구간(' + rpt.chunks + '개)에서 저장할 내용을 찾지 못함';
                 }
               }
-              rDiv.textContent = msg;
-              rDiv.style.color = cnt > 0 ? '#4a9' : '#da8';
-              if (cnt > 0) await setPackEnabled(nameInp.value.trim(), true);
+              let embedResult = null;
+              if (cnt > 0) {
+                await setPackEnabled(nameInp.value.trim(), true);
+                embedResult = await prepareImportedPackEmbedding(nameInp.value.trim(), (C.getCurrentChatId && C.getCurrentChatId()) || 'global', setBusy);
+              }
+              rDiv.textContent = appendEmbeddingResult(msg, embedResult);
+              rDiv.style.color = cnt > 0 && !(embedResult && embedResult.failed) ? '#4a9' : '#da8';
             } catch (e) {
               rDiv.textContent = '❌ ' + (e.message || String(e));
               rDiv.style.color = '#d66';
@@ -322,9 +352,13 @@
                   msg = '0개 - 모든 구간(' + rpt.chunks + '개)에서 저장할 내용을 찾지 못함';
                 }
               }
-              rDiv2.textContent = msg;
-              rDiv2.style.color = cnt > 0 ? '#4a9' : '#da8';
-              if (cnt > 0) await setPackEnabled(nameInp2.value.trim(), true);
+              let embedResult = null;
+              if (cnt > 0) {
+                await setPackEnabled(nameInp2.value.trim(), true);
+                embedResult = await prepareImportedPackEmbedding(nameInp2.value.trim(), (C.getCurrentChatId && C.getCurrentChatId()) || 'global', setBusy);
+              }
+              rDiv2.textContent = appendEmbeddingResult(msg, embedResult);
+              rDiv2.style.color = cnt > 0 && !(embedResult && embedResult.failed) ? '#4a9' : '#da8';
             } catch (e) {
               rDiv2.textContent = '❌ ' + (e.message || String(e));
               rDiv2.style.color = '#d66';

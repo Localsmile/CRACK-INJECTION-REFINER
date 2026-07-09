@@ -246,6 +246,48 @@ Entries:
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
+  function fromB64url(value) {
+    let b64 = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function transformCompressedBytes(bytes, StreamCtor) {
+    if (typeof Blob === 'undefined' || typeof Response === 'undefined' || typeof StreamCtor !== 'function') throw new Error('compression unsupported');
+    const stream = new Blob([bytes]).stream().pipeThrough(new StreamCtor('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  // Snapshot/history JSON is cold data. Keep small rows plain and only retain gzip when it saves IndexedDB space.
+  async function packJsonForStorage(value, minChars = 1024) {
+    const json = JSON.stringify(value);
+    if (json.length < minChars || typeof CompressionStream !== 'function') return { value, encoding: '', gzip: '', originalChars: json.length };
+    try {
+      const zipped = await transformCompressedBytes(new TextEncoder().encode(json), CompressionStream);
+      const gzip = b64url(zipped);
+      if (!gzip || gzip.length >= json.length) return { value, encoding: '', gzip: '', originalChars: json.length };
+      return { value: null, encoding: 'gzip', gzip, originalChars: json.length };
+    } catch (_) {
+      return { value, encoding: '', gzip: '', originalChars: json.length };
+    }
+  }
+
+  async function unpackJsonFromStorage(row, valueKey, gzipKey, encodingKey) {
+    if (!row) return undefined;
+    const gzip = row[gzipKey];
+    if (!gzip) return row[valueKey];
+    if (row[encodingKey] && row[encodingKey] !== 'gzip') throw new Error('지원하지 않는 로컬 압축 형식');
+    try {
+      const raw = await transformCompressedBytes(fromB64url(gzip), DecompressionStream);
+      return JSON.parse(new TextDecoder().decode(raw));
+    } catch (e) {
+      throw new Error('압축된 로컬 기록을 열 수 없음: ' + (e && e.message ? e.message : e));
+    }
+  }
+
   const _tokenCaches = {};
   async function getVertexAccessToken(sa, cacheKey = 'default') {
     if (!_tokenCaches[cacheKey]) _tokenCaches[cacheKey] = { token: null, expiry: 0 };
@@ -967,7 +1009,7 @@ Entries:
     VER, DB_SCHEMA_VERSION, LOCAL_MIGRATION_VERSION, TIMELINE_EVENT_TYPE, TIMELINE_SCHEMA_VERSION, TIMELINE_COMPRESSION_LEVELS, SAFETY, PLATFORM, DEFAULTS,
     getDB, gmFetch, parseServiceAccountJson, getVertexAccessToken,
     callGeminiApi, callDeepSeekApi, embedText, embedTexts, warmupFirebase,
-    normalizeVector, cosineSim, simpleHash,
+    normalizeVector, cosineSim, simpleHash, packJsonForStorage, unpackJsonFromStorage,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true
   });

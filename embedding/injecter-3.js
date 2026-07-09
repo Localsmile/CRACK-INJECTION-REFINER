@@ -46,6 +46,7 @@
 
   const db = C.getDB();
   const _ls = _w.localStorage;
+  const HISTORY_COMPRESSION_MIGRATION_KEY = 'lore-history-compression-v1';
   const ACTIVE_PACKS_STORAGE_KEY = 'lore-active-packs-v1';
   const MAX_SNAPSHOTS_PER_PACK = 3;
   const ORPHAN_STORAGE_CLEANUP_KEY = 'lore-orphan-storage-cleanup-v1';
@@ -84,6 +85,7 @@
     if (_heavyRuntimeInitPromise) return _heavyRuntimeInitPromise;
     _heavyRuntimeInitPromise = (async () => {
       await runLocalMigration();
+      scheduleLegacyHistoryCompression();
       if (R && !R.__loreInjectorRuntimeInitDone) {
         R.init(
           C,
@@ -316,7 +318,19 @@
   async function createSnapshot(packName, label, type = 'auto') {
     const entries = await db.entries.where('packName').equals(packName).toArray();
     const clean = entries.map(({ id, ...rest }) => rest);
-    await db.snapshots.add({ packName, timestamp: Date.now(), label: label || '자동 저장', type, data: clean });
+    const packed = typeof C.packJsonForStorage === 'function'
+      ? await C.packJsonForStorage(clean)
+      : { value: clean, encoding: '', gzip: '' };
+    await db.snapshots.add({
+      packName,
+      timestamp: Date.now(),
+      label: label || '자동 저장',
+      type,
+      data: packed.value,
+      dataGzip: packed.gzip || '',
+      dataEncoding: packed.encoding || '',
+      itemCount: clean.length
+    });
     const all = await db.snapshots.where('packName').equals(packName).sortBy('timestamp');
     if (all.length > MAX_SNAPSHOTS_PER_PACK) await db.snapshots.bulkDelete(all.slice(0, all.length - MAX_SNAPSHOTS_PER_PACK).map(s => s.id));
   }
@@ -324,6 +338,10 @@
   async function restoreSnapshot(snapshotId) {
     const snap = await db.snapshots.get(snapshotId);
     if (!snap) return false;
+    const snapshotData = (snap.dataGzip && typeof C.unpackJsonFromStorage === 'function')
+      ? await C.unpackJsonFromStorage(snap, 'data', 'dataGzip', 'dataEncoding')
+      : snap.data;
+    if (!Array.isArray(snapshotData)) throw new Error('스냅샷 데이터가 손상됨');
     const previousEntries = await db.entries.where('packName').equals(snap.packName).toArray();
     const previousIds = previousEntries.map(entry => entry && entry.id).filter(id => id != null);
     const tables = [db.packs, db.entries];
@@ -333,8 +351,8 @@
       if (previousIds.length && db.embeddings) await db.embeddings.where('entryId').anyOf(previousIds).delete();
       if (previousIds.length && db.entryVersions) await db.entryVersions.where('entryId').anyOf(previousIds).delete();
       await db.entries.where('packName').equals(snap.packName).delete();
-      for (const e of snap.data) await db.entries.add(e);
-      await db.packs.update(snap.packName, { entryCount: snap.data.length });
+      for (const e of snapshotData) await db.entries.add(e);
+      await db.packs.update(snap.packName, { entryCount: snapshotData.length });
     });
     // Phase 12: 복원된 데이터가 구버전 스키마(예: imp/emo/sur 미세팅, recallTriggers 누락)일 수 있으므로 로컬 마이그레이션을 강제 재실행한다.
     try {
@@ -422,6 +440,7 @@
 
   async function cleanupUnusedLoreStorage(opts = {}) {
     const trimSnapshots = opts.trimSnapshots === true;
+    const compressHistory = opts.compressHistory === true;
     const maxSnapshots = Math.max(1, Number(opts.maxSnapshotsPerPack || MAX_SNAPSHOTS_PER_PACK) || MAX_SNAPSHOTS_PER_PACK);
     const entries = await db.entries.toArray();
     const packs = await db.packs.toArray();
@@ -461,21 +480,70 @@
       }
       if (emptyPackNames.length) await db.packs.bulkDelete(emptyPackNames);
     });
+    let snapshotsCompressed = 0;
+    let entryVersionsCompressed = 0;
+    if (compressHistory && typeof C.packJsonForStorage === 'function') {
+      const removedSnapshotIds = new Set(orphanSnapshotIds.concat(snapshotsToTrim));
+      const removedVersionIds = new Set(orphanVersionIds);
+      for (const row of snapshots) {
+        if (!row || removedSnapshotIds.has(row.id) || row.dataGzip || !Array.isArray(row.data)) continue;
+        try {
+          const packed = await C.packJsonForStorage(row.data);
+          if (packed.encoding === 'gzip') {
+            await db.snapshots.update(row.id, { data: null, dataGzip: packed.gzip, dataEncoding: packed.encoding, itemCount: row.data.length });
+            snapshotsCompressed++;
+          }
+        } catch (e) { console.warn('[LoreInj:3] snapshot compression skipped:', e && e.message ? e.message : e); }
+      }
+      for (const row of entryVersions) {
+        if (!row || removedVersionIds.has(row.id) || row.snapshotGzip || !row.snapshot || typeof row.snapshot !== 'object') continue;
+        try {
+          const packed = await C.packJsonForStorage(row.snapshot);
+          if (packed.encoding === 'gzip') {
+            await db.entryVersions.update(row.id, { snapshot: null, snapshotGzip: packed.gzip, snapshotEncoding: packed.encoding });
+            entryVersionsCompressed++;
+          }
+        } catch (e) { console.warn('[LoreInj:3] entry version compression skipped:', e && e.message ? e.message : e); }
+      }
+    }
     for (const packName of emptyPackNames) removeDeletedPackReferences(packName);
     return {
       orphanEmbeddingsRemoved: orphanEmbeddingIds.length,
       orphanEntryVersionsRemoved: orphanVersionIds.length,
       orphanSnapshotsRemoved: orphanSnapshotIds.length,
       snapshotsTrimmed: snapshotsToTrim.length,
-      emptyPacksRemoved: emptyPackNames.length
+      emptyPacksRemoved: emptyPackNames.length,
+      snapshotsCompressed,
+      entryVersionsCompressed
     };
   }
 
   async function cleanupOrphanedLoreStorageOnce() {
     if (_ls.getItem(ORPHAN_STORAGE_CLEANUP_KEY) === 'done') return null;
-    const report = await cleanupUnusedLoreStorage();
+    const needsCompression = _ls.getItem(HISTORY_COMPRESSION_MIGRATION_KEY) !== 'done';
+    const report = await cleanupUnusedLoreStorage({ compressHistory: needsCompression });
     _ls.setItem(ORPHAN_STORAGE_CLEANUP_KEY, 'done');
+    if (needsCompression) _ls.setItem(HISTORY_COMPRESSION_MIGRATION_KEY, 'done');
     return report;
+  }
+
+  let _historyCompressionScheduled = false;
+  function scheduleLegacyHistoryCompression() {
+    if (_historyCompressionScheduled || _ls.getItem(HISTORY_COMPRESSION_MIGRATION_KEY) === 'done') return;
+    _historyCompressionScheduled = true;
+    const run = async () => {
+      try {
+        const report = await cleanupUnusedLoreStorage({ compressHistory: true });
+        _ls.setItem(HISTORY_COMPRESSION_MIGRATION_KEY, 'done');
+        const count = (report.snapshotsCompressed || 0) + (report.entryVersionsCompressed || 0);
+        if (count) console.info('[LoreInj:3] 기존 로컬 이력 압축 완료:', count);
+      } catch (e) {
+        _historyCompressionScheduled = false;
+        console.warn('[LoreInj:3] 기존 로컬 이력 압축 보류:', e && e.message ? e.message : e);
+      }
+    };
+    if (typeof _w.requestIdleCallback === 'function') _w.requestIdleCallback(run, { timeout: 12000 });
+    else setTimeout(run, 5000);
   }
 
   async function cleanupEmbeddingsForSelectedModel() {
@@ -527,7 +595,7 @@
   }
 
   const defaultSettings = {
-    enabled: true, position: 'before',
+    enabled: true, injectionControlVersion: 'split1', position: 'before',
     prefix: OOC_FORMATS.default.prefix, suffix: OOC_FORMATS.default.suffix,
     scanRange: 5, scanOffset: 2, maxEntries: 3, cooldownEnabled: true, cooldownTurns: 3,
     injectionCleanupEnabled: true, injectionCleanupTurns: 8,
@@ -647,6 +715,13 @@
           const p = JSON.parse(saved);
           if (p && typeof p === 'object') {
             for (const k in p) { if (p[k] !== undefined) this.config[k] = p[k]; }
+            // Older versions used one switch to stop both insertion and automatic extraction.
+            // Preserve that intent once, then let the two controls operate independently.
+            if (!p.injectionControlVersion) {
+              if (p.enabled === false) this.config.autoExtEnabled = false;
+              this.config.injectionControlVersion = 'split1';
+              this.save();
+            }
             if (Array.isArray(this.config.templates)) {
               const dT = this.config.templates.find(t => t.isDefault || t.id === 'default');
               if (dT) {

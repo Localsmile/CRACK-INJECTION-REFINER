@@ -230,6 +230,11 @@
     return serverFetch('/api/backups/create', { title, payload, encryptedMeta }, serverSession.token);
   }
 
+  async function apiReplace(backupId, payload, encryptedMeta) {
+    if (!serverSession || !serverSession.token) throw new Error('먼저 로그인해야 함.');
+    return serverFetch('/api/backups/replace', { backupId, payload, encryptedMeta }, serverSession.token);
+  }
+
   async function apiDownload(backupId) {
     if (!serverSession || !serverSession.token) throw new Error('먼저 로그인해야 함.');
     return serverFetch('/api/backups/get', { backupId }, serverSession.token);
@@ -238,6 +243,57 @@
   async function apiDelete(backupId) {
     if (!serverSession || !serverSession.token) throw new Error('먼저 로그인해야 함.');
     return serverFetch('/api/backups/delete', { backupId }, serverSession.token);
+  }
+
+  function isCompressedPayload(payload) {
+    return String(payload || '').startsWith('v2gzip.');
+  }
+
+  async function backupNeedsCompression(item) {
+    if (!item || !item.encryptedMeta) return true;
+    try {
+      const meta = await decryptJson(item.encryptedMeta, serverSession.userId, activePassword);
+      return !(meta && (meta.payloadCompressed === true || meta.payloadFormat === 'v2gzip'));
+    } catch (_) {
+      return true;
+    }
+  }
+
+  async function makeCompressedBackupMeta(item) {
+    if (!item || !item.encryptedMeta) return item && item.encryptedMeta || '';
+    try {
+      const meta = await decryptJson(item.encryptedMeta, serverSession.userId, activePassword);
+      if (!meta || typeof meta !== 'object') return item.encryptedMeta;
+      meta.payloadCompressed = true;
+      meta.payloadFormat = 'v2gzip';
+      return await encryptJson(meta, serverSession.userId, activePassword);
+    } catch (e) {
+      console.warn('[LoreInj:backup] backup metadata refresh skipped:', e && e.message ? e.message : e);
+      return item.encryptedMeta;
+    }
+  }
+
+  // The server never sees a user's backup password, so old ciphertext must be recompressed in the browser.
+  // /replace keeps backupId stable and D1 swaps chunks in one transaction.
+  async function compressLegacyServerBackups(items, statusEl) {
+    const candidates = [];
+    for (const item of (items || [])) {
+      if (await backupNeedsCompression(item)) candidates.push(item);
+    }
+    let migrated = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const item = candidates[i];
+      setInlineStatus(statusEl, '기존 서버 백업 압축 중: ' + (i + 1) + '/' + candidates.length, '#8bc');
+      const downloaded = await apiDownload(item.backupId);
+      if (isCompressedPayload(downloaded.payload)) continue;
+      if (!String(downloaded.payload || '').startsWith('v1.')) throw new Error('기존 백업의 암호화 형식을 확인할 수 없음.');
+      const data = await decryptJson(downloaded.payload, serverSession.userId, activePassword);
+      const payload = await encryptJson(data, serverSession.userId, activePassword, { compress: true });
+      if (!isCompressedPayload(payload)) throw new Error('이 브라우저에서 백업 압축을 사용할 수 없음. 최신 브라우저에서 다시 시도할 것.');
+      await apiReplace(item.backupId, payload, await makeCompressedBackupMeta(item));
+      migrated++;
+    }
+    return { checked: candidates.length, migrated };
   }
 
   function makeInput(value, placeholder, type) {
@@ -604,8 +660,9 @@
         if (!done) return;
         try {
           if (!serverSession || !activePassword) throw new Error('먼저 로그인해야 함.');
-          setInlineStatus(workStatus, '서버 저장 가능 여부 확인 중...', '#8bc');
+          setInlineStatus(workStatus, '기존 서버 백업 확인 중...', '#8bc');
           const list = await apiList();
+          const migration = await compressLegacyServerBackups(list.items || [], workStatus);
           if ((list.items || []).length >= 10) throw new Error('서버 백업은 최대 10개까지 보관됨. 기존 백업을 삭제한 뒤 다시 저장할 것.');
           setInlineStatus(workStatus, '현재 백업 만드는 중...', '#8bc');
           const data = await B.exportFullBackup({ includeSecrets: false, includeLogs: false, includeEmbeddings: false, includeHistory: false, serverSlim: true });
@@ -613,12 +670,14 @@
           setInlineStatus(workStatus, '백업 압축/암호화 중...', '#8bc');
           const payload = await encryptJson(data, serverSession.userId, activePassword, { compress: true });
           meta.payloadCompressed = payload.startsWith('v2gzip.');
+          meta.payloadFormat = meta.payloadCompressed ? 'v2gzip' : 'v1';
           const encryptedMeta = await encryptJson(meta, serverSession.userId, activePassword);
           setInlineStatus(workStatus, '서버에 업로드 중...', '#8bc');
           await apiUpload('backup-' + new Date().toISOString().slice(0, 19), payload, encryptedMeta);
           await renderList();
-          done('서버 저장 완료.', '#8a9');
-          alert('서버 저장 완료.');
+          const completeMessage = migration.migrated ? ('서버 저장 완료. 기존 백업 ' + migration.migrated + '개도 압축함.') : '서버 저장 완료.';
+          done(completeMessage, '#8a9');
+          alert(completeMessage);
         } catch (e) { done('서버 저장 실패: ' + e.message, '#d88'); alert('서버 저장 실패: ' + e.message); }
       };
       const pullSelected = async (mode) => {
@@ -683,17 +742,18 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div'); title.textContent = '저장 공간 정리'; title.style.cssText = 'font-size:14px;color:#da8;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '사용하지 않는 검색 준비와 삭제된 로어의 기록을 지움. 스냅샷은 각 로어팩의 최근 3개만 남김. 현재 로어 본문과 최근 복원 지점은 유지함.');
+      addText(nd, '사용하지 않는 검색 준비와 삭제된 로어의 기록을 지움. 스냅샷은 각 로어팩의 최근 3개만 남기고, 남은 스냅샷과 변경 이력은 압축함. 현재 로어 본문과 최근 복원 지점은 유지함.');
       const btn = makeBtn('사용하지 않는 데이터 정리', 'border-color:#642;color:#da8;margin-top:10px;');
       btn.onclick = async () => {
         if (!confirm('삭제된 로어의 남은 기록과 각 로어팩의 오래된 스냅샷을 정리합니다. 현재 로어와 최근 스냅샷 3개는 유지합니다. 계속할까요?')) return;
         const done = setButtonBusy(btn, '정리 중...');
         try {
           if (typeof _w.__LoreInj.cleanupUnusedLoreStorage !== 'function') throw new Error('저장 공간 정리 기능을 찾을 수 없음.');
-          const report = await _w.__LoreInj.cleanupUnusedLoreStorage({ trimSnapshots: true, maxSnapshotsPerPack: 3 });
+          const report = await _w.__LoreInj.cleanupUnusedLoreStorage({ trimSnapshots: true, maxSnapshotsPerPack: 3, compressHistory: true });
           const removed = (report.orphanEmbeddingsRemoved || 0) + (report.orphanEntryVersionsRemoved || 0) + (report.orphanSnapshotsRemoved || 0) + (report.snapshotsTrimmed || 0) + (report.emptyPacksRemoved || 0);
+          const compressed = (report.snapshotsCompressed || 0) + (report.entryVersionsCompressed || 0);
           done();
-          alert(removed ? ('저장 공간 정리 완료: ' + removed + '개 항목 정리됨.') : '정리할 사용하지 않는 데이터가 없습니다.');
+          alert((removed || compressed) ? ('저장 공간 정리 완료: 삭제 ' + removed + '개 / 압축 ' + compressed + '개.') : '정리하거나 압축할 데이터가 없습니다.');
         } catch (e) {
           done();
           alert('저장 공간 정리 실패: ' + (e && e.message ? e.message : e));
