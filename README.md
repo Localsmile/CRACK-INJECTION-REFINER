@@ -3,7 +3,7 @@
 [비공식] `crystallized-chasm` 기반 연동 확장 스크립트
 [crack.wrtn.ai](https://crack.wrtn.ai) 전용 RP 로어 자동 주입 · AI 응답 교정 · 대화 기반 DB 자동 구축
 
-WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣고, Gemini / Vertex AI 연동으로 대화 로그에서 로어를 추출해 IndexedDB에 누적함.
+WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣고, Gemini API Key / Vertex / Firebase / DeepSeek / OpenAI 호환 API로 대화 로그를 정리해 IndexedDB에 누적함.
 
 컨텍스트 관리 로직/기술을 크랙 유저 채팅을 수정/삽입하는 방식으로 구현.
 
@@ -25,14 +25,14 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 
 | 모듈 | 역할 |
 | --- | --- |
-| `core-ui.js` | 설정/로그 UI 공통 컴포넌트 |
-| `core-kernel.js` | 전역 상태, 이벤트 버스, 수명 주기 |
-| `core-platform.js` | WebSocket / fetch 후킹, Gemini·Vertex 호출 래퍼 |
-| `core-memory.js` | Dexie DB, 워킹 메모리, 첫만남 기록, 감쇠 스코어 |
+| `core-ui.js` | 설정/로그 UI 공통 컴포넌트와 Lore 모달 전용 스타일 |
+| `core-kernel.js` | Dexie DB, 네트워크 전송, 공급자 호출, 재시도/중복 억제 |
+| `core-platform.js` | Crack 채팅 ID, 로그, 요약, 페르소나 어댑터 |
+| `core-memory.js` | 워킹 메모리, 첫만남 기록, 시간축 그래프, 감쇠 스코어 |
 | `core-format.js` | adaptiveFormat(full / compact / micro), 동적 예산 계산 |
 | `core-search.js` | 하이브리드 검색(트리거 + 임베딩), 활성 캐릭터 감지 |
 | `core-embedding.js` | 임베딩 생성·캐시, 유사도 계산 |
-| `core-importer.js` | JSON 팩 가져오기/내보내기, 스키마 검증 |
+| `core-importer.js` | URL/텍스트 지식 변환, 결과 통합, 원자적 저장 |
 
 ### 인젝터 (6개 모듈)
 
@@ -41,13 +41,13 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 1. **interceptor** — Socket.IO `send` 선점(document-start), fetch 폴백
 2. **const** — 상수, 기본 설정, 정규식 테이블
 3. **settings** — URL별 설정 저장/로드, 마이그레이션
-4. **extract** — 대화 로그 → Gemini → 로어 추출 → 중요도 게이팅 → 병합
+4. **extract** — 대화 로그 → 선택한 생성 API → 로어/중요 장면 추출 → 중요도 게이팅 → 병합
 5. **inject** — 트리거 매칭, 예산 산정, adaptiveFormat, 메시지 앞/뒤 삽입
 6. **ui** — 설정 패널, 팩 편집기, 로그 뷰어, 쿨다운 모니터
 
 ### 리파이너
 
-`refiner.js` — AI 응답 후처리(문체 교정, 금지어 필터, 커스텀 룰) 전담.
+`refiner.js` — AI 응답을 로어·요약·현재 상태와 대조하고 필요할 때 교정하는 흐름을 조립함.
 
 ---
 
@@ -66,21 +66,21 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 - 바이그램 유사도 기반 오타 허용 매칭
 - `&&` 복합 트리거 (예: `캐릭터A && 이벤트X`)
 - 하이브리드 검색: 트리거 매칭 + 임베딩 유사도 + 시간 감쇠 혼합
-- 2단계 시간 감쇠: `aiMemoryTurns`(AI 단기 기억 한계)와 `decayHalfLife`(관련성 반감기)를 분리
+- 2단계 시간 감쇠: 실제 최근 메시지 길이로 추정한 기억 턴과 `decayHalfLife`(관련성 반감기)를 분리. `aiMemoryTurns`는 수동/호환 폴백으로 유지
 - Importance Gating: 중요도 낮은 로어는 자동 추출 단계에서 컷
 - adaptiveFormat: 2000자 제한 내 여유 글자 수를 계산해 full → compact → micro 단계적 압축
 - 워킹 메모리 / 씬 상태 / 첫만남 추적 / 호칭 매트릭스
 - 재주입 쿨다운(턴 기반, per-entry), 주입 위치(앞/뒤) 선택
 - 모순 감지 로깅
 
-### 3. Gemini / Vertex AI 연동
+### 3. 생성/임베딩 API 연동
 
 - 대화 자동 분석 → 로어 자동 추출 → DB 병합(주기적 / 수동)
 - 기존 DB 포함 전송으로 중복 추출 방지
-- 이중 인증: API Key · Vertex AI(서비스 계정 JWT)
-- 모델 선택: Gemini 2.x / 3.x / 커스텀 ID
-- Thinking 레벨, 토큰 버짓, 재시도 로직
-- 임베딩 모델 별도 지정 가능
+- 생성 공급자: Gemini API Key · Vertex AI(서비스 계정 JWT) · Firebase · DeepSeek · OpenAI 호환
+- OpenAI 호환은 기능별 모델명을 직접 입력하고, 첫 호출의 호환 파라미터 탐색을 최대 6개 형태로 제한한 뒤 성공 형태를 캐시
+- 기능별 Gemini/DeepSeek/OpenAI 호환 추론 강도, 제한 시간, 재시도, 동일 진행 중 요청 합치기
+- 의미 검색은 Gemini 임베딩 모델을 별도 지정하고 배치 처리
 
 ### 4. URL별 상태 관리
 
@@ -91,6 +91,7 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 ### 5. UI
 
 - `ModalManager` 기반 설정 패널(`decentralized-modal.js`)
+- 최상위 메뉴: 홈 · 로어 관리 · 대화 정리 · 백업 · 응답 검토 · 연결 · 활동 · 도움말
 - 팩 관리, 항목별 ON/OFF, 인라인 JSON 편집
 - 주입/추출 실행 로그 뷰어
 - 쿨다운 상태 모니터 + 수동 해제
@@ -122,7 +123,8 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 
 두 파라미터가 완전히 다른 곡선을 그림:
 
-- `aiMemoryTurns` — AI가 직전 몇 턴을 "기억하고 있다"고 가정하는 윈도우. 윈도우 안이면 재주입 불필요(점수 감점)
+- `nativeContextTokenBudget` — 플랫폼이 최근 대화를 기억한다고 가정하는 토큰 규모. 최근 실제 메시지 길이로 유효 기억 턴을 계산
+- `aiMemoryTurns` — 적응형 계산을 끄거나 최근 로그가 없을 때 사용하는 호환 폴백
 - `decayHalfLife` — 로어 자체의 관련성 반감기. 경과 턴이 반감기를 넘을수록 재주입 필요도가 지수적으로 상승
 
 - `memoryOverlap`: 0~1, 윈도우 안이면 1에 가까워 감점
@@ -145,9 +147,9 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 
 자동 추출이 로그당 수십 개씩 뽑아내면 DB가 노이즈로 오염됨. 방지책:
 
-- 추출 결과 각 엔트리에 `importance: 1~5` 요구
-- `importance < minImportance`는 저장 단계에서 드롭
-- 중복 병합 시 `max(importance)` 유지, summary/detail은 최신본으로 덮어쓰되 모순되면 `conflict` 로그에 기록
+- 추출 결과 각 엔트리에 `imp`, `sur`, `emo`(각 1~10) 요구
+- 기본 임계값에서 `imp + sur + emo < 12`인 항목은 저장 단계에서 제외
+- 중복 병합 시 점수와 연속성 요약을 보존하고, 관계/약속 상태가 충돌하면 모순 로그에 기록
 
 ### 모순 감지
 
@@ -173,19 +175,19 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 
 ### 스토리지 레이아웃
 
-- Dexie DB: `packs`, `entries`, `embeddings`, `workingMemory`, `firstEncounters`, `logs`
-- localStorage: URL별 경량 상태(쿨다운, 턴 카운터, 마지막 추출 시각)
-- IndexedDB 용량 압박 시 임베딩부터 LRU 축출
+- Dexie DB: `packs`, `entries`, `embeddings`, `workingMemory`, `encounters`, `entryVersions`, `snapshots`, `cleanupQueue`
+- localStorage: 설정과 URL/채팅별 경량 상태. 큰 로그는 저장 시 잘라내며 삽입 흔적 정리 대기열은 IndexedDB에 보존
+- 큰 스냅샷과 엔트리 이력은 지원 브라우저에서 gzip 압축. 로어 내용이 바뀌면 파생 임베딩을 무효화해 다시 생성
 
-### Gemini / Vertex 호출 계층
+### 생성 API 호출 계층
 
-`core-platform.js` 안에서 통합:
+`core-kernel.js` 안에서 통합:
 
-- 공통 스키마로 요청 빌드 → 인증 모드 분기(Key vs JWT)
+- 공통 호출 옵션을 Gemini API Key / Vertex / Firebase / DeepSeek / OpenAI 호환 형식으로 변환
 - Vertex는 서비스 계정 JSON에서 JWT 서명 후 OAuth 토큰 교환 → `Authorization: Bearer`
 - Thinking/토큰 버짓은 모델이 지원하는 경우에만 파라미터 주입
-- 재시도: 지수 백오프, 4xx는 즉시 실패, 5xx·네트워크 오류만 재시도
-- 토스트로 실패 원인 표면화(Key 만료, 쿼터 초과, 모델 미지원 등 구분)
+- 재시도: 제한 시간과 지수 백오프, 재시도 가능한 408/409/425/429/5xx·네트워크 오류 처리
+- 같은 채팅/기능에서 동시에 들어온 완전히 같은 생성 요청은 하나의 진행 중 호출을 공유
 
 ---
 
@@ -193,7 +195,7 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 
 1. [Tampermonkey](https://www.tampermonkey.net/) 또는 [Violentmonkey](https://violentmonkey.github.io/) 설치
 2. 아래 링크로 유저스크립트 설치
-https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedding_pre/erie_crack_inject.user.js
+https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js
 
 ---
 
@@ -204,7 +206,7 @@ https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/main/embedd
 - `decentralized-modal.js`
 - `toastify-injection.js`
 
-모두 `@require` CDN 로드, 별도 설치 불필요.
+Universal 배포 파일은 프로젝트 모듈을 한 파일에 포함하고 Dexie만 `@require`로 로드함.
 
 ---
 

@@ -29,6 +29,16 @@
     api: 110,
     help: 120
   };
+  const MENU_GROUPS = [
+    { id: 'home', name: '홈', keys: ['main'], direct: true },
+    { id: 'lore', name: '로어 관리', keys: ['lore', 'file', 'merge', 'snapshot'], labels: ['목록', '가져오기/내보내기', '중복 정리', '복원 지점'] },
+    { id: 'extract', name: '대화 정리', keys: ['extract'], direct: true },
+    { id: 'backup', name: '백업', keys: ['backup'], direct: true },
+    { id: 'refiner', name: '응답 검토', keys: ['refiner'], direct: true },
+    { id: 'connection', name: '연결', keys: ['api'], labels: ['연결 및 모델', '지시문'] },
+    { id: 'activity', name: '활동', keys: ['log', 'session'], labels: ['실행 기록', '현재 대화 상태'] },
+    { id: 'help', name: '도움말', keys: ['help'], direct: true }
+  ];
 
   function stableMenuQueue(queue, prefix) {
     return (queue || [])
@@ -46,25 +56,57 @@
 
   function mountQueuedMenus(modal) {
     if (!modal || typeof modal.createMenu !== 'function') return;
-    const flatMenuAdapter = {
-      createSubMenu: (menuName, menuAction) => modal.createMenu(menuName, menuAction),
-      createMenu: (menuName, menuAction) => modal.createMenu(menuName, menuAction)
-    };
     const menuQ = stableMenuQueue(_w.__LoreInj.__menuQueue || [], 'm');
     const subQ = stableMenuQueue(_w.__LoreInj.__subMenuQueue || [], 's');
     const registered = _w.__LoreInj.__registeredMenuKeys = _w.__LoreInj.__registeredMenuKeys || new Set();
-    _w.__LoreInj.__menuOrder = { menu: menuQ.map(x => x.key), subMenu: subQ.map(x => x.key) };
-    console.log(`[LoreInj:6] setupSubMenus: menu=${menuQ.length}, subMenu=${subQ.length}`, _w.__LoreInj.__menuOrder);
-    menuQ.forEach(({ key, cb }) => {
-      const regKey = 'm:' + key;
-      if (registered.has(regKey)) return;
-      try { cb(modal); registered.add(regKey); } catch(e) { console.error(`[LoreInj:6] 메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('menu:' + key, e); }
-    });
-    subQ.forEach(({ key, cb }) => {
-      const regKey = 's:' + key;
-      if (registered.has(regKey)) return;
-      try { cb(flatMenuAdapter); registered.add(regKey); } catch(e) { console.error(`[LoreInj:6] 서브메뉴 등록 실패 (${key}):`, e); _w.__LoreInj?.markFailed?.('submenu:' + key, e); }
-    });
+    const screens = new Map();
+    const capture = ({ key, cb }, kind) => {
+      const rows = [];
+      const adapter = {
+        createMenu: (name, action) => { rows.push({ name, action }); return adapter; },
+        createSubMenu: (name, action) => { rows.push({ name, action }); return adapter; }
+      };
+      try { cb(adapter); screens.set(key, rows); }
+      catch (e) {
+        console.error(`[LoreInj:6] ${kind} 화면 수집 실패 (${key}):`, e);
+        _w.__LoreInj?.markFailed?.((kind === 'menu' ? 'menu:' : 'submenu:') + key, e);
+      }
+    };
+    menuQ.forEach(item => capture(item, 'menu'));
+    subQ.forEach(item => capture(item, 'submenu'));
+
+    for (const group of MENU_GROUPS) {
+      const regKey = 'group:' + group.id;
+      if (registered.has(regKey)) continue;
+      const rows = [];
+      group.keys.forEach((key, keyIndex) => {
+        const captured = screens.get(key) || [];
+        captured.forEach((screen, screenIndex) => rows.push({
+          ...screen,
+          label: (group.labels && group.labels[keyIndex + screenIndex]) || screen.name
+        }));
+      });
+      if (!rows.length) continue;
+      try {
+        if (group.direct && rows.length === 1) {
+          modal.createMenu(group.name, rows[0].action);
+        } else {
+          const parent = modal.createMenu(group.name, rows[0].action);
+          if (!parent || typeof parent.createSubMenu !== 'function') throw new Error('nested menu API missing');
+          rows.forEach(row => parent.createSubMenu(row.label, row.action));
+        }
+        registered.add(regKey);
+      } catch (e) {
+        console.error(`[LoreInj:6] 메뉴 그룹 등록 실패 (${group.id}):`, e);
+        _w.__LoreInj?.markFailed?.('menu-group:' + group.id, e);
+      }
+    }
+    _w.__LoreInj.__menuOrder = {
+      groups: MENU_GROUPS.map(group => group.id),
+      menu: menuQ.map(x => x.key),
+      subMenu: subQ.map(x => x.key)
+    };
+    console.log(`[LoreInj:6] setupSubMenus: groups=${MENU_GROUPS.length}, screens=${menuQ.length + subQ.length}`, _w.__LoreInj.__menuOrder);
   }
 
   function scheduleMenuRemount() {

@@ -112,7 +112,14 @@
   }
 
   function openLoreModal() {
-    MM.getOrCreateManager('c2').display(document.body.getAttribute('data-theme') !== 'light');
+    const manager = MM.getOrCreateManager('c2');
+    try { C.ensureLoreModalStyles && C.ensureLoreModalStyles(); } catch (_) {}
+    manager.display(document.body.getAttribute('data-theme') !== 'light');
+    try {
+      const opened = manager.getOpened && manager.getOpened();
+      const container = opened && opened.__container;
+      if (container && container.classList) container.classList.add('lore-inj-modal');
+    } catch (_) {}
   }
 
   function isElementVisible(el) {

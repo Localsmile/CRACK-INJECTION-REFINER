@@ -93,8 +93,8 @@
           nd.appendChild(C.createToggleRow('기존 로어 참고', '저장된 로어를 같이 참고해 중복 저장 줄임.', settings.config.autoExtIncludeDb, (v) => { settings.config.autoExtIncludeDb = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('변경분만 저장', '바뀐 내용만 받아 저장해 비용과 시간을 줄임.', settings.config.autoExtPatchMode !== false, (v) => { settings.config.autoExtPatchMode = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('내 캐릭터 이름 함께 사용', '대화 정리 때 현재 페르소나 이름을 참고함.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('수동 정리에서 장면 기억 저장', '수동으로 대화를 정리할 때 중요한 사건과 약속도 별도로 남김.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('자동 정리에서 장면 기억 저장', '자동 대화 정리 때 중요한 사건과 약속도 함께 남김. 응답까지 시간이 조금 늘 수 있음.', settings.config.temporalExtractAutoEnabled === true, (v) => { settings.config.temporalExtractAutoEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('수동 정리에서 중요 장면 정밀 분석', '일반 정리 후 중요 장면만 한 번 더 분석함. 끄더라도 뚜렷한 주요 장면은 일반 정리에서 저장할 수 있음.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('자동 정리에도 정밀 분석', '자동 정리 때 중요 장면 전용 API 호출을 한 번 더 실행함. 시간과 생성 API 사용량이 늘어남.', settings.config.temporalExtractAutoEnabled === true, (v) => { settings.config.temporalExtractAutoEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('진행 상태 표시', '추출, 전체 정리, 검색 준비 진행 상태를 화면에 띄움. 모바일에서 겹치면 끄기.', settings.config.extractStatusBadgeEnabled !== false, (v) => { settings.config.extractStatusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
   
           const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
@@ -129,7 +129,7 @@
           btnRun.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;width:100%;margin-top:10px;';
           const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.4;'; btnStatus.textContent = '';
           btnRun.onclick = async () => {
-            if (!confirm('수동 추출 시작?')) return;
+            if (!confirm('최근 대화를 지금 정리할까요?')) return;
             settings.save();
             btnRun.disabled = true;
             const origText = btnRun.textContent;
@@ -194,13 +194,13 @@
           bRow.appendChild(mkNum('겹쳐 읽을 턴', () => settings.config.batchExtOverlap, v => settings.config.batchExtOverlap = v, 5));
           bRow.appendChild(mkNum('재시도', () => settings.config.batchExtMaxAttempts, v => settings.config.batchExtMaxAttempts = v, 3));
           nd.appendChild(bRow);
-          nd.appendChild(C.createToggleRow('전체 정리에서 장면 기억 저장', '전체 대화를 정리하면서 중요한 사건과 약속도 함께 남김. 오래 걸릴 수 있음.', settings.config.temporalExtractBatchEnabled === true, (v) => { settings.config.temporalExtractBatchEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('전체 정리에도 정밀 분석', '각 대화 구간마다 중요 장면 전용 API 호출을 추가함. 더 오래 걸리고 생성 API 사용량이 늘어남.', settings.config.temporalExtractBatchEnabled === true, (v) => { settings.config.temporalExtractBatchEnabled = v; settings.save(); }));
   
           const bBtn = document.createElement('button'); bBtn.textContent = '전체 대화 정리 실행';
           bBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:none;font-weight:bold;width:100%;margin-top:6px;';
           const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.5;';
           bBtn.onclick = async () => {
-            if (!confirm('전체 대화를 여러 묶음으로 분석함. 오래 걸릴 수 있음. 계속?')) return;
+            if (!confirm('전체 대화를 여러 구간으로 나누어 정리합니다. 오래 걸릴 수 있습니다. 계속할까요?')) return;
             settings.save();
             bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 중...';
             bStatus.textContent = '전체 대화 가져오는 중'; bStatus.style.color = '#4a9';
@@ -241,7 +241,7 @@
           const rDiv = document.createElement('div'); rDiv.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
           const urlBtn = document.createElement('button'); urlBtn.textContent = 'URL 변환'; urlBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
           urlBtn.onclick = async () => {
-            if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 팩이름 필요.'); return; }
+            if (!urlInp.value.trim() || !nameInp.value.trim()) { alert('URL과 저장할 로어팩 이름을 입력해 주세요.'); return; }
             urlBtn.disabled = true; urlBtn.textContent = '변환중...';
             const startMs = Date.now();
             let phaseMsg = '에리가 URL 본문 가져오는 중';
@@ -319,7 +319,7 @@
           const rDiv2 = document.createElement('div'); rDiv2.style.cssText = 'font-size:12px;color:#888;margin-top:8px;';
           const tBtn = document.createElement('button'); tBtn.textContent = '텍스트 변환'; tBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;';
           tBtn.onclick = async () => {
-            if (!ta.value.trim() || !nameInp2.value.trim()) { alert('입력값 필요.'); return; }
+            if (!ta.value.trim() || !nameInp2.value.trim()) { alert('변환할 텍스트와 저장할 로어팩 이름을 입력해 주세요.'); return; }
             tBtn.disabled = true; tBtn.textContent = '변환중...';
             const startMs = Date.now();
             let phaseMsg = '에리가 텍스트를 로어로 변환 중';

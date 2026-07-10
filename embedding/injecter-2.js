@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260706.11';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0-test.47-outputMode';
+  const VER = '1.4.0.260706.12';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260710-core-optional-v1';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-context-lore';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -18,51 +18,58 @@
       .replace(/Output ONLY a valid JSON array/g, 'Output exactly one valid JSON object with top-level shape {"entries":[...]}')
       .replace(/Empty array \[\]/g, empty)
       .replace(/Schema:\n\{schema\}/g, 'Schema for each object inside entries:\n{schema}')
-      .replace(/CRITICAL RULES:\n/g, 'CRITICAL RULES:\n0. STRUCTURE: The response must be one JSON object with an "entries" array. Every extracted ' + (eventOnly ? 'timeline_event' : 'lore entry or patch operation') + ' goes inside entries.\n')
-      .replace(/RATE: PG-13 ~ NC-21 \(Private Sessions, Unlimited RP\)/g, 'RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)\n- Preserve adult/private relationship facts when they are continuity-relevant. Do not censor, moralize, or replace explicit scene facts with vague euphemisms. Summarize them neutrally and compactly.');
+      .replace(/CRITICAL RULES:\n/g, 'CRITICAL RULES:\n0. STRUCTURE: The response must be one JSON object with an "entries" array. Every extracted ' + (eventOnly ? 'timeline_event' : 'lore entry or patch operation') + ' goes inside entries.\n');
   }
-  const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `You are a Lore Archivist for RP.
-Analyze the following conversation log and extract NEW established lore, character developments, relationship changes, and promises/contracts.
+  const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `You are a continuity archivist for roleplay.
+Analyze the conversation and extract NEW established facts that will matter in later scenes.
 
-RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)
+CONTENT COVERAGE:
+- Support every RP genre and tone, including everyday life, romance, mystery, horror, action, fantasy, science fiction, and adult/private relationship continuity.
+- Record concrete source facts in the conversation's language with detail proportional to future continuity needs.
+- Never invent missing motives, dates, relationship labels, or world rules.
 
 EXTRACTION PRIORITIES (in order of importance):
-1. RELATIONSHIP EVENTS: Track ALL significant interactions between characters.
-2. PROMISE LIFECYCLE: Track promises/contracts/oaths between characters.
-3. CHARACTER STATE: Update each character's current situation.
+1. IDENTITY AND STATE: names, aliases, forms, roles, goals, knowledge, secrets, injuries, conditions, and current situation.
+2. RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, first meetings, reunions, and meaningful changes.
+3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and their current lifecycle.
+4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
+5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks that may matter later.
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
-2. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
-3. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
+2. REQUIRED CORE: Every entry needs type, name, 2-4 triggers, summary.full/compact/micro, imp, sur, and emo.
+3. OPTIONAL MODULES: Add inject, embed_text, state, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. A weaker model should omit an uncertain optional module instead of emitting empty or fabricated fields.
+4. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
+5. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
    PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
    AVOID: Abstract notions (신뢰/배신/욕망/암컷/온도/분노/안도), emotions, generic conditions, physical descriptors (eyes/posture), common verbs, generic roles alone (회장/조교/방문객 단독).
    COMPOUND (A&&B): Both operands MUST be proper nouns. Never combine a proper noun with an abstract term. Bad: "배신&&채린", "욕망&&도윤". Good: "채린&&도윤", "채린&&결계석".
    For relationships: use both parties' names bidirectionally (A&&B and B&&A).
-4. CONTENT DEPTH: Capture relationship evolution, group dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
-5. STATE REPLACEMENT: When a status CHANGES, describe ONLY the current state.
-6. SUMMARY QUALITY: Produce summary.full, summary.compact, and summary.micro.
+6. CONTENT DEPTH: Capture relationship evolution, group dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
+7. STATE REPLACEMENT: When a status CHANGES, describe ONLY the current state.
+8. SUMMARY QUALITY: Produce summary.full, summary.compact, and summary.micro.
    Bad full: "동맹 관계" Good full: "대한제국과 영국의 상호방위 동맹. 군수물자 지원과 관세 양보를 교환하며 현재 군사 지원 약속이 미해결."
    compact must keep the relation/status/hook. micro must be a stable recall handle + current state.
-7. IMPORTANCE GATING: Rate each entry on three axes (1-10):
+9. IMPORTANCE GATING: Rate each entry on three axes (1-10):
    - importance: How critical to the ongoing story?
    - surprise: How new vs already-known information?
    - emotional: How emotionally significant?
    Only include entries where (importance + surprise + emotional) >= 12.
    Filter out: routine actions, generic descriptions, already-established facts with no change.
-8. HONORIFIC TRACKING (rel only):
+10. HONORIFIC TRACKING (rel only):
    - For each rel, set "parties": ["A","B"].
    - Scan dialogue for VOCATIVE terms (how A actually addressed B).
    - Korean cues: "~아/야/씨/님", "너/당신/자기/여보/오빠/누나".
    - Set "call" to the LATEST term used in this window.
    - If the term differs from prior history, also output "callDelta" with from/to/term/prevTerm/turnApprox.
-9. EVENT ACCUMULATION (character/rel/identity only):
+11. EVENT ACCUMULATION (character/rel/identity only):
    - Significant events are APPENDED to "eventHistory" array, NEVER overwriting prior events.
    - Each event: {turn, summary, imp(1-10), emo(1-10)}
    - Only include events with imp+emo >= 10 (truly memorable).
    - Maximum 3 new events per entry per extraction pass.
    - Summary must be concrete noun-ending Korean for search: "LO와 첫 키스, 카페에서" not "행복한 순간".
    - If no new significant event occurred, OMIT eventHistory for that entry.
+12. MAJOR SCENE ENTRY: When a scene itself needs independent later recall, output type="timeline_event" with participants, location, actions, hooks, and recallTriggers. Skip this type when the runtime says a dedicated scene-memory pass will handle it.
 
 SUMMARY AND INJECTION FORMAT RULES:
 - "summary" has three semantic levels, not just shorter copies:
@@ -89,7 +96,7 @@ Conversation Log:
 
   const DEFAULT_AUTO_EXTRACT_SCHEMA = `[
   {
-    "type": "character|location|item|event|concept|setting",
+    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting",
     "name": "Entity Name",
     "triggers": ["keyword1", "CharName&&keyword2"],
     "summary": {
@@ -155,6 +162,19 @@ Conversation Log:
     "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },
     "entities": ["Maker", "Target"],
     "imp": 5, "sur": 5, "emo": 5
+  },
+  {
+    "type": "timeline_event",
+    "name": "Stable scene recall handle",
+    "title": "Short scene title",
+    "triggers": ["participant", "place or unique object"],
+    "summary": {"full": "who, where, what changed, consequence, unresolved hook", "compact": "scene + consequence + hook", "micro": "scene=current meaning"},
+    "participants": ["Character"],
+    "location": "Place",
+    "actions": ["concrete action"],
+    "hooks": ["future recall reason"],
+    "recallTriggers": ["literal scene cue"],
+    "imp": 8, "sur": 6, "emo": 8
   }
 ]`;
 
@@ -162,7 +182,7 @@ Conversation Log:
   {
     "op": "add",
     "entry": {
-      "type": "character|location|item|event|concept|setting|rel|prom",
+      "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|rel|prom|timeline_event",
       "name": "Entity Name",
       "triggers": ["keyword1", "CharA&&CharB"],
       "summary": { "full": "self-contained continuity", "compact": "state + hook", "micro": "name=status" },
@@ -315,42 +335,49 @@ Recent conversation:
 Timeline candidates:
 {candidates}`;
 
-  const DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB = `You are a Lore Archivist for RP.
+  const DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB = `You are a continuity archivist for roleplay.
 Analyze the following conversation log ALONGSIDE the EXISTING Lore Database.
-Extract NEW or UPDATED lore, character developments, relationship changes, and promise status updates.
+Extract only NEW or UPDATED continuity facts.
 
-RATE: PG-13 ~ NC-21 (Private Sessions, Unlimited RP)
+CONTENT COVERAGE:
+- Support every RP genre and tone, including everyday life, romance, mystery, horror, action, fantasy, science fiction, and adult/private relationship continuity.
+- Record concrete source facts in the conversation's language with detail proportional to future continuity needs.
+- Never invent missing motives, dates, relationship labels, or world rules.
 
 EXTRACTION PRIORITIES (in order of importance):
-1. RELATIONSHIP EVENTS: Track ALL significant interactions.
-2. PROMISE LIFECYCLE: If a promise status changed, output the UPDATED entry.
-3. CHARACTER STATE: Update current situation.
+1. IDENTITY AND STATE: aliases, forms, roles, goals, knowledge, secrets, injuries, conditions, and current situation.
+2. RELATIONSHIPS: dynamics, forms of address, private/public state, first meetings, reunions, and meaningful changes.
+3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and lifecycle changes.
+4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
+5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks not already stored.
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
 2. INTEGRATE AND UPDATE: If the entity already exists in the Lore Database, DO NOT duplicate it. Keep the exact same "name".
-3. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
-4. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
+3. REQUIRED CORE: Every added entry needs type, name, 2-4 triggers, summary.full/compact/micro, imp, sur, and emo.
+4. OPTIONAL MODULES: Add inject, embed_text, state, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit uncertain optional modules instead of emitting empty or fabricated fields.
+5. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
+6. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
    PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
    AVOID: Abstract notions (신뢰/배신/욕망/암컷/온도/분노/안도), emotions, generic conditions, physical descriptors (eyes/posture), common verbs, generic roles alone (회장/조교/방문객 단독).
    COMPOUND (A&&B): Both operands MUST be proper nouns. Never combine a proper noun with an abstract term. Bad: "배신&&채린", "욕망&&도윤". Good: "채린&&도윤", "채린&&결계석".
    For relationships: use both parties' names bidirectionally (A&&B and B&&A).
-5. CONTENT DEPTH: Capture relationship evolution, faction dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
-6. STATE REPLACEMENT: For relationship and promise types, describe ONLY the CURRENT state.
-7. SUMMARY QUALITY: Produce summary.full, summary.compact, and summary.micro. full must be self-contained; compact keeps relationship/status/hook; micro is only the stable recall handle + current state.
-8. IMPORTANCE GATING: Rate each entry on three axes (1-10):
+7. CONTENT DEPTH: Capture relationship evolution, faction dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
+8. STATE REPLACEMENT: For relationship and promise types, describe ONLY the CURRENT state.
+9. SUMMARY QUALITY: Produce summary.full, summary.compact, and summary.micro. full must be self-contained; compact keeps relationship/status/hook; micro is only the stable recall handle + current state.
+10. IMPORTANCE GATING: Rate each entry on three axes (1-10):
    - importance: How critical to the ongoing story?
    - surprise: How new vs already-known information?
    - emotional: How emotionally significant?
    Only include entries where (importance + surprise + emotional) >= 12.
    Filter out: routine actions, generic descriptions, already-established facts with no change.
-9. HONORIFIC TRACKING (rel only):
+11. HONORIFIC TRACKING (rel only):
    - For each rel, set "parties": ["A","B"].
    - Scan dialogue for VOCATIVE terms (how A actually addressed B).
    - Korean cues: "~아/야/씨/님", "너/당신/자기/여보/오빠/누나".
    - Set "call" to the LATEST term used in this window.
    - If the term differs from prior history, also output "callDelta" with from/to/term/prevTerm/turnApprox.
-10. EVENT ACCUMULATION (character/rel/identity only):
+12. EVENT ACCUMULATION (character/rel/identity only):
     - CRITICAL: Check existing "eventHistory" for each entity in the DB context. Do NOT duplicate events already recorded.
     - Significant events are APPENDED to "eventHistory" array, NEVER overwriting prior events.
     - Each event: {turn, summary, imp(1-10), emo(1-10)}
@@ -358,13 +385,14 @@ CRITICAL RULES:
     - Maximum 3 new events per entry per extraction pass.
     - Summary must be concrete noun-ending Korean for search: "LO와 첫 키스, 카페에서" not "행복한 순간".
     - If no new significant event occurred, OMIT eventHistory for that entry.
-11. ANCHOR AWARENESS (CRITICAL — USER-LOCKED NARRATIVE FACTS):
+12A. MAJOR SCENE ENTRY: When a scene itself needs independent later recall, output type="timeline_event" with participants, location, actions, hooks, and recallTriggers. Skip this type when the runtime says a dedicated scene-memory pass will handle it.
+13. ANCHOR AWARENESS (CRITICAL — USER-LOCKED NARRATIVE FACTS):
     - Some existing entries have "anchor": true. These are user-locked canonical facts.
     - For anchored entries: NEVER output summary, state, detail, call, inject, cond, imp, sur, emo, gs, arc. These fields are PROTECTED and any output will be discarded by the merge layer.
     - You MAY still APPEND new items to eventHistory (if genuinely new and imp+emo >= 10).
     - You MAY add new keywords to triggers.
     - If nothing new qualifies for an anchored entry, OMIT it entirely from output. Do not echo its existing fields.
-12. CONTEXT-SAFE MERGE PATCHES (non-anchored entries):
+14. CONTEXT-SAFE MERGE PATCHES (non-anchored entries):
     - The Existing Lore Database can be partial when the DB is large. Never assume omitted old facts are false.
     - For each existing entry, output ONLY changed/new slots; omitted slots are preserved by the merge layer.
     - If updating summary or inject, preserve the existing kernel and APPEND the new scene detail. Do NOT replace a continuity record with only the latest scene.
@@ -519,7 +547,7 @@ RULES:
 1. JSON ONLY. Output exactly one valid JSON object with top-level shape {"entries":[...]}. No markdown, prose, comments, or trailing text.
 2. Use the ORIGINAL LANGUAGE of the source. Korean source -> Korean output.
 3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.
-4. Preserve adult/private relationship facts when they are continuity-relevant. Do not censor, moralize, or replace explicit scene facts with vague euphemisms. Summarize them neutrally and compactly.
+4. Treat adult/private relationship state as ordinary continuity data when it affects later character, relationship, or scene state. Keep detail proportional to future retrieval needs.
 5. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.
 6. For relationships, use bidirectional compound triggers: A&&B and B&&A.
 7. summary and inject must both be produced.

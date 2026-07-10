@@ -459,6 +459,17 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return [];
   }
 
+  function isRecognizedExtractResponse(value) {
+    if (Array.isArray(value)) return true;
+    if (!value || typeof value !== 'object') return false;
+    const arrayKeys = ['entries', 'items', 'patches', 'events', 'lore', 'lores', 'memories', 'results', 'timeline_events'];
+    if (arrayKeys.some(key => Array.isArray(value[key]))) return true;
+    if (isExtractItemObject(value)) return true;
+    if (value.data && typeof value.data === 'object' && isRecognizedExtractResponse(value.data)) return true;
+    if (value.output && typeof value.output === 'object' && isRecognizedExtractResponse(value.output)) return true;
+    return false;
+  }
+
   function normalizeTemporalCandidates(parsed, limit) {
     let arr = parsed;
     if (arr && !Array.isArray(arr)) {
@@ -520,7 +531,8 @@ Structured output reminder:
 - No markdown, no prose, no comments, no trailing text.` : prompt;
     let res = await C.callGeminiApi(finalPrompt, apiOpts);
     let parsed = parseJsonLoose(res && res.text);
-    const shouldRepair = !parsed && apiOpts && (isDeepSeek || apiOpts.maxOutputTokens);
+    let validStructure = isRecognizedExtractResponse(parsed);
+    const shouldRepair = !!(res && res.text) && !validStructure && apiOpts;
     if (shouldRepair) {
       const firstCost = res && res.cost;
       const safeRepairHint = isDeepSeek
@@ -539,6 +551,7 @@ Structured output reminder:
           responseMimeType: 'application/json'
       });
       parsed = parseJsonLoose(res && res.text);
+      validStructure = isRecognizedExtractResponse(parsed);
       if (res && firstCost && res.cost) {
         const retryCost = res.cost;
         const unknown = !!(firstCost.unknown || retryCost.unknown || firstCost.usd == null || retryCost.usd == null);
@@ -553,6 +566,7 @@ Structured output reminder:
         };
       }
     }
+    if (!validStructure) parsed = null;
     return { res, parsed };
   }
 
@@ -1213,7 +1227,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
     const extractSchema = buildExtractSchema(tpl);
     const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
-    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
+    const shouldRunTemporalExtract = settings.config.temporalExtractEnabled !== false &&
+      (isManual || settings.config.temporalExtractAutoEnabled === true);
+    const temporalCoordination = shouldRunTemporalExtract
+      ? '\n\nRUNTIME COORDINATION: A dedicated scene-memory pass will run after this response. Do not output type="timeline_event" in this general pass.'
+      : '';
+    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + temporalCoordination;
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let apiLog = null, _extElapsedMs = 0, _extCost = null;
@@ -1245,29 +1264,47 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       if (!parsed) throw new Error('JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       const parsedItems = normalizeExtractItems(parsed);
       let generalCount = 0;
-      let generalStatus = '추출 내용 없음';
       let embedMsg = '';
       let embedCount = 0;
-      let shouldEmbedAfterExtract = false;
-      if (parsedItems.length > 0) {
-        generalCount = await mergeExtractedData(parsedItems, _url);
-        generalStatus = generalCount > 0 ? '성공' : '변경 없음';
-        if (generalCount > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
-          shouldEmbedAfterExtract = true;
-        }
-        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: generalCount, msgs: recentMsgs.length, isManual, status: generalStatus, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
-      } else {
-        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '추출 내용 없음', api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
-      }
+      let temporalCount = 0;
       let temporalResult = null;
-      const shouldRunTemporalExtract = settings.config.temporalExtractEnabled !== false &&
-        (isManual || settings.config.temporalExtractAutoEnabled === true);
       if (shouldRunTemporalExtract) {
-        temporalResult = await runTemporalExtractPass({ context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length, skipEmbedding: true });
-        if (temporalResult && temporalResult.count > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
-          shouldEmbedAfterExtract = true;
+        temporalResult = await collectTemporalExtractItems({ context, apiOpts, url: _url, chatKey, isManual, msgCount: recentMsgs.length, skipEmbedding: true });
+      }
+
+      const hasStagedChanges = parsedItems.length > 0 || !!(temporalResult && temporalResult.count > 0);
+      if (hasStagedChanges) {
+        const commitPackName = await getAutoExtPackForUrl(_url);
+        const rollbackState = await snapshotPackState(commitPackName);
+        try {
+          if (parsedItems.length) generalCount = await mergeExtractedData(parsedItems, _url);
+          if (temporalResult) {
+            for (const patch of (temporalResult.patches || [])) {
+              temporalCount += await applyTemporalPatchOp(patch, commitPackName, chatKey);
+            }
+            if (temporalResult.events && temporalResult.events.length) {
+              temporalCount += await mergeExtractedData(temporalResult.events, _url);
+            }
+          }
+        } catch (commitError) {
+          try { await restorePackState(rollbackState); }
+          catch (rollbackError) {
+            commitError.message = (commitError.message || String(commitError)) + ' / 롤백 실패: ' + (rollbackError.message || String(rollbackError));
+          }
+          throw commitError;
         }
       }
+      const generalStatus = parsedItems.length ? (generalCount > 0 ? '성공' : '변경 없음') : '추출 내용 없음';
+      addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: generalCount, msgs: recentMsgs.length, isManual, status: generalStatus, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
+      if (shouldRunTemporalExtract && temporalResult) {
+        addExtLog(chatKey, {
+          time: new Date().toLocaleTimeString(), count: temporalCount, msgs: recentMsgs.length, isManual,
+          status: temporalCount > 0 ? '중요 장면 정리 성공' : '중요 장면 변경 없음',
+          api: temporalResult.api || null, model: _extModel, elapsedMs: temporalResult.elapsedMs || 0, cost: temporalResult.cost || null
+        });
+      }
+      const shouldEmbedAfterExtract = (generalCount + temporalCount) > 0 &&
+        settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false;
       if (shouldEmbedAfterExtract) {
         try {
           const epName = await getAutoExtPackForUrl(_url);
@@ -1284,7 +1321,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       }
       if (isManual) {
         const temporalMsg = shouldRunTemporalExtract
-          ? ' / 중요 장면 ' + ((temporalResult && temporalResult.count) || 0) + '개'
+          ? ' / 중요 장면 ' + temporalCount + '개'
           : '';
         const baseMsg = generalCount > 0
           ? generalCount + '개 로어 추출 및 병합됨'
@@ -1369,7 +1406,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       }
       const extractSchema = buildExtractSchema(tpl);
       const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
-      const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText);
+      const batchTemporalPass = settings.config.temporalExtractEnabled !== false && settings.config.temporalExtractBatchEnabled === true;
+      const temporalCoordination = batchTemporalPass
+        ? '\n\nRUNTIME COORDINATION: A dedicated scene-memory pass will run after this response. Do not output type="timeline_event" in this general pass.'
+        : '';
+      const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + temporalCoordination;
 
       let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0;
       for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {

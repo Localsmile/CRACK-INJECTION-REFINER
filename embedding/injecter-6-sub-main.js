@@ -18,9 +18,9 @@
     modal.createMenu('홈/주입 설정', (m) => {
       m.replaceContentPanel(async (panel) => {
         const PRESETS = {
-          beginner: { name: '기본 추천', desc: '의미 검색 + 8턴마다 대화 정리. 일반 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: false, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true } },
+          beginner: { name: '기본 추천', desc: '의미 검색 + 8턴마다 대화 정리. 일반 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: true, autoExtTurns: 8, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 4, cooldownTurns: 8, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 300, loreBudgetMax: 500, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 12, aiMemoryTurns: 4, adaptiveAiMemory: true, nativeContextTokenBudget: 10000, pendingPromiseBoost: true, rerankEnabled: false, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true } },
           minimal: { name: '수동 검색', desc: '자동 추출을 끄고 수동 추출만 사용함. API 호출을 최소화함.', config: { embeddingEnabled: true, embeddingWeight: 0.35, autoExtEnabled: false, autoEmbedOnExtract: true, scanOffset: 2, maxEntries: 3, cooldownTurns: 6, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 250, loreBudgetMax: 400, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: false, importanceGating: true, importanceThreshold: 12, rerankEnabled: false, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true } },
-          advanced: { name: '정밀', desc: '5턴마다 대화 정리 + 후보 재정렬 + 응답 교정. 장문 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.4, autoExtEnabled: true, autoExtTurns: 5, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 5, cooldownTurns: 8, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 400, loreBudgetMax: 700, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 10, aiMemoryTurns: 4, pendingPromiseBoost: true, rerankEnabled: true, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true, refinerEnabled: true, refinerLoreMode: 'semantic' } }
+          advanced: { name: '정밀', desc: '5턴마다 대화 정리 + 후보 재정렬 + 응답 교정. 장문 RP용.', config: { embeddingEnabled: true, embeddingWeight: 0.4, autoExtEnabled: true, autoExtTurns: 5, autoExtIncludeDb: true, autoExtIncludePersona: true, autoEmbedOnExtract: true, scanOffset: 3, maxEntries: 5, cooldownTurns: 8, injectionCleanupEnabled: true, injectionCleanupTurns: 8, loreBudgetChars: 400, loreBudgetMax: 700, decayEnabled: true, activeCharDetection: true, activeCharBoostEnabled: true, honorificMatrixEnabled: true, firstEncounterWarning: true, importanceGating: true, importanceThreshold: 10, aiMemoryTurns: 4, adaptiveAiMemory: true, nativeContextTokenBudget: 10000, pendingPromiseBoost: true, rerankEnabled: true, useCompressedFormat: true, compressionMode: 'auto', strictMatch: true, similarityMatch: true, refinerEnabled: true, refinerLoreMode: 'semantic' } }
         };
         const makeNumberField = (label, key, defaultVal, opts = {}) => {
           const f = document.createElement('div'); f.style.flex = '1';
@@ -76,10 +76,10 @@
             const ds = document.createElement('div'); ds.textContent = preset.desc; ds.style.cssText = 'font-size:10px;color:#888;';
             btn.appendChild(nm); btn.appendChild(ds);
             btn.onclick = () => {
-              if (!confirm('[' + preset.name + '] 프리셋 적용?')) return;
+              if (!confirm('[' + preset.name + '] 설정을 적용할까요?')) return;
               if (_w.__LoreInj.applyPresetKeepState) _w.__LoreInj.applyPresetKeepState(preset.config);
               else { settings.config = JSON.parse(JSON.stringify(_w.__LoreInj.defaultSettings)); Object.assign(settings.config, preset.config); settings.save(); }
-              m.replaceContentPanel((p) => p.addText('새로고침 필요함.'), '설정 갱신 필요');
+              m.replaceContentPanel((p) => p.addText('설정이 적용되었습니다. 홈 화면을 다시 열면 변경된 값이 표시됩니다.'), '설정 적용 완료');
             };
             row.appendChild(btn);
           }
@@ -112,7 +112,7 @@
           const emSel = document.createElement('select'); emSel.style.cssText = 'width:200px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
           [{v:'gemini-embedding-001',l:'gemini-embedding-001'},{v:'gemini-embedding-2-preview',l:'gemini-embedding-2-preview'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; emSel.appendChild(opt); });
           emSel.value = settings.config.embeddingModel || 'gemini-embedding-001';
-          emSel.onchange = () => { settings.config.embeddingModel = emSel.value; settings.save(); alert('모델 변경됨. 기존 로어 검색 준비 재실행 필요.'); };
+          emSel.onchange = () => { settings.config.embeddingModel = emSel.value; settings.save(); alert('의미 검색 모델을 변경했습니다. 기존 로어팩의 검색 준비를 다시 실행해 주세요.'); };
           emRow.appendChild(emL); emRow.appendChild(emSel); nd.appendChild(emRow);
 
           nd.appendChild(C.createToggleRow('추출 후 검색 준비', '새 로어를 의미 검색용으로 자동 준비함.', settings.config.autoEmbedOnExtract !== false, (v) => { settings.config.autoEmbedOnExtract = v; settings.save(); }));
@@ -141,6 +141,17 @@
           row.appendChild(makeNumberField('한 번에 넣을 로어', 'maxEntries', 3, { min: 1 }));
           row.appendChild(makeNumberField('흔적 정리(턴)', 'injectionCleanupTurns', 8, { min: 1 }));
           nd.appendChild(row);
+          const memoryDetails = document.createElement('details');
+          memoryDetails.style.cssText = 'margin-top:10px;border-top:1px solid #292929;padding-top:8px;';
+          const memorySummary = document.createElement('summary');
+          memorySummary.textContent = '재주입 판단';
+          memorySummary.style.cssText = 'font-size:12px;color:#aaa;font-weight:bold;cursor:pointer;';
+          memoryDetails.appendChild(memorySummary);
+          memoryDetails.appendChild(C.createToggleRow('최근 문맥에 맞춰 자동 조절', '플랫폼이 이미 기억할 대화량을 추정해 같은 로어의 재주입 시점을 조절함.', settings.config.adaptiveAiMemory !== false, (v) => { settings.config.adaptiveAiMemory = v; settings.save(); }));
+          const memoryRow = document.createElement('div'); memoryRow.style.cssText = 'display:flex;gap:12px;margin-top:8px;align-items:center;';
+          memoryRow.appendChild(makeNumberField('최근 문맥 추정(토큰)', 'nativeContextTokenBudget', 10000, { min: 1000, max: 100000 }));
+          memoryDetails.appendChild(memoryRow);
+          nd.appendChild(memoryDetails);
         }});
 
         panel.addBoxedField('', '', { onInit: (nd) => {
@@ -176,7 +187,7 @@
           C.setFullWidth(nd);
           const resetBtn = document.createElement('button'); resetBtn.textContent = '모든 설정 초기화 (DB 유지)'; resetBtn.style.cssText = 'width:100%;padding:10px;margin-top:20px;background:#833;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;';
           resetBtn.onclick = () => {
-            if (!confirm('설정 초기화? API 설정값과 DB/로어팩 활성화는 유지됨.')) return;
+            if (!confirm('일반 설정을 초기화할까요? API 연결, 로어, 로어팩 활성 상태는 유지됩니다.')) return;
             if (_w.__LoreInj.resetSettingsKeepApi) _w.__LoreInj.resetSettingsKeepApi();
             else {
               const keep = {

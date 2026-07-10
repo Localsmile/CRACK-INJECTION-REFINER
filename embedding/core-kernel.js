@@ -26,8 +26,9 @@
   ];
 
   const PLATFORM = {
-    contextTokens: 5500,
-    recentTurnsSafe: 4,
+    contextTokens: 10000,
+    contextTokensEstimated: true,
+    recentTurnsSafe: 6,
     summaryRefreshTurns: 15,
     inputCharLimit: 2000,
     outputTokens: 800,
@@ -54,6 +55,10 @@
       scene: 2, default: 6
     },
     aiMemoryTurns: 3,
+    adaptiveAiMemory: true,
+    nativeContextTokenBudget: 10000,
+    nativeContextMinTurns: 3,
+    nativeContextMaxTurns: 16,
     embeddingEnabled: false,
     embeddingModel: 'gemini-embedding-001',
     embeddingDimensions: 768,
@@ -190,13 +195,38 @@ Entries:
 
   // 네트워크
   const _GM_xhr = (typeof GM_xmlhttpRequest !== 'undefined') ? GM_xmlhttpRequest : ((typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest.bind(GM) : null);
+  function nativeFetchWithTimeout(url, opts = {}) {
+    const timeoutMs = Math.max(0, Number(opts.timeout || opts.timeoutMs) || 0);
+    const externalSignal = opts.signal || null;
+    if (!timeoutMs || typeof AbortController !== 'function') {
+      return fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: externalSignal || undefined });
+    }
+    const controller = new AbortController();
+    let timedOut = false;
+    const onAbort = () => { try { controller.abort(); } catch (_) {} };
+    if (externalSignal) {
+      if (externalSignal.aborted) onAbort();
+      else try { externalSignal.addEventListener('abort', onAbort, { once: true }); } catch (_) {}
+    }
+    const timer = setTimeout(() => { timedOut = true; try { controller.abort(); } catch (_) {} }, timeoutMs);
+    return fetch(url, {
+      method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: controller.signal
+    }).catch((error) => {
+      if (timedOut) throw new Error('타임아웃');
+      if (externalSignal && externalSignal.aborted) throw new Error('aborted');
+      throw error;
+    }).finally(() => {
+      clearTimeout(timer);
+      if (externalSignal) try { externalSignal.removeEventListener('abort', onAbort); } catch (_) {}
+    });
+  }
   // AbortSignal forwarding: GM_xmlhttpRequest의 abort() 호출로 실제 요청 취소.
   function gmFetch(url, opts = {}) {
     const signal = opts && opts.signal;
     if (!_GM_xhr) {
-      return fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: signal || undefined });
+      return nativeFetchWithTimeout(url, opts);
     }
-    const fetchFallback = () => fetch(url, { method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body || null, signal: signal || undefined });
+    const fetchFallback = () => nativeFetchWithTimeout(url, opts);
     return new Promise((resolve, reject) => {
       if (signal && signal.aborted) { reject(new Error('aborted')); return; }
       let xhrHandle = null;
@@ -423,6 +453,7 @@ Entries:
   let _generationApiQueue = Promise.resolve();
   let _lastGenerationApiAt = 0;
   const _openAICompatVariantCache = new Map();
+  const _generationInFlight = new Map();
 
   function sleep(ms) {
     return new Promise(res => setTimeout(res, ms));
@@ -460,6 +491,27 @@ Entries:
     });
     _generationApiQueue = queued.catch(() => {});
     return queued;
+  }
+
+  function generationRequestFingerprint(prompt, opts = {}) {
+    const provider = opts.apiType || 'key';
+    const credential = opts.openAIKey || opts.deepSeekKey || opts.key || opts.vertexJson || opts.firebaseScript || '';
+    const shape = {
+      provider,
+      model: opts.model || '',
+      endpoint: opts.openAIBaseUrl || opts.baseUrl || opts.vertexLocation || '',
+      credential: String(credential),
+      prompt: String(prompt || ''),
+      responseMimeType: opts.responseMimeType || '',
+      maxOutputTokens: opts.maxOutputTokens == null ? null : Number(opts.maxOutputTokens),
+      thinkingConfig: opts.thinkingConfig || {},
+      deepSeekThinking: opts.deepSeekThinking !== false,
+      deepSeekReasoning: opts.deepSeekReasoning || '',
+      openAIReasoning: opts.openAIReasoning || '',
+      feature: opts.costContext && opts.costContext.feature || '',
+      chatKey: opts.costContext && opts.costContext.chatKey || ''
+    };
+    return JSON.stringify(shape);
   }
 
   async function callDeepSeekApi(prompt, opts = {}) {
@@ -558,6 +610,42 @@ Entries:
     return [variant.withJsonMode ? 'json' : 'plain', variant.tokenField || 'no_token', variant.reasoningStyle || 'none'].join('|');
   }
 
+  function buildOpenAICompatVariants(jsonMode, maxOutputTokens, reasoningStyles) {
+    const tokenFields = maxOutputTokens != null ? ['max_tokens', 'max_completion_tokens'] : [null];
+    const styles = Array.from(new Set((reasoningStyles || ['none']).filter(Boolean)));
+    if (!styles.includes('none')) styles.push('none');
+    const variants = [];
+    const seen = new Set();
+    const add = (withJsonMode, tokenField, reasoningStyle) => {
+      const variant = { withJsonMode: !!(jsonMode && withJsonMode), tokenField: tokenField || null, reasoningStyle: reasoningStyle || 'none' };
+      const id = variantId(variant);
+      if (seen.has(id) || variants.length >= 6) return;
+      seen.add(id);
+      variants.push(variant);
+    };
+    const primaryToken = tokenFields[0];
+    const alternateToken = tokenFields[1];
+    for (const style of styles.filter(s => s !== 'none')) add(true, primaryToken, style);
+    add(true, primaryToken, 'none');
+    add(false, primaryToken, 'none');
+    if (alternateToken) {
+      add(true, alternateToken, 'none');
+      add(false, alternateToken, 'none');
+    }
+    if (!variants.length) add(false, null, 'none');
+    return variants;
+  }
+
+  function promiseWithTimeout(promise, timeoutMs, label = '요청') {
+    const ms = Math.max(0, Number(timeoutMs) || 0);
+    if (!ms) return Promise.resolve(promise);
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label + ' 타임아웃')), ms);
+    });
+    return Promise.race([Promise.resolve(promise), timeout]).finally(() => { if (timer) clearTimeout(timer); });
+  }
+
   async function callOpenAICompatApi(prompt, opts = {}) {
     const {
       key = '', openAIBaseUrl = '', model = '', maxRetries = 1, responseMimeType,
@@ -582,15 +670,8 @@ Entries:
       applyOpenAICompatReasoning(bodyObj, reasoningStyle, reasoning);
       return JSON.stringify(bodyObj);
     };
-    const bodyVariants = [];
-    const tokenFields = maxOutputTokens != null ? ['max_tokens', 'max_completion_tokens'] : [null];
     const reasoningStyles = openAICompatReasoningVariants(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl, reasoning);
-    for (const tokenField of tokenFields) {
-      for (const reasoningStyle of reasoningStyles) {
-        if (jsonMode) bodyVariants.push({ withJsonMode: true, tokenField, reasoningStyle });
-        bodyVariants.push({ withJsonMode: false, tokenField, reasoningStyle });
-      }
-    }
+    const bodyVariants = buildOpenAICompatVariants(jsonMode, maxOutputTokens, reasoningStyles);
     const variantCacheKey = openAICompatVariantKey(url, model, jsonMode, maxOutputTokens != null, reasoning);
     const cachedVariantId = _openAICompatVariantCache.get(variantCacheKey);
     const orderedVariants = cachedVariantId
@@ -649,7 +730,17 @@ Entries:
   // Gemini 생성
   async function callGeminiApi(prompt, opts = {}) {
     if (opts.skipGenerationQueue !== true) {
-      return enqueueGenerationApi(() => callGeminiApi(prompt, { ...opts, skipGenerationQueue: true }), opts);
+      const requestKey = generationRequestFingerprint(prompt, opts);
+      const allowDedupe = opts.dedupeGeneration !== false && !opts.signal;
+      if (allowDedupe && _generationInFlight.has(requestKey)) return _generationInFlight.get(requestKey);
+      const queued = enqueueGenerationApi(() => callGeminiApi(prompt, { ...opts, skipGenerationQueue: true }), opts);
+      if (allowDedupe) {
+        _generationInFlight.set(requestKey, queued);
+        queued.finally(() => {
+          if (_generationInFlight.get(requestKey) === queued) _generationInFlight.delete(requestKey);
+        }).catch(() => {});
+      }
+      return queued;
     }
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
@@ -737,7 +828,7 @@ Entries:
         const modelKey = aiKey + '|' + model + '|' + simpleHash(JSON.stringify(fbGenConfig));
         let gm = _fbModelCache[modelKey];
         if (!gm) { gm = sdk.getGenerativeModel(ai, { model, safetySettings: fbSafety, generationConfig: fbGenConfig }); _fbModelCache[modelKey] = gm; }
-        const result = await gm.generateContent(prompt);
+        const result = await promiseWithTimeout(gm.generateContent(prompt), timeoutMs, 'Firebase 생성 요청');
         const fbText = result.response.text();
         const _fbCost = _trackCost(result.response && result.response.usageMetadata, prompt, fbText);
         return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: attempt, cost: _fbCost };
@@ -1003,6 +1094,44 @@ Entries:
     _ls.setItem('lore-last-mention', JSON.stringify(all));
   }
 
+  function estimateTextTokens(text) {
+    const value = String(text || '');
+    if (!value) return 0;
+    const cjk = (value.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) || []).length;
+    const nonCjk = value.length - cjk;
+    return Math.max(1, Math.ceil(cjk * 0.9 + nonCjk / 4));
+  }
+
+  function estimateMessageTokens(message) {
+    if (message == null) return 0;
+    const text = typeof message === 'string'
+      ? message
+      : (message.message != null ? message.message : (message.content != null ? message.content : ''));
+    return estimateTextTokens(text) + 6;
+  }
+
+  function deriveAiMemoryTurns(recentMsgs, config = {}) {
+    const fallback = Math.max(1, Number(config.aiMemoryTurns || DEFAULTS.aiMemoryTurns || 3));
+    if (config.adaptiveAiMemory === false || !Array.isArray(recentMsgs) || !recentMsgs.length) return fallback;
+    const minTurns = Math.max(1, Number(config.nativeContextMinTurns || DEFAULTS.nativeContextMinTurns || 3));
+    const maxTurns = Math.max(minTurns, Number(config.nativeContextMaxTurns || DEFAULTS.nativeContextMaxTurns || 16));
+    const budget = Math.max(1000, Number(config.nativeContextTokenBudget || DEFAULTS.nativeContextTokenBudget || PLATFORM.contextTokens || 10000));
+    let used = 0;
+    let userTurns = 0;
+    let messagesSeen = 0;
+    for (let i = recentMsgs.length - 1; i >= 0; i--) {
+      const msg = recentMsgs[i] || {};
+      const tokens = estimateMessageTokens(msg);
+      if (messagesSeen > 0 && used + tokens > budget) break;
+      used += tokens;
+      messagesSeen++;
+      if (String(msg.role || '').toLowerCase() === 'user') userTurns++;
+      if (userTurns >= maxTurns) break;
+    }
+    const inferred = userTurns || Math.ceil(messagesSeen / 2) || fallback;
+    return Math.max(minTurns, Math.min(maxTurns, inferred));
+  }
+
   // 네임스페이스 초기화
   const ns = _w.__LoreCore = _w.__LoreCore || {};
   Object.assign(ns, {
@@ -1010,6 +1139,8 @@ Entries:
     getDB, gmFetch, parseServiceAccountJson, getVertexAccessToken,
     callGeminiApi, callDeepSeekApi, embedText, embedTexts, warmupFirebase,
     normalizeVector, cosineSim, simpleHash, packJsonForStorage, unpackJsonFromStorage,
+    nativeFetchWithTimeout, generationRequestFingerprint, buildOpenAICompatVariants, promiseWithTimeout,
+    estimateTextTokens, estimateMessageTokens, deriveAiMemoryTurns,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true
   });

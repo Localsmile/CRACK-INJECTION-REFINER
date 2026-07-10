@@ -86,6 +86,56 @@
     node.innerHTML = '';
   }
 
+  function ensureLoreModalStyles() {
+    if (document.getElementById('lore-inj-modal-style')) return;
+    const style = document.createElement('style');
+    style.id = 'lore-inj-modal-style';
+    style.textContent = `
+      .lore-inj-modal {
+        --decentral-active-item:#2f8f78;
+        --decentral-active-text:#48b69a;
+        --decentral-background-active-item:rgba(47,143,120,.14);
+      }
+      .lore-inj-modal .decentral-modal { width:min(1080px,96vw); height:min(780px,84vh); max-height:92vh; border:1px solid var(--decentral-border); box-shadow:0 18px 60px rgba(0,0,0,.38); }
+      .lore-inj-modal .decentral-menu-container { width:184px; min-width:184px; padding:14px 10px; }
+      .lore-inj-modal .decentral-menu-element { font-size:13px; padding:10px 9px; }
+      .lore-inj-modal .decentral-sub-menu-element { font-size:12px; padding:7px 8px; margin-left:8px; }
+      .lore-inj-modal .decentral-menu-element[active="true"]:before,
+      .lore-inj-modal .decentral-sub-menu-element[active="true"]:before { background:#2f8f78; }
+      .lore-inj-modal .decentral-modal-title-container { min-height:54px; padding:10px 16px; box-sizing:border-box; }
+      .lore-inj-modal .decentral-modal-title-icon { width:24px; height:24px; padding:0 10px 0 0; }
+      .lore-inj-modal .decental-modal-title-text { margin:0; font-size:15px; font-weight:700; letter-spacing:0; }
+      .lore-inj-modal .decentral-grid { gap:4px; grid-row-gap:4px; padding:10px 14px 20px; box-sizing:border-box; }
+      .lore-inj-modal .decentral-grid-element,
+      .lore-inj-modal .decentral-grid-element-long { padding:4px; }
+      .lore-inj-modal .decentral-boxed-field { border-radius:4px; }
+      .lore-inj-modal input,
+      .lore-inj-modal textarea,
+      .lore-inj-modal select { min-height:34px; border-radius:4px !important; border-color:rgba(127,127,127,.38) !important; letter-spacing:0; }
+      .lore-inj-modal textarea { line-height:1.5; }
+      .lore-inj-modal button { min-height:32px; border-radius:4px !important; letter-spacing:0; }
+      .lore-inj-modal input:focus,
+      .lore-inj-modal textarea:focus,
+      .lore-inj-modal select:focus,
+      .lore-inj-modal button:focus-visible { outline:2px solid #3c9ed0 !important; outline-offset:1px; }
+      .lore-inj-modal details { border-radius:4px !important; }
+      @media (max-width:700px) {
+        .lore-inj-modal .decentral-modal { width:100%; height:100%; max-width:none; max-height:none; min-height:0; border:0; border-radius:0; }
+        .lore-inj-modal .decentral-grid { grid-template-columns:minmax(0,1fr); padding:8px 10px 24px; }
+        .lore-inj-modal .decentral-grid-element,
+        .lore-inj-modal .decentral-grid-element-long,
+        .lore-inj-modal .decentral-grid-element-long-semi-flat,
+        .lore-inj-modal .decentral-grid-element-long-flat { grid-column:1; min-width:0; }
+        .lore-inj-modal .decentral-mobile-menu-container { max-height:calc(100vh - 54px); padding:10px; box-sizing:border-box; }
+        .lore-inj-modal input,
+        .lore-inj-modal textarea,
+        .lore-inj-modal select,
+        .lore-inj-modal button { max-width:100%; }
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   function createToggleRow(title, desc, isChecked, onChange) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;margin-bottom:8px;';
@@ -117,7 +167,7 @@
     return wrap;
   }
 
-  function createApiInput(config, prefix, nd, onChange) {
+  function createApiInput(config, prefix, nd, onChange, opts = {}) {
     const triggerSave = () => { if (typeof onChange === 'function') onChange(); };
     const apiTypeKey = prefix + 'ApiType';
     const keyKey = prefix === 'gemini' ? 'geminiKey' : prefix + 'Key';
@@ -153,9 +203,9 @@
     btnVertex.onclick = () => { config[apiTypeKey] = 'vertex'; updateBtns(); triggerSave(); };
     btnFirebase.onclick = () => { config[apiTypeKey] = 'firebase'; updateBtns(); triggerSave(); };
     typeRow.appendChild(btnKey); typeRow.appendChild(btnVertex); typeRow.appendChild(btnFirebase);
-    nd.appendChild(typeRow);
+    if (!opts.hideModeSelector) nd.appendChild(typeRow);
     // key 모드
-    const ki = document.createElement('input'); ki.type = 'text';
+    const ki = document.createElement('input'); ki.type = 'password';
     ki.value = config[keyKey] || ''; ki.placeholder = 'AIzaSy...';
     ki.setAttribute('autocomplete', 'off');
     ki.style.cssText = S + '-webkit-text-security:disc;';
@@ -205,7 +255,7 @@
     fbEmbNote.textContent = '의미 검색용 Gemini API Key. Firebase 방식은 검색 준비용 별도 키 필요. Google AI Studio에서 무료 키 발급 가능.';
     fbEmbNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;line-height:1.4;';
     firebaseArea.appendChild(fbEmbNote);
-    const fbEmbInput = document.createElement('input'); fbEmbInput.type = 'text';
+    const fbEmbInput = document.createElement('input'); fbEmbInput.type = 'password';
     fbEmbInput.value = config.autoExtGeminiEmbedKey || config[fbEmbKey] || ''; fbEmbInput.placeholder = 'AIzaSy...';
     fbEmbInput.setAttribute('autocomplete', 'off');
     fbEmbInput.style.cssText = S + '-webkit-text-security:disc;';
@@ -222,7 +272,7 @@
 
   Object.assign(C, {
     showStatusBadge, hideStatusBadge,
-    setFullWidth, createToggleRow, createApiInput,
+    setFullWidth, createToggleRow, createApiInput, ensureLoreModalStyles,
     __uiLoaded: true
   });
   console.log('[LoreCore:ui] loaded');

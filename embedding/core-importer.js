@@ -46,6 +46,36 @@
     };
   }
 
+  function mergeImportedEntries(entries) {
+    const merged = new Map();
+    for (const raw of (entries || [])) {
+      if (!raw || !raw.name) continue;
+      const rawType = String(raw.type || 'concept').toLowerCase();
+      const type = rawType === 'relationship' ? 'rel' : (rawType === 'promise' ? 'prom' : rawType);
+      const key = type + '|' + String(raw.name).trim().toLowerCase();
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, JSON.parse(JSON.stringify(raw)));
+        continue;
+      }
+      existing.triggers = Array.from(new Set([...(existing.triggers || []), ...(raw.triggers || [])].filter(Boolean)));
+      existing.entities = Array.from(new Set([...(existing.entities || []), ...(raw.entities || [])].filter(Boolean)));
+      existing.eventHistory = [...(existing.eventHistory || []), ...(raw.eventHistory || [])].filter((event, index, all) => {
+        const sig = String(event && (event.summary || event.text) || '').trim().toLowerCase();
+        return sig && all.findIndex(candidate => String(candidate && (candidate.summary || candidate.text) || '').trim().toLowerCase() === sig) === index;
+      });
+      existing.summary = mergeLoreSummary(existing.summary, raw.summary, existing.name, raw.state || existing.state);
+      existing.inject = mergeLoreSummary(existing.inject, raw.inject || raw.summary, existing.name, raw.state || existing.state);
+      existing.embed_text = mergeText(existing.embed_text, raw.embed_text, 500);
+      existing.state = raw.state || existing.state;
+      existing.detail = { ...(existing.detail || {}), ...(raw.detail || {}) };
+      existing.callState = { ...(existing.callState || {}), ...(raw.callState || {}) };
+      existing.timeline = { ...(existing.timeline || {}), ...(raw.timeline || {}) };
+      for (const score of ['imp', 'sur', 'emo']) existing[score] = Math.max(Number(existing[score]) || 0, Number(raw[score]) || 0);
+    }
+    return Array.from(merged.values());
+  }
+
   function normalizeApiOpts(apiOpts = {}) {
     const out = { ...(apiOpts || {}) };
     const liveCfg = _w.__LoreInj && _w.__LoreInj.settings && _w.__LoreInj.settings.config
@@ -172,9 +202,9 @@
     return e;
   }
 
-  const IMPORT_SCHEMA = `[<br>  {<br>    "type": "character|location|item|event|concept|setting",<br>    "name": "Entity Name",<br>    "triggers": ["keyword1", "keyword2", "A&&B"],<br>    "summary": {<br>      "full": "self-contained continuity summary: who/what/why/current state/unresolved hook",<br>      "compact": "entity + state + relation/hook preserved",<br>      "micro": "stable recall handle + current state"<br>    },<br>    "inject": {<br>      "full": "key facts for injection | max 120 chars",<br>      "compact": "essential continuity | max 70 chars",<br>      "micro": "name=status | max 35 chars"<br>    },<br>    "embed_text": "names aliases relationship terms event causes stakes location unresolved hooks",<br>    "state": "current situation noun phrase",<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },<br>    "entities": ["characters/places/items involved"],<br>    "detail": { "attributes": "traits/appearance/abilities", "relations": ["relationship facts"], "background_or_history": "background" },<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  },<br>  {<br>    "type": "relationship|rel",<br>    "name": "A↔B",<br>    "parties": ["A", "B"],<br>    "triggers": ["A&&B", "B&&A"],<br>    "summary": {<br>      "full": "relationship cause + current state + unresolved hook",<br>      "compact": "relationship state + hook",<br>      "micro": "A↔B=status"<br>    },<br>    "inject": {<br>      "full": "relationship facts for injection | max 120 chars",<br>      "compact": "essential relationship continuity | max 70 chars",<br>      "micro": "A↔B=status | max 35 chars"<br>    },<br>    "embed_text": "A B aliases call terms relationship stakes hooks",<br>    "state": "current relationship status",<br>    "callState": {<br>      "A→B": {<br>        "currentTerm": "latest vocative",<br>        "previousTerms": ["older vocative"],<br>        "tone": "affectionate|hostile|formal|neutral",<br>        "scope": "scene|stable|private|public",<br>        "lastChangedTurn": 0,<br>        "confidence": 0.8,<br>        "reason": "why this is current"<br>      }<br>    },<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },<br>    "entities": ["A", "B"],<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  }<br>]`;
+  const IMPORT_SCHEMA = `[<br>  {<br>    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting",<br>    "name": "Entity Name",<br>    "triggers": ["keyword1", "keyword2", "A&&B"],<br>    "summary": {<br>      "full": "self-contained continuity summary: who/what/why/current state/unresolved hook",<br>      "compact": "entity + state + relation/hook preserved",<br>      "micro": "stable recall handle + current state"<br>    },<br>    "inject": {<br>      "full": "key facts for injection | max 120 chars",<br>      "compact": "essential continuity | max 70 chars",<br>      "micro": "name=status | max 35 chars"<br>    },<br>    "embed_text": "names aliases relationship terms event causes stakes location unresolved hooks",<br>    "state": "current situation noun phrase",<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },<br>    "entities": ["characters/places/items involved"],<br>    "detail": { "attributes": "traits/appearance/abilities", "relations": ["relationship facts"], "background_or_history": "background" },<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  },<br>  {<br>    "type": "relationship|rel",<br>    "name": "A↔B",<br>    "parties": ["A", "B"],<br>    "triggers": ["A&&B", "B&&A"],<br>    "summary": {<br>      "full": "relationship cause + current state + unresolved hook",<br>      "compact": "relationship state + hook",<br>      "micro": "A↔B=status"<br>    },<br>    "inject": {<br>      "full": "relationship facts for injection | max 120 chars",<br>      "compact": "essential relationship continuity | max 70 chars",<br>      "micro": "A↔B=status | max 35 chars"<br>    },<br>    "embed_text": "A B aliases call terms relationship stakes hooks",<br>    "state": "current relationship status",<br>    "callState": {<br>      "A→B": {<br>        "currentTerm": "latest vocative",<br>        "previousTerms": ["older vocative"],<br>        "tone": "affectionate|hostile|formal|neutral",<br>        "scope": "scene|stable|private|public",<br>        "lastChangedTurn": 0,<br>        "confidence": 0.8,<br>        "reason": "why this is current"<br>      }<br>    },<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },<br>    "entities": ["A", "B"],<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  }<br>]`;
 
-  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.<br>Convert the following source material into structured lore entries for an RP memory system.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.<br>4. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.<br>5. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>6. summary and inject must both be produced.<br>   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.<br>   - summary.compact: preserve entity, state, relationship, and unresolved hooks.<br>   - summary.micro: stable recall handle + current state only; never a vague teaser.<br>   - inject.full/compact/micro: short text intended for direct OOC injection.<br>7. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.<br>8. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.<br>9. Extract timeline, entities, state, imp/sur/emo for every entry when inferable. imp/sur/emo are 1-10.<br>10. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>11. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
+  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.<br>Convert the following source material into structured lore entries for an RP memory system.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full/compact/micro, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>7. summary and inject must both be produced.<br>   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.<br>   - summary.compact: preserve entity, state, relationship, and unresolved hooks.<br>   - summary.micro: stable recall handle + current state only; never a vague teaser.<br>   - inject.full/compact/micro: short text intended for direct OOC injection.<br>8. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.<br>9. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.<br>10. Extract timeline, entities, state, imp/sur/emo when inferable. imp/sur/emo are 1-10.<br>11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>12. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
 
   const DEEPSEEK_IMPORT_MAX_OUTPUT_TOKENS = 65536;
 
@@ -268,28 +298,32 @@
     const okCount = chunkResults.filter(r => r.status === 'ok').length;
     const emptyCount = chunkResults.filter(r => r.status === 'empty').length;
     const failedCount = chunkResults.filter(r => r.status === 'failed').length;
-    C.__lastImportReport = { added: failedCount > 0 ? 0 : allEntries.length, chunks: chunks.length, ok: okCount, empty: emptyCount, failed: failedCount, chunkResults };
+    const mergedEntries = failedCount > 0 ? [] : mergeImportedEntries(allEntries);
+    C.__lastImportReport = { added: mergedEntries.length, rawEntries: failedCount > 0 ? 0 : allEntries.length, chunks: chunks.length, ok: okCount, empty: emptyCount, failed: failedCount, chunkResults };
     if (failedCount > 0) {
       const firstFailed = chunkResults.find(r => r.status === 'failed');
       throw new Error('지식 변환 실패: 일부 구간 처리 실패로 저장을 취소함 (' + failedCount + '/' + chunks.length + ', ' + ((firstFailed && firstFailed.error) || '알 수 없음') + ')');
     }
-    if (allEntries.length > 0) {
+    if (mergedEntries.length > 0) {
       const db = getDB();
-      let pack = await db.packs.get(packName);
-      if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: '' });
-      for (let e of allEntries) {
-        e = normalizeLoreEntry(e, { source: 'imported' });
-        e.packName = packName; e.project = ''; e.enabled = true;
-        e.src = e.src || (e.source === 'user_stated' ? 'us' : (e.source === 'auto_extracted' ? 'ax' : 'im'));
-        e.source = e.source || 'imported';
-        e.ts = e.ts || Date.now();
-        e.lastUpdated = e.ts;
-        await db.entries.put(e);
-      }
-      const count = await db.entries.where('packName').equals(packName).count();
-      await db.packs.update(packName, { entryCount: count });
+      await db.transaction('rw', db.entries, db.packs, async () => {
+        let pack = await db.packs.get(packName);
+        if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: '' });
+        for (let e of mergedEntries) {
+          e = normalizeLoreEntry(e, { source: 'imported' });
+          delete e.id;
+          e.packName = packName; e.project = ''; e.enabled = true;
+          e.src = e.src || (e.source === 'user_stated' ? 'us' : (e.source === 'auto_extracted' ? 'ax' : 'im'));
+          e.source = e.source || 'imported';
+          e.ts = e.ts || Date.now();
+          e.lastUpdated = e.ts;
+          await db.entries.add(e);
+        }
+        const count = await db.entries.where('packName').equals(packName).count();
+        await db.packs.update(packName, { entryCount: count });
+      });
     }
-    return allEntries.length;
+    return mergedEntries.length;
   }
 
   async function importFromJson(jsonArray, packName) {
@@ -403,7 +437,7 @@
 
   Object.assign(C, {
     importFromText, importFromJson, importFromUrl, detectDuplicatesInSummary,
-    normalizeLoreEntry, normalizeSummaryValue, mergeLoreSummary,
+    normalizeLoreEntry, normalizeSummaryValue, mergeLoreSummary, mergeImportedEntries,
     DEFAULT_IMPORT_PROMPT: DEFAULT_IMPORT_PROMPT_TEXT,
     DEFAULT_IMPORT_SCHEMA: DEFAULT_IMPORT_SCHEMA_TEXT,
     __importerLoaded: true

@@ -21,6 +21,12 @@ Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/u/*/c/*')) 
 Assert-True ($bundle.Contains('// @grant       GM_xmlhttpRequest')) 'missing GM_xmlhttpRequest grant'
 Assert-True ($bundle.Contains('// @grant       unsafeWindow')) 'missing unsafeWindow grant'
 Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
+Assert-True ($bundle.Contains('nativeContextTokenBudget')) 'adaptive native-context setting missing'
+Assert-True ($bundle.Contains('deriveAiMemoryTurns')) 'adaptive reinjection helper missing'
+Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI compatibility helper missing'
+Assert-True ($bundle.Contains('lore-inj-modal')) 'scoped Lore modal styling missing'
+Assert-True (!$bundle.Contains('flatMenuAdapter')) 'legacy flat menu adapter remains'
+Assert-True ($bundle.Contains('로어 관리') -and $bundle.Contains('응답 검토') -and $bundle.Contains('연결') -and $bundle.Contains('활동')) 'task-oriented menu groups missing'
 
 $projectRequireMatches = [regex]::Matches($bundle, '(?m)^// @require\s+https://raw\.githubusercontent\.com/Localsmile/CRACK-INJECTION-REFINER/')
 Assert-True ($projectRequireMatches.Count -eq 0) 'project-owned @require lines remain'

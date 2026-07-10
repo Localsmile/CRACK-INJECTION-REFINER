@@ -700,10 +700,13 @@
       return userInput;
     }
 
-    const fetchCount = Math.max(20, (settings.config.scanRange || 6) * 3);
+    const fetchCount = Math.max(48, (settings.config.scanRange || 6) * 3);
     const recentMsgs = await C.fetchLogs(fetchCount);
 
     const config = settings.config;
+    const effectiveAiMemoryTurns = C.deriveAiMemoryTurns
+      ? C.deriveAiMemoryTurns(recentMsgs, config)
+      : (config.aiMemoryTurns || 4);
     const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
       ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
       : {
@@ -732,7 +735,7 @@
       timelineRecallWeight: config.timelineRecallWeight != null ? config.timelineRecallWeight : (C.DEFAULTS.timelineRecallWeight || 0.32),
       timelineNoCuePenalty: config.timelineNoCuePenalty != null ? config.timelineNoCuePenalty : (C.DEFAULTS.timelineNoCuePenalty || 0.35),
       timelineRecallPoolLimit: config.timelineRecallPoolLimit || 12,
-      aiMemoryTurns: config.aiMemoryTurns || 4, activeCharDetection: config.activeCharDetection !== false,
+      aiMemoryTurns: effectiveAiMemoryTurns, activeCharDetection: config.activeCharDetection !== false,
       activeCharBoost: config.activeCharBoostEnabled !== false ? C.DEFAULTS.activeCharBoost : 1.0,
       inactiveCharPenalty: config.activeCharBoostEnabled !== false ? C.DEFAULTS.inactiveCharPenalty : 1.0
     };

@@ -112,7 +112,7 @@
       note.style.cssText = 'font-size:11px;color:#d96;margin:8px 0;line-height:1.4;';
       nd.appendChild(note);
     }
-    return addSimpleInput(nd, opts.label || '의미 검색용 Gemini API 키', getGeminiEmbedKeyValue(), setGeminiEmbedKeyValue, { placeholder: 'AIza...' });
+    return addSimpleInput(nd, opts.label || '의미 검색용 Gemini API 키', getGeminiEmbedKeyValue(), setGeminiEmbedKeyValue, { placeholder: 'AIza...', type: 'password' });
   }
 
   function addOpenAIModelInput(nd, label, modelKey, customKey, opts = {}) {
@@ -286,8 +286,8 @@
       newTplBtn.onclick = () => { const name = prompt('새 템플릿 이름:'); if (!name) return; const newId = 'tpl_' + Date.now(); const active = settings.getActiveTemplate(); settings.config.templates.push({ id: newId, name, isDefault: false, schema: active.schema, promptWithoutDb: active.promptWithoutDb, promptWithDb: active.promptWithDb, deepSeekPromptWithoutDb: active.deepSeekPromptWithoutDb, deepSeekPromptWithDb: active.deepSeekPromptWithDb, deepSeekTemporalExtractPrompt: active.deepSeekTemporalExtractPrompt, deepSeekImportPrompt: active.deepSeekImportPrompt }); settings.config.activeTemplateId = newId; settings.save(); renderTplOptions(); };
       tplResetBtn.onclick = () => {
         const activeTpl = settings.getActiveTemplate();
-        if (activeTpl.isDefault) { alert('기본 템플릿은 수정 불가.'); return; }
-        if (!confirm('[' + activeTpl.name + '] 기본 템플릿 내용으로 초기화?')) return;
+        if (activeTpl.isDefault) { alert('기본 지시문은 직접 수정할 수 없습니다. 복제한 뒤 수정해 주세요.'); return; }
+        if (!confirm('[' + activeTpl.name + '] 내용을 기본 지시문으로 되돌릴까요?')) return;
         const defaultTpl = (settings.config.templates || []).find(t => t.isDefault);
         if (!defaultTpl) return;
         const idx = settings.config.templates.findIndex(t => t.id === activeTpl.id);
@@ -303,7 +303,7 @@
       };
       tplSelect.onchange = () => { settings.config.activeTemplateId = tplSelect.value; settings.save(); renderTplOptions(); };
       tplRenameBtn.onclick = () => { const activeTpl = settings.getActiveTemplate(); if (activeTpl.isDefault) return; const newName = prompt('템플릿 이름:', activeTpl.name); if (newName) { const idx = settings.config.templates.findIndex(t => t.id === activeTpl.id); if (idx !== -1) { settings.config.templates[idx].name = newName.trim(); settings.save(); renderTplOptions(); } } };
-      tplDelBtn.onclick = () => { const activeId = settings.config.activeTemplateId; const activeTpl = settings.getActiveTemplate(); if (activeTpl.isDefault) return; if (confirm('[' + activeTpl.name + '] 템플릿 삭제?')) { settings.config.templates = settings.config.templates.filter(t => t.id !== activeId); settings.config.activeTemplateId = 'default'; settings.save(); renderTplOptions(); } };
+      tplDelBtn.onclick = () => { const activeId = settings.config.activeTemplateId; const activeTpl = settings.getActiveTemplate(); if (activeTpl.isDefault) return; if (confirm('[' + activeTpl.name + '] 지시문을 삭제할까요?')) { settings.config.templates = settings.config.templates.filter(t => t.id !== activeId); settings.config.activeTemplateId = 'default'; settings.save(); renderTplOptions(); } };
       const saveTpl = (key, val) => { const id = settings.config.activeTemplateId; const idx = (settings.config.templates || []).findIndex(t => t.id === id); if (idx !== -1 && !settings.config.templates[idx].isDefault) { settings.config.templates[idx][key] = val; settings.save(); } };
       taSchema.onchange = () => saveTpl('schema', taSchema.value);
       ta1.onchange = () => saveTpl('promptWithoutDb', ta1.value);
@@ -412,13 +412,13 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
-      title.textContent = '후보 재정렬/응답 교정 프롬프트';
+      title.textContent = '후보 재정렬/응답 검토 지시문';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       addPromptArea(nd, '후보 재정렬 지시문', settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt, (v) => { settings.config.rerankPrompt = v; settings.save(); }, { height: 110, reset: () => C.DEFAULTS.rerankPrompt });
-      addPromptArea(nd, '응답 교정 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
+      addPromptArea(nd, '응답 검토 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
       const note = document.createElement('div');
-      note.textContent = '응답 교정 템플릿/체크박스 선택은 AI 응답 교정 화면에서도 가능함.';
+      note.textContent = '응답 검토 항목은 응답 검토 화면에서도 선택할 수 있습니다.';
       note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;';
       nd.appendChild(note);
     }});
@@ -444,11 +444,11 @@
             settings.config.autoExtApiType = providerSel.value;
             if (typeof _w.__LoreInj.normalizeApiModelDefaults === 'function') _w.__LoreInj.normalizeApiModelDefaults(settings.config);
             settings.save();
-            alert('API 종류 변경됨. API 설정 화면 다시 열 것.');
+            alert('연결 방식을 변경했습니다. 다른 메뉴를 열었다가 연결 화면으로 돌아오면 해당 설정을 입력할 수 있습니다.');
           };
           nd.appendChild(providerSel);
           if ((settings.config.autoExtApiType || 'key') === 'deepseek') {
-            addSimpleInput(nd, 'DeepSeek API 키', settings.config.autoExtDeepSeekKey || '', (v) => { settings.config.autoExtDeepSeekKey = v; settings.save(); }, { placeholder: 'sk-...' });
+            addSimpleInput(nd, 'DeepSeek API 키', settings.config.autoExtDeepSeekKey || '', (v) => { settings.config.autoExtDeepSeekKey = v; settings.save(); }, { placeholder: 'sk-...', type: 'password' });
             nd.appendChild(C.createToggleRow('DeepSeek 추론 사용', '끄면 빠르고 저렴하게 호출함. 켜면 V4 추론 모드 사용함.', settings.config.autoExtDeepSeekThinking !== false, (v) => { settings.config.autoExtDeepSeekThinking = v; settings.save(); }));
             const dsl = document.createElement('div'); dsl.textContent = 'DeepSeek 추론 강도'; dsl.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(dsl);
             const dss = document.createElement('select'); dss.style.cssText = FIELD_STYLE;
@@ -459,10 +459,10 @@
             addGeminiEmbeddingKeyInput(nd, { note: '의미 검색 준비에는 Gemini API 키를 별도로 사용함.' });
           } else if ((settings.config.autoExtApiType || 'key') === 'openai') {
             addSimpleInput(nd, 'OpenAI 호환 Base URL', settings.config.autoExtOpenAIBaseUrl || '', (v) => { settings.config.autoExtOpenAIBaseUrl = v; settings.save(); }, { placeholder: 'https://.../v1' });
-            addSimpleInput(nd, 'OpenAI 호환 API 키', settings.config.autoExtOpenAIKey || '', (v) => { settings.config.autoExtOpenAIKey = v; settings.save(); }, { placeholder: 'sk-...' });
+            addSimpleInput(nd, 'OpenAI 호환 API 키', settings.config.autoExtOpenAIKey || '', (v) => { settings.config.autoExtOpenAIKey = v; settings.save(); }, { placeholder: 'sk-...', type: 'password' });
             addGeminiEmbeddingKeyInput(nd, { note: '의미 검색 준비에는 OpenAI 호환 API가 아니라 Gemini API 키를 별도로 사용함.' });
           } else {
-            C.createApiInput(settings.config, 'autoExt', nd, () => settings.save());
+            C.createApiInput(settings.config, 'autoExt', nd, () => settings.save(), { hideModeSelector: true });
             const apiTypeNow = settings.config.autoExtApiType || 'key';
             if (apiTypeNow === 'key') {
               addGeminiEmbeddingKeyInput(nd, { note: '의미 검색 준비용 키. 비워두면 위 Gemini API 키를 같이 사용함.' });
@@ -493,7 +493,7 @@
           const modelHead = document.createElement('div'); modelHead.textContent = '모델 선택'; modelHead.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;margin:14px 0 8px;padding-top:10px;border-top:1px solid #333;'; nd.appendChild(modelHead);
           const modelNote = document.createElement('div'); modelNote.textContent = (settings.config.autoExtApiType || 'key') === 'openai'
             ? 'OpenAI 호환은 기능별 모델명을 직접 입력함. 같은 API 키로 OpenRouter, Ollama 등 여러 모델을 나눠 쓸 수 있음.'
-            : 'API를 쓰는 기능별 모델을 여기서 한 번에 관리함. 프롬프트 내용은 프롬프트 관리 메뉴에서 수정함.';
+            : 'API를 쓰는 기능별 모델을 여기서 한 번에 관리합니다. 지시문 내용은 연결 > 지시문에서 수정합니다.';
           modelNote.style.cssText = 'font-size:11px;color:#888;margin-bottom:8px;line-height:1.4;'; nd.appendChild(modelNote);
           const isDeepSeekApi = (settings.config.autoExtApiType || 'key') === 'deepseek';
           const isOpenAIApi = (settings.config.autoExtApiType || 'key') === 'openai';
@@ -512,11 +512,11 @@
 
           addFeatureThinkingControls(nd);
         }});
-      }, 'API 설정');
+      }, '연결 및 모델');
     });
 
     modal.createSubMenu('프롬프트 관리', (m) => {
-      m.replaceContentPanel((panel) => renderPromptSettings(panel), '프롬프트 관리');
+      m.replaceContentPanel((panel) => renderPromptSettings(panel), '지시문');
     });
   });
   

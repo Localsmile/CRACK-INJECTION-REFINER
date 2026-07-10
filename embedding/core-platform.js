@@ -23,7 +23,7 @@
     try {
       const CU = crackUtil();
       if (!CU) return [];
-      const items = await CU.chatRoom().extractLogs(chatId, { maxCount: count });
+      const items = await CU.chatRoom().extractLogs(chatId, { maxCount: count, naturalOrder: true });
       if (items instanceof Error || !Array.isArray(items)) return [];
       return items.map(m => ({ role: m.role, message: m.content }));
     } catch (e) { return []; }
