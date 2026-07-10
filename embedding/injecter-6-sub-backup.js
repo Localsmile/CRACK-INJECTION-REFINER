@@ -497,6 +497,12 @@
 
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
+      if (typeof B.renderLorePackImportSection === 'function') B.renderLorePackImportSection(nd);
+      else addText(nd, '로어팩 가져오기 화면을 불러올 수 없음.', 'font-size:12px;color:#d66;');
+    }});
+
+    panel.addBoxedField('', '', { onInit: (nd) => {
+      C.setFullWidth(nd);
       const title = document.createElement('div'); title.textContent = '서버 동기화'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
       addText(nd, '계정으로 로그인하면 PC/모바일에서 같은 서버 백업을 볼 수 있음. 서버에는 로어/팩/채팅별 활성 상태 중심으로 저장하고, 검색 준비/이력/로그는 복원 후 필요한 만큼 다시 생성함.');
       const cfg = getCfg();

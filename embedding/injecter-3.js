@@ -163,7 +163,7 @@
     const keys = [
       'autoExtApiType', 'autoExtKey', 'autoExtVertexJson', 'autoExtVertexLocation', 'autoExtVertexProjectId',
       'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtGeminiEmbedKey', 'autoExtDeepSeekKey', 'autoExtDeepSeekThinking',
-      'autoExtDeepSeekReasoning', 'autoExtOpenAIBaseUrl', 'autoExtOpenAIKey', 'autoExtOpenAIReasoning',
+      'autoExtDeepSeekReasoning', 'autoExtOpenAIBaseUrl', 'autoExtOpenAIKey', 'autoExtOpenAIReasoning', 'autoExtOpenAIFormat',
       'batchExtOpenAIReasoning', 'temporalExtractOpenAIReasoning', 'importOpenAIReasoning',
       'mergeOpenAIReasoning', 'rerankOpenAIReasoning', 'temporalRecallJudgeOpenAIReasoning', 'refinerOpenAIReasoning',
       'batchExtDeepSeekReasoning', 'temporalExtractDeepSeekReasoning', 'importDeepSeekReasoning',
@@ -351,7 +351,7 @@
       if (previousIds.length && db.embeddings) await db.embeddings.where('entryId').anyOf(previousIds).delete();
       if (previousIds.length && db.entryVersions) await db.entryVersions.where('entryId').anyOf(previousIds).delete();
       await db.entries.where('packName').equals(snap.packName).delete();
-      for (const e of snapshotData) await db.entries.add(e);
+      for (const e of snapshotData) await db.entries.add({ ...e, packName: snap.packName });
       await db.packs.update(snap.packName, { entryCount: snapshotData.length });
     });
     // Phase 12: 복원된 데이터가 구버전 스키마(예: imp/emo/sur 미세팅, recallTriggers 누락)일 수 있으므로 로컬 마이그레이션을 강제 재실행한다.
@@ -606,7 +606,7 @@
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '', autoExtGeminiEmbedKey: '',
     autoExtDeepSeekKey: '', autoExtDeepSeekThinking: false, autoExtDeepSeekReasoning: 'high',
-    autoExtOpenAIBaseUrl: '', autoExtOpenAIKey: '', autoExtOpenAIReasoning: 'off',
+    autoExtOpenAIBaseUrl: '', autoExtOpenAIKey: '', autoExtOpenAIReasoning: 'off', autoExtOpenAIFormat: 'chat_completions',
     deepSeekPromptOverridesEnabled: true,
     deepSeekJsonSystemPrompt: 'Return only one valid json object. Do not output markdown fences, explanations, comments, or trailing text. Preserve the language of the source content. Follow the exact object shape requested by the user.',
     deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
@@ -614,6 +614,9 @@
     deepSeekTemporalExtractPrompt: DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT,
     deepSeekImportPrompt: DEFAULT_DEEPSEEK_IMPORT_PROMPT,
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
+    manualExtScanRange: 5, manualExtOffset: 3,
+    autoExtractTopics: { identityState: true, relationships: true, obligations: true, worldContinuity: true, majorScenes: true, importantLines: true },
+    manualExtractTopics: { identityState: true, relationships: true, obligations: true, worldContinuity: true, majorScenes: true, importantLines: true },
     batchExtReasoning: 'medium', batchExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
@@ -1589,6 +1592,7 @@
       openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
       openAIKey: cfg.autoExtOpenAIKey || '',
       openAIReasoning: openAIReasoningForFeature(cfg, costContext && costContext.feature),
+      openAIFormat: cfg.autoExtOpenAIFormat || 'chat_completions',
       vertexJson: cfg.autoExtVertexJson,
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,

@@ -25,6 +25,7 @@
       openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
       openAIKey: cfg.autoExtOpenAIKey || '',
       openAIReasoning: cfg.autoExtOpenAIReasoning || 'off',
+      openAIFormat: cfg.autoExtOpenAIFormat || 'chat_completions',
       vertexJson: cfg.autoExtVertexJson,
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,
@@ -82,33 +83,79 @@
     if (result.skipped) return message + ' / 검색 준비 생략: ' + result.reason;
     return message + ' / 검색 준비 ' + (result.count || 0) + '개 완료';
   }
+
+  const EXTRACT_TOPIC_OPTIONS = [
+    ['identityState', '인물·현재 상태'],
+    ['relationships', '관계·호칭'],
+    ['obligations', '약속·의무'],
+    ['worldContinuity', '세계·장소·물건·능력'],
+    ['majorScenes', '중요 장면'],
+    ['importantLines', '기억할 대사']
+  ];
+
+  function appendTopicChecklist(parent, settingKey) {
+    const title = document.createElement('div'); title.textContent = '추출할 항목'; title.style.cssText = 'font-size:11px;color:#999;margin:10px 0 5px;'; parent.appendChild(title);
+    const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:5px 10px;margin-bottom:10px;';
+    const current = settings.config[settingKey] && typeof settings.config[settingKey] === 'object'
+      ? settings.config[settingKey]
+      : {};
+    for (const [key, label] of EXTRACT_TOPIC_OPTIONS) {
+      const row = document.createElement('label'); row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;cursor:pointer;min-width:0;';
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = current[key] !== false;
+      checkbox.onchange = () => {
+        const next = { ...(settings.config[settingKey] || {}) };
+        next[key] = checkbox.checked;
+        settings.config[settingKey] = next;
+        settings.save();
+      };
+      row.appendChild(checkbox); row.appendChild(document.createTextNode(label)); grid.appendChild(row);
+    }
+    parent.appendChild(grid);
+    const note = document.createElement('div'); note.textContent = '기억할 대사는 나중에 다시 인용될 가능성이 뚜렷한 대사만 저장하며, 해당되는 대사가 없으면 만들지 않음.'; note.style.cssText = 'font-size:10px;color:#777;line-height:1.4;margin-top:-4px;margin-bottom:10px;'; parent.appendChild(note);
+  }
+
+  function appendSectionTitle(parent, title, description) {
+    const h = document.createElement('div'); h.textContent = title; h.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin:4px 0 5px;'; parent.appendChild(h);
+    if (description) { const d = document.createElement('div'); d.textContent = description; d.style.cssText = 'font-size:11px;color:#888;line-height:1.45;margin-bottom:8px;'; parent.appendChild(d); }
+  }
   
   _w.__LoreInj.registerSubMenu('extract', function(modal) {
-    modal.createSubMenu('대화 정리/변환', (m) => {
+    modal.createSubMenu('로어 추출/변환', (m) => {
       m.replaceContentPanel((panel) => {
-        // === 자동 대화 추출 ===
+        // === 자동/수동 로어 추출 ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          nd.appendChild(C.createToggleRow('자동 대화 정리', '정해진 턴마다 대화를 로어에 추가함.', settings.config.autoExtEnabled, (v) => { settings.config.autoExtEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('기존 로어 참고', '저장된 로어를 같이 참고해 중복 저장 줄임.', settings.config.autoExtIncludeDb, (v) => { settings.config.autoExtIncludeDb = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('변경분만 저장', '바뀐 내용만 받아 저장해 비용과 시간을 줄임.', settings.config.autoExtPatchMode !== false, (v) => { settings.config.autoExtPatchMode = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('내 캐릭터 이름 함께 사용', '대화 정리 때 현재 페르소나 이름을 참고함.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('수동 정리에서 중요 장면 정밀 분석', '일반 정리 후 중요 장면만 한 번 더 분석함. 끄더라도 뚜렷한 주요 장면은 일반 정리에서 저장할 수 있음.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('자동 정리에도 정밀 분석', '자동 정리 때 중요 장면 전용 API 호출을 한 번 더 실행함. 시간과 생성 API 사용량이 늘어남.', settings.config.temporalExtractAutoEnabled === true, (v) => { settings.config.temporalExtractAutoEnabled = v; settings.save(); }));
-          nd.appendChild(C.createToggleRow('진행 상태 표시', '추출, 전체 정리, 검색 준비 진행 상태를 화면에 띄움. 모바일에서 겹치면 끄기.', settings.config.extractStatusBadgeEnabled !== false, (v) => { settings.config.extractStatusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
-  
-          const row1 = document.createElement('div'); row1.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
+          appendSectionTitle(nd, '자동 추출', '설정한 주기마다 최근 대화에서 선택한 항목을 로어로 저장함.');
+          nd.appendChild(C.createToggleRow('자동 로어 추출', '정해진 턴마다 대화를 로어에 추가함.', settings.config.autoExtEnabled, (v) => { settings.config.autoExtEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('자동 추출에서 중요 장면 정밀 분석', '중요 장면을 선택한 경우 전용 API 호출을 한 번 더 실행함. 시간과 생성 API 사용량이 늘어남.', settings.config.temporalExtractAutoEnabled === true, (v) => { settings.config.temporalExtractAutoEnabled = v; settings.save(); }));
+          appendTopicChecklist(nd, 'autoExtractTopics');
+
+          const row1 = document.createElement('div'); row1.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px;align-items:center;';
           const makeInput = (label, key, defaultVal) => {
-            const f = document.createElement('div'); f.style.flex = '1';
-            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
+            const f = document.createElement('div'); f.style.minWidth = '0';
+            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;';
             const i = document.createElement('input'); i.type = 'number'; i.value = settings.config[key] !== undefined ? settings.config[key] : defaultVal;
             i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
             const saveNum = () => { const v = parseInt(i.value); if (!isNaN(v)) { settings.config[key] = v; settings.save(); } };
             i.oninput = saveNum; i.onchange = saveNum;
             f.appendChild(l); f.appendChild(i); return f;
           };
-          row1.appendChild(makeInput('자동 정리 주기', 'autoExtTurns', 8)); row1.appendChild(makeInput('읽을 최근 대화', 'autoExtScanRange', 6)); row1.appendChild(makeInput('최근 제외', 'autoExtOffset', 5)); row1.appendChild(makeInput('장면 기억 최대', 'temporalMaxEventsPerPass', 5));
+          row1.appendChild(makeInput('실행 주기(턴)', 'autoExtTurns', 8)); row1.appendChild(makeInput('읽을 대화(턴)', 'autoExtScanRange', 6)); row1.appendChild(makeInput('최근 제외(턴)', 'autoExtOffset', 3));
           nd.appendChild(row1);
+
+          const divider = document.createElement('div'); divider.style.cssText = 'border-top:1px solid #333;margin:12px 0;'; nd.appendChild(divider);
+          appendSectionTitle(nd, '수동 추출', '버튼을 누를 때만 별도의 범위와 항목으로 최근 대화를 추출함.');
+          nd.appendChild(C.createToggleRow('수동 추출에서 중요 장면 정밀 분석', '중요 장면을 선택한 경우 일반 추출 뒤 전용 분석을 한 번 더 실행함.', settings.config.temporalExtractEnabled !== false, (v) => { settings.config.temporalExtractEnabled = v; settings.save(); }));
+          appendTopicChecklist(nd, 'manualExtractTopics');
+          const manualRow = document.createElement('div'); manualRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px;';
+          manualRow.appendChild(makeInput('읽을 대화(턴)', 'manualExtScanRange', 5)); manualRow.appendChild(makeInput('최근 제외(턴)', 'manualExtOffset', 3)); nd.appendChild(manualRow);
+
+          const sharedDivider = document.createElement('div'); sharedDivider.style.cssText = 'border-top:1px solid #333;margin:12px 0;'; nd.appendChild(sharedDivider);
+          appendSectionTitle(nd, '공통 저장 방식', '자동 추출과 수동 추출이 함께 사용하는 중복 방지와 저장 설정.');
+          nd.appendChild(C.createToggleRow('기존 로어 참고', '저장된 로어를 같이 참고해 중복 저장 줄임.', settings.config.autoExtIncludeDb, (v) => { settings.config.autoExtIncludeDb = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('변경분만 저장', '바뀐 내용만 받아 저장해 비용과 시간을 줄임.', settings.config.autoExtPatchMode !== false, (v) => { settings.config.autoExtPatchMode = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('내 캐릭터 이름 함께 사용', '추출할 때 현재 페르소나 이름을 참고함.', settings.config.autoExtIncludePersona, (v) => { settings.config.autoExtIncludePersona = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('진행 상태 표시', '추출, 전체 대화 추출, 검색 준비 진행 상태를 화면에 띄움. 모바일에서 겹치면 끄기.', settings.config.extractStatusBadgeEnabled !== false, (v) => { settings.config.extractStatusBadgeEnabled = v; settings.save(); if (!v && C.hideStatusBadge) C.hideStatusBadge(); }));
 
           const row2 = document.createElement('div'); row2.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;align-items:center;';
           const f3 = document.createElement('div'); f3.style.flex = '1';
@@ -125,11 +172,11 @@
           inputWrap.appendChild(i3); inputWrap.appendChild(s3); f3.appendChild(l3); f3.appendChild(inputWrap);
           row2.appendChild(f3); nd.appendChild(row2);
   
-          const btnRun = document.createElement('button'); btnRun.textContent = '수동 추출 실행';
+          const btnRun = document.createElement('button'); btnRun.textContent = '최근 대화에서 로어 추출';
           btnRun.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:none;font-weight:bold;width:100%;margin-top:10px;';
           const btnStatus = document.createElement('div'); btnStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.4;'; btnStatus.textContent = '';
           btnRun.onclick = async () => {
-            if (!confirm('최근 대화를 지금 정리할까요?')) return;
+            if (!confirm('설정한 범위의 최근 대화에서 로어를 추출할까요?')) return;
             settings.save();
             btnRun.disabled = true;
             const origText = btnRun.textContent;
@@ -174,11 +221,11 @@
           nd.appendChild(jrow);
         }});
   
-        // === 전체 대화 정리 ===
+        // === 전체 대화 추출 ===
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
-          const bTitle = document.createElement('div'); bTitle.textContent = '전체 대화 정리'; bTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(bTitle);
-          const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 여러 묶음으로 나눠 로어에 저장함. 처음 정리할 때 사용함.'; bDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(bDesc);
+          const bTitle = document.createElement('div'); bTitle.textContent = '전체 대화 추출'; bTitle.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;'; nd.appendChild(bTitle);
+          const bDesc = document.createElement('div'); bDesc.textContent = '긴 대화를 여러 구간으로 나눠 로어에 저장함. 성공한 구간은 바로 보존하고 실패한 구간만 나중에 다시 시도할 수 있음.'; bDesc.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.4;'; nd.appendChild(bDesc);
   
           const bRow = document.createElement('div'); bRow.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const mkNum = (label, getter, setter, defaultVal) => {
@@ -194,39 +241,63 @@
           bRow.appendChild(mkNum('겹쳐 읽을 턴', () => settings.config.batchExtOverlap, v => settings.config.batchExtOverlap = v, 5));
           bRow.appendChild(mkNum('재시도', () => settings.config.batchExtMaxAttempts, v => settings.config.batchExtMaxAttempts = v, 3));
           nd.appendChild(bRow);
-          nd.appendChild(C.createToggleRow('전체 정리에도 정밀 분석', '각 대화 구간마다 중요 장면 전용 API 호출을 추가함. 더 오래 걸리고 생성 API 사용량이 늘어남.', settings.config.temporalExtractBatchEnabled === true, (v) => { settings.config.temporalExtractBatchEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('전체 추출에서 중요 장면 정밀 분석', '중요 장면 항목을 선택한 경우 각 대화 구간마다 전용 API 호출을 추가함.', settings.config.temporalExtractBatchEnabled === true, (v) => { settings.config.temporalExtractBatchEnabled = v; settings.save(); }));
   
-          const bBtn = document.createElement('button'); bBtn.textContent = '전체 대화 정리 실행';
+          const retryJob = typeof _w.__LoreInj.getBatchRetryJob === 'function' ? _w.__LoreInj.getBatchRetryJob() : null;
+          const jobBox = document.createElement('div'); jobBox.style.cssText = 'margin:10px 0;padding:9px;border:1px solid ' + (retryJob ? '#642' : '#2d2d2d') + ';border-radius:4px;background:#111;';
+          const jobTitle = document.createElement('div'); jobTitle.textContent = '전체 추출 작업 현황'; jobTitle.style.cssText = 'font-size:12px;font-weight:bold;color:#ccc;margin-bottom:4px;'; jobBox.appendChild(jobTitle);
+          const jobText = document.createElement('div'); jobText.style.cssText = 'font-size:11px;color:' + (retryJob ? '#da8' : '#777') + ';line-height:1.45;';
+          jobText.textContent = retryJob
+            ? '다시 시도할 구간 ' + retryJob.failedBatchIndexes.join(', ') + ' / 전체 ' + retryJob.totalBatches + '개 구간 · 마지막 저장 ' + (retryJob.lastEntriesAdded || 0) + '건'
+            : '다시 시도할 실패 구간 없음';
+          jobBox.appendChild(jobText);
+          nd.appendChild(jobBox);
+
+          const bBtn = document.createElement('button'); bBtn.textContent = '전체 대화에서 로어 추출';
           bBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:none;font-weight:bold;width:100%;margin-top:6px;';
           const bStatus = document.createElement('div'); bStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;line-height:1.5;';
-          bBtn.onclick = async () => {
-            if (!confirm('전체 대화를 여러 구간으로 나누어 정리합니다. 오래 걸릴 수 있습니다. 계속할까요?')) return;
+          const runBatch = async (button, runOpts) => {
             settings.save();
-            bBtn.disabled = true; const orig = bBtn.textContent; bBtn.textContent = '실행 중...';
+            button.disabled = true; bBtn.disabled = true; const orig = button.textContent; button.textContent = '실행 중...';
             bStatus.textContent = '전체 대화 가져오는 중'; bStatus.style.color = '#4a9';
             const start = Date.now();
             try {
               const report = await _w.__LoreInj.runBatchExtract({
-                turnsPerBatch: settings.config.batchExtTurnsPerBatch || 50,
-                overlap: settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5,
-                maxAttempts: settings.config.batchExtMaxAttempts || 3,
+                turnsPerBatch: runOpts.turnsPerBatch || settings.config.batchExtTurnsPerBatch || 50,
+                overlap: runOpts.overlap !== undefined ? runOpts.overlap : (settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5),
+                maxAttempts: runOpts.maxAttempts || settings.config.batchExtMaxAttempts || 3,
+                onlyBatchIndexes: runOpts.onlyBatchIndexes,
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);
-                  if (ev.phase === 'batch') bStatus.textContent = '묶음 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                  if (ev.phase === 'batch') bStatus.textContent = '구간 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
+                  else if (ev.phase === 'embedding') bStatus.textContent = '저장한 로어 검색 준비 중 (' + sec + '초)';
                 }
               });
               const sec = Math.floor((Date.now() - start) / 1000);
-              let msg = '완료 (' + sec + '초) - ' + report.totalBatches + '개 묶음 / 성공 ' + report.ok + ' / 빈 결과 ' + report.empty + ' / 실패 ' + report.failed + ' / 저장 ' + report.entriesAdded + '건';
-              if (report.failed > 0) { msg += ' / 실패 상세는 로그 탭'; bStatus.style.color = '#da8'; }
+              let msg = '완료 (' + sec + '초) · 이번 실행 ' + report.attemptedBatches + '개 구간 / 내용 있음 ' + report.ok + ' / 변경 없음 ' + report.empty + ' / 저장 ' + report.entriesAdded + '건';
+              if (report.failed > 0) { msg += ' / 다시 시도 ' + report.failedBatchIndexes.join(', '); bStatus.style.color = '#da8'; }
               else { bStatus.style.color = '#4a9'; }
+              if (report.embedError) msg += ' / 검색 준비 실패: ' + report.embedError.slice(0, 60);
               bStatus.textContent = msg;
             } catch(e) {
               bStatus.textContent = '실패 — ' + (e.message || String(e)).slice(0, 80);
               bStatus.style.color = '#d66';
             } finally {
-              bBtn.textContent = orig; bBtn.disabled = false;
+              button.textContent = orig; button.disabled = false; bBtn.disabled = false;
             }
           };
+          bBtn.onclick = async () => {
+            if (!confirm('전체 대화를 여러 구간으로 나누어 추출합니다. 오래 걸릴 수 있습니다. 계속할까요?')) return;
+            await runBatch(bBtn, {});
+          };
+          if (retryJob) {
+            const retryBtn = document.createElement('button'); retryBtn.textContent = '실패 구간만 다시 시도'; retryBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#642;color:#f2d2a0;border:1px solid #864;font-weight:bold;width:100%;margin-top:6px;';
+            retryBtn.onclick = async () => {
+              if (!confirm('실패한 ' + retryJob.failedBatchIndexes.length + '개 구간만 다시 추출할까요?')) return;
+              await runBatch(retryBtn, retryJob);
+            };
+            nd.appendChild(retryBtn);
+          }
           nd.appendChild(bBtn);
           nd.appendChild(bStatus);
         }});
@@ -370,7 +441,7 @@
           };
           nd.appendChild(tBtn); nd.appendChild(rDiv2);
         }});
-      }, '대화 정리/변환');
+      }, '로어 추출/변환');
     });
   });
   

@@ -284,14 +284,15 @@ Entry: `runBatchExtract(opts)`.
    - Build prompt.
    - Call model.
    - Parse and repair.
-   - Stage results in memory.
-   - Retry failed batch locally.
-   - Optionally stage timeline extraction per batch.
-4. Commit all staged results only after every required batch succeeds.
-5. Restore the complete pack state if collection or commit fails.
-6. Aggregate costs and results.
-7. Auto-embed final pack if enabled.
-8. Return report.
+   - Retry the selected batch locally.
+   - Optionally require timeline extraction for that batch.
+   - Stage the batch only when every required call for that batch succeeds.
+   - Record a failed batch index and continue when attempts are exhausted.
+4. Snapshot the target pack and commit all successful batch stages.
+5. Restore the complete pack state only if the commit fails.
+6. Auto-embed the committed pack if enabled.
+7. Persist unresolved batch indexes under the stable chat key.
+8. Return a full or partial-success report. A later run may select only unresolved indexes.
 
 ## 8. Merge Flow
 

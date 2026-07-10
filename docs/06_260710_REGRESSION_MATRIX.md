@@ -11,13 +11,17 @@ Every required row must pass before `260706-hotfix` is pushed. A static check is
 | Prompt migration | Custom template differs from known defaults | Custom prompt and schema remain byte-for-byte unchanged | VM/settings test |
 | Extraction | General call succeeds; required temporal call fails | No lore, snapshot, embedding, or activation change is committed | Transaction marker test plus mocked runtime test |
 | Extraction | All required calls succeed | General and temporal results commit, then embedding runs | Mocked runtime test |
-| Batch extraction | Any batch remains failed after recovery | Entire pack restores to its pre-run state | Existing rollback contract and static marker test |
+| Batch extraction | One segment remains failed after retries | Fully successful segments commit; failed segment index persists | Runtime contract and static marker test |
+| Batch extraction | User retries persisted failures | Only unresolved segment indexes are called; newly successful indexes disappear | Runtime contract and UI source test |
+| Batch extraction | Commit of successful segments fails | Entire pack restores to its pre-run state | Transaction marker test |
 | JSON recovery | Provider returns invalid/truncated JSON | At most one explicit repair request is made; failure remains a failed operation | Source invariant test |
 | Generation dedupe | Two concurrent identical calls | One provider task runs; both callers receive the same result | Pure helper/runtime test |
 | Generation distinction | Same prompt with different provider/model/options | Requests are not coalesced | Pure helper test |
 | Native fetch | Request exceeds timeout | Abort occurs and error is classified as retryable timeout | Mocked fetch test |
 | OpenAI compatibility | JSON, token, and reasoning features are rejected | No more than six unique capability variants are attempted | Pure helper test |
 | OpenAI compatibility | A variant succeeds | Winning variant is tried first on the next call | Runtime helper test |
+| OpenAI transport | Responses selected | `/responses` request and `output` text parsing succeed | Mocked transport test |
+| OpenAI transport | Anthropic Messages selected | `/v1/messages`, required headers/body, and `content[].text` parsing succeed | Mocked transport test |
 | DeepSeek | JSON extraction | Object envelope and `response_format` remain enabled | Source invariant test |
 | Gemini | Thinking settings | Level and budget are never sent together | Existing builder regression test |
 | Reinjection | Recent messages fill roughly 10K estimated tokens | Effective remembered-turn count adapts to message length | Pure helper test |
@@ -39,7 +43,7 @@ Every required row must pass before `260706-hotfix` is pushed. A static check is
 1. Open an existing Crack story chat with the currently installed baseline.
 2. Confirm the `Lore` entry control is visible and opens the modal.
 3. Record the current top-level and nested menu labels.
-4. Open Home, Lore, Extraction, Backup, API, Prompt, Response Review, Logs, Session, and Help screens.
+4. Open Home, Lore, Lore Extraction/Conversion, Backup, API, Prompt, Response Correction, Logs, Session, and Help screens.
 5. Verify no control overlaps at desktop width.
 6. Repeat menu navigation at an iPhone-sized viewport.
 7. After the user installs the rebuilt script, send several harmless RP turns and verify injection, cleanup queue completion, extraction, and response review against real messages.

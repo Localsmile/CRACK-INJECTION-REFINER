@@ -24,9 +24,11 @@ Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
 Assert-True ($bundle.Contains('nativeContextTokenBudget')) 'adaptive native-context setting missing'
 Assert-True ($bundle.Contains('deriveAiMemoryTurns')) 'adaptive reinjection helper missing'
 Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI compatibility helper missing'
+Assert-True ($bundle.Contains('anthropic_messages') -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'
+Assert-True ($bundle.Contains('lore-batch-extraction-jobs-v1')) 'resumable batch state missing'
 Assert-True ($bundle.Contains('lore-inj-modal')) 'scoped Lore modal styling missing'
 Assert-True (!$bundle.Contains('flatMenuAdapter')) 'legacy flat menu adapter remains'
-Assert-True ($bundle.Contains('로어 관리') -and $bundle.Contains('응답 검토') -and $bundle.Contains('연결') -and $bundle.Contains('활동')) 'task-oriented menu groups missing'
+Assert-True ($bundle.Contains('로어 관리') -and $bundle.Contains('로어 추출/변환') -and $bundle.Contains('응답 교정') -and $bundle.Contains('연결') -and $bundle.Contains('활동')) 'task-oriented menu groups missing'
 
 $projectRequireMatches = [regex]::Matches($bundle, '(?m)^// @require\s+https://raw\.githubusercontent\.com/Localsmile/CRACK-INJECTION-REFINER/')
 Assert-True ($projectRequireMatches.Count -eq 0) 'project-owned @require lines remain'
@@ -63,6 +65,7 @@ $storageKeys = @(
   'lore-turn-counters',
   'lore-last-mention',
   'lore-recent-injections:',
+  'lore-batch-extraction-jobs-v1',
   'urlPacks',
   'urlCooldownMaps'
 )

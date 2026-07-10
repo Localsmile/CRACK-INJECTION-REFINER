@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260706.12';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260710-core-optional-v1';
+  const VER = '1.4.0.260706.13';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260710-selectable-scope-v2';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-context-lore';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -34,6 +34,7 @@ EXTRACTION PRIORITIES (in order of importance):
 3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and their current lifecycle.
 4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
 5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks that may matter later.
+6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
@@ -96,7 +97,7 @@ Conversation Log:
 
   const DEFAULT_AUTO_EXTRACT_SCHEMA = `[
   {
-    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting",
+    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|key_quote",
     "name": "Entity Name",
     "triggers": ["keyword1", "CharName&&keyword2"],
     "summary": {
@@ -182,7 +183,7 @@ Conversation Log:
   {
     "op": "add",
     "entry": {
-      "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|rel|prom|timeline_event",
+      "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|rel|prom|timeline_event|key_quote",
       "name": "Entity Name",
       "triggers": ["keyword1", "CharA&&CharB"],
       "summary": { "full": "self-contained continuity", "compact": "state + hook", "micro": "name=status" },
@@ -350,6 +351,7 @@ EXTRACTION PRIORITIES (in order of importance):
 3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and lifecycle changes.
 4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
 5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks not already stored.
+6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.

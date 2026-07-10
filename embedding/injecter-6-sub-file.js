@@ -1,5 +1,5 @@
-// injecter / sub-file - 로어팩 파일
-// 역할: JSON 가져오기/내보내기, 팩 활성화/비활성화, 임베딩 생성, 삭제
+// injecter / sub-file - 로어팩 관리와 백업 화면용 로어팩 가져오기 도구
+// 역할: 팩 활성화/이름 변경/내보내기/임베딩/삭제, JSON 가져오기 공용 함수
 // 의존: injecter-3 (settings, db, C, setPackEnabled)
 (async function(){
   'use strict';
@@ -51,6 +51,126 @@
 
   function safeFileName(s) {
     return String(s || 'backup').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
+  }
+
+  function normalizePackImportPayload(raw) {
+    const entries = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.entries) ? raw.entries : [raw]);
+    return entries.filter(entry => entry && typeof entry === 'object' && entry.name);
+  }
+
+  async function importLorePack(raw, requestedName) {
+    const entries = normalizePackImportPayload(raw);
+    if (!entries.length) throw new Error('가져올 로어 항목이 없음');
+    const packName = String(requestedName || '가져온 로어').trim() || '가져온 로어';
+    let added = 0, updated = 0;
+    const tables = [db.packs, db.entries];
+    if (db.embeddings) tables.push(db.embeddings);
+    await db.transaction('rw', ...tables, async () => {
+      for (const rawEntry of entries) {
+        let entry = clonePlain(rawEntry);
+        if (C.normalizeLoreEntry) entry = C.normalizeLoreEntry(entry, { source: 'imported' });
+        if (!Array.isArray(entry.triggers) || !entry.triggers.length) entry.triggers = [entry.name];
+        entry.packName = packName;
+        entry.project = settings.config.activeProject || '';
+        entry.enabled = true;
+        entry.src = entry.src || 'im';
+        entry.source = entry.source || 'imported';
+        entry.ts = entry.ts || Date.now();
+        entry.lastUpdated = Date.now();
+        const existing = await db.entries.where('packName').equals(packName).and(item => item.name === entry.name).first();
+        if (existing) {
+          entry.id = existing.id;
+          await db.entries.put(entry);
+          if (db.embeddings) await db.embeddings.where('entryId').equals(existing.id).delete();
+          updated++;
+        } else {
+          delete entry.id;
+          await db.entries.add(entry);
+          added++;
+        }
+      }
+      const entryCount = await db.entries.where('packName').equals(packName).count();
+      const existingPack = await db.packs.get(packName);
+      await db.packs.put({ ...(existingPack || {}), name: packName, entryCount, project: existingPack && existingPack.project || settings.config.activeProject || '' });
+    });
+    await setPackEnabled(packName, true);
+    return { packName, total: entries.length, added, updated };
+  }
+
+  function renderLorePackImportSection(parent, onDone) {
+    const title = document.createElement('div'); title.textContent = '로어팩 가져오기'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:5px;'; parent.appendChild(title);
+    const desc = document.createElement('div'); desc.textContent = '로어 JSON 파일이나 직접 입력한 JSON을 하나의 로어팩으로 가져오고 현재 채팅에서 바로 켬.'; desc.style.cssText = 'font-size:11px;color:#888;line-height:1.45;margin-bottom:8px;'; parent.appendChild(desc);
+    const nameInput = document.createElement('input'); nameInput.placeholder = '저장할 로어팩 이름'; nameInput.style.cssText = 'width:100%;padding:7px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:7px;'; parent.appendChild(nameInput);
+    const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json,application/json'; fileInput.style.display = 'none';
+    const fileButton = document.createElement('button'); fileButton.textContent = '로어 JSON 파일 선택'; fileButton.style.cssText = 'padding:7px 12px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;'; fileButton.onclick = () => fileInput.click();
+    fileInput.onchange = async () => {
+      const file = fileInput.files && fileInput.files[0]; if (!file) return;
+      fileButton.disabled = true; const original = fileButton.textContent; fileButton.textContent = '가져오는 중...';
+      try {
+        const report = await importLorePack(JSON.parse(await file.text()), nameInput.value.trim() || file.name.replace(/\.json$/i, ''));
+        alert('로어팩 가져오기 완료: ' + report.total + '개 처리 / 새로 추가 ' + report.added + '개 / 갱신 ' + report.updated + '개');
+        if (typeof onDone === 'function') onDone(report);
+      } catch (error) { alert('로어팩 가져오기 실패: ' + (error.message || String(error))); }
+      fileInput.value = ''; fileButton.textContent = original; fileButton.disabled = false;
+    };
+    parent.appendChild(fileInput); parent.appendChild(fileButton);
+
+    const details = document.createElement('details'); details.style.cssText = 'margin-top:9px;';
+    const summary = document.createElement('summary'); summary.textContent = 'JSON 직접 입력'; summary.style.cssText = 'cursor:pointer;font-size:11px;color:#8bc;'; details.appendChild(summary);
+    const textarea = document.createElement('textarea'); textarea.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":{"full":"설명"}}]'; textarea.style.cssText = 'width:100%;height:110px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:11px;font-family:monospace;resize:vertical;box-sizing:border-box;margin-top:7px;'; details.appendChild(textarea);
+    const manualButton = document.createElement('button'); manualButton.textContent = '입력한 JSON 가져오기'; manualButton.style.cssText = 'margin-top:6px;padding:7px 12px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:1px solid #285;font-weight:bold;';
+    manualButton.onclick = async () => {
+      if (!textarea.value.trim()) { alert('가져올 JSON을 입력해 주세요.'); return; }
+      manualButton.disabled = true; const original = manualButton.textContent; manualButton.textContent = '가져오는 중...';
+      try {
+        const report = await importLorePack(JSON.parse(textarea.value), nameInput.value.trim() || '수동 추가');
+        textarea.value = '';
+        alert('로어팩 가져오기 완료: ' + report.total + '개 처리 / 새로 추가 ' + report.added + '개 / 갱신 ' + report.updated + '개');
+        if (typeof onDone === 'function') onDone(report);
+      } catch (error) { alert('로어팩 가져오기 실패: ' + (error.message || String(error))); }
+      manualButton.textContent = original; manualButton.disabled = false;
+    };
+    details.appendChild(manualButton); parent.appendChild(details);
+  }
+
+  async function renameLorePack(oldName, requestedName) {
+    const newName = String(requestedName || '').trim();
+    if (!oldName || !newName) throw new Error('새 로어팩 이름을 입력해야 함');
+    if (oldName === newName) return { oldName, newName, unchanged: true };
+    if (await db.packs.get(newName)) throw new Error('같은 이름의 로어팩이 이미 있음');
+    const oldPack = await db.packs.get(oldName);
+    if (!oldPack) throw new Error('이름을 바꿀 로어팩을 찾을 수 없음');
+    const renamedSnapshots = [];
+    if (db.snapshots) {
+      const snapshots = await db.snapshots.where('packName').equals(oldName).toArray();
+      for (const snapshot of snapshots) {
+        let data = Array.isArray(snapshot.data) ? snapshot.data : [];
+        if (snapshot.dataGzip && typeof C.unpackJsonFromStorage === 'function') data = await C.unpackJsonFromStorage(snapshot, 'data', 'dataGzip', 'dataEncoding');
+        const renamedData = Array.isArray(data) ? data.map(entry => ({ ...entry, packName: newName })) : [];
+        const packed = typeof C.packJsonForStorage === 'function' ? await C.packJsonForStorage(renamedData) : { value: renamedData, gzip: '', encoding: '' };
+        renamedSnapshots.push({ ...snapshot, packName: newName, data: packed.value, dataGzip: packed.gzip || '', dataEncoding: packed.encoding || '', itemCount: renamedData.length });
+      }
+    }
+    const tables = [db.packs, db.entries];
+    if (db.embeddings) tables.push(db.embeddings);
+    if (db.snapshots) tables.push(db.snapshots);
+    await db.transaction('rw', ...tables, async () => {
+      await db.packs.put({ ...oldPack, name: newName });
+      await db.entries.where('packName').equals(oldName).modify({ packName: newName });
+      if (db.embeddings) await db.embeddings.where('packName').equals(oldName).modify({ packName: newName });
+      if (db.snapshots) for (const snapshot of renamedSnapshots) await db.snapshots.put(snapshot);
+      await db.packs.delete(oldName);
+    });
+    const replaceList = (list) => Array.from(new Set((Array.isArray(list) ? list : []).map(name => name === oldName ? newName : name)));
+    settings.config.autoPacks = replaceList(settings.config.autoPacks);
+    if (settings.config.autoExtPack === oldName) settings.config.autoExtPack = newName;
+    for (const key of Object.keys(settings.config.urlPacks || {})) settings.config.urlPacks[key] = replaceList(settings.config.urlPacks[key]);
+    for (const key of Object.keys(settings.config.urlAutoExtPacks || {})) if (settings.config.urlAutoExtPacks[key] === oldName) settings.config.urlAutoExtPacks[key] = newName;
+    const activeMap = typeof _w.__LoreInj.readActivePackMap === 'function' ? _w.__LoreInj.readActivePackMap() : {};
+    for (const key of Object.keys(activeMap)) activeMap[key] = replaceList(activeMap[key]);
+    if (typeof _w.__LoreInj.saveActivePackMap === 'function') _w.__LoreInj.saveActivePackMap(activeMap);
+    settings.save();
+    return { oldName, newName };
   }
 
   async function exportFullBackup(opts = {}) {
@@ -475,6 +595,9 @@
       analyzeBackupConflicts,
       importFullBackup,
       showBackupImportDialog,
+      importLorePack,
+      renderLorePackImportSection,
+      renameLorePack,
       downloadJson,
       safeFileName
     }
@@ -483,62 +606,8 @@
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
 
   _w.__LoreInj.registerSubMenu('file', function(modal) {
-    modal.createSubMenu('로어팩 파일', (m) => {
+    modal.createSubMenu('로어팩 관리', (m) => {
       const renderPackUI = async (panel) => {
-        panel.addBoxedField('', '', { onInit: (nd) => {
-          C.setFullWidth(nd);
-          const title = document.createElement('div'); title.textContent = '로어 가져오기'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
-          const nameInput = document.createElement('input'); nameInput.placeholder = '로어 이름'; nameInput.style.cssText = 'flex:1;padding:6px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;'; row.appendChild(nameInput);
-          const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
-          const importBtn = document.createElement('button'); importBtn.textContent = 'JSON 파일 가져오기'; importBtn.style.cssText = 'padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;white-space:nowrap;'; importBtn.onclick = () => fileInput.click();
-          fileInput.onchange = async (ev) => {
-            const file = ev.target.files[0]; if (!file) return;
-            const packName = nameInput.value.trim() || file.name.replace('.json', '');
-            try {
-              const text = await file.text(); const data = JSON.parse(text); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let count = 0;
-              for (let e of arr) {
-                if (!e || !e.name) continue;
-                if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
-                if (!e.triggers) e.triggers = [e.name];
-                e.packName = packName; e.project = settings.config.activeProject || ''; e.enabled = true;
-                e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
-                const existing = await db.entries.where('packName').equals(packName).and(x => x.name === e.name).first();
-                if (existing) { await db.entries.update(existing.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(existing.id); } catch(_){} }
-                else { await db.entries.add(e); count++; }
-              }
-              const totalCount = await db.entries.where('packName').equals(packName).count(); let pack = await db.packs.get(packName); if (pack) await db.packs.update(packName, { entryCount: totalCount }); else await db.packs.put({ name: packName, entryCount: totalCount, project: settings.config.activeProject || '' });
-              await setPackEnabled(packName, true); alert(arr.length + '개 항목 처리 완료 (신규 ' + count + '개)'); m.replaceContentPanel(renderPackUI, '파일 관리');
-            } catch (err) { alert('가져오기 실패: ' + err.message); } fileInput.value = '';
-          };
-          row.appendChild(fileInput); row.appendChild(importBtn); nd.appendChild(row);
-
-          const manualLbl = document.createElement('div'); manualLbl.textContent = '또는 직접 JSON 입력'; manualLbl.style.cssText = 'font-size:12px;color:#888;margin:12px 0 4px;'; nd.appendChild(manualLbl);
-          const manualTa = document.createElement('textarea'); manualTa.placeholder = '[{"name":"이름","triggers":["키워드"],"type":"character","summary":"설명","detail":{}}]'; manualTa.style.cssText = 'width:100%;height:100px;background:#0a0a0a;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box;'; nd.appendChild(manualTa);
-          const manualBtnRow = document.createElement('div'); manualBtnRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
-          const manualBtn = document.createElement('button'); manualBtn.textContent = '수동 추가'; manualBtn.style.cssText = 'padding:6px 14px;font-size:12px;border-radius:4px;cursor:pointer;background:#285;color:#fff;border:1px solid #285;font-weight:bold;';
-          manualBtn.onclick = async () => {
-            const pn = nameInput.value.trim() || '수동추가';
-            try {
-              const txt = manualTa.value.trim(); if (!txt) { alert('JSON을 입력할 것.'); return; }
-              const data = JSON.parse(txt); const arr = Array.isArray(data) ? data : (Array.isArray(data.entries) ? data.entries : [data]); let cnt = 0;
-              for (let e of arr) {
-                if (!e || !e.name) continue;
-                if (C.normalizeLoreEntry) e = C.normalizeLoreEntry(e, { source: 'imported' });
-                if (!e.triggers) e.triggers = [e.name];
-                e.packName = pn; e.project = settings.config.activeProject || ''; e.enabled = true;
-                e.src = e.src || 'im'; e.source = e.source || 'imported'; e.ts = e.ts || Date.now(); e.lastUpdated = Date.now();
-                const ex = await db.entries.where('packName').equals(pn).and(x => x.name === e.name).first();
-                if (ex) { await db.entries.update(ex.id, e); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch(_){} }
-                else { await db.entries.add(e); cnt++; }
-              }
-              const tc = await db.entries.where('packName').equals(pn).count(); let pk = await db.packs.get(pn); if (pk) await db.packs.update(pn, { entryCount: tc }); else await db.packs.put({ name: pn, entryCount: tc, project: settings.config.activeProject || '' });
-              await setPackEnabled(pn, true); alert(arr.length + '개 처리 (신규 ' + cnt + '개)'); manualTa.value = ''; m.replaceContentPanel(renderPackUI, '파일 관리');
-            } catch (err) { alert('JSON 파싱 실패: ' + err.message); }
-          };
-          manualBtnRow.appendChild(manualBtn); nd.appendChild(manualBtnRow);
-        }});
-
         panel.addBoxedField('', '', { onInit: async (nd) => {
           C.setFullWidth(nd);
           const rawPacks = await db.packs.toArray();
@@ -568,8 +637,18 @@
             leftSide.appendChild(swWrap);
             const nameEl = document.createElement('span'); nameEl.textContent = pack.name + ' (' + (pack.entryCount || 0) + '개)'; nameEl.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;'; leftSide.appendChild(nameEl);
             header.appendChild(leftSide);
-            const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;';
+            const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
             const B = 'font-size:11px;padding:3px 8px;border-radius:3px;background:transparent;border:1px solid #555;color:#ccc;cursor:pointer;';
+            const renameBtn = document.createElement('button'); renameBtn.textContent = '이름 변경'; renameBtn.style.cssText = B + 'color:#8bc;border-color:#346;';
+            renameBtn.onclick = async () => {
+              const nextName = prompt('새 로어팩 이름', pack.name);
+              if (nextName == null || !nextName.trim() || nextName.trim() === pack.name) return;
+              renameBtn.disabled = true;
+              try {
+                await renameLorePack(pack.name, nextName);
+                m.replaceContentPanel(renderPackUI, '로어팩 관리');
+              } catch (error) { alert('이름 변경 실패: ' + (error.message || String(error))); renameBtn.disabled = false; }
+            };
             const exportBtn = document.createElement('button'); exportBtn.textContent = '내보내기'; exportBtn.style.cssText = B;
             exportBtn.onclick = async () => { const entries = await db.entries.where('packName').equals(pack.name).toArray(); if (!entries.length) { alert('항목 없음.'); return; } const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest); const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = pack.name + '.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
             const embBtn = document.createElement('button'); embBtn.textContent = '검색 준비'; embBtn.style.cssText = B + 'color:#4a9;border-color:#264;'; embBtn.onclick = async () => { const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : ''; if (miss) { alert(miss || 'API 설정 필요.'); return; } if (!confirm('[' + pack.name + '] 의미 검색 준비를 시작할까요?')) return; embBtn.disabled = true; const orig = embBtn.textContent; try { const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' }) : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' }; const cnt = await C.embedPack(pack.name, apiOpts, (done, total) => { embBtn.textContent = done + '/' + total; }); embBtn.textContent = '완료 ' + cnt; setTimeout(() => { embBtn.textContent = orig; embBtn.disabled = false; }, 2000); } catch (e) { embBtn.textContent = 'X'; embBtn.disabled = false; alert('검색 준비 실패: ' + e.message); } };
@@ -577,11 +656,11 @@
             cleanBtn.onclick = async () => { cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('검색 준비 정리 완료: ' + (rpt.removed || 0) + '개 삭제'); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
             const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
             delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제? 이 팩의 로어, 검색 준비, 되돌리기 기록도 함께 삭제됩니다.')) return; await deletePackData(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
-            actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
+            actions.appendChild(renameBtn); actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
           }
         }});
       };
-        m.replaceContentPanel(renderPackUI, '로어팩 파일');
+        m.replaceContentPanel(renderPackUI, '로어팩 관리');
     });
   });
 

@@ -435,6 +435,9 @@ Entries:
       } else if (usageMeta && (usageMeta.prompt_tokens != null || usageMeta.completion_tokens != null)) {
         inTok = Number(usageMeta.prompt_tokens) || 0;
         outTok = Number(usageMeta.completion_tokens) || 0;
+      } else if (usageMeta && (usageMeta.input_tokens != null || usageMeta.output_tokens != null)) {
+        inTok = Number(usageMeta.input_tokens) || 0;
+        outTok = Number(usageMeta.output_tokens) || 0;
       } else {
         inTok = Math.ceil(String(promptText || '').length / 4);
         outTok = Math.ceil(String(outText || '').length / 4);
@@ -508,6 +511,7 @@ Entries:
       deepSeekThinking: opts.deepSeekThinking !== false,
       deepSeekReasoning: opts.deepSeekReasoning || '',
       openAIReasoning: opts.openAIReasoning || '',
+      openAIFormat: opts.openAIFormat || 'chat_completions',
       feature: opts.costContext && opts.costContext.feature || '',
       chatKey: opts.costContext && opts.costContext.chatKey || ''
     };
@@ -580,12 +584,25 @@ Entries:
     return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
   }
 
-  function normalizeOpenAICompatUrl(baseUrl) {
+  function normalizeOpenAICompatFormat(format) {
+    const raw = String(format || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (raw === 'responses' || raw === 'response') return 'responses';
+    if (raw === 'anthropic_messages' || raw === 'anthropic' || raw === 'messages') return 'anthropic_messages';
+    return 'chat_completions';
+  }
+
+  function normalizeOpenAICompatUrl(baseUrl, format) {
     let base = String(baseUrl || '').trim();
     if (!base) return '';
     base = base.replace(/\/+$/, '');
-    if (/\/chat\/completions$/i.test(base)) return base;
-    return base + '/chat/completions';
+    const normalized = normalizeOpenAICompatFormat(format);
+    const suffix = normalized === 'responses' ? '/responses' : (normalized === 'anthropic_messages' ? '/messages' : '/chat/completions');
+    if (new RegExp(suffix.replace(/\//g, '\\/') + '$', 'i').test(base)) return base;
+    try {
+      const parsed = new URL(base);
+      if ((!parsed.pathname || parsed.pathname === '/') && /(^|\.)api\.(openai|anthropic)\.com$/i.test(parsed.hostname)) base += '/v1';
+    } catch (_) {}
+    return base + suffix;
   }
 
   function openAICompatReasoningVariants(openAIBaseUrl, reasoning) {
@@ -636,6 +653,81 @@ Entries:
     return variants;
   }
 
+  function openAICompatResponseText(json, format) {
+    const normalized = normalizeOpenAICompatFormat(format);
+    if (normalized === 'responses') {
+      if (json && typeof json.output_text === 'string' && json.output_text) return json.output_text;
+      const parts = [];
+      for (const item of (json && Array.isArray(json.output) ? json.output : [])) {
+        if (!item || !Array.isArray(item.content)) continue;
+        for (const part of item.content) {
+          if (!part) continue;
+          if (typeof part === 'string') parts.push(part);
+          else if (part.type === 'output_text' || part.type === 'text') parts.push(part.text || '');
+        }
+      }
+      return parts.join('');
+    }
+    if (normalized === 'anthropic_messages') {
+      return (json && Array.isArray(json.content) ? json.content : [])
+        .map(part => typeof part === 'string' ? part : (part && part.type === 'text' ? (part.text || '') : ''))
+        .join('');
+    }
+    const choice = json && json.choices && json.choices[0];
+    const msg = choice && choice.message;
+    let text = msg && msg.content != null ? msg.content : null;
+    if (Array.isArray(text)) text = text.map(p => typeof p === 'string' ? p : (p && (p.text || p.content) || '')).join('');
+    return text == null ? '' : String(text);
+  }
+
+  function openAICompatFinishReason(json, format) {
+    const normalized = normalizeOpenAICompatFormat(format);
+    if (normalized === 'responses') return json && (json.status || (json.incomplete_details && json.incomplete_details.reason));
+    if (normalized === 'anthropic_messages') return json && json.stop_reason;
+    return json && json.choices && json.choices[0] && json.choices[0].finish_reason;
+  }
+
+  function openAICompatHeaders(url, key, format) {
+    const headers = { 'Content-Type': 'application/json' };
+    let officialAnthropic = false;
+    try { officialAnthropic = /(^|\.)anthropic\.com$/i.test((new URL(url)).hostname); } catch (_) {}
+    if (normalizeOpenAICompatFormat(format) === 'anthropic_messages' && officialAnthropic) {
+      headers['x-api-key'] = key;
+    } else {
+      headers.Authorization = 'Bearer ' + key;
+    }
+    if (normalizeOpenAICompatFormat(format) === 'anthropic_messages') headers['anthropic-version'] = '2023-06-01';
+    return headers;
+  }
+
+  function buildOpenAIFormatVariants(format, prompt, opts = {}) {
+    const normalized = normalizeOpenAICompatFormat(format);
+    const jsonMode = !!opts.jsonMode;
+    const systemJson = 'Return only valid JSON. Do not output markdown fences, explanations, comments, or trailing text.';
+    const reasoning = String(opts.reasoning || '').trim();
+    if (normalized === 'responses') {
+      const base = { model: opts.model, input: String(prompt || ''), store: false };
+      if (jsonMode) base.instructions = systemJson;
+      if (opts.maxOutputTokens != null) base.max_output_tokens = opts.maxOutputTokens;
+      if (reasoning && !['off', 'default', 'none'].includes(reasoning)) base.reasoning = { effort: reasoning };
+      const variants = [];
+      if (jsonMode) variants.push({ ...base, text: { format: { type: 'json_object' } } });
+      variants.push(base);
+      if (base.reasoning) { const noReasoning = { ...base }; delete noReasoning.reasoning; variants.push(noReasoning); }
+      return variants;
+    }
+    if (normalized === 'anthropic_messages') {
+      const base = {
+        model: opts.model,
+        max_tokens: Math.max(1, Number(opts.maxOutputTokens) || 4096),
+        messages: [{ role: 'user', content: String(prompt || '') }]
+      };
+      if (jsonMode) base.system = systemJson;
+      return [base];
+    }
+    return null;
+  }
+
   function promiseWithTimeout(promise, timeoutMs, label = '요청') {
     const ms = Math.max(0, Number(timeoutMs) || 0);
     if (!ms) return Promise.resolve(promise);
@@ -650,14 +742,15 @@ Entries:
     const {
       key = '', openAIBaseUrl = '', model = '', maxRetries = 1, responseMimeType,
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null,
-      openAIReasoning = ''
+      openAIReasoning = '', openAIFormat = 'chat_completions'
     } = opts;
-    const url = normalizeOpenAICompatUrl(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl);
+    const format = normalizeOpenAICompatFormat(openAIFormat || opts.format);
+    const url = normalizeOpenAICompatUrl(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl, format);
     if (!url) return { text: null, status: 0, error: 'OpenAI 호환 Base URL 누락', retries: 0 };
     if (!key) return { text: null, status: 0, error: 'OpenAI 호환 API 키 누락', retries: 0 };
     if (!model) return { text: null, status: 0, error: 'OpenAI 호환 모델명 누락', retries: 0 };
 
-    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key };
+    const headers = openAICompatHeaders(url, key, format);
     const jsonMode = !!(responseMimeType && String(responseMimeType).includes('json'));
     const messages = [];
     if (jsonMode) messages.push({ role: 'system', content: 'Return only valid JSON. Do not output markdown fences, explanations, comments, or trailing text.' });
@@ -671,11 +764,15 @@ Entries:
       return JSON.stringify(bodyObj);
     };
     const reasoningStyles = openAICompatReasoningVariants(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl, reasoning);
-    const bodyVariants = buildOpenAICompatVariants(jsonMode, maxOutputTokens, reasoningStyles);
-    const variantCacheKey = openAICompatVariantKey(url, model, jsonMode, maxOutputTokens != null, reasoning);
+    const specializedBodies = buildOpenAIFormatVariants(format, prompt, { jsonMode, model, maxOutputTokens, reasoning });
+    const bodyVariants = specializedBodies || buildOpenAICompatVariants(jsonMode, maxOutputTokens, reasoningStyles);
+    const variantCacheKey = format + '|' + openAICompatVariantKey(url, model, jsonMode, maxOutputTokens != null, reasoning);
+    const bodyVariantId = (variant) => specializedBodies
+      ? [variant.text && variant.text.format ? 'json' : 'plain', variant.reasoning ? 'reasoning' : 'no_reasoning'].join('|')
+      : variantId(variant);
     const cachedVariantId = _openAICompatVariantCache.get(variantCacheKey);
     const orderedVariants = cachedVariantId
-      ? bodyVariants.filter(v => variantId(v) === cachedVariantId).concat(bodyVariants.filter(v => variantId(v) !== cachedVariantId))
+      ? bodyVariants.filter(v => bodyVariantId(v) === cachedVariantId).concat(bodyVariants.filter(v => bodyVariantId(v) !== cachedVariantId))
       : bodyVariants;
 
     let lastStatus = 0, lastError = null;
@@ -684,30 +781,25 @@ Entries:
       for (const variant of orderedVariants) {
         try {
           if (signal && signal.aborted) { lastError = 'aborted'; break; }
-          const r = await gmFetch(url, { method: 'POST', headers, body: makeBody(variant.withJsonMode, variant.tokenField, variant.reasoningStyle), signal, timeout: timeoutMs });
+          const requestBody = specializedBodies ? JSON.stringify(variant) : makeBody(variant.withJsonMode, variant.tokenField, variant.reasoningStyle);
+          const r = await gmFetch(url, { method: 'POST', headers, body: requestBody, signal, timeout: timeoutMs });
           lastStatus = r.status;
           if (!r.ok) {
             const errBody = r.text ? await r.text().catch(() => '') : '';
             lastError = `HTTP ${r.status} ${errBody.slice(0, 500).replace(/\n/g, ' ')}`;
-            if (r.status === 400 && (variant.withJsonMode || variant.tokenField === 'max_tokens' || variant.reasoningStyle !== 'none')) continue;
+            if (r.status === 400 && ((specializedBodies && orderedVariants.indexOf(variant) < orderedVariants.length - 1) || variant.withJsonMode || variant.tokenField === 'max_tokens' || variant.reasoningStyle !== 'none')) continue;
             if ([400, 401, 403, 404].includes(r.status)) break;
             if (retryableGenerationStatus(r.status) && attempt < effectiveMaxRetries) break;
           } else {
             const json = await r.json();
-            const choice = json.choices && json.choices[0];
-            const msg = choice && choice.message;
-            let text = msg && msg.content != null ? msg.content : null;
-            if (Array.isArray(text)) {
-              text = text.map(p => typeof p === 'string' ? p : (p && (p.text || p.content) || '')).join('');
-            }
-            text = text != null ? String(text) : null;
-            const finishReason = choice && choice.finish_reason;
+            const text = openAICompatResponseText(json, format) || null;
+            const finishReason = openAICompatFinishReason(json, format);
             const usage = json.usage || null;
             const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
             const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
             const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
             if (text) {
-              _openAICompatVariantCache.set(variantCacheKey, variantId(variant));
+              _openAICompatVariantCache.set(variantCacheKey, bodyVariantId(variant));
               return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
             }
             lastError = finishReason === 'length'
@@ -746,6 +838,7 @@ Entries:
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
       openAIBaseUrl = '', openAIKey = '', openAIReasoning = '',
+      openAIFormat = 'chat_completions',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 
@@ -759,7 +852,7 @@ Entries:
     if (apiType === 'openai') {
       return await callOpenAICompatApi(prompt, {
         key: openAIKey || key, openAIBaseUrl, model, maxRetries, responseMimeType, costContext, signal,
-        timeoutMs, maxOutputTokens, openAIReasoning
+        timeoutMs, maxOutputTokens, openAIReasoning, openAIFormat
       });
     }
 
@@ -1139,7 +1232,8 @@ Entries:
     getDB, gmFetch, parseServiceAccountJson, getVertexAccessToken,
     callGeminiApi, callDeepSeekApi, embedText, embedTexts, warmupFirebase,
     normalizeVector, cosineSim, simpleHash, packJsonForStorage, unpackJsonFromStorage,
-    nativeFetchWithTimeout, generationRequestFingerprint, buildOpenAICompatVariants, promiseWithTimeout,
+    nativeFetchWithTimeout, generationRequestFingerprint, normalizeOpenAICompatFormat, normalizeOpenAICompatUrl,
+    buildOpenAICompatVariants, buildOpenAIFormatVariants, openAICompatResponseText, promiseWithTimeout,
     estimateTextTokens, estimateMessageTokens, deriveAiMemoryTurns,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true

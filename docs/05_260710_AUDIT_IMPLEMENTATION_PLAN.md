@@ -1,5 +1,7 @@
 # 260710 Reliability and UX Audit
 
+> Checkpoint note: this document describes commit `e8ff120`. The later resumable batch extraction, provider-format, and UI contracts are defined in `07_260710_RESUMABLE_EXTRACTION_AND_UI_CONTRACT.md`.
+
 ## Purpose
 
 This document is the implementation contract for the 260710 maintenance pass. It is written for future maintainers and coding agents. The baseline is commit `78c686f` on `260706-hotfix`; the immutable pre-change backup is the remote branch `260710-pre-audit-backup`.

@@ -185,7 +185,7 @@ Generation providers:
 - Firebase Vertex AI script.
 - Vertex service account JSON.
 - DeepSeek.
-- OpenAI-compatible chat/completions server.
+- OpenAI-compatible Chat Completions, Responses, or Anthropic Messages server.
 
 Embedding provider:
 
@@ -216,4 +216,3 @@ Do not lose these during refactor:
 - Search embeddings must be invalidated when source content changes.
 - Cleanup queue must survive localStorage quota failures by using Dexie `cleanupQueue`.
 - Refiner processed fingerprints are stored per chat under `speech-refiner-processed:<chatId>`.
-

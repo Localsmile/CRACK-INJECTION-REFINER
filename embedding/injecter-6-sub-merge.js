@@ -46,22 +46,23 @@
     }
     return out;
   }
-  function mergeSummaries(a, b, maxChars) {
+  function mergeSummaries(a, b) {
     const av = a && typeof a === 'object' && !Array.isArray(a) ? a : { full: summaryValue(a) };
     const bv = b && typeof b === 'object' && !Array.isArray(b) ? b : { full: summaryValue(b) };
-    const join = (x, y, max) => {
+    const join = (x, y) => {
       x = String(x || '').trim(); y = String(y || '').trim();
-      if (!x) return y.slice(0, max);
-      if (!y || x.includes(y)) return x.slice(0, max);
-      return (x + ' / ' + y).slice(0, max);
+      if (!x) return y;
+      if (!y || x.includes(y)) return x;
+      if (y.includes(x)) return y;
+      return x + ' / ' + y;
     };
     return {
-      full: join(av.full || av.compact || av.micro, bv.full || bv.compact || bv.micro, maxChars || 1200),
-      compact: join(av.compact || av.micro, bv.compact || bv.micro, 180),
+      full: join(av.full || av.compact || av.micro, bv.full || bv.compact || bv.micro),
+      compact: join(av.compact || av.micro, bv.compact || bv.micro),
       micro: bv.micro || av.micro || ''
     };
   }
-  function mergeDraftWithOriginals(draft, entries, maxChars) {
+  function mergeDraftWithOriginals(draft, entries) {
     const sorted = [...entries].sort((a,b) => (a.lastUpdated || a.ts || 0) - (b.lastUpdated || b.ts || 0));
     const anchored = sorted.find(e => e.anchor);
     const base = JSON.parse(JSON.stringify(anchored || sorted[0] || {}));
@@ -75,17 +76,45 @@
       base.timeline = mergeObj(base.timeline, e.timeline);
       base.eventHistory = uniq([...(base.eventHistory || []), ...(e.eventHistory || [])]);
       base.callHistory = uniq([...(base.callHistory || []), ...(e.callHistory || [])]);
-      base.summary = mergeSummaries(base.summary, e.summary, maxChars);
-      base.inject = mergeSummaries(base.inject, e.inject || e.summary, Math.min(maxChars || 1200, 700));
+      base.summary = mergeSummaries(base.summary, e.summary);
+      base.inject = mergeSummaries(base.inject, e.inject || e.summary);
     }
     const merged = mergeObj(base, draft || {});
     merged.triggers = uniq([...(base.triggers || []), ...((draft && draft.triggers) || [])]).slice(0, 12);
     merged.entities = uniq([...(base.entities || []), ...((draft && draft.entities) || [])]);
     merged.eventHistory = uniq([...(base.eventHistory || []), ...((draft && draft.eventHistory) || [])]);
     merged.callHistory = uniq([...(base.callHistory || []), ...((draft && draft.callHistory) || [])]);
-    merged.summary = mergeSummaries(base.summary, draft && draft.summary, maxChars || 1200);
-    merged.inject = mergeSummaries(base.inject, (draft && draft.inject) || (draft && draft.summary), Math.min(maxChars || 1200, 700));
+    merged.summary = mergeSummaries(base.summary, draft && draft.summary);
+    merged.inject = mergeSummaries(base.inject, (draft && draft.inject) || (draft && draft.summary));
     return merged;
+  }
+
+  function identityTerms(entry) {
+    const values = [entry && entry.name, ...((entry && entry.triggers) || []), ...((entry && entry.entities) || []), ...((entry && entry.parties) || [])];
+    return new Set(values.map(value => String(value || '').trim().toLowerCase()).filter(value => value.length >= 2 && !value.includes('&&')));
+  }
+
+  function hasIdentityEvidence(a, b) {
+    const left = identityTerms(a); const right = identityTerms(b);
+    for (const value of left) if (right.has(value)) return true;
+    const aName = String(a && a.name || '').trim().toLowerCase();
+    const bName = String(b && b.name || '').trim().toLowerCase();
+    return !!(aName && bName && (aName.includes(bName) || bName.includes(aName)));
+  }
+
+  async function reembedPacks(packNames, status) {
+    const packs = Array.from(new Set((packNames || []).filter(Boolean)));
+    const missing = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
+    if (missing) return { skipped: true, message: missing };
+    const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
+      : { apiType: 'key', key: settings.config.autoExtGeminiEmbedKey || settings.config.autoExtKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
+    let count = 0;
+    for (const packName of packs) {
+      if (status) status('검색 준비 중: ' + packName);
+      count += await C.embedPack(packName, apiOpts);
+    }
+    return { count };
   }
 
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
@@ -93,12 +122,12 @@
   _w.__LoreInj.registerSubMenu('merge', function(modal) {
     modal.createSubMenu('로어 병합', (m) => {
       const renderMerge = async (panel) => {
-        const state = _w.__loreMergeState || (_w.__loreMergeState = { threshold: 0.88, maxChars: 1200, groups: null });
+        const state = _w.__loreMergeState || (_w.__loreMergeState = { threshold: 0.88, groups: null });
 
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           const t = document.createElement('div'); t.textContent = '중복 로어 병합'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:4px;'; nd.appendChild(t);
-          const d = document.createElement('div'); d.innerHTML = '의미 검색 유사도로 중복 후보를 찾아 그룹별로 확인함. 캐릭터/관계/약속/장소/사건처럼 대분류가 다른 로어는 유사해도 한 항목으로 합치지 않고 같은 대분류 안에서만 후보로 묶음.<br><span style="color:#da8;">현재 페이지에서 켠 팩의 로어만 대상으로 함. 다른 페이지나 꺼진 팩의 로어는 건드리지 않음.</span>'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
+          const d = document.createElement('div'); d.innerHTML = '의미 유사도와 이름·트리거·참여자 단서를 함께 보고 중복 후보를 찾음. 대분류가 다른 로어는 묶지 않으며, 이름 단서가 없는 경우에는 더 높은 의미 유사도를 요구함.<br><span style="color:#da8;">현재 페이지에서 켠 팩의 로어만 대상으로 함. 병합하거나 되돌린 뒤 검색 준비는 자동 갱신함.</span>'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
 
           const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
           const mk = (label, getter, setter, min, max, step) => {
@@ -110,7 +139,6 @@
             f.appendChild(l); f.appendChild(i); return f;
           };
           row.appendChild(mk('유사도 임계값', () => state.threshold, v => state.threshold = v, 0.7, 0.99, 0.01));
-          row.appendChild(mk('최대 글자수 (summary)', () => state.maxChars, v => state.maxChars = v, 200, 3000, 50));
           nd.appendChild(row);
 
           const runBtn = document.createElement('button'); runBtn.textContent = '병합 후보 찾기';
@@ -134,7 +162,7 @@
                 embMap[eb.entryId] = eb.vector;
               }
               const withEmb = entries.filter(e => embMap[e.id]);
-              if (withEmb.length < 2) { runStatus.textContent = '검색 준비된 로어가 2개 미만입니다. 파일 탭에서 검색 준비를 먼저 실행하세요.'; runStatus.style.color = '#d66'; return; }
+              if (withEmb.length < 2) { runStatus.textContent = '검색 준비된 로어가 2개 미만입니다. 로어팩 관리에서 검색 준비를 먼저 실행하세요.'; runStatus.style.color = '#d66'; return; }
               const cos = (a, b) => { let d = 0, na = 0, nb = 0; const L = Math.min(a.length, b.length); for (let i = 0; i < L; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return d / ((Math.sqrt(na) * Math.sqrt(nb)) || 1); };
               // v1.4.0-test.40 B12 fix: union-find path compression을 재귀 → 반복문으로 전환.
               //   대규모 로어 DB(수천 건)에서 긴 체인 형성 시 스택 오버플로우 위험 제거.
@@ -152,7 +180,12 @@
                 for (let j = i + 1; j < withEmb.length; j++) {
                   if (!typeCompatible(withEmb[i], withEmb[j])) continue;
                   const s = cos(embMap[withEmb[i].id], embMap[withEmb[j].id]);
-                  if (s >= state.threshold) { pairs.push({ a: withEmb[i].id, b: withEmb[j].id, sim: s }); uni(withEmb[i].id, withEmb[j].id); }
+                  const identityMatch = hasIdentityEvidence(withEmb[i], withEmb[j]);
+                  const semanticOnlyThreshold = Math.min(0.99, state.threshold + 0.05);
+                  if (s >= state.threshold && (identityMatch || s >= semanticOnlyThreshold)) {
+                    pairs.push({ a: withEmb[i].id, b: withEmb[j].id, sim: s, identityMatch });
+                    uni(withEmb[i].id, withEmb[j].id);
+                  }
                 }
               }
               const groupMap = {}; withEmb.forEach(e => { const r = find(e.id); (groupMap[r] = groupMap[r] || []).push(e); });
@@ -191,8 +224,15 @@
                 for (const snap of undo.originals) { await db.entries.put(snap); }
                 const packs = new Set(undo.originals.map(e => e.packName));
                 for (const pk of packs) { const cnt = await db.entries.where('packName').equals(pk).count(); await db.packs.update(pk, { entryCount: cnt }); }
+                let embedMessage = '';
+                try {
+                  const embedResult = await reembedPacks(Array.from(packs));
+                  embedMessage = embedResult.skipped ? ' 검색 준비 생략: ' + embedResult.message : ' 검색 준비 ' + embedResult.count + '개 갱신.';
+                } catch (embedError) {
+                  embedMessage = ' 검색 준비 갱신 실패: ' + (embedError.message || String(embedError));
+                }
                 C.__lastMergeUndo = null;
-                alert('복원 완료.');
+                alert('복원 완료.' + embedMessage);
                 m.replaceContentPanel(renderMerge, '로어 병합');
               } catch(e) { alert('실패: ' + e.message); }
             };
@@ -243,13 +283,13 @@
 
             const mkKeepLongest = (entries) => {
               const sorted = [...entries].sort((a, b) => summaryValue(b.summary).length - summaryValue(a.summary).length);
-              return mergeDraftWithOriginals(sorted[0] || {}, entries, state.maxChars);
+              return mergeDraftWithOriginals(sorted[0] || {}, entries);
             };
 
             const mkLlmMerge = async (entries) => {
               const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest);
               const prompt = '다음은 중복으로 판단된 로어 엔트리들이다. 하나의 로어 JSON으로 병합하라.\n' +
-                '원칙:\n1. 핵심 정보는 누락하지 않는다. 각 입력 엔트리를 체크리스트처럼 대조해 이름/관계/상태/약속/사건/원인/미해결 훅을 모두 보존한다\n2. 불필요한 반복·수식어만 제거한다. 서로 다른 사실을 요약 편의상 삭제하지 않는다\n3. summary는 {full, compact, micro} 객체로 병합한다. full은 ' + state.maxChars + '자 이내 self-contained, compact는 관계/상태/훅 보존, micro는 안정 회상 핸들+현재 상태\n4. eventHistory/callHistory/callState/timeline/entities/detail은 합집합으로 통합한다. 충돌하는 상태는 최신 timeline/lastUpdated를 우선하되 과거 상태는 eventHistory에 남긴다\n5. embed_text에는 이름/별칭/관계어/사건 원인/이해관계/장소/미해결 훅을 포함한다\n6. triggers는 필수 키워드만 유지하되 양쪽 인물명과 고유명사는 보존한다 (최대 12개)\n7. type은 가장 구체적인 것 유지. 타입이 다르면 summary.full에 각 타입의 역할을 설명한다\n8. 출력은 순수 JSON 객체 하나만. 입력에 없던 설정을 창작하지 않는다.\n\n' +
+                '원칙:\n1. 핵심 정보는 누락하지 않는다. 각 입력 엔트리를 체크리스트처럼 대조해 이름/관계/상태/약속/사건/원인/미해결 훅을 모두 보존한다\n2. 불필요한 반복·수식어만 제거한다. 서로 다른 사실을 요약 편의상 삭제하지 않는다\n3. summary는 {full, compact, micro} 객체로 병합한다. full은 자체로 이해되는 기록, compact는 관계/상태/훅 보존, micro는 안정 회상 핸들+현재 상태로 작성한다. 임의의 글자수에 맞추려고 사실을 삭제하지 않는다\n4. eventHistory/callHistory/callState/timeline/entities/detail은 합집합으로 통합한다. 충돌하는 상태는 최신 timeline/lastUpdated를 우선하되 과거 상태는 eventHistory에 남긴다\n5. embed_text에는 이름/별칭/관계어/사건 원인/이해관계/장소/미해결 훅을 포함한다\n6. triggers는 필수 키워드만 유지하되 양쪽 인물명과 고유명사는 보존한다 (최대 12개)\n7. type은 가장 구체적인 것 유지. 타입이 다르면 summary.full에 각 타입의 역할을 설명한다\n8. 출력은 순수 JSON 객체 하나만. 입력에 없던 설정을 창작하지 않는다.\n\n' +
                 '입력:\n' + JSON.stringify(clean, null, 2);
               const res = await C.callGeminiApi(prompt, _w.__LoreInj.buildGenerationApiOpts
                 ? _w.__LoreInj.buildGenerationApiOpts({ model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel, maxRetries: 2 }, { feature: 'merge', chatKey: 'global' })
@@ -264,7 +304,7 @@
               let txt = res.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
               const m1 = txt.match(/\{[\s\S]*\}/); if (m1) txt = m1[0];
               const parsed = JSON.parse(txt);
-              return mergeDraftWithOriginals(parsed, entries, state.maxChars);
+              return mergeDraftWithOriginals(parsed, entries);
             };
 
             const buildPreview = async () => {
@@ -273,9 +313,7 @@
                 if (modeSel.value === 'keep-longest') mergedDraft = mkKeepLongest(grp.entries);
                 else mergedDraft = await mkLlmMerge(grp.entries);
                 const sumLen = summaryValue(mergedDraft.summary).length;
-                const over = sumLen > state.maxChars;
-                const color = over ? '#d66' : '#4a9';
-                preview.innerHTML = '<div style="color:' + color + ';font-weight:bold;margin-bottom:6px;">병합 미리보기 (summary ' + sumLen + '자' + (over ? ' — 상한(' + state.maxChars + ') 초과' : '') + ')</div><pre style="white-space:pre-wrap;margin:0;font-size:11px;color:#ccc;">' + JSON.stringify(mergedDraft, null, 2).replace(/</g, '&lt;') + '</pre>';
+                preview.innerHTML = '<div style="color:#4a9;font-weight:bold;margin-bottom:6px;">병합 미리보기 (summary ' + sumLen + '자)</div><pre style="white-space:pre-wrap;margin:0;font-size:11px;color:#ccc;">' + JSON.stringify(mergedDraft, null, 2).replace(/</g, '&lt;') + '</pre>';
               } catch(e) { preview.textContent = 'X ' + e.message; mergedDraft = null; }
             };
 
@@ -283,8 +321,6 @@
 
             execBtn.onclick = async () => {
               if (!mergedDraft) { await buildPreview(); if (!mergedDraft) return; }
-              const sumLen = summaryValue(mergedDraft.summary).length;
-              if (sumLen > state.maxChars) { if (!confirm('summary가 상한(' + state.maxChars + '자)을 ' + (sumLen - state.maxChars) + '자 초과. 그래도 적용?')) return; }
               if (types.length > 1) { if (!confirm('타입 불일치 (' + types.join(', ') + '). 계속?')) return; }
               if (!confirm(grp.entries.length + '개 엔트리를 하나로 병합할 것?')) return;
               try {
@@ -303,13 +339,8 @@
                 state.groups = state.groups.filter((_, i) => i !== gi);
                 let embedMsg = '';
                 try {
-                  const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
-                    ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: 'global' })
-                    : { apiType: settings.config.autoExtApiType === 'deepseek' ? 'key' : (settings.config.autoExtApiType || 'key'), key: settings.config.autoExtApiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey, vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey, model: settings.config.embeddingModel || 'gemini-embedding-001' };
-                  const miss = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
-                  const hasApi = !miss;
-                  if (hasApi) { await C.ensureEmbedding(finalEntry, apiOpts); embedMsg = '검색 준비 갱신 완료.'; }
-                  else { embedMsg = 'API 미설정 - 파일 탭에서 검색 준비를 수동 실행하세요.'; }
+                  const embedResult = await reembedPacks(Array.from(packs), (message) => { execBtn.textContent = message; });
+                  embedMsg = embedResult.skipped ? '검색 준비 생략: ' + embedResult.message : '검색 준비 ' + embedResult.count + '개 갱신 완료.';
                 } catch(embErr) { embedMsg = '검색 준비 갱신 실패: ' + (embErr.message || embErr); }
                 alert('병합 완료. ' + embedMsg);
                 m.replaceContentPanel(renderMerge, '로어 병합');

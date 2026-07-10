@@ -31,10 +31,10 @@
   };
   const MENU_GROUPS = [
     { id: 'home', name: '홈', keys: ['main'], direct: true },
-    { id: 'lore', name: '로어 관리', keys: ['lore', 'file', 'merge', 'snapshot'], labels: ['목록', '가져오기/내보내기', '중복 정리', '복원 지점'] },
-    { id: 'extract', name: '대화 정리', keys: ['extract'], direct: true },
+    { id: 'lore', name: '로어 관리', keys: ['lore', 'file', 'merge', 'snapshot'], labels: ['목록', '로어팩 관리', '중복 정리', '복원 지점'] },
+    { id: 'extract', name: '로어 추출/변환', keys: ['extract'], direct: true },
     { id: 'backup', name: '백업', keys: ['backup'], direct: true },
-    { id: 'refiner', name: '응답 검토', keys: ['refiner'], direct: true },
+    { id: 'refiner', name: '응답 교정', keys: ['refiner'], direct: true },
     { id: 'connection', name: '연결', keys: ['api'], labels: ['연결 및 모델', '지시문'] },
     { id: 'activity', name: '활동', keys: ['log', 'session'], labels: ['실행 기록', '현재 대화 상태'] },
     { id: 'help', name: '도움말', keys: ['help'], direct: true }

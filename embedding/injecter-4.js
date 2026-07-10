@@ -51,8 +51,54 @@
     const baseSchema = (tpl && tpl.schema) || DEFAULT_AUTO_EXTRACT_SCHEMA;
     return `${baseSchema}
 
+Optional important-line entry when the selected scope includes it:
+{
+  "type": "key_quote",
+  "name": "Stable short recall handle",
+  "speaker": "Exact speaker name",
+  "quote": "Exact or minimally normalized source line",
+  "context": "who, where, and what prompted the line",
+  "meaning": "why the line may be recalled or quoted later",
+  "recallTriggers": ["speaker", "distinctive literal phrase"],
+  "linkedLore": ["related character, relationship, promise, or event"],
+  "triggers": ["literal high-specificity cue"],
+  "summary": {"full":"line + context + later significance", "compact":"line + significance", "micro":"speaker: recall handle"},
+  "imp": 7, "sur": 5, "emo": 7
+}
+
 Patch-mode alternative when OUTPUT MODE asks for SAVE ONLY CHANGES:
 ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
+  }
+
+  const DEFAULT_EXTRACT_TOPICS = {
+    identityState: true,
+    relationships: true,
+    obligations: true,
+    worldContinuity: true,
+    majorScenes: true,
+    importantLines: true
+  };
+
+  function normalizeExtractTopics(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    for (const key of Object.keys(DEFAULT_EXTRACT_TOPICS)) out[key] = source[key] !== false;
+    return out;
+  }
+
+  function buildExtractionScope(topics) {
+    const t = normalizeExtractTopics(topics);
+    const rows = [
+      ['identityState', 'IDENTITY AND CURRENT STATE: identities, aliases, roles, goals, knowledge, secrets, injuries, conditions, and current situation.'],
+      ['relationships', 'RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, and meaningful changes.'],
+      ['obligations', 'OBLIGATIONS: promises, contracts, debts, duties, conditions, and lifecycle changes.'],
+      ['worldContinuity', 'WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and setting rules.'],
+      ['majorScenes', 'MAJOR SCENES: reveals, decisions, conflicts, milestones, victories, losses, consequences, and unresolved hooks.'],
+      ['importantLines', 'IMPORTANT LINES: type="key_quote" only for a distinctive source line likely to be deliberately recalled, mirrored, or quoted later because it carries a reveal, decision, promise, threat, confession, boundary, or recurring motif. Do not force a quote and do not paraphrase ordinary dialogue into one.']
+    ];
+    const enabled = rows.filter(([key]) => t[key]).map(([, text]) => '- ' + text);
+    const disabled = rows.filter(([key]) => !t[key]).map(([, text]) => '- Do not extract ' + text.split(':')[0].toLowerCase() + ' in this run.');
+    return `\n\nEXTRACTION SCOPE FOR THIS RUN:\n${enabled.length ? enabled.join('\n') : '- No general category selected. Return the required empty JSON shape.'}${disabled.length ? '\n' + disabled.join('\n') : ''}`;
   }
 
   const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
@@ -1201,12 +1247,17 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         : apiType === 'firebase' ? (!settings.config.autoExtFirebaseScript && 'Firebase 설정 필요.')
         : apiType === 'deepseek' ? (!settings.config.autoExtDeepSeekKey && 'DeepSeek API 키 필요.')
         : (!settings.config.autoExtKey && 'Gemini API 키 필요.'));
-    if (missingReason) { if (isManual) alert(missingReason); return; }
-    const scanR = settings.config.autoExtScanRange || 6; const extraTurns = _extQ.pendingTurns || 0;
-    const effectiveRange = scanR + extraTurns; const fetchCount = (effectiveRange + settings.config.autoExtOffset) * 2;
+    if (missingReason) { if (isManual) throw new Error(missingReason); return; }
+    const scanR = isManual ? (settings.config.manualExtScanRange || settings.config.autoExtScanRange || 6) : (settings.config.autoExtScanRange || 6);
+    const scanOffset = isManual
+      ? (settings.config.manualExtOffset != null ? settings.config.manualExtOffset : (settings.config.autoExtOffset || 0))
+      : (settings.config.autoExtOffset || 0);
+    const topics = normalizeExtractTopics(isManual ? settings.config.manualExtractTopics : settings.config.autoExtractTopics);
+    const extraTurns = _extQ.pendingTurns || 0;
+    const effectiveRange = scanR + extraTurns; const fetchCount = (effectiveRange + scanOffset) * 2;
     let recentMsgs = await C.fetchLogs(fetchCount > 0 ? fetchCount : 20);
-    if (!recentMsgs.length) { if (isManual) alert('대화 기록 없음.'); return; }
-    const offsetCount = settings.config.autoExtOffset * 2;
+    if (!recentMsgs.length) { if (isManual) throw new Error('대화 기록 없음.'); return; }
+    const offsetCount = scanOffset * 2;
     if (offsetCount > 0 && recentMsgs.length > offsetCount) recentMsgs = recentMsgs.slice(0, recentMsgs.length - offsetCount);
     const context = recentMsgs.map(m => m.role + ': ' + m.message).join('\n');
     const _patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
@@ -1227,12 +1278,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
     const extractSchema = buildExtractSchema(tpl);
     const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
-    const shouldRunTemporalExtract = settings.config.temporalExtractEnabled !== false &&
+    const shouldRunTemporalExtract = topics.majorScenes && settings.config.temporalExtractEnabled !== false &&
       (isManual || settings.config.temporalExtractAutoEnabled === true);
     const temporalCoordination = shouldRunTemporalExtract
       ? '\n\nRUNTIME COORDINATION: A dedicated scene-memory pass will run after this response. Do not output type="timeline_event" in this general pass.'
       : '';
-    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + temporalCoordination;
+    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + buildExtractionScope(topics) + temporalCoordination;
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let apiLog = null, _extElapsedMs = 0, _extCost = null;
@@ -1330,321 +1381,289 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       }
     } catch (err) {
       addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: recentMsgs.length, isManual, status: '실패', error: err.message, api: apiLog, model: _extModel, elapsedMs: _extElapsedMs, cost: _extCost });
-      if (isManual) alert('추출 실패: ' + err.message);
+      if (isManual) throw err;
+      console.warn('[Lore:auto-extract] 실패:', err);
     }
   }
 
-  async function runBatchExtract(opts = {}) {
-    const turnsPerBatch = opts.turnsPerBatch || 50;
-    const overlap = opts.overlap !== undefined ? opts.overlap : 5;
-    const apiType = settings.config.autoExtApiType || 'key';
-    const isDeepSeek = apiType === 'deepseek';
-    const requestedAttempts = opts.maxAttempts || 3;
-    const maxAttempts = Math.max(3, requestedAttempts);
-    const batchTimeoutMs = isDeepSeek ? 150000 : 90000;
-    const batchInnerRetries = 0;
-    const maxRecoveryRounds = Math.max(2, Number(opts.maxRecoveryRounds != null ? opts.maxRecoveryRounds : 4));
-    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
-    const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const missingReason = typeof _w.__LoreInj.getApiMissingReason === 'function'
-      ? _w.__LoreInj.getApiMissingReason(settings.config, 'generate')
-      : (apiType === 'deepseek' ? (!settings.config.autoExtDeepSeekKey && 'DeepSeek API 키 필요.') : '');
-    if (missingReason) throw new Error(missingReason);
+  const BATCH_RETRY_STORAGE_KEY = 'lore-batch-extraction-jobs-v1';
 
-    extBadgeShow('에리가 전체 로그 가져오는 중');
-    const allMsgs = await C.fetchLogs(99999);
-    if (!allMsgs || !allMsgs.length) { extBadgeHide(); throw new Error('대화 기록 없음'); }
-    const totalMsgs = allMsgs.length;
-    const batchMsgSize = Math.max(2, turnsPerBatch * 2);
-    const overlapMsgs = Math.max(0, overlap * 2);
+  function readBatchRetryJobs() {
+    try {
+      const parsed = JSON.parse(_ls.getItem(BATCH_RETRY_STORAGE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) { return {}; }
+  }
+
+  function getBatchRetryJob(chatKey = getChatKey()) {
+    const job = readBatchRetryJobs()[chatKey || 'global'];
+    if (!job || !Array.isArray(job.failedBatchIndexes) || !job.failedBatchIndexes.length) return null;
+    return JSON.parse(JSON.stringify(job));
+  }
+
+  function saveBatchRetryJob(chatKey, job) {
+    const key = chatKey || 'global';
+    const jobs = readBatchRetryJobs();
+    if (!job || !Array.isArray(job.failedBatchIndexes) || !job.failedBatchIndexes.length) delete jobs[key];
+    else jobs[key] = { ...job, version: 1, chatKey: key, updatedAt: Date.now() };
+    try { _ls.setItem(BATCH_RETRY_STORAGE_KEY, JSON.stringify(jobs)); }
+    catch (e) { console.warn('[Lore:batch] 재시도 상태 저장 실패:', e); }
+    return jobs[key] || null;
+  }
+
+  function clearBatchRetryJob(chatKey = getChatKey()) {
+    return saveBatchRetryJob(chatKey, null);
+  }
+
+  function splitConversationBatches(allMsgs, turnsPerBatch, overlap) {
+    const batchMsgSize = Math.max(2, Number(turnsPerBatch || 50) * 2);
+    const overlapMsgs = Math.max(0, Number(overlap || 0) * 2);
     const step = Math.max(1, batchMsgSize - overlapMsgs);
     const batches = [];
-    for (let i = 0; i < totalMsgs; i += step) {
+    for (let i = 0; i < allMsgs.length; i += step) {
       const slice = allMsgs.slice(i, i + batchMsgSize);
       if (slice.length < 2) break;
       batches.push(slice);
-      if (i + batchMsgSize >= totalMsgs) break;
+      if (i + batchMsgSize >= allMsgs.length) break;
     }
+    return batches;
+  }
 
-    const report = { totalBatches: batches.length, totalMsgs, ok: 0, failed: 0, empty: 0, entriesAdded: 0, batchResults: [] };
+  function addBatchCost(total, cost) {
+    if (!cost) return;
+    if (cost.usd != null) { total.usd += Number(cost.usd) || 0; total.known = true; }
+    else total.hasUnknown = true;
+    if (cost.estimated) total.estimated = true;
+  }
 
+  async function runBatchExtractResumable(opts = {}) {
+    try {
+    const turnsPerBatch = Math.max(1, Number(opts.turnsPerBatch || 50));
+    const overlap = Math.max(0, Number(opts.overlap !== undefined ? opts.overlap : 5));
+    const maxAttempts = Math.max(1, Number(opts.maxAttempts || 3));
+    const onlyBatchIndexes = Array.isArray(opts.onlyBatchIndexes)
+      ? Array.from(new Set(opts.onlyBatchIndexes.map(Number).filter(Number.isInteger)))
+      : null;
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const apiType = settings.config.autoExtApiType || 'key';
+    const isDeepSeek = apiType === 'deepseek';
+    const timeoutMs = isDeepSeek ? 150000 : 90000;
+    const chatKey = getChatKey() || 'global';
+    const url = C.getCurUrl();
+    const topics = normalizeExtractTopics(opts.topics || settings.config.manualExtractTopics);
+    const missingReason = typeof _w.__LoreInj.getApiMissingReason === 'function'
+      ? _w.__LoreInj.getApiMissingReason(settings.config, 'generate')
+      : '';
+    if (missingReason) throw new Error(missingReason);
+
+    extBadgeShow('에리가 전체 대화 가져오는 중');
+    const allMsgs = await C.fetchLogs(99999);
+    if (!allMsgs || !allMsgs.length) { extBadgeHide(); throw new Error('대화 기록 없음'); }
+    const batches = splitConversationBatches(allMsgs, turnsPerBatch, overlap);
+    const selected = onlyBatchIndexes
+      ? new Set(onlyBatchIndexes.filter(index => index >= 1 && index <= batches.length))
+      : new Set(batches.map((_, index) => index + 1));
+    if (!selected.size) { extBadgeHide(); throw new Error('다시 시도할 대화 구간이 없음'); }
+
+    const priorJob = getBatchRetryJob(chatKey);
+    const unresolved = new Set(onlyBatchIndexes && priorJob ? priorJob.failedBatchIndexes : []);
+    const report = {
+      totalBatches: batches.length,
+      attemptedBatches: selected.size,
+      totalMsgs: allMsgs.length,
+      ok: 0,
+      failed: 0,
+      empty: 0,
+      entriesAdded: 0,
+      failedBatchIndexes: [],
+      batchResults: []
+    };
+    const batchCost = { usd: 0, known: false, hasUnknown: false, estimated: false };
+    const startedAt = Date.now();
+    const model = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
+    const template = settings.getActiveTemplate();
+    const promptTemplate = getLoreExtractPrompt(template, settings.config.autoExtIncludeDb, apiType);
+    const extractSchema = buildExtractSchema(template);
+    const patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
+    const runTemporal = topics.majorScenes && settings.config.temporalExtractEnabled !== false && settings.config.temporalExtractBatchEnabled === true;
     let personaPrefix = '';
     if (settings.config.autoExtIncludePersona) {
       try {
-        const pName = await C.fetchPersonaName();
-        if (pName) personaPrefix = '[User Persona: "' + pName + '"] All "user" role messages are from this character. Use "' + pName + '" as the character name, NOT "user".\n\n';
-      } catch(e) {}
+        const personaName = await C.fetchPersonaName();
+        if (personaName) personaPrefix = '[User Persona: "' + personaName + '"] All "user" role messages are from this character. Use "' + personaName + '" as the character name, NOT "user".\n\n';
+      } catch (_) {}
     }
-    const tpl = settings.getActiveTemplate();
-    const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
 
-    const _batchModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
-    let _batchTotalElapsedMs = 0, _batchTotalUsd = 0;
-    let _batchHasUnknown = false, _batchHasEstimated = false, _batchCostKnown = false;
-    const rollbackPackName = await getAutoExtPackForUrl(_url);
-    const rollbackState = await snapshotPackState(rollbackPackName);
-    let batchComplete = false;
-    const stagedExtractItems = [];
-    const stagedTemporalPatches = [];
-    const stagedTemporalEvents = [];
-
-    try {
-    for (let bi = 0; bi < batches.length; bi++) {
-      const msgs = batches[bi];
-      extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 분석 중');
-      if (onProgress) { try { onProgress({ phase: 'batch', index: bi + 1, total: batches.length }); } catch(_){} }
-
-      const context = msgs.map(m => m.role + ': ' + m.message).join('\n');
-      const _patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
+    const successfulStages = [];
+    for (let batchIndex = 1; batchIndex <= batches.length; batchIndex++) {
+      if (!selected.has(batchIndex)) continue;
+      const messages = batches[batchIndex - 1];
+      extBadgeShow('에리가 대화 구간 ' + batchIndex + '/' + batches.length + ' 분석 중');
+      if (onProgress) { try { onProgress({ phase: 'batch', index: batchIndex, total: batches.length }); } catch (_) {} }
+      const context = messages.map(message => message.role + ': ' + message.message).join('\n');
       let entriesText = '[]';
       if (settings.config.autoExtIncludeDb) {
-        const packName = await getAutoExtPackForUrl(_url);
+        const packName = await getAutoExtPackForUrl(url);
         const existing = await db.entries.where('packName').equals(packName).toArray();
-        if (existing.length > 0) {
-          entriesText = buildExistingLoreContext(existing, context, 20);
-        }
+        if (existing.length) entriesText = buildExistingLoreContext(existing, context, 20);
       }
-      const extractSchema = buildExtractSchema(tpl);
-      const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
-      const batchTemporalPass = settings.config.temporalExtractEnabled !== false && settings.config.temporalExtractBatchEnabled === true;
-      const temporalCoordination = batchTemporalPass
+      const outputMode = settings.config.autoExtIncludeDb
+        ? providerOutputMode(patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract')
+        : '';
+      const temporalCoordination = runTemporal
         ? '\n\nRUNTIME COORDINATION: A dedicated scene-memory pass will run after this response. Do not output type="timeline_event" in this general pass.'
         : '';
-      const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + temporalCoordination;
+      const prompt = personaPrefix + promptTemplate
+        .replace('{context}', context)
+        .replace('{entries}', entriesText)
+        .replace('{schema}', extractSchema)
+        .replace('{outputMode}', outputMode)
+        + buildExtractionScope(topics)
+        + temporalCoordination;
 
-      let ok = false; let status = 'failed'; let lastErr = ''; let rawSnippet = ''; let attempts = 0; let mergedCount = 0;
-      for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
-        attempts++;
+      let generalItems = null;
+      let generalError = '';
+      let generalAttempts = 0;
+      for (let attempt = 1; attempt <= maxAttempts && generalItems === null; attempt++) {
+        generalAttempts = attempt;
+        if (attempt > 1) await new Promise(resolve => setTimeout(resolve, Math.min(8000, 1000 * Math.pow(2, attempt - 2)) + Math.random() * 400));
         try {
-          const apiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-            model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-            costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-          }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
-            apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-            deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-            vertexJson: settings.config.autoExtVertexJson,
-            vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-            firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-            model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-            maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-            costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-          });
-          const _bt0 = Date.now();
+          const feature = onlyBatchIndexes ? 'batchExtractRetry' : 'batchExtract';
+          const apiOpts = _w.__LoreInj.buildGenerationApiOpts({
+            model,
+            maxRetries: 0,
+            responseMimeType: 'application/json',
+            timeoutMs,
+            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (patchOn ? 4096 : null)
+          }, { feature, chatKey });
           const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
-          _batchTotalElapsedMs += Date.now() - _bt0;
-          if (res && res.cost) {
-            if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
-            else _batchHasUnknown = true;
-            if (res.cost.estimated) _batchHasEstimated = true;
-          }
-          if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
-          rawSnippet = String(res.text).slice(0, 200);
-          if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
-          const parsedItems = normalizeExtractItems(parsed);
-          if (parsedItems.length > 0) {
-            stagedExtractItems.push(...parsedItems);
-            mergedCount = parsedItems.length;
-            status = mergedCount > 0 ? 'ok' : 'empty'; ok = true;
-          } else {
-            status = 'empty'; ok = true;
-          }
-        } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
-      }
-      const finalizeBatchResult = async (currentRound = 0) => {
-      if (ok) {
-        if (status === 'empty') report.empty++; else report.ok++;
-        report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount });
-        // Phase 11: per-batch temporal pass so batch extraction also harvests timeline events.
-        if (settings.config.temporalExtractEnabled !== false && settings.config.temporalExtractBatchEnabled === true) {
-          let temporalOk = false;
-          let temporalLastErr = '';
-          let temporalAttempts = 0;
-          const temporalMaxAttempts = maxAttempts * (1 + maxRecoveryRounds);
-          for (let ta = 1; ta <= temporalMaxAttempts && !temporalOk; ta++) {
-            temporalAttempts = ta;
-            try {
-              extBadgeShow('에리가 배치 ' + (bi + 1) + '/' + batches.length + ' 장면 기억 분석 중 (' + ta + '/' + temporalMaxAttempts + ')');
-              const tApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-                maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-                costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-              }, { feature: 'batchExtract', chatKey: chatKey || 'global' }) : {
-                apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-                deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-                vertexJson: settings.config.autoExtVertexJson,
-                vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-                firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-                maxRetries: batchInnerRetries, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-                costContext: { feature: 'batchExtract', chatKey: chatKey || 'global' }
-              });
-              const tres = await collectTemporalExtractItems({ context, apiOpts: tApiOpts, url: _url, chatKey, isManual: true, msgCount: msgs.length, skipEmbedding: true });
-              temporalOk = true;
-              if (tres && tres.count) {
-                if (Array.isArray(tres.patches) && tres.patches.length) stagedTemporalPatches.push(...tres.patches);
-                if (Array.isArray(tres.events) && tres.events.length) stagedTemporalEvents.push(...tres.events);
-                report.batchResults.push({ batch: bi + 1, status: 'temporal_ok', attempts: ta, entries: tres.count });
-              } else {
-                report.batchResults.push({ batch: bi + 1, status: 'temporal_empty', attempts: ta, entries: 0 });
-              }
-            } catch (terr) {
-              temporalLastErr = terr.message || String(terr);
-            }
-            if (!temporalOk && ta < temporalMaxAttempts) {
-              await new Promise(r => setTimeout(r, Math.min(12000, 1500 * ta) + Math.random() * 500));
-            }
-          }
-          if (!temporalOk) {
-            report.failed++;
-            console.warn('[Lore:batch] 시간축 추출 실패 (배치 ' + (bi + 1) + '):', temporalLastErr);
-            report.batchResults.push({ batch: bi + 1, status: 'temporal_failed', attempts: temporalAttempts, error: temporalLastErr });
-            throw new Error('배치 ' + (bi + 1) + '/' + batches.length + ' 장면 기억 추출 실패: ' + temporalLastErr);
-          }
+          addBatchCost(batchCost, res && res.cost);
+          if (!res || !res.text) throw new Error('API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')');
+          if (!parsed) throw new Error('JSON 파싱 실패: ' + String(res.text).slice(0, 160));
+          generalItems = normalizeExtractItems(parsed);
+        } catch (error) {
+          generalError = error && error.message ? error.message : String(error);
         }
-      } else {
+      }
+
+      if (generalItems === null) {
         report.failed++;
-        report.batchResults.push({ batch: bi + 1, status: 'failed', attempts, error: lastErr, rawSnippet });
-        console.warn('[Lore:batch] 배치 ' + (bi + 1) + '/' + batches.length + ' 실패 (' + attempts + '회): ' + lastErr);
-        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: msgs.length, isManual: true, status: '배치 ' + (bi + 1) + '/' + batches.length + ' 실패', error: lastErr, model: _batchModel });
+        report.failedBatchIndexes.push(batchIndex);
+        unresolved.add(batchIndex);
+        report.batchResults.push({ batch: batchIndex, status: 'failed', attempts: generalAttempts, error: generalError });
+        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: messages.length, isManual: true, status: '전체 추출 구간 ' + batchIndex + '/' + batches.length + ' 실패', error: generalError, model });
+        continue;
       }
-      };
-      await finalizeBatchResult(0);
-      if (!ok && maxRecoveryRounds > 0) {
-        // 실패 배치는 사용자가 다시 누르지 않아도 같은 구간만 자동 재시도한다.
-        for (let rr = 1; rr <= maxRecoveryRounds && !ok; rr++) {
-          extBadgeShow('에리가 실패 배치 ' + (bi + 1) + '/' + batches.length + ' 재시도 ' + rr + '/' + maxRecoveryRounds);
-          const waitMs = Math.min(12000, 1500 * rr) + Math.random() * 500;
-          await new Promise(r => setTimeout(r, waitMs));
-          status = 'failed'; lastErr = ''; rawSnippet = ''; attempts = 0; mergedCount = 0;
-          for (let attempt = 0; attempt < maxAttempts && !ok; attempt++) {
-            attempts++;
-            try {
-              const retryApiOpts = (_w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
-                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-                maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-                costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
-              }, { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }) : {
-                apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-                deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-                vertexJson: settings.config.autoExtVertexJson,
-                vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-                firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-                model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
-                maxRetries: 0, responseMimeType: 'application/json', timeoutMs: batchTimeoutMs,
-                maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
-                costContext: { feature: 'batchExtractRetry', chatKey: chatKey || 'global' }
-              });
-              const _rt0 = Date.now();
-              const { res, parsed } = await callGeminiJsonWithRepair(prompt, retryApiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
-              _batchTotalElapsedMs += Date.now() - _rt0;
-              if (res && res.cost) {
-                if (res.cost.usd != null) { _batchTotalUsd += Number(res.cost.usd) || 0; _batchCostKnown = true; }
-                else _batchHasUnknown = true;
-                if (res.cost.estimated) _batchHasEstimated = true;
-              }
-              if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
-              rawSnippet = String(res.text).slice(0, 200);
-              if (!parsed) { lastErr = 'JSON 파싱 실패 | 응답 스니핏: ' + rawSnippet; continue; }
-              const parsedItems = normalizeExtractItems(parsed);
-              if (parsedItems.length > 0) {
-                stagedExtractItems.push(...parsedItems);
-                mergedCount = parsedItems.length;
-                status = mergedCount > 0 ? 'ok_retry' : 'empty_retry'; ok = true;
-              } else {
-                status = 'empty_retry'; ok = true;
-              }
-            } catch (e) { lastErr = '예외: ' + (e.message || String(e)); }
-          }
-          if (ok) {
-            if (report.failed > 0) report.failed--;
-            if (status === 'empty_retry') report.empty++; else report.ok++;
-            report.batchResults.push({ batch: bi + 1, status, attempts, entries: mergedCount, recoveryRound: rr });
-          } else {
-            report.batchResults.push({ batch: bi + 1, status: 'retry_failed', attempts, error: lastErr, rawSnippet, recoveryRound: rr });
+
+      let temporalResult = null;
+      let temporalError = '';
+      let temporalAttempts = 0;
+      if (runTemporal) {
+        for (let attempt = 1; attempt <= maxAttempts && temporalResult === null; attempt++) {
+          temporalAttempts = attempt;
+          if (attempt > 1) await new Promise(resolve => setTimeout(resolve, Math.min(8000, 1000 * Math.pow(2, attempt - 2)) + Math.random() * 400));
+          try {
+            extBadgeShow('에리가 대화 구간 ' + batchIndex + '/' + batches.length + ' 중요 장면 분석 중');
+            const feature = onlyBatchIndexes ? 'batchExtractRetry' : 'batchExtract';
+            const apiOpts = _w.__LoreInj.buildGenerationApiOpts({
+              model,
+              maxRetries: 0,
+              responseMimeType: 'application/json',
+              timeoutMs,
+              maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (patchOn ? 4096 : null)
+            }, { feature, chatKey });
+            temporalResult = await collectTemporalExtractItems({ context, apiOpts, url, chatKey, isManual: true, msgCount: messages.length, skipEmbedding: true });
+            addBatchCost(batchCost, temporalResult && temporalResult.cost);
+          } catch (error) {
+            temporalError = error && error.message ? error.message : String(error);
           }
         }
       }
-      if (!ok) {
-        throw new Error('배치 ' + (bi + 1) + '/' + batches.length + ' 추출 실패: ' + lastErr);
+
+      if (runTemporal && temporalResult === null) {
+        report.failed++;
+        report.failedBatchIndexes.push(batchIndex);
+        unresolved.add(batchIndex);
+        report.batchResults.push({ batch: batchIndex, status: 'temporal_failed', attempts: temporalAttempts, error: temporalError });
+        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: messages.length, isManual: true, status: '전체 추출 구간 ' + batchIndex + '/' + batches.length + ' 중요 장면 실패', error: temporalError, model });
+        continue;
       }
+
+      const temporalCount = temporalResult ? Number(temporalResult.count || 0) : 0;
+      successfulStages.push({ batchIndex, generalItems, temporalResult });
+      unresolved.delete(batchIndex);
+      if (generalItems.length || temporalCount) report.ok++;
+      else report.empty++;
+      report.batchResults.push({ batch: batchIndex, status: generalItems.length || temporalCount ? 'ok' : 'empty', attempts: generalAttempts, entries: generalItems.length + temporalCount });
     }
 
-    let finalEntriesAdded = 0;
-    if (stagedExtractItems.length) {
-      finalEntriesAdded += await mergeExtractedData(stagedExtractItems, _url);
-    }
-    if (stagedTemporalPatches.length || stagedTemporalEvents.length) {
-      const finalPackName = await getAutoExtPackForUrl(_url);
-      for (const patch of stagedTemporalPatches) {
-        finalEntriesAdded += await applyTemporalPatchOp(patch, finalPackName, chatKey);
-      }
-      if (stagedTemporalEvents.length) {
-        finalEntriesAdded += await mergeExtractedData(stagedTemporalEvents, _url);
-      }
-    }
-    report.entriesAdded = finalEntriesAdded;
-
-    addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: report.entriesAdded, msgs: totalMsgs, isManual: true, status: '전체 추출 완료 (성공 ' + report.ok + ' / 빈 ' + report.empty + ' / 실패 ' + report.failed + ' / ' + report.totalBatches + '개 배치, 병합 ' + report.entriesAdded + '건)', model: _batchModel, elapsedMs: _batchTotalElapsedMs, cost: { usd: _batchCostKnown ? _batchTotalUsd : null, estimated: _batchHasEstimated, hasUnknown: _batchHasUnknown, isBatchAggregate: true } });
-
-    if (settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false && report.entriesAdded > 0) {
+    if (successfulStages.length) {
+      const packName = await getAutoExtPackForUrl(url);
+      const rollbackState = await snapshotPackState(packName);
       try {
-        const epName = await getAutoExtPackForUrl(_url);
-        extBadgeShow('에리가 검색 준비 중');
-        const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts
-          ? _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
-          : {
-            apiType: apiType === 'deepseek' ? 'key' : apiType,
-            key: apiType === 'deepseek' ? settings.config.autoExtFirebaseEmbedKey : settings.config.autoExtKey,
-            vertexJson: settings.config.autoExtVertexJson,
-            vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-            firebaseScript: settings.config.autoExtFirebaseScript, firebaseEmbedKey: settings.config.autoExtFirebaseEmbedKey,
-            model: settings.config.embeddingModel || 'gemini-embedding-001'
-          };
-        await C.embedPack(epName, embedOpts);
-        report.embedded = true;
-      } catch(embErr) {
-        console.warn('[Lore:batch] 임베딩 실패:', embErr.message);
-        report.embedError = embErr.message;
+        const generalItems = successfulStages.flatMap(stage => stage.generalItems || []);
+        const temporalPatches = successfulStages.flatMap(stage => stage.temporalResult && stage.temporalResult.patches || []);
+        const temporalEvents = successfulStages.flatMap(stage => stage.temporalResult && stage.temporalResult.events || []);
+        if (generalItems.length) report.entriesAdded += await mergeExtractedData(generalItems, url);
+        for (const temporalPatch of temporalPatches) report.entriesAdded += await applyTemporalPatchOp(temporalPatch, packName, chatKey);
+        if (temporalEvents.length) report.entriesAdded += await mergeExtractedData(temporalEvents, url);
+      } catch (commitError) {
+        try { await restorePackState(rollbackState); }
+        catch (rollbackError) { commitError.message += ' / 롤백 실패: ' + (rollbackError.message || String(rollbackError)); }
+        extBadgeHide();
+        throw commitError;
       }
     }
-    if (report.failed > 0) throw new Error('전체 정리 실패: 실패한 묶음이 있어 저장을 취소함.');
-    extBadgeHide();
-    batchComplete = true;
-    return report;
-    } catch (batchErr) {
-      if (!batchComplete) {
-        try {
-          await restorePackState(rollbackState);
-          report.rolledBack = true;
-        } catch (rollbackErr) {
-          console.error('[Lore:batch] 롤백 실패:', rollbackErr);
-          batchErr.message = (batchErr.message || String(batchErr)) + ' / 롤백 실패: ' + (rollbackErr.message || String(rollbackErr));
-        }
+
+    if (report.entriesAdded > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
+      try {
+        if (onProgress) { try { onProgress({ phase: 'embedding' }); } catch (_) {} }
+        const packName = await getAutoExtPackForUrl(url);
+        extBadgeShow('에리가 검색 준비 중');
+        const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey });
+        await C.embedPack(packName, embedOpts);
+        report.embedded = true;
+      } catch (error) {
+        report.embedError = error && error.message ? error.message : String(error);
       }
+    }
+
+    const remainingFailed = Array.from(unresolved).filter(index => index >= 1 && index <= batches.length).sort((a, b) => a - b);
+    report.failedBatchIndexes = remainingFailed;
+    report.failed = remainingFailed.length;
+    const job = remainingFailed.length ? {
+      url,
+      turnsPerBatch,
+      overlap,
+      maxAttempts,
+      totalBatches: batches.length,
+      totalMsgs: allMsgs.length,
+      failedBatchIndexes: remainingFailed,
+      batchErrors: report.batchResults.filter(result => /failed/.test(result.status)).map(result => ({ batch: result.batch, error: result.error || '' })),
+      lastEntriesAdded: report.entriesAdded
+    } : null;
+    saveBatchRetryJob(chatKey, job);
+    addExtLog(chatKey, {
+      time: new Date().toLocaleTimeString(),
+      count: report.entriesAdded,
+      msgs: allMsgs.length,
+      isManual: true,
+      status: remainingFailed.length
+        ? '전체 추출 일부 완료 (성공 ' + (report.ok + report.empty) + ' / 다시 시도 ' + remainingFailed.length + ')'
+        : '전체 추출 완료 (' + batches.length + '개 구간)',
+      model,
+      elapsedMs: Date.now() - startedAt,
+      cost: { usd: batchCost.known ? batchCost.usd : null, estimated: batchCost.estimated, hasUnknown: batchCost.hasUnknown, isBatchAggregate: true }
+    });
+      return report;
+    } finally {
       extBadgeHide();
-      addExtLog(chatKey, {
-        time: new Date().toLocaleTimeString(),
-        count: 0,
-        msgs: totalMsgs,
-        isManual: true,
-        status: '전체 추출 실패 - 저장 취소',
-        error: batchErr.message || String(batchErr),
-        model: _batchModel,
-        elapsedMs: _batchTotalElapsedMs,
-        cost: { usd: _batchCostKnown ? _batchTotalUsd : null, estimated: _batchHasEstimated, hasUnknown: _batchHasUnknown, isBatchAggregate: true }
-      });
-      throw batchErr;
     }
   }
 
   Object.assign(_w.__LoreInj, {
-    mergeExtractedData, runAutoExtract, runBatchExtract, runTemporalExtractPass,
+    mergeExtractedData, runAutoExtract, runBatchExtract: runBatchExtractResumable, runTemporalExtractPass,
+    getBatchRetryJob, clearBatchRetryJob, buildExtractionScope, normalizeExtractTopics,
     extBadgeShow, extBadgeHide,
     __extractLoaded: true
   });

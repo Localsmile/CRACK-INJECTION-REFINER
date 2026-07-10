@@ -98,6 +98,7 @@
     if (!out.openAIKey && liveCfg.autoExtOpenAIKey) out.openAIKey = liveCfg.autoExtOpenAIKey;
     if (!out.key && out.apiType === 'openai' && liveCfg.autoExtOpenAIKey) out.key = liveCfg.autoExtOpenAIKey;
     if (!out.openAIReasoning && liveCfg.autoExtOpenAIReasoning) out.openAIReasoning = liveCfg.autoExtOpenAIReasoning;
+    if (!out.openAIFormat && liveCfg.autoExtOpenAIFormat) out.openAIFormat = liveCfg.autoExtOpenAIFormat;
     if (out.deepSeekThinking === undefined) out.deepSeekThinking = liveCfg.autoExtDeepSeekThinking !== false;
     if (!out.deepSeekReasoning && liveCfg.autoExtDeepSeekReasoning) out.deepSeekReasoning = liveCfg.autoExtDeepSeekReasoning;
     if (!out.deepSeekJsonSystemPrompt && liveCfg.deepSeekJsonSystemPrompt) out.deepSeekJsonSystemPrompt = liveCfg.deepSeekJsonSystemPrompt;
@@ -180,10 +181,13 @@
     e.inject.micro = e.inject.micro || e.summary.micro;
     if (!e.embed_text) {
       const entities = Array.isArray(e.entities) ? e.entities.join(' ') : '';
+      const importantLineText = String(e.type || '').toLowerCase() === 'key_quote'
+        ? [e.speaker, e.quote, e.context, e.meaning, (e.recallTriggers || []).join(' '), (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
+        : '';
       const temporalText = String(e.type || '').toLowerCase() === (C.TIMELINE_EVENT_TYPE || 'timeline_event')
         ? [e.title, e.location, (e.actions || []).join(' '), (e.hooks || []).join(' '), (e.recallTriggers || []).join(' '), e.when?.anchor, (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
         : '';
-      e.embed_text = clampText([e.name, temporalText, entities, (e.triggers || []).join(' '), e.summary.compact, e.state].filter(Boolean).join(' '), 360);
+      e.embed_text = clampText([e.name, temporalText, importantLineText, entities, (e.triggers || []).join(' '), e.summary.compact, e.state].filter(Boolean).join(' '), 360);
     }
     const callState = normalizeCallState(e, turn);
     if (callState) e.callState = callState;
@@ -196,6 +200,7 @@
       const names = [];
       if (Array.isArray(e.parties)) names.push(...e.parties);
       if (Array.isArray(e.detail?.parties)) names.push(...e.detail.parties);
+      if (e.speaker) names.push(e.speaker);
       if (e.name) names.push(...String(e.name).split(/[↔&]/).map(x => x.trim()).filter(Boolean));
       e.entities = Array.from(new Set(names)).filter(Boolean);
     }

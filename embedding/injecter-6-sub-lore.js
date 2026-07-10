@@ -18,7 +18,7 @@
     modal.createSubMenu('로어 목록', (m) => {
       const renderPanel = async (panel) => {
         const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
-        if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 파일 탭에서 활성화하세요.'); return; }
+        if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 로어팩 관리에서 사용할 팩을 켜 주세요.'); return; }
         const entries = await db.entries.toArray();
         const filtered = entries.filter(e => activePacks.includes(e.packName));
         if (!filtered.length) { panel.addText('활성 항목 없음.'); return; }

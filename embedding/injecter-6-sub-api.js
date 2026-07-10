@@ -150,7 +150,7 @@
         ? [['기본값', 'default'], ['끄기', 'off'], ['High', 'high'], ['Max', 'max']]
         : [['기본값', 'default'], ['끄기(2.5)', 'off'], ['최소', 'minimal'], ['낮음', 'low'], ['보통', 'medium'], ['높음', 'high'], ['예산', 'budget']]);
     const rows = [
-      ['추출/정리', 'autoExt'],
+      ['로어 추출/변환', 'autoExt'],
       ['전체 추출', 'batchExt'],
       ['장면 기억', 'temporalExtract'],
       ['지식 변환', 'import'],
@@ -412,13 +412,13 @@
     panel.addBoxedField('', '', { onInit: (nd) => {
       C.setFullWidth(nd);
       const title = document.createElement('div');
-      title.textContent = '후보 재정렬/응답 검토 지시문';
+      title.textContent = '후보 재정렬/응답 교정 지시문';
       title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;';
       nd.appendChild(title);
       addPromptArea(nd, '후보 재정렬 지시문', settings.config.rerankPrompt || C.DEFAULTS.rerankPrompt, (v) => { settings.config.rerankPrompt = v; settings.save(); }, { height: 110, reset: () => C.DEFAULTS.rerankPrompt });
-      addPromptArea(nd, '응답 검토 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
+      addPromptArea(nd, '응답 교정 지시문', settings.config.refinerCustomPrompt || '', (v) => { settings.config.refinerCustomPrompt = v; settings.config.refinerUseDynamic = false; settings.save(); }, { height: 180 });
       const note = document.createElement('div');
-      note.textContent = '응답 검토 항목은 응답 검토 화면에서도 선택할 수 있습니다.';
+      note.textContent = '응답 교정 항목은 응답 교정 화면에서도 선택할 수 있습니다.';
       note.style.cssText = 'font-size:11px;color:#888;line-height:1.4;';
       nd.appendChild(note);
     }});
@@ -460,6 +460,15 @@
           } else if ((settings.config.autoExtApiType || 'key') === 'openai') {
             addSimpleInput(nd, 'OpenAI 호환 Base URL', settings.config.autoExtOpenAIBaseUrl || '', (v) => { settings.config.autoExtOpenAIBaseUrl = v; settings.save(); }, { placeholder: 'https://.../v1' });
             addSimpleInput(nd, 'OpenAI 호환 API 키', settings.config.autoExtOpenAIKey || '', (v) => { settings.config.autoExtOpenAIKey = v; settings.save(); }, { placeholder: 'sk-...', type: 'password' });
+            const formatLabel = document.createElement('div'); formatLabel.textContent = 'API 형식'; formatLabel.style.cssText = 'font-size:11px;color:#999;margin:10px 0 4px;'; nd.appendChild(formatLabel);
+            const formatSel = document.createElement('select'); formatSel.style.cssText = FIELD_STYLE;
+            [['Chat Completions (/chat/completions)', 'chat_completions'], ['Responses (/responses)', 'responses'], ['Anthropic Messages (/v1/messages)', 'anthropic_messages']].forEach(([label, value]) => {
+              const option = document.createElement('option'); option.value = value; option.textContent = label; formatSel.appendChild(option);
+            });
+            formatSel.value = settings.config.autoExtOpenAIFormat || 'chat_completions';
+            formatSel.onchange = () => { settings.config.autoExtOpenAIFormat = formatSel.value; settings.save(); };
+            nd.appendChild(formatSel);
+            const formatNote = document.createElement('div'); formatNote.textContent = 'Base URL 끝에 선택한 경로가 없으면 자동으로 붙임. Anthropic 공식 주소에서는 x-api-key와 anthropic-version 헤더를 사용함.'; formatNote.style.cssText = 'font-size:10px;color:#777;line-height:1.45;margin-top:4px;'; nd.appendChild(formatNote);
             addGeminiEmbeddingKeyInput(nd, { note: '의미 검색 준비에는 OpenAI 호환 API가 아니라 Gemini API 키를 별도로 사용함.' });
           } else {
             C.createApiInput(settings.config, 'autoExt', nd, () => settings.save(), { hideModeSelector: true });
@@ -483,7 +492,7 @@
             try {
               const fallbackModel = _w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(settings.config) : (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : ((settings.config.autoExtApiType || 'key') === 'openai' ? '' : 'gemini-3-flash-preview'));
               const testModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : (settings.config.autoExtModel || fallbackModel);
-              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, openAIBaseUrl: settings.config.autoExtOpenAIBaseUrl, openAIKey: settings.config.autoExtOpenAIKey, openAIReasoning: settings.config.autoExtOpenAIReasoning || 'off', vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', costContext: { feature: 'apiTest', chatKey: 'global' } });
+              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, openAIBaseUrl: settings.config.autoExtOpenAIBaseUrl, openAIKey: settings.config.autoExtOpenAIKey, openAIReasoning: settings.config.autoExtOpenAIReasoning || 'off', openAIFormat: settings.config.autoExtOpenAIFormat || 'chat_completions', vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', costContext: { feature: 'apiTest', chatKey: 'global' } });
               testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
             } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = '#d66'; }
             testBtn.disabled = false;
@@ -499,12 +508,12 @@
           const isOpenAIApi = (settings.config.autoExtApiType || 'key') === 'openai';
           const deepSeekDefault = 'deepseek-v4-flash';
           if (isOpenAIApi) {
-            addOpenAIModelInput(nd, '추출/정리용 모델', 'autoExtModel', 'autoExtCustomModel');
-            addOpenAIModelInput(nd, '후보 재정렬 모델', 'rerankModel', 'rerankCustomModel', { placeholder: '비워두면 추출/정리용 모델 사용' });
-            addOpenAIModelInput(nd, '과거 장면 판단 모델', 'temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel', { placeholder: '비워두면 추출/정리용 모델 사용' });
-            addOpenAIModelInput(nd, '응답 교정 모델', 'refinerModel', 'refinerCustomModel', { placeholder: '비워두면 추출/정리용 모델 사용' });
+            addOpenAIModelInput(nd, '로어 추출/변환 모델', 'autoExtModel', 'autoExtCustomModel');
+            addOpenAIModelInput(nd, '후보 재정렬 모델', 'rerankModel', 'rerankCustomModel', { placeholder: '비워두면 로어 추출/변환 모델 사용' });
+            addOpenAIModelInput(nd, '과거 장면 판단 모델', 'temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel', { placeholder: '비워두면 로어 추출/변환 모델 사용' });
+            addOpenAIModelInput(nd, '응답 교정 모델', 'refinerModel', 'refinerCustomModel', { placeholder: '비워두면 로어 추출/변환 모델 사용' });
           } else {
-            addSelect(nd, '추출/정리용 모델', settings.config.autoExtModel || (isDeepSeekApi ? deepSeekDefault : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
+            addSelect(nd, '로어 추출/변환 모델', settings.config.autoExtModel || (isDeepSeekApi ? deepSeekDefault : 'gemini-3-flash-preview'), getGenerationModelGroups(), (v) => { settings.config.autoExtModel = v; settings.save(); }, { customKey: 'autoExtCustomModel' });
             addSelect(nd, '후보 재정렬 모델', settings.config.rerankModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.rerankModel = v; settings.save(); }, { customKey: 'rerankCustomModel' });
             addSelect(nd, '과거 장면 판단 모델', settings.config.temporalRecallJudgeModel || (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.temporalRecallJudgeModel = v; settings.save(); }, { customKey: 'temporalRecallJudgeCustomModel' });
             addSelect(nd, '응답 교정 모델', settings.config.refinerModel !== undefined ? settings.config.refinerModel : (isDeepSeekApi ? deepSeekDefault : ''), getLightModelGroups(), (v) => { settings.config.refinerModel = v; settings.save(); }, { customKey: 'refinerCustomModel' });
