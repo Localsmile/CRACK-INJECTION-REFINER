@@ -1,13 +1,11 @@
-// injecter / sub-merge — 로어 병합 (중복 정리)
-// 역할: 임베딩 유사도로 중복 후보 탐색, 병합 전략 (최장/LLM)
-// 의존: injecter-3 (settings, db, C)
+// injecter / sub-merge - selected lore AI merge
 (async function(){
   'use strict';
-  if(document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+  if (document.readyState === 'loading') await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   const deadline = Date.now() + 15000;
-  while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(r => setTimeout(r, 50));
-  if (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded)) { console.error('[LoreInj:sub-merge] settings 미로드'); return; }
+  while (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  if (!(_w.__LoreInj && _w.__LoreInj.__settingsLoaded)) { console.error('[LoreInj:sub-merge] settings not loaded'); return; }
   if (_w.__LoreInj.__subMergeLoaded) return;
 
   const { C, db, settings } = _w.__LoreInj;
@@ -19,65 +17,72 @@
   }
 
   function canonicalMergeType(type) {
-    const t = String(type || '').toLowerCase();
-    if (t === 'character' || t === 'identity' || t === 'persona') return 'character';
-    if (t === 'rel' || t === 'relationship') return 'relationship';
-    if (t === 'prom' || t === 'promise') return 'promise';
-    if (t === 'location' || t === 'place') return 'location';
-    if (t === 'item' || t === 'object') return 'item';
-    if (t === 'event' || t === 'scene') return 'event';
-    if (t === 'concept' || t === 'setting' || t === 'world') return 'setting';
-    return t || 'misc';
+    const value = String(type || '').toLowerCase();
+    if (['character', 'identity', 'persona'].includes(value)) return 'character';
+    if (['rel', 'relationship'].includes(value)) return 'relationship';
+    if (['prom', 'promise'].includes(value)) return 'promise';
+    if (['location', 'place'].includes(value)) return 'location';
+    if (['item', 'object'].includes(value)) return 'item';
+    if (['event', 'scene', 'timeline_event'].includes(value)) return 'event';
+    if (['concept', 'setting', 'world'].includes(value)) return 'setting';
+    return value || 'misc';
   }
 
   function typeCompatible(a, b) {
     return canonicalMergeType(a && a.type) === canonicalMergeType(b && b.type);
   }
 
-  function uniq(arr) { return Array.from(new Set((arr || []).filter(Boolean))); }
-  function mergeObj(a, b) {
-    const out = (a && typeof a === 'object' && !Array.isArray(a)) ? JSON.parse(JSON.stringify(a)) : {};
-    if (b && typeof b === 'object' && !Array.isArray(b)) {
-      for (const [k, v] of Object.entries(b)) {
-        if (Array.isArray(v)) out[k] = uniq([...(Array.isArray(out[k]) ? out[k] : []), ...v]);
-        else if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = mergeObj(out[k], v);
-        else if (v !== undefined && v !== null && v !== '') out[k] = v;
-      }
-    }
-    return out;
+  function uniq(values) {
+    return Array.from(new Set((values || []).filter(Boolean)));
   }
+
+  function mergeObj(a, b) {
+    const output = (a && typeof a === 'object' && !Array.isArray(a)) ? JSON.parse(JSON.stringify(a)) : {};
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return output;
+    for (const [key, value] of Object.entries(b)) {
+      if (Array.isArray(value)) output[key] = uniq([...(Array.isArray(output[key]) ? output[key] : []), ...value]);
+      else if (value && typeof value === 'object') output[key] = mergeObj(output[key], value);
+      else if (value !== undefined && value !== null && value !== '') output[key] = value;
+    }
+    return output;
+  }
+
   function mergeSummaries(a, b) {
-    const av = a && typeof a === 'object' && !Array.isArray(a) ? a : { full: summaryValue(a) };
-    const bv = b && typeof b === 'object' && !Array.isArray(b) ? b : { full: summaryValue(b) };
+    const left = a && typeof a === 'object' && !Array.isArray(a) ? a : { full: summaryValue(a) };
+    const right = b && typeof b === 'object' && !Array.isArray(b) ? b : { full: summaryValue(b) };
     const join = (x, y) => {
-      x = String(x || '').trim(); y = String(y || '').trim();
+      x = String(x || '').trim();
+      y = String(y || '').trim();
       if (!x) return y;
       if (!y || x.includes(y)) return x;
       if (y.includes(x)) return y;
       return x + ' / ' + y;
     };
     return {
-      full: join(av.full || av.compact || av.micro, bv.full || bv.compact || bv.micro),
-      compact: join(av.compact || av.micro, bv.compact || bv.micro),
-      micro: bv.micro || av.micro || ''
+      full: join(left.full || left.compact || left.micro, right.full || right.compact || right.micro),
+      compact: join(left.compact || left.micro, right.compact || right.micro),
+      micro: right.micro || left.micro || ''
     };
   }
+
   function mergeDraftWithOriginals(draft, entries) {
-    const sorted = [...entries].sort((a,b) => (a.lastUpdated || a.ts || 0) - (b.lastUpdated || b.ts || 0));
-    const anchored = sorted.find(e => e.anchor);
-    const base = JSON.parse(JSON.stringify(anchored || sorted[0] || {}));
-    for (const e of sorted) {
-      base.triggers = uniq([...(base.triggers || []), ...(e.triggers || [])]).slice(0, 12);
-      base.entities = uniq([...(base.entities || []), ...(e.entities || [])]);
-      base.parties = uniq([...(base.parties || []), ...(e.parties || [])]);
-      base.detail = mergeObj(base.detail, e.detail);
-      base.call = mergeObj(base.call, e.call);
-      base.callState = mergeObj(base.callState, e.callState);
-      base.timeline = mergeObj(base.timeline, e.timeline);
-      base.eventHistory = uniq([...(base.eventHistory || []), ...(e.eventHistory || [])]);
-      base.callHistory = uniq([...(base.callHistory || []), ...(e.callHistory || [])]);
-      base.summary = mergeSummaries(base.summary, e.summary);
-      base.inject = mergeSummaries(base.inject, e.inject || e.summary);
+    const sorted = [...entries].sort((a, b) => (a.lastUpdated || a.ts || 0) - (b.lastUpdated || b.ts || 0));
+    const base = JSON.parse(JSON.stringify(sorted.find(entry => entry.anchor) || sorted[0] || {}));
+    for (const entry of sorted) {
+      base.triggers = uniq([...(base.triggers || []), ...(entry.triggers || [])]).slice(0, 12);
+      base.entities = uniq([...(base.entities || []), ...(entry.entities || [])]);
+      base.parties = uniq([...(base.parties || []), ...(entry.parties || [])]);
+      base.participants = uniq([...(base.participants || []), ...(entry.participants || [])]);
+      base.recallTriggers = uniq([...(base.recallTriggers || []), ...(entry.recallTriggers || [])]);
+      base.linkedLore = uniq([...(base.linkedLore || []), ...(entry.linkedLore || [])]);
+      base.detail = mergeObj(base.detail, entry.detail);
+      base.call = mergeObj(base.call, entry.call);
+      base.callState = mergeObj(base.callState, entry.callState);
+      base.timeline = mergeObj(base.timeline, entry.timeline);
+      base.eventHistory = uniq([...(base.eventHistory || []), ...(entry.eventHistory || [])]);
+      base.callHistory = uniq([...(base.callHistory || []), ...(entry.callHistory || [])]);
+      base.summary = mergeSummaries(base.summary, entry.summary);
+      base.inject = mergeSummaries(base.inject, entry.inject || entry.summary);
     }
     const merged = mergeObj(base, draft || {});
     merged.triggers = uniq([...(base.triggers || []), ...((draft && draft.triggers) || [])]).slice(0, 12);
@@ -89,21 +94,22 @@
     return merged;
   }
 
-  function identityTerms(entry) {
-    const values = [entry && entry.name, ...((entry && entry.triggers) || []), ...((entry && entry.entities) || []), ...((entry && entry.parties) || [])];
-    return new Set(values.map(value => String(value || '').trim().toLowerCase()).filter(value => value.length >= 2 && !value.includes('&&')));
-  }
-
-  function hasIdentityEvidence(a, b) {
-    const left = identityTerms(a); const right = identityTerms(b);
-    for (const value of left) if (right.has(value)) return true;
-    const aName = String(a && a.name || '').trim().toLowerCase();
-    const bName = String(b && b.name || '').trim().toLowerCase();
-    return !!(aName && bName && (aName.includes(bName) || bName.includes(aName)));
+  function cosine(a, b) {
+    let dot = 0, normA = 0, normB = 0;
+    const length = Math.min(a.length, b.length);
+    for (let index = 0; index < length; index++) {
+      dot += a[index] * b[index];
+      normA += a[index] * a[index];
+      normB += b[index] * b[index];
+    }
+    return dot / ((Math.sqrt(normA) * Math.sqrt(normB)) || 1);
   }
 
   async function reembedPacks(packNames, status) {
-    const packs = Array.from(new Set((packNames || []).filter(Boolean)));
+    const packs = [];
+    for (const packName of Array.from(new Set((packNames || []).filter(Boolean)))) {
+      if (await db.entries.where('packName').equals(packName).count()) packs.push(packName);
+    }
     const missing = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'embed') : '';
     if (missing) return { skipped: true, message: missing };
     const apiOpts = _w.__LoreInj.buildEmbeddingApiOpts
@@ -117,239 +123,334 @@
     return { count };
   }
 
+  async function candidateFilter(entries, threshold) {
+    if (!Array.isArray(entries) || entries.length < 2) return { ids: new Set(), scores: new Map(), preparedCount: 0 };
+    const embeddings = await db.embeddings.where('entryId').anyOf(entries.map(entry => entry.id)).toArray();
+    const entryById = new Map(entries.map(entry => [entry.id, entry]));
+    const vectors = new Map();
+    for (const embedding of embeddings) {
+      if (embedding.field !== 'summary') continue;
+      const entry = entryById.get(embedding.entryId);
+      if (!entry || (embedding.packName && embedding.packName !== entry.packName)) continue;
+      if (C.embeddingSourceHash && (embedding.sourceHash || embedding.hash) !== C.embeddingSourceHash(entry, 'summary')) continue;
+      vectors.set(entry.id, embedding.vector);
+    }
+    const prepared = entries.filter(entry => vectors.has(entry.id));
+    const ids = new Set();
+    const scores = new Map();
+    for (let left = 0; left < prepared.length; left++) {
+      for (let right = left + 1; right < prepared.length; right++) {
+        if (!typeCompatible(prepared[left], prepared[right])) continue;
+        const score = cosine(vectors.get(prepared[left].id), vectors.get(prepared[right].id));
+        if (score < threshold) continue;
+        ids.add(prepared[left].id);
+        ids.add(prepared[right].id);
+        scores.set(prepared[left].id, Math.max(scores.get(prepared[left].id) || 0, score));
+        scores.set(prepared[right].id, Math.max(scores.get(prepared[right].id) || 0, score));
+      }
+    }
+    return { ids, scores, preparedCount: prepared.length };
+  }
+
+  async function buildAiMerge(entries) {
+    const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest);
+    const prompt = '다음 로어들은 사용자가 직접 하나로 병합하도록 선택한 항목이다. 입력에 있는 사실만 사용해 하나의 로어 JSON 객체로 병합하라.\n' +
+      '1. 모든 입력을 대조해 이름, 관계, 현재와 과거 상태, 약속, 사건 원인, 결과, 미해결 훅을 누락하지 않는다.\n' +
+      '2. 반복 표현만 정리하고 서로 다른 사실은 삭제하지 않는다. 충돌은 timeline과 lastUpdated를 참고하고 과거 상태는 eventHistory에 남긴다.\n' +
+      '3. summary와 inject는 {full, compact, micro} 구조를 유지한다. 임의의 글자 수를 맞추려고 사실을 버리지 않는다.\n' +
+      '4. eventHistory, callHistory, callState, timeline, entities, detail, participants, recallTriggers, linkedLore는 의미를 보존해 통합한다.\n' +
+      '5. embed_text에는 이름, 별칭, 관계어, 사건 원인, 이해관계, 장소와 미해결 훅을 포함한다.\n' +
+      '6. triggers는 양쪽 고유명사를 보존하면서 중복을 제거하고 최대 12개로 정리한다.\n' +
+      '7. 서로 다른 유형이 섞였으면 가장 핵심적인 유형을 선택하고 summary.full에 나머지 역할도 보존한다.\n' +
+      '8. 순수 JSON 객체 하나만 출력하고 입력에 없는 사실은 만들지 않는다.\n\n입력:\n' + JSON.stringify(clean, null, 2);
+    const response = await C.callGeminiApi(prompt, _w.__LoreInj.buildGenerationApiOpts
+      ? _w.__LoreInj.buildGenerationApiOpts({
+          model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel,
+          maxRetries: 2,
+          responseMimeType: 'application/json'
+        }, { feature: 'merge', chatKey: 'global' })
+      : {
+          apiType: settings.config.autoExtApiType || 'key',
+          key: settings.config.autoExtKey,
+          deepSeekKey: settings.config.autoExtDeepSeekKey,
+          model: settings.config.autoExtModel,
+          maxRetries: 2,
+          responseMimeType: 'application/json'
+        });
+    if (!response.text) throw new Error('AI 병합 응답 없음: ' + (response.error || '알 수 없는 오류'));
+    let text = response.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+    if (objectMatch) text = objectMatch[0];
+    return mergeDraftWithOriginals(JSON.parse(text), entries);
+  }
+
+  async function updatePackCounts(packNames) {
+    for (const packName of Array.from(new Set(packNames))) {
+      const count = await db.entries.where('packName').equals(packName).count();
+      await db.packs.update(packName, { entryCount: count });
+    }
+  }
+
   _w.__LoreInj.registerSubMenu = _w.__LoreInj.registerSubMenu || function() {};
-
   _w.__LoreInj.registerSubMenu('merge', function(modal) {
-    modal.createSubMenu('로어 병합', (m) => {
+    modal.createSubMenu('로어 병합', (manager) => {
       const renderMerge = async (panel) => {
-        const state = _w.__loreMergeState || (_w.__loreMergeState = { threshold: 0.88, groups: null });
+        const state = _w.__loreMergeState || (_w.__loreMergeState = {
+          threshold: 0.88,
+          useThreshold: false,
+          candidateIds: null,
+          candidateScores: new Map(),
+          selectedIds: new Set(),
+          targetId: null,
+          query: '',
+          preview: null,
+          previewKey: ''
+        });
+        if (!(state.selectedIds instanceof Set)) state.selectedIds = new Set(state.selectedIds || []);
+        if (!(state.candidateScores instanceof Map)) state.candidateScores = new Map();
 
-        panel.addBoxedField('', '', { onInit: (nd) => {
-          C.setFullWidth(nd);
-          const t = document.createElement('div'); t.textContent = '중복 로어 병합'; t.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:4px;'; nd.appendChild(t);
-          const d = document.createElement('div'); d.innerHTML = '의미 유사도와 이름·트리거·참여자 단서를 함께 보고 중복 후보를 찾음. 대분류가 다른 로어는 묶지 않으며, 이름 단서가 없는 경우에는 더 높은 의미 유사도를 요구함.<br><span style="color:#da8;">현재 페이지에서 켠 팩의 로어만 대상으로 함. 병합하거나 되돌린 뒤 검색 준비는 자동 갱신함.</span>'; d.style.cssText = 'font-size:11px;color:#888;margin-bottom:10px;line-height:1.5;'; nd.appendChild(d);
+        const url = C.getCurUrl();
+        const activePacks = _w.__LoreInj.getActivePacksForUrl
+          ? _w.__LoreInj.getActivePacksForUrl(url)
+          : (settings.config.urlPacks && settings.config.urlPacks[url] || []);
+        const allEntries = (await db.entries.toArray()).filter(entry => activePacks.includes(entry.packName));
+        const liveIds = new Set(allEntries.map(entry => entry.id));
+        for (const id of Array.from(state.selectedIds)) if (!liveIds.has(id)) state.selectedIds.delete(id);
 
-          const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;margin-bottom:8px;align-items:center;';
-          const mk = (label, getter, setter, min, max, step) => {
-            const f = document.createElement('div'); f.style.flex = '1';
-            const l = document.createElement('div'); l.textContent = label; l.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;';
-            const i = document.createElement('input'); i.type = 'number'; i.value = getter(); i.min = min; i.max = max; i.step = step;
-            i.style.cssText = 'width:100%;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
-            i.onchange = () => { const v = parseFloat(i.value); if (!isNaN(v)) setter(v); };
-            f.appendChild(l); f.appendChild(i); return f;
-          };
-          row.appendChild(mk('유사도 임계값', () => state.threshold, v => state.threshold = v, 0.7, 0.99, 0.01));
-          nd.appendChild(row);
+        panel.addBoxedField('', '', { onInit: (node) => {
+          C.setFullWidth(node);
+          const title = document.createElement('div');
+          title.textContent = '선택한 로어 AI 병합';
+          title.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:5px;';
+          node.appendChild(title);
+          const description = document.createElement('div');
+          description.textContent = '현재 채팅에서 켠 로어팩의 로어 중 합칠 항목만 직접 선택합니다. 유사도 임계값은 후보를 좁힐 때만 사용하며, 최종 병합 대상은 체크한 로어로 확정됩니다. 병합 후 검색 준비는 자동으로 갱신됩니다.';
+          description.style.cssText = 'font-size:11px;color:#888;line-height:1.55;margin-bottom:10px;';
+          node.appendChild(description);
 
-          const runBtn = document.createElement('button'); runBtn.textContent = '병합 후보 찾기';
-          runBtn.style.cssText = 'width:100%;padding:10px;background:#258;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;';
-          const runStatus = document.createElement('div'); runStatus.style.cssText = 'font-size:11px;color:#888;margin-top:6px;text-align:center;';
-          runBtn.onclick = async () => {
-            runBtn.disabled = true; runBtn.textContent = '검색 중...';
+          const filterRow = document.createElement('div');
+          filterRow.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:8px;align-items:center;margin-bottom:8px;';
+          const thresholdToggle = C.createToggleRow('유사도 후보 필터', '켜면 검색 준비된 로어 중 임계값 이상인 같은 유형의 후보만 찾습니다.', state.useThreshold, (value) => {
+            state.useThreshold = value;
+            if (!value) { state.candidateIds = null; state.candidateScores = new Map(); }
+            manager.replaceContentPanel(renderMerge, '로어 병합');
+          });
+          thresholdToggle.style.margin = '0';
+          const thresholdInput = document.createElement('input');
+          thresholdInput.type = 'number'; thresholdInput.min = '0.70'; thresholdInput.max = '0.99'; thresholdInput.step = '0.01'; thresholdInput.value = state.threshold;
+          thresholdInput.disabled = !state.useThreshold;
+          thresholdInput.title = '후보 유사도 임계값';
+          thresholdInput.style.cssText = 'width:100%;padding:7px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;';
+          thresholdInput.onchange = () => { const value = Number(thresholdInput.value); if (Number.isFinite(value)) state.threshold = Math.min(0.99, Math.max(0.70, value)); };
+          filterRow.appendChild(thresholdToggle); filterRow.appendChild(thresholdInput); node.appendChild(filterRow);
+
+          const candidateRow = document.createElement('div');
+          candidateRow.style.cssText = 'display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px;';
+          const candidateButton = document.createElement('button');
+          candidateButton.textContent = state.useThreshold ? '유사한 후보 찾기' : '전체 로어 표시';
+          candidateButton.style.cssText = 'flex:1;min-width:150px;padding:8px;background:#258;color:#fff;border:0;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;';
+          const resetCandidateButton = document.createElement('button');
+          resetCandidateButton.textContent = '후보 필터 해제';
+          resetCandidateButton.style.cssText = 'padding:8px 11px;background:transparent;color:#aaa;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;';
+          candidateButton.onclick = async () => {
+            if (!state.useThreshold) { state.candidateIds = null; state.candidateScores = new Map(); manager.replaceContentPanel(renderMerge, '로어 병합'); return; }
+            candidateButton.disabled = true; candidateButton.textContent = '후보 찾는 중...';
             try {
-              const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
-              const entries = (await db.entries.toArray()).filter(e => activePacks.includes(e.packName));
-              if (entries.length < 2) { runStatus.textContent = '활성 엔트리 2개 미만.'; runStatus.style.color = '#d66'; return; }
-              const embs = await db.embeddings.where('entryId').anyOf(entries.map(e => e.id)).toArray();
-              const entryById = {}; entries.forEach(e => entryById[e.id] = e);
-              const embMap = {};
-              for (const eb of embs) {
-                if (eb.field !== 'summary') continue;
-                const ent = entryById[eb.entryId];
-                if (!ent) continue;
-                if (eb.packName && eb.packName !== ent.packName) continue;
-                if (C.embeddingSourceHash && (eb.sourceHash || eb.hash) !== C.embeddingSourceHash(ent, 'summary')) continue;
-                embMap[eb.entryId] = eb.vector;
-              }
-              const withEmb = entries.filter(e => embMap[e.id]);
-              if (withEmb.length < 2) { runStatus.textContent = '검색 준비된 로어가 2개 미만입니다. 로어팩 관리에서 검색 준비를 먼저 실행하세요.'; runStatus.style.color = '#d66'; return; }
-              const cos = (a, b) => { let d = 0, na = 0, nb = 0; const L = Math.min(a.length, b.length); for (let i = 0; i < L; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return d / ((Math.sqrt(na) * Math.sqrt(nb)) || 1); };
-              // v1.4.0-test.40 B12 fix: union-find path compression을 재귀 → 반복문으로 전환.
-              //   대규모 로어 DB(수천 건)에서 긴 체인 형성 시 스택 오버플로우 위험 제거.
-              const parent = {};
-              const find = (x) => {
-                let root = x;
-                while (parent[root] !== root) root = parent[root];
-                while (parent[x] !== root) { const next = parent[x]; parent[x] = root; x = next; }
-                return root;
-              };
-              const uni = (a, b) => { parent[find(a)] = find(b); };
-              withEmb.forEach(e => parent[e.id] = e.id);
-              const pairs = [];
-              for (let i = 0; i < withEmb.length; i++) {
-                for (let j = i + 1; j < withEmb.length; j++) {
-                  if (!typeCompatible(withEmb[i], withEmb[j])) continue;
-                  const s = cos(embMap[withEmb[i].id], embMap[withEmb[j].id]);
-                  const identityMatch = hasIdentityEvidence(withEmb[i], withEmb[j]);
-                  const semanticOnlyThreshold = Math.min(0.99, state.threshold + 0.05);
-                  if (s >= state.threshold && (identityMatch || s >= semanticOnlyThreshold)) {
-                    pairs.push({ a: withEmb[i].id, b: withEmb[j].id, sim: s, identityMatch });
-                    uni(withEmb[i].id, withEmb[j].id);
-                  }
-                }
-              }
-              const groupMap = {}; withEmb.forEach(e => { const r = find(e.id); (groupMap[r] = groupMap[r] || []).push(e); });
-              const groups = Object.values(groupMap).filter(g => g.length >= 2).map(g => {
-                const ids = new Set(g.map(e => e.id));
-                const maxSim = pairs.filter(p => ids.has(p.a) && ids.has(p.b)).reduce((m, p) => Math.max(m, p.sim), 0);
-                return { entries: g, sim: maxSim };
-              }).sort((a, b) => b.sim - a.sim);
-              state.groups = groups;
-              runStatus.textContent = groups.length > 0 ? '후보 ' + groups.length + '개 그룹 발견.' : '임계값 이상 후보 없음.';
-              runStatus.style.color = groups.length > 0 ? '#4a9' : '#888';
-              m.replaceContentPanel(renderMerge, '로어 병합');
-            } catch(e) { runStatus.textContent = '실패: ' + e.message; runStatus.style.color = '#d66'; }
-            runBtn.textContent = '병합 후보 찾기'; runBtn.disabled = false;
+              const result = await candidateFilter(allEntries, state.threshold);
+              state.candidateIds = result.ids;
+              state.candidateScores = result.scores;
+              if (result.preparedCount < 2) alert('검색 준비된 로어가 2개 미만입니다. 로어팩 관리에서 검색 준비를 실행하세요.');
+              manager.replaceContentPanel(renderMerge, '로어 병합');
+            } catch (error) {
+              alert('후보 검색 실패: ' + (error.message || String(error)));
+              candidateButton.disabled = false; candidateButton.textContent = '유사한 후보 찾기';
+            }
           };
-          nd.appendChild(runBtn); nd.appendChild(runStatus);
-
-          const bulkRow = document.createElement('div'); bulkRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:10px;padding:8px;background:#111;border:1px solid #333;border-radius:4px;';
-          const bulkLbl = document.createElement('div'); bulkLbl.textContent = '일괄 모드 변경'; bulkLbl.style.cssText = 'font-size:11px;color:#888;white-space:nowrap;';
-          const bulkSel = document.createElement('select'); bulkSel.style.cssText = 'flex:1;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;';
-          [['', '-- 선택하여 모든 그룹에 일괄 적용 --'], ['keep-longest', '가장 긴 항목 유지 + 키워드 합집합 (안전)'], ['llm-summarize', 'LLM 요약 병합 (API 호출, 품질↑)']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; bulkSel.appendChild(o); });
-          bulkSel.onchange = () => { if (!bulkSel.value) return; const sels = document.querySelectorAll('select.lore-merge-mode-sel'); sels.forEach(s => { s.value = bulkSel.value; }); bulkSel.value = ''; };
-          bulkRow.appendChild(bulkLbl); bulkRow.appendChild(bulkSel); nd.appendChild(bulkRow);
+          resetCandidateButton.onclick = () => { state.candidateIds = null; state.candidateScores = new Map(); manager.replaceContentPanel(renderMerge, '로어 병합'); };
+          candidateRow.appendChild(candidateButton); candidateRow.appendChild(resetCandidateButton); node.appendChild(candidateRow);
 
           if (C.__lastMergeUndo && C.__lastMergeUndo.originals && C.__lastMergeUndo.originals.length) {
-            const undoBtn = document.createElement('button'); undoBtn.textContent = '직전 병합 취소 (' + C.__lastMergeUndo.originals.length + '개 엔트리 복원)';
-            undoBtn.style.cssText = 'width:100%;padding:8px;margin-top:10px;background:transparent;color:#da8;border:1px solid #642;border-radius:4px;cursor:pointer;font-size:12px;';
-            undoBtn.onclick = async () => {
-              if (!confirm('직전 병합을 취소하고 원본 엔트리들을 복원할 것?')) return;
+            const undoButton = document.createElement('button');
+            undoButton.textContent = '직전 병합 취소 (' + C.__lastMergeUndo.originals.length + '개 복원)';
+            undoButton.style.cssText = 'width:100%;padding:8px;margin-bottom:9px;background:transparent;color:#da8;border:1px solid #642;border-radius:4px;cursor:pointer;font-size:11px;';
+            undoButton.onclick = async () => {
+              if (!confirm('직전 병합을 취소하고 원본 로어를 복원할까요?')) return;
+              const undo = C.__lastMergeUndo;
+              const packs = Array.from(new Set(undo.originals.map(entry => entry.packName)));
               try {
-                const undo = C.__lastMergeUndo;
-                if (undo.mergedId !== undefined && undo.mergedId !== null) {
-                  await db.entries.delete(undo.mergedId);
-                  try { await db.embeddings.where('entryId').equals(undo.mergedId).delete(); } catch(_){}
-                }
-                for (const snap of undo.originals) { await db.entries.put(snap); }
-                const packs = new Set(undo.originals.map(e => e.packName));
-                for (const pk of packs) { const cnt = await db.entries.where('packName').equals(pk).count(); await db.packs.update(pk, { entryCount: cnt }); }
-                let embedMessage = '';
-                try {
-                  const embedResult = await reembedPacks(Array.from(packs));
-                  embedMessage = embedResult.skipped ? ' 검색 준비 생략: ' + embedResult.message : ' 검색 준비 ' + embedResult.count + '개 갱신.';
-                } catch (embedError) {
-                  embedMessage = ' 검색 준비 갱신 실패: ' + (embedError.message || String(embedError));
-                }
+                await db.transaction('rw', db.entries, db.embeddings, db.packs, async () => {
+                  if (undo.mergedId != null) await db.entries.delete(undo.mergedId);
+                  await db.entries.bulkPut(undo.originals);
+                  const ids = uniq([undo.mergedId, ...undo.originals.map(entry => entry.id)]).filter(id => id != null);
+                  if (ids.length) await db.embeddings.where('entryId').anyOf(ids).delete();
+                  await updatePackCounts(packs);
+                });
                 C.__lastMergeUndo = null;
-                alert('복원 완료.' + embedMessage);
-                m.replaceContentPanel(renderMerge, '로어 병합');
-              } catch(e) { alert('실패: ' + e.message); }
+                state.selectedIds.clear(); state.preview = null; state.previewKey = '';
+                let embeddingMessage = '';
+                try {
+                  const result = await reembedPacks(packs, message => { undoButton.textContent = message; });
+                  embeddingMessage = result.skipped ? ' 검색 준비 생략: ' + result.message : ' 검색 준비 ' + result.count + '개 갱신.';
+                } catch (error) { embeddingMessage = ' 검색 준비 갱신 실패: ' + (error.message || String(error)); }
+                alert('복원 완료.' + embeddingMessage);
+                manager.replaceContentPanel(renderMerge, '로어 병합');
+              } catch (error) { alert('복원 실패: ' + (error.message || String(error))); }
             };
-            nd.appendChild(undoBtn);
+            node.appendChild(undoButton);
           }
         }});
 
-        if (!state.groups) return;
-        if (state.groups.length === 0) { panel.addText('후보 없음. 임계값을 낮춰 재시도할 수 있음.'); return; }
+        panel.addBoxedField('', '', { onInit: (node) => {
+          C.setFullWidth(node);
+          if (!activePacks.length) {
+            const empty = document.createElement('div'); empty.textContent = '현재 채팅에서 켠 로어팩이 없습니다.'; empty.style.cssText = 'font-size:12px;color:#888;padding:12px;text-align:center;'; node.appendChild(empty); return;
+          }
+          if (allEntries.length < 2) {
+            const empty = document.createElement('div'); empty.textContent = '병합할 수 있는 로어가 2개 미만입니다.'; empty.style.cssText = 'font-size:12px;color:#888;padding:12px;text-align:center;'; node.appendChild(empty); return;
+          }
 
-        for (const [gi, grp] of state.groups.entries()) {
-          panel.addBoxedField('', '', { onInit: (nd) => {
-            C.setFullWidth(nd);
-            nd.style.cssText += 'background:#1a1a1a;border:1px solid #333;border-radius:6px;margin-bottom:12px;padding:10px;';
-            const hdr = document.createElement('div'); hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;';
-            const title = document.createElement('div'); title.textContent = '그룹 ' + (gi + 1) + ' — ' + grp.entries.length + '개 / 유사도 ' + (grp.sim * 100).toFixed(1) + '%';
-            title.style.cssText = 'font-size:13px;color:#4a9;font-weight:bold;';
-            const types = [...new Set(grp.entries.map(e => e.type))];
-            const typeWarn = types.length > 1 ? '타입 불일치: ' + types.join(', ') : '타입: ' + types[0];
-            const warn = document.createElement('div'); warn.textContent = typeWarn; warn.style.cssText = 'font-size:10px;color:' + (types.length > 1 ? '#d96' : '#888') + ';';
-            hdr.appendChild(title); hdr.appendChild(warn); nd.appendChild(hdr);
+          const search = document.createElement('input');
+          search.type = 'search'; search.value = state.query || ''; search.placeholder = '이름, 유형, 로어팩, 내용 검색';
+          search.style.cssText = 'width:100%;padding:8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:8px;';
+          node.appendChild(search);
 
-            if (types.length > 1) {
-              const typeNote = document.createElement('div');
-              typeNote.style.cssText = 'margin-bottom:8px;padding:6px 8px;background:#2a1a0a;border:1px solid #642;border-radius:4px;font-size:10px;color:#da8;line-height:1.5;';
-              typeNote.innerHTML = '<b>타입이 다를 때의 영향</b><br>• 주입 시 주제별 분류(캐릭터/장소/사건 등)가 무너져 관련 없는 맥락에서 소환될 수 있음<br>• 트리거 키워드가 뒤섞여 오탐 증가<br>• 병합 후에는 한쪽 타입으로 고정되므로 나머지 주제성은 손실';
-              nd.appendChild(typeNote);
+          const toolbar = document.createElement('div'); toolbar.style.cssText = 'display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:8px;';
+          const visibleLabel = document.createElement('div'); visibleLabel.style.cssText = 'font-size:11px;color:#888;flex:1;min-width:120px;';
+          const selectVisibleButton = document.createElement('button'); selectVisibleButton.textContent = '보이는 로어 선택'; selectVisibleButton.style.cssText = 'padding:5px 9px;background:transparent;color:#8bc;border:1px solid #346;border-radius:4px;cursor:pointer;font-size:10px;';
+          const clearButton = document.createElement('button'); clearButton.textContent = '선택 해제'; clearButton.style.cssText = 'padding:5px 9px;background:transparent;color:#aaa;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:10px;';
+          toolbar.appendChild(visibleLabel); toolbar.appendChild(selectVisibleButton); toolbar.appendChild(clearButton); node.appendChild(toolbar);
+
+          const list = document.createElement('div');
+          list.style.cssText = 'max-height:360px;overflow:auto;border:1px solid #292929;border-radius:4px;background:#090909;';
+          node.appendChild(list);
+
+          const selectedBox = document.createElement('div');
+          selectedBox.style.cssText = 'margin-top:10px;padding-top:10px;border-top:1px solid #333;';
+          const selectedStatus = document.createElement('div'); selectedStatus.style.cssText = 'font-size:12px;color:#4a9;font-weight:bold;margin-bottom:7px;';
+          const targetLabel = document.createElement('div'); targetLabel.textContent = '병합 결과를 저장할 기준 로어'; targetLabel.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px;';
+          const targetSelect = document.createElement('select'); targetSelect.style.cssText = 'width:100%;padding:7px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;box-sizing:border-box;margin-bottom:8px;';
+          const actionRow = document.createElement('div'); actionRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+          const previewButton = document.createElement('button'); previewButton.textContent = 'AI 병합 미리보기'; previewButton.style.cssText = 'padding:9px;background:transparent;color:#8bc;border:1px solid #346;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;';
+          const mergeButton = document.createElement('button'); mergeButton.textContent = '선택한 로어 병합'; mergeButton.style.cssText = 'padding:9px;background:#285;color:#fff;border:0;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;';
+          actionRow.appendChild(previewButton); actionRow.appendChild(mergeButton);
+          const preview = document.createElement('pre'); preview.style.cssText = 'display:none;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:8px 0 0;padding:9px;background:#060606;border:1px solid #222;border-radius:4px;color:#ccc;font-size:10px;';
+          selectedBox.appendChild(selectedStatus); selectedBox.appendChild(targetLabel); selectedBox.appendChild(targetSelect); selectedBox.appendChild(actionRow); selectedBox.appendChild(preview); node.appendChild(selectedBox);
+
+          let visibleEntries = [];
+          const selectionKey = () => Array.from(state.selectedIds).sort((a, b) => Number(a) - Number(b)).join(',');
+          const invalidatePreview = () => { state.preview = null; state.previewKey = ''; preview.style.display = 'none'; preview.textContent = ''; };
+          const updateSelected = () => {
+            const selected = allEntries.filter(entry => state.selectedIds.has(entry.id));
+            selectedStatus.textContent = '선택 ' + selected.length + '개';
+            targetSelect.innerHTML = '';
+            for (const entry of selected) {
+              const option = document.createElement('option'); option.value = String(entry.id); option.textContent = '[' + entry.packName + '] ' + entry.name + (entry.anchor ? ' (앵커)' : ''); targetSelect.appendChild(option);
             }
+            if (!selected.some(entry => String(entry.id) === String(state.targetId))) state.targetId = selected.find(entry => entry.anchor)?.id || selected[0]?.id || null;
+            if (state.targetId != null) targetSelect.value = String(state.targetId);
+            const disabled = selected.length < 2;
+            previewButton.disabled = disabled; mergeButton.disabled = disabled; targetSelect.disabled = disabled;
+            previewButton.style.opacity = disabled ? '.45' : '1'; mergeButton.style.opacity = disabled ? '.45' : '1';
+          };
+          targetSelect.onchange = () => { state.targetId = Number(targetSelect.value); invalidatePreview(); };
 
-            for (const e of grp.entries) {
-              const row = document.createElement('div'); row.style.cssText = 'padding:6px 0;border-bottom:1px dashed #222;font-size:11px;color:#aaa;';
-              const safeSum = (summaryValue(e.summary) || '(요약 없음)').slice(0, 150).replace(/</g, '&lt;');
-              row.innerHTML = '<span style="color:#ccc;font-weight:bold;">[' + e.type + '] ' + e.name + '</span> <span style="color:#888;">(' + e.packName + ')</span>' + (e.anchor ? ' <span style="color:#fc4;">앵커</span>' : '') + '<br><span style="font-size:10px;">' + safeSum + '</span>';
-              nd.appendChild(row);
+          const renderEntries = () => {
+            const query = String(state.query || '').trim().toLowerCase();
+            visibleEntries = allEntries.filter(entry => {
+              if (state.candidateIds instanceof Set && !state.candidateIds.has(entry.id)) return false;
+              const haystack = [entry.name, entry.type, entry.packName, summaryValue(entry.summary), ...(entry.triggers || [])].join(' ').toLowerCase();
+              return !query || haystack.includes(query);
+            });
+            list.innerHTML = '';
+            visibleLabel.textContent = '표시 ' + visibleEntries.length + '개 / 전체 ' + allEntries.length + '개';
+            if (!visibleEntries.length) {
+              const empty = document.createElement('div'); empty.textContent = state.candidateIds instanceof Set ? '조건에 맞는 후보가 없습니다.' : '검색 결과가 없습니다.'; empty.style.cssText = 'padding:18px;text-align:center;color:#666;font-size:11px;'; list.appendChild(empty); return;
             }
+            for (const entry of visibleEntries) {
+              const row = document.createElement('label'); row.style.cssText = 'display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:7px;align-items:start;padding:8px;border-bottom:1px solid #202020;cursor:pointer;';
+              const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = state.selectedIds.has(entry.id); checkbox.style.marginTop = '2px';
+              const text = document.createElement('div');
+              const name = document.createElement('div'); name.textContent = '[' + (entry.type || '기타') + '] ' + (entry.name || '이름 없음'); name.style.cssText = 'font-size:11px;color:#ccc;font-weight:bold;word-break:break-word;';
+              const summary = document.createElement('div'); summary.textContent = summaryValue(entry.summary) || '(요약 없음)'; summary.style.cssText = 'font-size:10px;color:#777;line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
+              text.appendChild(name); text.appendChild(summary);
+              const meta = document.createElement('div');
+              const score = state.candidateScores.get(entry.id);
+              meta.textContent = entry.packName + (score ? ' · ' + (score * 100).toFixed(1) + '%' : ''); meta.style.cssText = 'font-size:9px;color:#666;text-align:right;max-width:110px;word-break:break-word;';
+              checkbox.onchange = () => { if (checkbox.checked) state.selectedIds.add(entry.id); else state.selectedIds.delete(entry.id); invalidatePreview(); updateSelected(); };
+              row.appendChild(checkbox); row.appendChild(text); row.appendChild(meta); list.appendChild(row);
+            }
+          };
 
-            const ctrl = document.createElement('div'); ctrl.style.cssText = 'margin-top:10px;display:flex;gap:8px;align-items:center;';
-            const modeSel = document.createElement('select'); modeSel.className = 'lore-merge-mode-sel'; modeSel.style.cssText = 'padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;flex:1;';
-            [['keep-longest', '가장 긴 항목 유지 + 키워드 합집합 (안전)'], ['llm-summarize', 'LLM 요약 병합 (API 호출, 품질↑)']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; modeSel.appendChild(o); });
-            const previewBtn = document.createElement('button'); previewBtn.textContent = '프리뷰'; previewBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;background:transparent;border:1px solid #446;color:#88c;cursor:pointer;';
-            const execBtn = document.createElement('button'); execBtn.textContent = '병합 실행'; execBtn.style.cssText = 'padding:6px 12px;font-size:11px;border-radius:4px;background:#285;border:none;color:#fff;cursor:pointer;font-weight:bold;';
-            ctrl.appendChild(modeSel); ctrl.appendChild(previewBtn); ctrl.appendChild(execBtn); nd.appendChild(ctrl);
+          search.oninput = () => { state.query = search.value; renderEntries(); };
+          selectVisibleButton.onclick = () => { for (const entry of visibleEntries) state.selectedIds.add(entry.id); invalidatePreview(); renderEntries(); updateSelected(); };
+          clearButton.onclick = () => { state.selectedIds.clear(); state.targetId = null; invalidatePreview(); renderEntries(); updateSelected(); };
 
-            const preview = document.createElement('div'); preview.style.cssText = 'margin-top:8px;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:4px;font-size:11px;color:#ccc;display:none;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;';
-            nd.appendChild(preview);
-
-            let mergedDraft = null;
-
-            const mkKeepLongest = (entries) => {
-              const sorted = [...entries].sort((a, b) => summaryValue(b.summary).length - summaryValue(a.summary).length);
-              return mergeDraftWithOriginals(sorted[0] || {}, entries);
-            };
-
-            const mkLlmMerge = async (entries) => {
-              const clean = entries.map(({ id, packName, project, enabled, ...rest }) => rest);
-              const prompt = '다음은 중복으로 판단된 로어 엔트리들이다. 하나의 로어 JSON으로 병합하라.\n' +
-                '원칙:\n1. 핵심 정보는 누락하지 않는다. 각 입력 엔트리를 체크리스트처럼 대조해 이름/관계/상태/약속/사건/원인/미해결 훅을 모두 보존한다\n2. 불필요한 반복·수식어만 제거한다. 서로 다른 사실을 요약 편의상 삭제하지 않는다\n3. summary는 {full, compact, micro} 객체로 병합한다. full은 자체로 이해되는 기록, compact는 관계/상태/훅 보존, micro는 안정 회상 핸들+현재 상태로 작성한다. 임의의 글자수에 맞추려고 사실을 삭제하지 않는다\n4. eventHistory/callHistory/callState/timeline/entities/detail은 합집합으로 통합한다. 충돌하는 상태는 최신 timeline/lastUpdated를 우선하되 과거 상태는 eventHistory에 남긴다\n5. embed_text에는 이름/별칭/관계어/사건 원인/이해관계/장소/미해결 훅을 포함한다\n6. triggers는 필수 키워드만 유지하되 양쪽 인물명과 고유명사는 보존한다 (최대 12개)\n7. type은 가장 구체적인 것 유지. 타입이 다르면 summary.full에 각 타입의 역할을 설명한다\n8. 출력은 순수 JSON 객체 하나만. 입력에 없던 설정을 창작하지 않는다.\n\n' +
-                '입력:\n' + JSON.stringify(clean, null, 2);
-              const res = await C.callGeminiApi(prompt, _w.__LoreInj.buildGenerationApiOpts
-                ? _w.__LoreInj.buildGenerationApiOpts({ model: settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel, maxRetries: 2 }, { feature: 'merge', chatKey: 'global' })
-                : {
-                  apiType: settings.config.autoExtApiType || 'key', key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
-                  deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high',
-                  vertexJson: settings.config.autoExtVertexJson,
-                  vertexLocation: settings.config.autoExtVertexLocation || 'global', vertexProjectId: settings.config.autoExtVertexProjectId,
-                  firebaseScript: settings.config.autoExtFirebaseScript, model: settings.config.autoExtModel, maxRetries: 2
-                });
-              if (!res.text) throw new Error('LLM 응답 없음: ' + (res.error || ''));
-              let txt = res.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-              const m1 = txt.match(/\{[\s\S]*\}/); if (m1) txt = m1[0];
-              const parsed = JSON.parse(txt);
-              return mergeDraftWithOriginals(parsed, entries);
-            };
-
-            const buildPreview = async () => {
-              preview.style.display = 'block'; preview.textContent = '생성 중...';
-              try {
-                if (modeSel.value === 'keep-longest') mergedDraft = mkKeepLongest(grp.entries);
-                else mergedDraft = await mkLlmMerge(grp.entries);
-                const sumLen = summaryValue(mergedDraft.summary).length;
-                preview.innerHTML = '<div style="color:#4a9;font-weight:bold;margin-bottom:6px;">병합 미리보기 (summary ' + sumLen + '자)</div><pre style="white-space:pre-wrap;margin:0;font-size:11px;color:#ccc;">' + JSON.stringify(mergedDraft, null, 2).replace(/</g, '&lt;') + '</pre>';
-              } catch(e) { preview.textContent = 'X ' + e.message; mergedDraft = null; }
-            };
-
-            previewBtn.onclick = buildPreview;
-
-            execBtn.onclick = async () => {
-              if (!mergedDraft) { await buildPreview(); if (!mergedDraft) return; }
-              if (types.length > 1) { if (!confirm('타입 불일치 (' + types.join(', ') + '). 계속?')) return; }
-              if (!confirm(grp.entries.length + '개 엔트리를 하나로 병합할 것?')) return;
-              try {
-                const originals = grp.entries.map(e => JSON.parse(JSON.stringify(e)));
-                for (const e of grp.entries) { try { if (C.saveEntryVersion) await C.saveEntryVersion(e, 'pre_merge'); } catch(_){} }
-                const anchored = grp.entries.find(e => e.anchor);
-                const target = anchored || grp.entries[0];
-                const toDelete = grp.entries.filter(e => e.id !== target.id);
-                const finalEntry = { ...mergedDraft, id: target.id, packName: target.packName, project: target.project };
+          const buildPreview = async () => {
+            const selected = allEntries.filter(entry => state.selectedIds.has(entry.id));
+            if (selected.length < 2) return null;
+            const missing = _w.__LoreInj.getApiMissingReason ? _w.__LoreInj.getApiMissingReason(settings.config, 'generate') : '';
+            if (missing) throw new Error(missing);
+            preview.style.display = 'block'; preview.textContent = 'AI 병합 결과 생성 중...';
+            previewButton.disabled = true; mergeButton.disabled = true;
+            try {
+              const draft = await buildAiMerge(selected);
+              state.preview = draft; state.previewKey = selectionKey();
+              preview.textContent = JSON.stringify(draft, null, 2);
+              return draft;
+            } catch (error) {
+              state.preview = null; state.previewKey = ''; preview.textContent = '실패: ' + (error.message || String(error)); throw error;
+            } finally { updateSelected(); }
+          };
+          previewButton.onclick = async () => { try { await buildPreview(); } catch (_) {} };
+          mergeButton.onclick = async () => {
+            const selected = allEntries.filter(entry => state.selectedIds.has(entry.id));
+            if (selected.length < 2) return;
+            let draft = state.previewKey === selectionKey() ? state.preview : null;
+            if (!draft) { try { draft = await buildPreview(); } catch (_) { return; } }
+            const types = Array.from(new Set(selected.map(entry => canonicalMergeType(entry.type))));
+            if (types.length > 1 && !confirm('서로 다른 유형의 로어가 선택되었습니다. AI가 하나의 유형으로 정리하도록 계속할까요?')) return;
+            const target = selected.find(entry => String(entry.id) === String(state.targetId)) || selected.find(entry => entry.anchor) || selected[0];
+            if (!confirm(selected.length + '개 로어를 하나로 병합하고 [' + target.name + '] 위치에 저장할까요?')) return;
+            mergeButton.disabled = true; mergeButton.textContent = '병합 저장 중...';
+            const originals = selected.map(entry => JSON.parse(JSON.stringify(entry)));
+            const packs = Array.from(new Set(selected.map(entry => entry.packName)));
+            try {
+              for (const entry of selected) { try { if (C.saveEntryVersion) await C.saveEntryVersion(entry, 'pre_merge'); } catch (_) {} }
+              const finalEntry = {
+                ...draft,
+                id: target.id,
+                packName: target.packName,
+                project: target.project,
+                enabled: target.enabled !== false,
+                lastUpdated: Date.now()
+              };
+              const selectedIds = selected.map(entry => entry.id);
+              await db.transaction('rw', db.entries, db.embeddings, db.packs, async () => {
                 await db.entries.put(finalEntry);
-                for (const e of toDelete) { await db.entries.delete(e.id); try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(e.id); else await db.embeddings.where('entryId').equals(e.id).delete(); } catch(_){} }
-                try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(target.id); else await db.embeddings.where('entryId').equals(target.id).delete(); } catch(_){}
-                const packs = new Set(grp.entries.map(e => e.packName));
-                for (const pk of packs) { const cnt = await db.entries.where('packName').equals(pk).count(); await db.packs.update(pk, { entryCount: cnt }); }
-                C.__lastMergeUndo = { mergedId: target.id, originals };
-                state.groups = state.groups.filter((_, i) => i !== gi);
-                let embedMsg = '';
-                try {
-                  const embedResult = await reembedPacks(Array.from(packs), (message) => { execBtn.textContent = message; });
-                  embedMsg = embedResult.skipped ? '검색 준비 생략: ' + embedResult.message : '검색 준비 ' + embedResult.count + '개 갱신 완료.';
-                } catch(embErr) { embedMsg = '검색 준비 갱신 실패: ' + (embErr.message || embErr); }
-                alert('병합 완료. ' + embedMsg);
-                m.replaceContentPanel(renderMerge, '로어 병합');
-              } catch(e) { alert('실패: ' + e.message); }
-            };
-          }});
-        }
+                const deleteIds = selectedIds.filter(id => id !== target.id);
+                if (deleteIds.length) await db.entries.bulkDelete(deleteIds);
+                await db.embeddings.where('entryId').anyOf(selectedIds).delete();
+                await updatePackCounts(packs);
+              });
+              C.__lastMergeUndo = { mergedId: target.id, originals };
+              state.selectedIds.clear(); state.targetId = null; state.preview = null; state.previewKey = ''; state.candidateIds = null; state.candidateScores = new Map();
+              let embeddingMessage = '';
+              try {
+                const result = await reembedPacks(packs, message => { mergeButton.textContent = message; });
+                embeddingMessage = result.skipped ? '검색 준비 생략: ' + result.message : '검색 준비 ' + result.count + '개 갱신 완료.';
+              } catch (error) { embeddingMessage = '검색 준비 갱신 실패: ' + (error.message || String(error)); }
+              alert('병합 완료. ' + embeddingMessage);
+              manager.replaceContentPanel(renderMerge, '로어 병합');
+            } catch (error) {
+              alert('병합 실패: ' + (error.message || String(error)));
+              mergeButton.disabled = false; mergeButton.textContent = '선택한 로어 병합';
+            }
+          };
+
+          renderEntries(); updateSelected();
+        }});
       };
-      m.replaceContentPanel(renderMerge, '로어 병합');
+      manager.replaceContentPanel(renderMerge, '로어 병합');
     });
   });
 

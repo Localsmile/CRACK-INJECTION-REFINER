@@ -110,6 +110,8 @@ async function testKernelHelpers() {
   assert(variants.some(v => !v.withJsonMode && v.reasoningStyle === 'none'), 'conservative OpenAI fallback is missing');
   assert.strictEqual(C.normalizeOpenAICompatUrl('https://api.openai.com/v1', 'responses'), 'https://api.openai.com/v1/responses');
   assert.strictEqual(C.normalizeOpenAICompatUrl('https://api.anthropic.com', 'anthropic_messages'), 'https://api.anthropic.com/v1/messages');
+  assert.strictEqual(C.normalizeOpenAICompatFormat('custom'), 'custom');
+  assert.strictEqual(C.normalizeOpenAICompatUrl('https://proxy.example/custom/generate?mode=rp', 'custom'), 'https://proxy.example/custom/generate?mode=rp');
   assert.strictEqual(C.openAICompatResponseText({ output: [{ content: [{ type: 'output_text', text: 'responses-ok' }] }] }, 'responses'), 'responses-ok');
   assert.strictEqual(C.openAICompatResponseText({ content: [{ type: 'text', text: 'anthropic-ok' }] }, 'anthropic_messages'), 'anthropic-ok');
   const responseVariants = C.buildOpenAIFormatVariants('responses', 'prompt', { model: 'm', jsonMode: true, maxOutputTokens: 200, reasoning: 'low' });
@@ -154,6 +156,15 @@ async function testKernelHelpers() {
   assert.strictEqual(anthropicRequest.headers['anthropic-version'], '2023-06-01', 'Anthropic version header is missing');
   assert.strictEqual(JSON.parse(anthropicRequest.data).messages[0].content, 'anthropic prompt', 'Anthropic message body was not mapped');
 
+  const customResult = await C.callGeminiApi('custom prompt', {
+    apiType: 'openai', openAIBaseUrl: 'https://proxy.example/custom/generate?mode=rp', openAIKey: 'test-key', openAIFormat: 'custom',
+    model: 'test-model', responseMimeType: 'application/json', maxRetries: 0, retryOnServerError: false
+  });
+  assert.strictEqual(customResult.text, '{"entries":[]}', 'custom full-URL response was not parsed as an OpenAI-compatible response');
+  const customRequest = requests[requests.length - 1];
+  assert.strictEqual(customRequest.url, 'https://proxy.example/custom/generate?mode=rp', 'custom format modified the user-provided URL');
+  assert.strictEqual(JSON.parse(customRequest.data).messages[0].role, 'system', 'custom format lost the Chat Completions-compatible JSON instruction');
+
   await assert.rejects(
     C.nativeFetchWithTimeout('https://timeout.test', { timeoutMs: 10 }),
     /타임아웃/,
@@ -197,6 +208,8 @@ function testPromptContract() {
     L.DEFAULT_DEEPSEEK_IMPORT_PROMPT
   ].join('\n').toLowerCase();
   assert(!/censor|moralize|ethic/.test(promptText), 'disallowed policy wording leaked into default prompts');
+  assert.deepStrictEqual(Array.from(Object.keys(L.OOC_FORMATS)), ['default', 'compact', 'custom'], 'strong OOC wrapper choices were not removed');
+  assert(L.OOC_FORMATS.default.prefix.includes('not directions for what characters must do or say'), 'default OOC wrapper still over-directs roleplay behavior');
 }
 
 function testSourceContracts() {
@@ -225,7 +238,7 @@ function testSourceContracts() {
   assert(settings.includes("'autoExtOpenAIFormat'"), 'OpenAI transport format is not preserved by API-only settings reset');
 
   const menu = read('embedding/injecter-6.js');
-  for (const label of ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', '연결', '활동', '도움말']) {
+  for (const label of ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', 'API 설정', '활동', '도움말']) {
     assert(menu.includes(`name: '${label}'`), `menu group missing: ${label}`);
   }
   assert(!menu.includes('flatMenuAdapter'), 'flat menu adapter is still active');
@@ -234,6 +247,10 @@ function testSourceContracts() {
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');
   assert(apiUi.includes("['Anthropic Messages (/v1/messages)', 'anthropic_messages']"), 'Anthropic Messages format selector is missing');
   assert(apiUi.includes("['Responses (/responses)', 'responses']"), 'Responses format selector is missing');
+  assert(apiUi.includes("['커스텀 (입력한 전체 URL 사용)', 'custom']"), 'custom full-URL format selector is missing');
+  assert(apiUi.includes("autoExtOpenAIFormat || 'custom'"), 'custom full-URL format is not the new-install UI default');
+  assert(apiUi.includes('추출 항목 체크는 커스텀 프롬프트에도 동일하게 적용됩니다.'), 'custom prompt and extraction-scope behavior is not explained');
+  assert(!apiUi.includes('지시문'), 'developer-facing instruction terminology remains in API UI');
 
   const extractionUi = read('embedding/injecter-6-sub-extract.js');
   assert(extractionUi.includes('시간과 생성 API 사용량이 늘어남'), 'extra temporal API call is not disclosed in the UI');
@@ -261,12 +278,22 @@ function testSourceContracts() {
   assert(backup.includes('includeEmbeddings: false, includeHistory: false, serverSlim: true'), 'new server backups are not slim');
   assert(backup.includes('const packs = Array.from(new Set(((report && report.touchedPacks) || [])'), 'server restore does not limit embedding rebuild to restored packs');
   assert(backup.includes('B.renderLorePackImportSection(nd)'), 'lore-pack import was not moved to Backup');
+  assert(backup.includes("makeBtn('파일 내용을 현재 데이터에 추가'"), 'file merge action is still ambiguous');
+  assert(backup.includes("makeBtn('파일 기준으로 전체 복원'"), 'file replacement action is still ambiguous');
+  assert(backup.includes("makeBtn('현재 데이터를 서버에 백업'"), 'server backup action is still ambiguous');
+  assert(backup.includes("makeBtn('선택 백업을 현재 데이터에 추가'"), 'server merge action is still ambiguous');
+  assert(backup.includes('기존 백업은 덮어쓰지 않습니다'), 'server backup behavior is not explained');
+  assert(!backup.includes("title.textContent = '저장 공간 정리'") && !backup.includes('사용하지 않는 데이터 정리'), 'storage cleanup UI is still present');
+  assert(!settings.includes('deletePackData, cleanupUnusedLoreStorage,'), 'manual storage cleanup remains publicly exposed');
 
   const fileUi = read('embedding/injecter-6-sub-file.js');
   assert(fileUi.includes('async function renameLorePack'), 'lore-pack rename is missing');
   assert(fileUi.includes('renamedData.map') || fileUi.includes('data.map(entry => ({ ...entry, packName: newName }))'), 'pack rename does not update snapshot contents');
   assert(fileUi.includes("modal.createSubMenu('로어팩 관리'"), 'lore-pack manager label is missing');
   assert(!fileUi.slice(fileUi.indexOf("modal.createSubMenu('로어팩 관리'")).includes("title.textContent = '로어 가져오기'"), 'lore-pack import is still rendered in the manager');
+  assert(fileUi.includes("loreSummary.textContent = '로어 펼쳐보기'"), 'pack manager cannot expand lore entries');
+  assert(fileUi.includes("saveEntryBtn.textContent = '저장'"), 'pack manager lore editor is missing');
+  assert(fileUi.includes('await db.entries.put(updated)'), 'pack manager does not persist edited lore');
 
   const snapshotUi = read('embedding/injecter-6-sub-snapshot.js');
   assert(snapshotUi.includes("C.unpackJsonFromStorage(snapshot, 'data', 'dataGzip', 'dataEncoding')"), 'compressed snapshot preview is missing');
@@ -275,7 +302,19 @@ function testSourceContracts() {
 
   const mergeUi = read('embedding/injecter-6-sub-merge.js');
   assert(!mergeUi.includes('최대 글자수 (summary)'), 'ambiguous merge character limit is still visible');
-  assert(mergeUi.includes('await reembedPacks(Array.from(packs)'), 'merge does not automatically rebuild affected pack embeddings');
+  assert(!mergeUi.includes('keep-longest') && !mergeUi.includes('가장 긴 항목 유지'), 'non-AI merge mode is still available');
+  assert(mergeUi.includes("previewButton.textContent = 'AI 병합 미리보기'"), 'selected-lore AI merge preview is missing');
+  assert(mergeUi.includes('state.selectedIds.has(entry.id)'), 'merge execution is not scoped to selected lore');
+  assert(mergeUi.includes("C.createToggleRow('유사도 후보 필터'"), 'optional similarity filter is missing');
+  assert(mergeUi.includes("db.transaction('rw', db.entries, db.embeddings, db.packs"), 'selected-lore merge commit is not transactional');
+  assert(mergeUi.includes('await reembedPacks(packs'), 'merge does not automatically rebuild affected pack embeddings');
+
+  const refinerQueue = read('embedding/refiner-queue.js');
+  const refinerObserver = read('embedding/refiner-observer.js');
+  const refinerUi = read('embedding/injecter-6-sub-refiner.js');
+  assert(!refinerQueue.includes('queued for refine') && !refinerQueue.includes('calling refiner api'), 'raw refiner queue status is user-visible');
+  assert(!refinerObserver.includes('stable assistant response'), 'raw observer status is user-visible');
+  assert(refinerUi.includes("queued: '교정 대기'"), 'refiner state labels are not localized');
 }
 
 async function testMenuRuntime() {
@@ -328,9 +367,9 @@ async function testMenuRuntime() {
   };
   context.__LoreInj.setupSubMenus(modal);
   context.__LoreInj.setupSubMenus(modal);
-  assert.deepStrictEqual(top.map(row => row.name), ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', '연결', '활동', '도움말']);
+  assert.deepStrictEqual(top.map(row => row.name), ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', 'API 설정', '활동', '도움말']);
   assert.deepStrictEqual(top.find(row => row.name === '로어 관리').children.map(row => row.name), ['목록', '로어팩 관리', '중복 정리', '복원 지점']);
-  assert.deepStrictEqual(top.find(row => row.name === '연결').children.map(row => row.name), ['연결 및 모델', '지시문']);
+  assert.deepStrictEqual(top.find(row => row.name === 'API 설정').children.map(row => row.name), ['연결 및 모델', '프롬프트']);
   assert.deepStrictEqual(top.find(row => row.name === '활동').children.map(row => row.name), ['실행 기록', '현재 대화 상태']);
 }
 

@@ -36,7 +36,7 @@
 
   async function checkLatestMessage() {
     const config = R.ConfigGetter();
-    if (!config.refinerEnabled) { R.Core && R.Core.hideStatusBadge(); setRefinerState('off', 'disabled'); return; }
+    if (!config.refinerEnabled) { R.Core && R.Core.hideStatusBadge(); setRefinerState('off', '꺼짐'); return; }
 
     const currentUrl = R.Core.getCurUrl();
     if (currentUrl !== _lastKnownUrl) {
@@ -44,7 +44,7 @@
     }
 
     const chatId = R.Core.getCurrentChatId();
-    if (!chatId) { R.Core && R.Core.hideStatusBadge(); setRefinerState('idle', 'no chat id'); return; }
+    if (!chatId) { R.Core && R.Core.hideStatusBadge(); setRefinerState('idle', '채팅방 대기'); return; }
 
     try {
       const lastLog = await CrackUtil.chatRoom().findLastMessageId(chatId, "assistant");
@@ -63,19 +63,19 @@
       if (msgId !== lastAssistantMsgId) {
         R.Core.showStatusBadge('에리가 응답 기다리는 중');
         _waitingSince = Date.now();
-        setRefinerState('waiting', 'assistant response detected');
+        setRefinerState('waiting', '응답 작성 확인 중');
         lastAssistantMsgId = msgId; lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
       } else {
         if (contentLen === lastMsgLength && lastMsgLength > 0) {
           idleCount++;
           if (idleCount >= 2 && Date.now() - lastChangeTime > 4000) {
-            setRefinerState('queued', 'stable assistant response');
+            setRefinerState('queued', '응답 작성 완료');
             _waitingSince = 0;
             R.enqueueRefine(lastLog.content, msgId);
           }
         } else {
           lastMsgLength = contentLen; idleCount = 0; lastChangeTime = Date.now();
-          setRefinerState('waiting', 'assistant response still changing');
+          setRefinerState('waiting', '응답 작성 중');
         }
       }
     } catch (e) {}
@@ -89,13 +89,13 @@
     if (!isChatPath()) {
       console.log('[Refiner:observer] non-chat route: observer skipped');
       R.Core && R.Core.hideStatusBadge();
-      setRefinerState('idle', 'non-chat route');
+      setRefinerState('idle', '채팅 화면 대기');
       return;
     }
 
     _chatObserver = new MutationObserver(() => {
       const config = R.ConfigGetter();
-      if (!config.refinerEnabled) { R.Core && R.Core.hideStatusBadge(); setRefinerState('off', 'disabled'); return; }
+      if (!config.refinerEnabled) { R.Core && R.Core.hideStatusBadge(); setRefinerState('off', '꺼짐'); return; }
       if (window._refinerDebounceTimer) clearTimeout(window._refinerDebounceTimer);
       window._refinerDebounceTimer = setTimeout(() => { checkLatestMessage(); }, 800);
     });
@@ -110,12 +110,12 @@
     _watchdogInterval = setInterval(() => {
       if (R.workerBusy && Date.now() - R.workerStartTime > R.WORKER_TIMEOUT) {
         R.workerBusy = false; R.Core && R.Core.hideStatusBadge();
-        setRefinerState('timeout', 'worker timeout');
+        setRefinerState('timeout', '교정 처리 시간 초과');
       }
       if (_waitingSince && Date.now() - _waitingSince > 45000) {
         _waitingSince = 0;
         R.Core && R.Core.hideStatusBadge();
-        setRefinerState('timeout', 'waiting timeout');
+        setRefinerState('timeout', '응답 대기 시간 초과');
       }
       if (R.refineQueue.length > 0 && !R.workerBusy) R.processQueue();
     }, 2000);

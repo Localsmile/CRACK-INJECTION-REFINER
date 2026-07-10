@@ -25,7 +25,7 @@
       openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
       openAIKey: cfg.autoExtOpenAIKey || '',
       openAIReasoning: cfg.autoExtOpenAIReasoning || 'off',
-      openAIFormat: cfg.autoExtOpenAIFormat || 'chat_completions',
+      openAIFormat: cfg.autoExtOpenAIFormat || 'custom',
       vertexJson: cfg.autoExtVertexJson,
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,

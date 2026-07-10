@@ -656,7 +656,78 @@
             cleanBtn.onclick = async () => { cleanBtn.disabled = true; const orig = cleanBtn.textContent; cleanBtn.textContent = '...'; try { const rpt = C.cleanupStaleEmbeddings ? await C.cleanupStaleEmbeddings(pack.name, { model: settings.config.embeddingModel || 'gemini-embedding-001' }) : { removed: 0 }; cleanBtn.textContent = '정리 ' + rpt.removed; alert('검색 준비 정리 완료: ' + (rpt.removed || 0) + '개 삭제'); } catch(e) { cleanBtn.textContent = 'X'; alert('정리 실패: ' + e.message); } setTimeout(() => { cleanBtn.textContent = orig; cleanBtn.disabled = false; }, 1500); };
             const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.style.cssText = B + 'color:#a55;border-color:#633;';
             delBtn.onclick = async () => { if (!confirm('[' + pack.name + '] 삭제? 이 팩의 로어, 검색 준비, 되돌리기 기록도 함께 삭제됩니다.')) return; await deletePackData(pack.name); m.replaceContentPanel(renderPackUI, '파일 관리'); };
-            actions.appendChild(renameBtn); actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header); nd.appendChild(packDiv);
+            actions.appendChild(renameBtn); actions.appendChild(exportBtn); actions.appendChild(embBtn); actions.appendChild(cleanBtn); actions.appendChild(delBtn); header.appendChild(actions); packDiv.appendChild(header);
+
+            const loreDetails = document.createElement('details');
+            loreDetails.style.cssText = 'border-top:1px solid #292929;background:#090909;';
+            const loreSummary = document.createElement('summary');
+            loreSummary.textContent = '로어 펼쳐보기';
+            loreSummary.style.cssText = 'cursor:pointer;padding:8px 12px;font-size:11px;color:#8bc;user-select:none;';
+            const loreBody = document.createElement('div');
+            loreBody.style.cssText = 'padding:0 10px 10px;';
+            loreDetails.appendChild(loreSummary); loreDetails.appendChild(loreBody);
+            let loreLoaded = false;
+            loreDetails.ontoggle = async () => {
+              if (!loreDetails.open || loreLoaded) return;
+              loreLoaded = true;
+              loreBody.textContent = '로어 불러오는 중...';
+              try {
+                const entries = await db.entries.where('packName').equals(pack.name).toArray();
+                entries.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+                loreBody.innerHTML = '';
+                if (!entries.length) { loreBody.textContent = '이 로어팩에 저장된 로어가 없습니다.'; return; }
+                for (const entry of entries) {
+                  const entryDetails = document.createElement('details');
+                  entryDetails.style.cssText = 'margin-top:6px;border:1px solid #282828;border-radius:4px;background:#0d0d0d;';
+                  const entrySummary = document.createElement('summary');
+                  entrySummary.textContent = '[' + (entry.type || '기타') + '] ' + (entry.name || '이름 없음');
+                  entrySummary.style.cssText = 'cursor:pointer;padding:7px 9px;font-size:11px;color:#ccc;font-weight:bold;word-break:break-word;';
+                  const entryBody = document.createElement('div');
+                  entryBody.style.cssText = 'padding:0 9px 9px;';
+                  const editable = { ...entry };
+                  delete editable.id; delete editable.packName; delete editable.project; delete editable.enabled;
+                  const raw = document.createElement('pre');
+                  raw.textContent = JSON.stringify(editable, null, 2);
+                  raw.style.cssText = 'max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0;padding:8px;background:#070707;border:1px solid #222;border-radius:4px;color:#aaa;font-size:10px;';
+                  const editArea = document.createElement('textarea');
+                  editArea.value = JSON.stringify(editable, null, 2);
+                  editArea.style.cssText = 'display:none;width:100%;height:260px;box-sizing:border-box;padding:8px;background:#070707;color:#ccc;border:1px solid #346;border-radius:4px;font:10px/1.45 monospace;resize:vertical;';
+                  const buttonRow = document.createElement('div'); buttonRow.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;margin-top:7px;';
+                  const editEntryBtn = document.createElement('button'); editEntryBtn.textContent = '수정'; editEntryBtn.style.cssText = B + 'color:#8bc;border-color:#346;';
+                  const cancelEntryBtn = document.createElement('button'); cancelEntryBtn.textContent = '취소'; cancelEntryBtn.style.cssText = B + 'display:none;';
+                  const saveEntryBtn = document.createElement('button'); saveEntryBtn.textContent = '저장'; saveEntryBtn.style.cssText = B + 'display:none;color:#4a9;border-color:#264;';
+                  const setEditing = (editing) => {
+                    raw.style.display = editing ? 'none' : 'block'; editArea.style.display = editing ? 'block' : 'none';
+                    editEntryBtn.style.display = editing ? 'none' : ''; cancelEntryBtn.style.display = editing ? '' : 'none'; saveEntryBtn.style.display = editing ? '' : 'none';
+                  };
+                  editEntryBtn.onclick = () => setEditing(true);
+                  cancelEntryBtn.onclick = () => { editArea.value = JSON.stringify(editable, null, 2); setEditing(false); };
+                  saveEntryBtn.onclick = async () => {
+                    try {
+                      const parsed = JSON.parse(editArea.value);
+                      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('JSON 객체 하나를 입력해 주세요.');
+                      if (!String(parsed.name || '').trim()) throw new Error('로어 이름은 비워둘 수 없습니다.');
+                      const updated = { ...entry, ...parsed, id: entry.id, packName: entry.packName, project: entry.project, enabled: entry.enabled !== false, lastUpdated: Date.now() };
+                      await db.entries.put(updated);
+                      try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(updated.id); else await db.embeddings.where('entryId').equals(updated.id).delete(); } catch (_) {}
+                      Object.assign(entry, updated);
+                      const nextEditable = { ...updated }; delete nextEditable.id; delete nextEditable.packName; delete nextEditable.project; delete nextEditable.enabled;
+                      Object.keys(editable).forEach(key => delete editable[key]); Object.assign(editable, nextEditable);
+                      raw.textContent = JSON.stringify(editable, null, 2); editArea.value = raw.textContent; entrySummary.textContent = '[' + (updated.type || '기타') + '] ' + updated.name;
+                      setEditing(false);
+                      alert('로어를 수정했습니다. 이 로어의 검색 준비는 자동으로 갱신 대상이 됩니다.');
+                    } catch (error) { alert('수정 실패: ' + (error.message || String(error))); }
+                  };
+                  buttonRow.appendChild(editEntryBtn); buttonRow.appendChild(cancelEntryBtn); buttonRow.appendChild(saveEntryBtn);
+                  entryBody.appendChild(raw); entryBody.appendChild(editArea); entryBody.appendChild(buttonRow);
+                  entryDetails.appendChild(entrySummary); entryDetails.appendChild(entryBody); loreBody.appendChild(entryDetails);
+                }
+              } catch (error) {
+                loreLoaded = false;
+                loreBody.textContent = '로어 불러오기 실패: ' + (error.message || String(error));
+              }
+            };
+            packDiv.appendChild(loreDetails); nd.appendChild(packDiv);
           }
         }});
       };

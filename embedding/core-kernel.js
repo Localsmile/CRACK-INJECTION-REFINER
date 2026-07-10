@@ -511,7 +511,7 @@ Entries:
       deepSeekThinking: opts.deepSeekThinking !== false,
       deepSeekReasoning: opts.deepSeekReasoning || '',
       openAIReasoning: opts.openAIReasoning || '',
-      openAIFormat: opts.openAIFormat || 'chat_completions',
+      openAIFormat: opts.openAIFormat || 'custom',
       feature: opts.costContext && opts.costContext.feature || '',
       chatKey: opts.costContext && opts.costContext.chatKey || ''
     };
@@ -586,6 +586,7 @@ Entries:
 
   function normalizeOpenAICompatFormat(format) {
     const raw = String(format || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (raw === 'custom' || raw === 'full_url' || raw === 'url') return 'custom';
     if (raw === 'responses' || raw === 'response') return 'responses';
     if (raw === 'anthropic_messages' || raw === 'anthropic' || raw === 'messages') return 'anthropic_messages';
     return 'chat_completions';
@@ -594,8 +595,9 @@ Entries:
   function normalizeOpenAICompatUrl(baseUrl, format) {
     let base = String(baseUrl || '').trim();
     if (!base) return '';
-    base = base.replace(/\/+$/, '');
     const normalized = normalizeOpenAICompatFormat(format);
+    if (normalized === 'custom') return base;
+    base = base.replace(/\/+$/, '');
     const suffix = normalized === 'responses' ? '/responses' : (normalized === 'anthropic_messages' ? '/messages' : '/chat/completions');
     if (new RegExp(suffix.replace(/\//g, '\\/') + '$', 'i').test(base)) return base;
     try {
@@ -742,11 +744,11 @@ Entries:
     const {
       key = '', openAIBaseUrl = '', model = '', maxRetries = 1, responseMimeType,
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null,
-      openAIReasoning = '', openAIFormat = 'chat_completions'
+      openAIReasoning = '', openAIFormat = 'custom'
     } = opts;
     const format = normalizeOpenAICompatFormat(openAIFormat || opts.format);
     const url = normalizeOpenAICompatUrl(openAIBaseUrl || opts.baseUrl || opts.openaiBaseUrl, format);
-    if (!url) return { text: null, status: 0, error: 'OpenAI 호환 Base URL 누락', retries: 0 };
+    if (!url) return { text: null, status: 0, error: 'OpenAI 호환 URL 누락', retries: 0 };
     if (!key) return { text: null, status: 0, error: 'OpenAI 호환 API 키 누락', retries: 0 };
     if (!model) return { text: null, status: 0, error: 'OpenAI 호환 모델명 누락', retries: 0 };
 
@@ -838,7 +840,7 @@ Entries:
       firebaseScript = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       deepSeekKey = '', deepSeekThinking = true, deepSeekReasoning = 'high',
       openAIBaseUrl = '', openAIKey = '', openAIReasoning = '',
-      openAIFormat = 'chat_completions',
+      openAIFormat = 'custom',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
       costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
 

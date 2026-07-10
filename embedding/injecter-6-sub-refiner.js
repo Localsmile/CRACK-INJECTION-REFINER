@@ -80,7 +80,8 @@
             const st = R.getRefinerState ? R.getRefinerState() : null;
             if (!st) { live.textContent = '상태: 대기'; return; }
             const age = st.at ? Math.max(0, Math.floor((Date.now() - st.at) / 1000)) : 0;
-            live.textContent = '상태: ' + (st.state || 'idle') + (st.detail ? ' · ' + st.detail : '') + ' · ' + age + '초 전';
+            const stateLabels = { idle: '대기', off: '꺼짐', waiting: '응답 확인 중', queued: '교정 대기', running: '교정 중', skipped: '생략', error: '오류', timeout: '시간 초과' };
+            live.textContent = '상태: ' + (stateLabels[st.state] || st.state || '대기') + (st.detail ? ' · ' + st.detail : '') + ' · ' + age + '초 전';
           };
           renderLive();
           try { if (R.__refinerStatusUiTimer) clearInterval(R.__refinerStatusUiTimer); } catch(_) {}

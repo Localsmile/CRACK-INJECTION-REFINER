@@ -461,9 +461,12 @@
       nd.appendChild(optRow);
 
       const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
-      const exportBtn = makeBtn('파일로 저장', 'border-color:#285;color:#6c9;');
-      const importMergeBtn = makeBtn('파일에서 병합', 'border-color:#258;color:#8bc;');
-      const importReplaceBtn = makeBtn('파일로 교체 복원', 'border-color:#833;color:#e88;');
+      const exportBtn = makeBtn('현재 데이터를 파일에 저장', 'border-color:#285;color:#6c9;');
+      const importMergeBtn = makeBtn('파일 내용을 현재 데이터에 추가', 'border-color:#258;color:#8bc;');
+      const importReplaceBtn = makeBtn('파일 기준으로 전체 복원', 'border-color:#833;color:#e88;');
+      exportBtn.title = '현재 로어, 로어팩, 설정과 검색 준비를 새 백업 파일로 내려받습니다.';
+      importMergeBtn.title = '현재 데이터는 유지하고 백업 파일의 내용을 선택적으로 추가합니다.';
+      importReplaceBtn.title = '현재 로컬 데이터베이스를 지우고 백업 파일의 내용으로 다시 구성합니다.';
       const importFile = document.createElement('input'); importFile.type = 'file'; importFile.accept = '.json,application/json'; importFile.style.display = 'none';
       let importMode = 'merge';
 
@@ -478,7 +481,7 @@
       };
       importMergeBtn.onclick = () => { importMode = 'merge'; importFile.click(); };
       importReplaceBtn.onclick = () => {
-        if (!confirm('현재 로컬 데이터를 백업 파일 기준으로 교체함. 작업 전 내부 백업은 남김.')) return;
+        if (!confirm('현재 로컬 로어와 로어팩을 지우고 선택한 파일 기준으로 전체 복원합니다. 현재 상태를 보관하려면 먼저 파일로 저장하세요. 계속할까요?')) return;
         importMode = 'replace'; importFile.click();
       };
       importFile.onchange = async (ev) => {
@@ -491,8 +494,9 @@
         importFile.value = '';
       };
       row.appendChild(exportBtn); row.appendChild(importMergeBtn); row.appendChild(importReplaceBtn); row.appendChild(importFile); nd.appendChild(row);
-      addText(nd, '파일에서 병합: 현재 데이터 유지, 겹치는 로어팩/설정은 가져오기 전에 처리 방식을 고름.', 'font-size:10px;color:#8a9;line-height:1.45;margin-top:8px;');
-      addText(nd, '파일로 교체 복원: 현재 로컬 DB를 백업 파일 기준으로 바꿈. 실행 전 내부 백업 남김.', 'font-size:10px;color:#b88;line-height:1.45;margin-top:3px;');
+      addText(nd, '현재 데이터를 파일에 저장: 이 브라우저의 로어, 로어팩, 설정, 검색 준비와 채팅별 상태를 새 JSON 파일로 내려받습니다. 위 선택에 따라 API 키와 로그 포함 여부가 달라집니다.', 'font-size:10px;color:#8a9;line-height:1.5;margin-top:8px;');
+      addText(nd, '파일 내용을 현재 데이터에 추가: 현재 로어를 지우지 않습니다. 이름이 겹치면 새 팩으로 가져올지, 기존 팩에 합칠지, 기존 팩을 바꿀지 선택하고 같은 이름의 로어와 설정 처리 방식도 직접 정합니다.', 'font-size:10px;color:#8bc;line-height:1.5;margin-top:4px;');
+      addText(nd, '파일 기준으로 전체 복원: 현재 로컬 로어 DB를 먼저 비운 뒤 파일의 로어, 팩, 설정과 저장 상태로 다시 구성합니다. 현재 상태가 필요하면 실행 전에 별도 파일로 저장해야 합니다.', 'font-size:10px;color:#d99;line-height:1.5;margin-top:4px;');
     }});
 
     panel.addBoxedField('', '', { onInit: (nd) => {
@@ -650,10 +654,13 @@
 
       const btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;';
       const refreshBtn = makeBtn('목록 새로고침', 'border-color:#555;color:#bbb;');
-      const uploadBtn = makeBtn('서버에 저장', 'border-color:#285;color:#6c9;');
-      const mergeBtn = makeBtn('서버에서 병합', 'border-color:#258;color:#8bc;');
-      const replaceBtn = makeBtn('서버 백업으로 교체', 'border-color:#833;color:#e88;');
+      const uploadBtn = makeBtn('현재 데이터를 서버에 백업', 'border-color:#285;color:#6c9;');
+      const mergeBtn = makeBtn('선택 백업을 현재 데이터에 추가', 'border-color:#258;color:#8bc;');
+      const replaceBtn = makeBtn('선택 백업 기준으로 전체 복원', 'border-color:#833;color:#e88;');
       const deleteBtn = makeBtn('선택 백업 삭제', 'border-color:#833;color:#e88;');
+      uploadBtn.title = '현재 로어와 설정을 새 서버 백업으로 추가합니다. 기존 서버 백업은 덮어쓰지 않습니다.';
+      mergeBtn.title = '선택한 서버 백업을 내려받아 현재 데이터를 유지한 채 선택적으로 추가합니다.';
+      replaceBtn.title = '현재 로컬 데이터베이스를 지우고 선택한 서버 백업 기준으로 다시 구성합니다.';
       serverButtons.push(checkBtn, regBtn, loginBtn, logoutBtn, refreshBtn, uploadBtn, mergeBtn, replaceBtn, deleteBtn);
       refreshBtn.onclick = async () => {
         const done = beginServerWork(refreshBtn, '불러오는 중...', '서버 백업 목록 불러오는 중...');
@@ -692,40 +699,40 @@
         const res = await apiDownload(selected.backupId);
         setInlineStatus(workStatus, '백업 복호화 중...', '#8bc');
         const data = await decryptJson(res.payload, serverSession.userId, activePassword);
-        setInlineStatus(workStatus, mode === 'replace' ? '교체 복원 처리 중...' : '병합 처리 중...', '#8bc');
+        setInlineStatus(workStatus, mode === 'replace' ? '전체 복원 처리 중...' : '현재 데이터에 추가 중...', '#8bc');
         const report = await importBackupWithMode(data, mode, false);
         if (!report) return null;
         const embedReport = await embedRestoredPacks(report, workStatus);
         return { report, embedReport };
       };
       mergeBtn.onclick = async () => {
-        const done = beginServerWork(mergeBtn, '병합 중...', '서버 병합 준비 중...');
+        const done = beginServerWork(mergeBtn, '추가 중...', '서버 백업 가져오기 준비 중...');
         if (!done) return;
         try {
           const result = await pullSelected('merge');
           if (result) {
             const report = result.report;
             const embedMsg = formatEmbedRestoreSuffix(result.embedReport);
-            done('서버 병합 완료. 로어 ' + report.entries + '개' + embedMsg + '.', '#8a9');
-            alert('서버 병합 완료: 로어 ' + report.entries + '개' + embedMsg);
+            done('서버 백업 추가 완료. 로어 ' + report.entries + '개' + embedMsg + '.', '#8a9');
+            alert('서버 백업 추가 완료: 로어 ' + report.entries + '개' + embedMsg);
           }
-          else done('서버 병합 취소됨.', '#d8a');
-        } catch (e) { done('서버 병합 실패: ' + e.message, '#d88'); alert('서버 병합 실패: ' + e.message); }
+          else done('서버 백업 추가 취소됨.', '#d8a');
+        } catch (e) { done('서버 백업 추가 실패: ' + e.message, '#d88'); alert('서버 백업 추가 실패: ' + e.message); }
       };
       replaceBtn.onclick = async () => {
-        if (!confirm('현재 로컬 데이터를 선택한 서버 백업 기준으로 교체함.')) return;
-        const done = beginServerWork(replaceBtn, '교체 중...', '서버 교체 복원 준비 중...');
+        if (!confirm('현재 로컬 로어와 로어팩을 지우고 선택한 서버 백업 기준으로 전체 복원합니다. 현재 상태가 필요하면 먼저 파일로 저장하세요. API 키는 서버에 저장되지 않으며 이 브라우저의 현재 값을 유지합니다. 계속할까요?')) return;
+        const done = beginServerWork(replaceBtn, '복원 중...', '서버 백업 전체 복원 준비 중...');
         if (!done) return;
         try {
           const result = await pullSelected('replace');
           if (result) {
             const report = result.report;
             const embedMsg = formatEmbedRestoreSuffix(result.embedReport);
-            done('서버 교체 복원 완료. 로어 ' + report.entries + '개' + embedMsg + '.', '#8a9');
-            alert('서버 교체 복원 완료: 로어 ' + report.entries + '개' + embedMsg);
+            done('서버 백업 전체 복원 완료. 로어 ' + report.entries + '개' + embedMsg + '.', '#8a9');
+            alert('서버 백업 전체 복원 완료: 로어 ' + report.entries + '개' + embedMsg);
           }
-          else done('서버 교체 복원 취소됨.', '#d8a');
-        } catch (e) { done('서버 교체 복원 실패: ' + e.message, '#d88'); alert('서버 교체 복원 실패: ' + e.message); }
+          else done('서버 백업 전체 복원 취소됨.', '#d8a');
+        } catch (e) { done('서버 백업 전체 복원 실패: ' + e.message, '#d88'); alert('서버 백업 전체 복원 실패: ' + e.message); }
       };
       deleteBtn.onclick = async () => {
         const done = beginServerWork(deleteBtn, '삭제 중...', '서버 백업 삭제 준비 중...');
@@ -742,30 +749,10 @@
         } catch (e) { done('서버 삭제 실패: ' + e.message, '#d88'); alert('서버 삭제 실패: ' + e.message); }
       };
       btns.appendChild(refreshBtn); btns.appendChild(uploadBtn); btns.appendChild(mergeBtn); btns.appendChild(replaceBtn); btns.appendChild(deleteBtn); nd.appendChild(btns);
+      addText(nd, '현재 데이터를 서버에 백업: 새 백업을 하나 추가하며 기존 백업은 덮어쓰지 않습니다. 서버 비용을 줄이기 위해 검색 준비, 변경 이력, 스냅샷, 로그와 API 키는 제외하고 압축·암호화합니다. 이전 비압축 백업은 저장할 때 자동 압축합니다.', 'font-size:10px;color:#8a9;line-height:1.5;margin-top:9px;');
+      addText(nd, '선택 백업을 현재 데이터에 추가: 현재 로어를 유지합니다. 파일 추가와 같은 충돌 선택 화면을 거친 뒤 실제로 가져온 로어팩만 검색 준비를 다시 실행합니다.', 'font-size:10px;color:#8bc;line-height:1.5;margin-top:4px;');
+      addText(nd, '선택 백업 기준으로 전체 복원: 현재 로컬 로어 DB를 비우고 선택한 서버 백업으로 다시 구성한 뒤 복원된 로어팩을 일괄 검색 준비합니다. 서버에 저장하지 않은 API 키는 현재 브라우저 값을 유지합니다.', 'font-size:10px;color:#d99;line-height:1.5;margin-top:4px;');
       setTimeout(renderList, 0);
-    }});
-
-    panel.addBoxedField('', '', { onInit: (nd) => {
-      C.setFullWidth(nd);
-      const title = document.createElement('div'); title.textContent = '저장 공간 정리'; title.style.cssText = 'font-size:14px;color:#da8;font-weight:bold;margin-bottom:8px;'; nd.appendChild(title);
-      addText(nd, '사용하지 않는 검색 준비와 삭제된 로어의 기록을 지움. 스냅샷은 각 로어팩의 최근 3개만 남기고, 남은 스냅샷과 변경 이력은 압축함. 현재 로어 본문과 최근 복원 지점은 유지함.');
-      const btn = makeBtn('사용하지 않는 데이터 정리', 'border-color:#642;color:#da8;margin-top:10px;');
-      btn.onclick = async () => {
-        if (!confirm('삭제된 로어의 남은 기록과 각 로어팩의 오래된 스냅샷을 정리합니다. 현재 로어와 최근 스냅샷 3개는 유지합니다. 계속할까요?')) return;
-        const done = setButtonBusy(btn, '정리 중...');
-        try {
-          if (typeof _w.__LoreInj.cleanupUnusedLoreStorage !== 'function') throw new Error('저장 공간 정리 기능을 찾을 수 없음.');
-          const report = await _w.__LoreInj.cleanupUnusedLoreStorage({ trimSnapshots: true, maxSnapshotsPerPack: 3, compressHistory: true });
-          const removed = (report.orphanEmbeddingsRemoved || 0) + (report.orphanEntryVersionsRemoved || 0) + (report.orphanSnapshotsRemoved || 0) + (report.snapshotsTrimmed || 0) + (report.emptyPacksRemoved || 0);
-          const compressed = (report.snapshotsCompressed || 0) + (report.entryVersionsCompressed || 0);
-          done();
-          alert((removed || compressed) ? ('저장 공간 정리 완료: 삭제 ' + removed + '개 / 압축 ' + compressed + '개.') : '정리하거나 압축할 데이터가 없습니다.');
-        } catch (e) {
-          done();
-          alert('저장 공간 정리 실패: ' + (e && e.message ? e.message : e));
-        }
-      };
-      nd.appendChild(btn);
     }});
 
     panel.addBoxedField('', '', { onInit: (nd) => {

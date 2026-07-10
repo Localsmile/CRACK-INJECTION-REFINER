@@ -35,7 +35,7 @@
     { id: 'extract', name: '로어 추출/변환', keys: ['extract'], direct: true },
     { id: 'backup', name: '백업', keys: ['backup'], direct: true },
     { id: 'refiner', name: '응답 교정', keys: ['refiner'], direct: true },
-    { id: 'connection', name: '연결', keys: ['api'], labels: ['연결 및 모델', '지시문'] },
+    { id: 'connection', name: 'API 설정', keys: ['api'], labels: ['연결 및 모델', '프롬프트'] },
     { id: 'activity', name: '활동', keys: ['log', 'session'], labels: ['실행 기록', '현재 대화 상태'] },
     { id: 'help', name: '도움말', keys: ['help'], direct: true }
   ];

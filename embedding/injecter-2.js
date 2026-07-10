@@ -6,9 +6,9 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260706.13';
+  const VER = '1.4.0.260706.14';
   const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260710-selectable-scope-v2';
-  const OOC_FORMAT_VERSION = 'v1.4.0-ooc-context-lore';
+  const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
     const eventOnly = !!opts.eventOnly;
@@ -571,11 +571,8 @@ Source Material:
 {source}`;
 
   const OOC_FORMATS = {
-    default: {name: 'OOC (기본)', prefix: '<ooc_lore_context>\nEstablished continuity for the current RP scene. Use these facts naturally as background. Preserve current relationships, states, promises, honorifics, and unresolved hooks. Do not quote this block verbatim.', suffix: '\n</ooc_lore_context>', desc: '현재 로어/시간축 프롬프트에 맞춘 기본값'},
-    system: {name: 'System 태그', prefix: '[System: Established world/character facts for this scene. Do not repeat verbatim.]', suffix: '[/System]', desc: 'System 지시 잘 따르는 모델'},
-    narrator: {name: '내레이터', prefix: "(Narrator's note: The following are established facts in this story.)", suffix: '(End note)', desc: '소설/내러티브 RP'},
-    minimal: {name: '최소', prefix: '/**', suffix: '**/', desc: '토큰 절약'},
-    instruction: {name: '직접 지시', prefix: 'Remember these established facts and reflect them naturally:', suffix: '', desc: '명시적 지시형 모델'},
+    default: {name: '참고 맥락 (기본)', prefix: '<ooc_lore_context>\nReference notes about established continuity that may be relevant to the current scene. Treat them as background facts, not directions for what characters must do or say. Apply only details that fit the immediate context; characters may disagree, refuse, forget, reinterpret, or naturally change these states. Do not mention or quote this block.', suffix: '\n</ooc_lore_context>', desc: '장면에 맞는 사실만 자연스럽게 참고'},
+    compact: {name: '간단 참고', prefix: '<ooc_lore_context>\nContinuity reference only; use relevant facts as background without forcing character choices or dialogue.', suffix: '\n</ooc_lore_context>', desc: '짧고 약한 참고 문구'},
     custom: {name: '커스텀', prefix: '', suffix: '', desc: '직접 입력'}
   };
 

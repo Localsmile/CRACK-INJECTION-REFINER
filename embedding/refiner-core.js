@@ -233,7 +233,7 @@
     const targetMsgId = targetLog && !(targetLog instanceof Error) ? targetLog.id : '';
     const releaseRefineLock = _acquireRefineLock(chatRoomId, targetMsgId, assistantText);
     if (!releaseRefineLock) {
-      R.lastState = { state: 'skipped', detail: 'duplicate refiner call blocked', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
+      R.lastState = { state: 'skipped', detail: '중복 교정 요청 생략', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
       Core.hideStatusBadge();
       return;
     }

@@ -15,6 +15,9 @@ This document is the implementation contract for the post-`e8ff120` 260706 hotfi
 7. Lore-pack import lives with backup/restore operations; the lore manager focuses on packs already stored locally.
 8. Snapshot contents are inspectable before restore.
 9. Duplicate cleanup rebuilds affected embeddings after merge and undo.
+10. Duplicate cleanup merges only explicitly selected lore through AI; similarity is an optional candidate filter, not a required merge gate.
+11. Pack management lazily exposes each lore entry for inspection and JSON editing.
+12. Default OOC wrapping supplies optional continuity reference instead of character-behavior instructions.
 
 ## Compatibility Rules
 
@@ -93,11 +96,12 @@ The dedicated temporal call runs only when `majorScenes` is selected and the cor
 
 `autoExtOpenAIFormat` accepts:
 
+- `custom`: call the user-provided full URL unchanged and use the Chat Completions-compatible body/parser. This is the default for new settings.
 - `chat_completions`: append `/chat/completions`, send `messages`, parse `choices[0].message.content`.
 - `responses`: append `/responses`, send `input`, parse `output_text` or `output[].content[].text`.
 - `anthropic_messages`: append `/messages`, send `messages` and required `max_tokens`, parse `content[].text`.
 
-Official OpenAI and Anthropic host roots receive an inferred `/v1` prefix. Anthropic's official host uses `x-api-key` and `anthropic-version: 2023-06-01`; proxy hosts use Bearer authorization. JSON-mode capability fallback remains bounded and the winning request shape is cached by endpoint, model, mode, and format.
+Except in `custom` mode, official OpenAI and Anthropic host roots receive an inferred `/v1` prefix. Custom mode never appends or removes a path. Anthropic's official host uses `x-api-key` and `anthropic-version: 2023-06-01`; proxy hosts use Bearer authorization. JSON-mode capability fallback remains bounded and the winning request shape is cached by endpoint, model, mode, and format.
 
 ## UI Information Architecture
 
@@ -108,23 +112,23 @@ Top-level destinations:
 3. Lore Extraction/Conversion
 4. Backup
 5. Response Correction
-6. Connection
+6. API Settings
 7. Activity
 8. Help
 
-Lore Management contains Lore List, Lore-pack Management, Duplicate Cleanup, and Restore Points. Lore-pack import is rendered in Backup. Lore-pack Management supports chat activation, rename, export, embedding preparation, stale embedding cleanup, and delete.
+Lore Management contains Lore List, Lore-pack Management, Duplicate Cleanup, and Restore Points. Lore-pack import is rendered in Backup. Lore-pack Management supports chat activation, rename, export, embedding preparation, stale embedding cleanup, delete, lazy lore inspection, and JSON editing. Duplicate Cleanup lists active-pack lore for explicit selection; its similarity threshold only filters candidates and its only merge strategy is AI.
 
 The long-running batch status is embedded in Lore Extraction/Conversion. It is not a toast or transient dialog.
 
 ## Verification Gates
 
 - Parse every source module with Node VM.
-- Exercise all three OpenAI-compatible request/response formats with mocked transport.
+- Exercise all four OpenAI-compatible request/response formats with mocked transport.
 - Assert bounded compatibility variants and exact concurrent-call coalescing.
 - Assert additive `key_quote` schema and policy-neutral default prompts.
 - Assert persistent failed-index storage and failed-only retry wiring.
 - Assert new menu labels and nested destinations.
-- Assert pack import placement, pack rename coverage, compressed snapshot inspection, and automatic merge re-embedding.
+- Assert pack import placement, pack rename coverage, lazy entry inspection/editing, compressed snapshot inspection, selected-only AI merge, optional similarity filtering, and automatic merge re-embedding.
 - Build and verify the universal userscript.
 - Perform live browser verification only after the user installs the rebuilt userscript.
 

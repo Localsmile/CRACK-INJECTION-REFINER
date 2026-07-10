@@ -132,7 +132,7 @@
       throw new Error('DeepSeek 모드: API 키가 비어 있습니다.');
     }
     if (out.apiType === 'openai') {
-      if (!out.openAIBaseUrl) throw new Error('OpenAI 호환 모드: Base URL이 비어 있습니다.');
+      if (!out.openAIBaseUrl) throw new Error('OpenAI 호환 모드: URL이 비어 있습니다.');
       if (!out.openAIKey && !out.key) throw new Error('OpenAI 호환 모드: API 키가 비어 있습니다.');
       if (!out.model) throw new Error('OpenAI 호환 모드: 모델명을 입력해야 합니다.');
       out.key = out.openAIKey || out.key;

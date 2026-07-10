@@ -606,7 +606,7 @@
     autoExtApiType: 'key', autoExtVertexJson: '', autoExtVertexLocation: 'global', autoExtVertexProjectId: '',
     autoExtFirebaseScript: '', autoExtFirebaseEmbedKey: '', autoExtGeminiEmbedKey: '',
     autoExtDeepSeekKey: '', autoExtDeepSeekThinking: false, autoExtDeepSeekReasoning: 'high',
-    autoExtOpenAIBaseUrl: '', autoExtOpenAIKey: '', autoExtOpenAIReasoning: 'off', autoExtOpenAIFormat: 'chat_completions',
+    autoExtOpenAIBaseUrl: '', autoExtOpenAIKey: '', autoExtOpenAIReasoning: 'off', autoExtOpenAIFormat: 'custom',
     deepSeekPromptOverridesEnabled: true,
     deepSeekJsonSystemPrompt: 'Return only one valid json object. Do not output markdown fences, explanations, comments, or trailing text. Preserve the language of the source content. Follow the exact object shape requested by the user.',
     deepSeekPromptWithoutDb: DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
@@ -1566,7 +1566,7 @@
     const apiType = cfg.autoExtApiType || 'key';
     if (apiType === 'deepseek') return cfg.autoExtDeepSeekKey ? '' : 'DeepSeek API 키 필요.';
     if (apiType === 'openai') {
-      if (!cfg.autoExtOpenAIBaseUrl) return 'OpenAI 호환 Base URL 필요.';
+      if (!cfg.autoExtOpenAIBaseUrl) return 'OpenAI 호환 URL 필요.';
       if (!cfg.autoExtOpenAIKey) return 'OpenAI 호환 API 키 필요.';
       if (!resolveConfiguredModel(cfg.autoExtModel, cfg.autoExtCustomModel, '')) return 'OpenAI 호환 모델명 필요.';
       return '';
@@ -1592,7 +1592,7 @@
       openAIBaseUrl: cfg.autoExtOpenAIBaseUrl || '',
       openAIKey: cfg.autoExtOpenAIKey || '',
       openAIReasoning: openAIReasoningForFeature(cfg, costContext && costContext.feature),
-      openAIFormat: cfg.autoExtOpenAIFormat || 'chat_completions',
+      openAIFormat: cfg.autoExtOpenAIFormat || 'custom',
       vertexJson: cfg.autoExtVertexJson,
       vertexLocation: cfg.autoExtVertexLocation || 'global',
       vertexProjectId: cfg.autoExtVertexProjectId,
@@ -1657,7 +1657,7 @@
   Object.assign(_w.__LoreInj, {
     C, R, db, _ls,
     defaultSettings, settings,
-    parseJsonLoose, createSnapshot, restoreSnapshot, deleteEntryData, deletePackData, cleanupUnusedLoreStorage, convertLegacyEventToTimeline,
+    parseJsonLoose, createSnapshot, restoreSnapshot, deleteEntryData, deletePackData, convertLegacyEventToTimeline,
     getChatKey, incrementTurnCounter, recordEntryMention,
     getTurnCounter, setTurnCounter,
     getCooldownMap, setCooldownLastTurn,

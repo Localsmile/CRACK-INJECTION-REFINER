@@ -175,7 +175,7 @@ The supported chat routes are:
 - Anchor toggle.
 - Per-pack embedding generation and stale embedding cleanup.
 - Snapshot restore/delete.
-- Similar entry merge.
+- User-selected AI merge with optional embedding-similarity candidate filtering, transactional writes, undo, and automatic re-embedding.
 
 ### API Providers
 
@@ -185,7 +185,7 @@ Generation providers:
 - Firebase Vertex AI script.
 - Vertex service account JSON.
 - DeepSeek.
-- OpenAI-compatible Chat Completions, Responses, or Anthropic Messages server.
+- OpenAI-compatible custom full URL, Chat Completions, Responses, or Anthropic Messages server.
 
 Embedding provider:
 
