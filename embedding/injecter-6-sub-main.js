@@ -55,7 +55,12 @@
           const entryValue = chip('사용 가능한 로어', '확인 중', true);
           chip('설정 저장', settings._lastSaveOk === false ? '실패' : '정상', settings._lastSaveOk !== false);
           chip('저장 공간', storageHealth.ok ? Math.ceil((storageHealth.configBytes || 0) / 1024) + 'KB' : '확인 실패', storageHealth.ok);
-          chip('자동 로어 추출', cfg.autoExtEnabled ? (cfg.autoExtTurns || 8) + '턴마다' : '꺼짐', !!cfg.autoExtEnabled);
+          const extractInterval = Math.max(1, Number(cfg.autoExtTurns) || 8);
+          const extractTurn = _w.__LoreInj.getTurnCounter && _w.__LoreInj.getChatKey ? _w.__LoreInj.getTurnCounter(_w.__LoreInj.getChatKey()) : 0;
+          const extractRemainder = ((extractTurn % extractInterval) + extractInterval) % extractInterval;
+          const extractRemaining = extractRemainder === 0 ? extractInterval : extractInterval - extractRemainder;
+          const autoExtractValue = chip('자동 로어 추출', cfg.autoExtEnabled ? extractInterval + '턴마다 · ' + extractRemaining + '턴 남음' : '꺼짐', !!cfg.autoExtEnabled);
+          autoExtractValue.title = cfg.autoExtEnabled ? '현재 ' + extractTurn + '턴 · 다음 자동 추출까지 ' + extractRemaining + '턴' : '자동 로어 추출 꺼짐';
           chip('로어 자동 삽입', cfg.enabled !== false ? '켜짐' : '꺼짐', cfg.enabled !== false);
           chip('의미 검색', cfg.embeddingEnabled ? (cfg.autoEmbedOnExtract !== false ? '켜짐' : '수동 준비') : '꺼짐', !!cfg.embeddingEnabled);
           db.entries.toArray().then(entries => {

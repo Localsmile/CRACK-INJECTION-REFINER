@@ -33,6 +33,7 @@ Assert-True ($bundle.Contains('선택한 로어 AI 병합') -and $bundle.Contain
 Assert-True ($bundle.Contains('로어 펼쳐보기') -and $bundle.Contains('입력한 전체 URL 사용')) 'pack inspection or custom URL UI missing'
 Assert-True ($bundle.Contains('파일 내용을 현재 데이터에 추가') -and $bundle.Contains('현재 데이터를 서버에 백업')) 'backup action wording missing'
 Assert-True (-not $bundle.Contains('사용하지 않는 데이터 정리')) 'removed storage cleanup UI remains in bundle'
+Assert-True ($bundle.Contains('다음 자동 추출까지') -and $bundle.Contains('턴 남음')) 'automatic extraction countdown missing'
 
 $projectRequireMatches = [regex]::Matches($bundle, '(?m)^// @require\s+https://raw\.githubusercontent\.com/Localsmile/CRACK-INJECTION-REFINER/')
 Assert-True ($projectRequireMatches.Count -eq 0) 'project-owned @require lines remain'

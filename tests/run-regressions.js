@@ -84,6 +84,7 @@ async function loadKernel() {
 async function testKernelHelpers() {
   const { C, context, requests, getRequestCount } = await loadKernel();
   assert(C && C.__kernelLoaded, 'kernel did not load');
+  vm.runInContext(read('embedding/core-format.js'), context, { filename: 'core-format.js' });
 
   assert(C.estimateTextTokens('안녕하세요') >= 4, 'CJK token estimate is unexpectedly low');
   assert(C.estimateTextTokens('hello world') >= 2, 'Latin token estimate is unexpectedly low');
@@ -103,6 +104,15 @@ async function testKernelHelpers() {
   }
   const adaptiveLong = C.deriveAiMemoryTurns(longTurns, { nativeContextTokenBudget: 10000, nativeContextMinTurns: 3, nativeContextMaxTurns: 16 });
   assert(adaptiveLong >= 3 && adaptiveLong < adaptiveShort, 'long turns should reduce the remembered-turn estimate');
+
+  const budgeted = C.planInjectionBudget({
+    userInput: 'u'.repeat(1500), maxInputChars: 2000,
+    entries: [{ id: 1, name: 'Lore', type: 'character', summary: { full: 'f'.repeat(900), compact: 'c'.repeat(450), micro: 'm'.repeat(120) }, inject: { full: 'f'.repeat(900), compact: 'c'.repeat(450), micro: 'm'.repeat(120) }, imp: 10 }],
+    config: { loreBudgetMax: 900, compressionMode: 'auto' }, prefix: '<ooc_lore_context>', suffix: '</ooc_lore_context>'
+  });
+  assert(budgeted.finalChars <= 2000, 'injection planner exceeded the 2000-character message limit');
+  const noSpace = C.planInjectionBudget({ userInput: 'u'.repeat(1990), maxInputChars: 2000, entries: [], prefix: '<ooc>', suffix: '</ooc>' });
+  assert.strictEqual(noSpace.injected, '', 'injection planner should cancel when user input and wrapper leave no room');
 
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
@@ -265,6 +275,10 @@ function testSourceContracts() {
   const injection = read('embedding/injecter-5.js');
   assert(injection.includes('deriveAiMemoryTurns(recentMsgs, config)'), 'adaptive reinjection is not wired into injection');
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
+  assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
+  assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');
+  const mainUi = read('embedding/injecter-6-sub-main.js');
+  assert(mainUi.includes("extractRemaining + '턴 남음'"), 'home does not show turns remaining until automatic extraction');
 
   const platform = read('embedding/core-platform.js');
   assert(platform.includes('{ maxCount: count, naturalOrder: true }'), 'recent-message order is implicit');

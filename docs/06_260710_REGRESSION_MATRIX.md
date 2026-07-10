@@ -36,6 +36,7 @@ Every required row must pass before `260706-hotfix` is pushed. A static check is
 | Response correction | Status is visible | Internal English queue/observer labels are not rendered to users | Source contract and browser smoke |
 | Menu | Desktop | Eight task-level destinations, with nested lore/connection/activity screens | Menu capture test and browser smoke |
 | Menu | Mobile | Nested destinations remain reachable and text does not overflow | Browser smoke at mobile viewport |
+| Home status | Automatic extraction enabled | The configured interval and remaining chat turns use the same counter/modulo rule as the runtime trigger | Source contract and browser smoke |
 | Status | Extraction/rerank/refiner | Intentional branded badge remains visible and phase changes are understandable | Browser smoke |
 | Cleanup | Pending cleanup survives reload | IndexedDB cleanup queue is replayed after reload | Existing browser workflow smoke |
 | Backup restore | Old server payload contains embeddings | Restore accepts it; existing vectors remain usable or can be rebuilt | Compatibility source test |

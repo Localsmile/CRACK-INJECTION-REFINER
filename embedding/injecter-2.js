@@ -6,7 +6,7 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260706.14';
+  const VER = '1.4.0.260706.15';
   const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260710-selectable-scope-v2';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
