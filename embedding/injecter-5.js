@@ -342,7 +342,8 @@
         item.linkedAt = Date.now();
         return true;
       }
-      if (body === full && msgId) {
+      const safeMatch = cleanInjectedContent(body, item);
+      if ((body === full || safeMatch.ok) && msgId) {
         item.messageId = msgId;
         item.status = 'tracked';
         item.linkedAt = Date.now();

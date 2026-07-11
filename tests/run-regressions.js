@@ -282,6 +282,7 @@ function testSourceContracts() {
   assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');
   assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
   assert(injectionSource.includes('refreshCleanedMessageInDOM(currentText, clean.text, item.messageId)'), 'successful cleanup does not refresh the visible user message');
+  assert(injectionSource.includes('(body === full || safeMatch.ok) && msgId'), 'cleanup queue reconciliation still requires byte-identical message text');
 
   const apiUi = read('embedding/injecter-6-sub-api.js');
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');
