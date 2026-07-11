@@ -251,6 +251,9 @@ function testSourceContracts() {
   assert(!normalPath.includes('runTemporalExtractPass({'), 'normal extraction still uses the write-first temporal path');
   assert(normalPath.indexOf('collectTemporalExtractItems') < normalPath.indexOf('snapshotPackState'), 'pack snapshot occurs before all required API calls finish');
   assert(normalPath.includes('restorePackState(rollbackState)'), 'normal extraction rollback is missing');
+  assert(normalPath.includes("mergeExtractedData(parsedItems, _url, { skipSnapshot: true })"), 'general extraction can create a duplicate persisted snapshot');
+  assert(normalPath.includes("mergeExtractedData(temporalResult.events, _url, { skipSnapshot: true })"), 'temporal extraction can create a duplicate persisted snapshot');
+  assert.strictEqual((normalPath.match(/createSnapshot\(commitPackName, '자동 병합 전 백업', 'auto'\)/g) || []).length, 1, 'one extraction transaction must create exactly one persisted snapshot');
   assert(normalPath.includes('A dedicated scene-memory pass will run'), 'general and dedicated scene extraction are not coordinated');
   assert(extraction.includes('isRecognizedExtractResponse(parsed)'), 'structured JSON envelopes are not validated');
   assert(extraction.includes('!!(res && res.text) && !validStructure'), 'JSON repair can run without a provider response body');
@@ -354,6 +357,8 @@ function testSourceContracts() {
   assert(mergeUi.includes("C.createToggleRow('유사도 후보 필터'"), 'optional similarity filter is missing');
   assert(mergeUi.includes("db.transaction('rw', db.entries, db.embeddings, db.packs"), 'selected-lore merge commit is not transactional');
   assert(mergeUi.includes('await reembedPacks(packs'), 'merge does not automatically rebuild affected pack embeddings');
+  assert(mergeUi.includes('mergeSummaries(null, draft.summary)'), 'AI merge preview still appends original summaries to the consolidated draft');
+  assert(!mergeUi.includes('merged.summary = mergeSummaries(base.summary'), 'AI merge preview can duplicate summary facts');
 
   const refinerQueue = read('embedding/refiner-queue.js');
   const refinerObserver = read('embedding/refiner-observer.js');

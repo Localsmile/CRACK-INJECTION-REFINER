@@ -834,7 +834,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     }
   }
 
-  async function mergeExtractedData(entries, url) {
+  async function mergeExtractedData(entries, url, options = {}) {
     const packName = await getAutoExtPackForUrl(url);
     const chatKey = getChatKey();
     let ap = [...(settings.config.autoPacks || [])];
@@ -842,7 +842,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const proj = settings.config.activeProject || '';
     let pack = await db.packs.get(packName);
     if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: proj });
-    else await createSnapshot(packName, '자동 병합 전 백업', 'auto');
+    else if (!options.skipSnapshot) await createSnapshot(packName, '자동 병합 전 백업', 'auto');
 
     let processedCount = 0;
     for (const item of normalizeExtractItems(entries)) {
@@ -1332,13 +1332,15 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         const commitPackName = await getAutoExtPackForUrl(_url);
         const rollbackState = await snapshotPackState(commitPackName);
         try {
-          if (parsedItems.length) generalCount = await mergeExtractedData(parsedItems, _url);
+          const existingPack = await db.packs.get(commitPackName);
+          if (existingPack) await createSnapshot(commitPackName, '자동 병합 전 백업', 'auto');
+          if (parsedItems.length) generalCount = await mergeExtractedData(parsedItems, _url, { skipSnapshot: true });
           if (temporalResult) {
             for (const patch of (temporalResult.patches || [])) {
               temporalCount += await applyTemporalPatchOp(patch, commitPackName, chatKey);
             }
             if (temporalResult.events && temporalResult.events.length) {
-              temporalCount += await mergeExtractedData(temporalResult.events, _url);
+              temporalCount += await mergeExtractedData(temporalResult.events, _url, { skipSnapshot: true });
             }
           }
         } catch (commitError) {

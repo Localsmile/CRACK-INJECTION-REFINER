@@ -89,8 +89,12 @@
     merged.entities = uniq([...(base.entities || []), ...((draft && draft.entities) || [])]);
     merged.eventHistory = uniq([...(base.eventHistory || []), ...((draft && draft.eventHistory) || [])]);
     merged.callHistory = uniq([...(base.callHistory || []), ...((draft && draft.callHistory) || [])]);
-    merged.summary = mergeSummaries(base.summary, draft && draft.summary);
-    merged.inject = mergeSummaries(base.inject, (draft && draft.inject) || (draft && draft.summary));
+    // The AI draft already consolidates the selected lore. Appending every original
+    // summary again makes preview and injection text repeat the same facts.
+    merged.summary = (draft && draft.summary) ? mergeSummaries(null, draft.summary) : base.summary;
+    merged.inject = (draft && (draft.inject || draft.summary))
+      ? mergeSummaries(null, draft.inject || draft.summary)
+      : base.inject;
     return merged;
   }
 
