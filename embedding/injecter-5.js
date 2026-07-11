@@ -36,6 +36,10 @@
     try { return C.simpleHash(String(text || '')); } catch (_) { return String(String(text || '').length); }
   }
 
+  function normalizeCleanupText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
   function compactCleanupItems(items) {
     const now = Date.now();
     const source = Array.isArray(items) ? items.filter(Boolean) : [];
@@ -254,6 +258,10 @@
     let next = before.replace(injected, '');
     next = next.replace(/\n{3,}/g, '\n\n').trim();
     if (next === original || cleanupHash(next) === item.originalHash) return { ok: true, text: next, mode: 'block' };
+    const tagCleaned = cleanLoreContextTags(cur);
+    if (tagCleaned && normalizeCleanupText(tagCleaned) === normalizeCleanupText(original)) {
+      return { ok: true, text: original, mode: 'tag' };
+    }
     return { ok: false, reason: 'unsafe_partial' };
   }
 
@@ -343,7 +351,10 @@
         return true;
       }
       const safeMatch = cleanInjectedContent(body, item);
-      if ((body === full || safeMatch.ok) && msgId) {
+      const normalizedOriginal = normalizeCleanupText(item.originalText);
+      const normalizedBody = normalizeCleanupText(body);
+      const normalizedMatch = normalizedOriginal && normalizedBody.includes(normalizedOriginal) && body.indexOf('<ooc_lore_context>') >= 0;
+      if ((body === full || safeMatch.ok || normalizedMatch) && msgId) {
         item.messageId = msgId;
         item.status = 'tracked';
         item.linkedAt = Date.now();
