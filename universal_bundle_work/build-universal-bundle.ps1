@@ -31,7 +31,11 @@ const terser = require("terser");
 const inputPath = process.argv[2];
 const input = fs.readFileSync(inputPath, "utf8");
 terser.minify(input, {
-  compress: false,
+  compress: {
+    passes: 1,
+    unsafe: false,
+    drop_console: false
+  },
   mangle: false,
   format: {
     comments: false,
@@ -70,8 +74,9 @@ $meta = $metaMatch.Value
 $meta = [regex]::Replace($meta, '// @name\s+.*', '// @name        에리의 크랙 로어 인젝터 (Universal)')
 $meta = [regex]::Replace($meta, '// @version\s+.*', '// @version     ' + [string]$manifest.version)
 $meta = [regex]::Replace($meta, '// @description\s+.*', '// @description 에리를 죽인 크랙을 때린다.')
-$meta = [regex]::Replace($meta, '// @updateURL\s+.*\r?\n', '')
-$meta = [regex]::Replace($meta, '// @downloadURL\s+.*\r?\n', '')
+$universalUrl = 'https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
+$meta = [regex]::Replace($meta, '// @updateURL\s+.*', '// @updateURL   ' + $universalUrl)
+$meta = [regex]::Replace($meta, '// @downloadURL\s+.*', '// @downloadURL ' + $universalUrl)
 
 $requireLines = [regex]::Matches($meta, '(?m)^// @require\s+(.+)$') | ForEach-Object { $_.Groups[1].Value.Trim() }
 $keepRequires = @($manifest.keepExternalRequires)

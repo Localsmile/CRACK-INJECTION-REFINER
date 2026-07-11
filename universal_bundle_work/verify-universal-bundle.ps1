@@ -15,6 +15,9 @@ function Assert-True([bool]$Cond, [string]$Msg) {
 
 Assert-True ($bundle.Contains('// @name        에리의 크랙 로어 인젝터 (Universal)')) 'wrong userscript name'
 Assert-True ($bundle.Contains('// @version     ' + $manifest.version)) 'wrong userscript version'
+$universalUrl = 'https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
+Assert-True ($bundle.Contains('// @updateURL   ' + $universalUrl)) 'missing universal update URL'
+Assert-True ($bundle.Contains('// @downloadURL ' + $universalUrl)) 'missing universal download URL'
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/stories/*/episodes/*')) 'missing stories match'
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/characters/*/chats/*')) 'missing characters match'
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/u/*/c/*')) 'missing u/c match'
@@ -24,7 +27,7 @@ Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
 Assert-True ($bundle.Contains('nativeContextTokenBudget')) 'adaptive native-context setting missing'
 Assert-True ($bundle.Contains('deriveAiMemoryTurns')) 'adaptive reinjection helper missing'
 Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI compatibility helper missing'
-Assert-True ($bundle.Contains('anthropic_messages') -and ($bundle -match 'raw\s*={2,3}\s*["'']custom["'']') -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'
+Assert-True ($bundle.Contains('anthropic_messages') -and (($bundle -match 'raw\s*={2,3}\s*["'']custom["'']') -or ($bundle -match '["'']custom["'']\s*={2,3}\s*raw')) -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'
 Assert-True ($bundle.Contains('lore-batch-extraction-jobs-v1')) 'resumable batch state missing'
 Assert-True ($bundle.Contains('lore-inj-modal')) 'scoped Lore modal styling missing'
 Assert-True (!$bundle.Contains('flatMenuAdapter')) 'legacy flat menu adapter remains'
@@ -95,6 +98,20 @@ if ($errors.Count -gt 0) {
   exit 1
 }
 
+$syntaxOutput = & node --check $BundlePath 2>&1
+if ($LASTEXITCODE -ne 0) {
+  Write-Error ("Universal bundle syntax check failed:`n" + ($syntaxOutput -join "`n"))
+  exit 1
+}
+
+$bundleBytes = (Get-Item -LiteralPath $BundlePath).Length
+Assert-True ($bundleBytes -lt 840000) "bundle is too large for reliable userscript injection: $bundleBytes bytes"
+if ($errors.Count -gt 0) {
+  Write-Error ("Universal bundle verification failed:`n- " + ($errors -join "`n- "))
+  exit 1
+}
+
 Write-Output 'Universal bundle verification passed.'
 Write-Output ("Bundle: $BundlePath")
 Write-Output ("Modules: " + @($manifest.modules).Count)
+Write-Output ("Bytes: " + $bundleBytes)
