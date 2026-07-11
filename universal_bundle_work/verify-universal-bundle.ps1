@@ -15,7 +15,7 @@ function Assert-True([bool]$Cond, [string]$Msg) {
 
 Assert-True ($bundle.Contains('// @name        에리의 크랙 로어 인젝터 (Universal)')) 'wrong userscript name'
 Assert-True ($bundle.Contains('// @version     ' + $manifest.version)) 'wrong userscript version'
-$universalUrl = 'https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
+$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
 Assert-True ($bundle.Contains('// @updateURL   ' + $universalUrl)) 'missing universal update URL'
 Assert-True ($bundle.Contains('// @downloadURL ' + $universalUrl)) 'missing universal download URL'
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/stories/*/episodes/*')) 'missing stories match'

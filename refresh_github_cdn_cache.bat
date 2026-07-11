@@ -25,6 +25,7 @@ set /a TOTAL=0
 
 call :scan "embedding"
 call :scan "embedding_pre"
+call :scan "universal_bundle_work"
 
 echo.
 echo Done. ok=%OK% fail=%FAIL% total=%TOTAL%
