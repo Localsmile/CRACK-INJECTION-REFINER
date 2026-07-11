@@ -20,6 +20,12 @@
     return String(text || '').replace(/\s+/g, ' ').trim();
   }
 
+  function containsTextFingerprint(containerText, expectedText) {
+    const haystack = normalizeText(containerText);
+    const expected = normalizeText(expectedText);
+    return expected.length > 0 && haystack.includes(expected);
+  }
+
   // DOM
   function stripMarkdown(text) {
     return String(text || '')
@@ -125,11 +131,14 @@
 
   function isTextVisible(text, messageId) {
     const plain = stripMarkdown(text);
-    const snippet = normalizeText(plain.length > 36 ? plain.slice(-36) : plain);
-    if (!snippet) return false;
+    if (!normalizeText(plain)) return false;
     const container = findMessageContainerById(messageId);
-    if (container && normalizeText(container.textContent).includes(snippet)) return true;
-    return !!findDeepestMatchingElement(plain);
+    if (container && containsTextFingerprint(container.textContent, plain)) return true;
+    const bubbles = document.querySelectorAll('.wrtn-markdown');
+    for (const bubble of bubbles) {
+      if (containsTextFingerprint(bubble.textContent, plain)) return true;
+    }
+    return false;
   }
 
   function waitForVisibleText(text, messageId, timeoutMs) {
@@ -171,7 +180,7 @@
     if (oldSnippet) {
       for (const md of allMds) {
         const t = normalizeText(md.textContent);
-        if (t.includes(oldSnippet) && (!newSnippet || !t.includes(newSnippet))) {
+        if (t.includes(oldSnippet) && !containsTextFingerprint(t, newPlain)) {
           targetEl = md;
           break;
         }
@@ -188,7 +197,7 @@
     // pass 3: already showing new text in some bubble -- treat as visible done
     if (!targetEl && newSnippet) {
       for (const md of allMds) {
-        if (normalizeText(md.textContent).includes(newSnippet)) {
+        if (containsTextFingerprint(md.textContent, newPlain)) {
           try {
             if (messageId) {
               const c = getMessageContainer(md);

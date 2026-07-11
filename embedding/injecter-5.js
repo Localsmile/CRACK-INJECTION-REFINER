@@ -266,6 +266,16 @@
     return next;
   }
 
+  function refreshCleanedMessageInDOM(beforeText, afterText, messageId) {
+    try {
+      const refiner = _w.__LoreRefiner;
+      if (refiner && typeof refiner.refreshMessageInDOM === 'function') {
+        return refiner.refreshMessageInDOM(beforeText, afterText, messageId);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   function shouldRunFallbackCleanupScan(chatKey, reason, queuedCount, queueCleaned) {
     const now = Date.now();
     const last = _fallbackCleanupLastByChat.get(chatKey) || 0;
@@ -290,6 +300,7 @@
       if (!cleanText) continue;
       const patched = await patchUserMessage(chatId, messageIdOf(log), cleanText);
       if (patched.ok) {
+        refreshCleanedMessageInDOM(messageTextOf(log), cleanText, messageIdOf(log));
         cleaned++;
         addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_fallback_done', note: `${configuredTurns}턴 지난 삽입 태그 흔적 정리`, messageId: messageIdOf(log) });
       } else {
@@ -409,6 +420,7 @@
         item.cleanupAttempts = (item.cleanupAttempts || 0) + 1;
         item.lastCleanupAttemptAt = Date.now();
         if (patched.ok) {
+          refreshCleanedMessageInDOM(currentText, clean.text, item.messageId);
           item.status = 'done';
           item.completedAt = Date.now();
           item.cleanedMode = clean.mode;

@@ -38,7 +38,7 @@ function localStorageStub() {
   };
 }
 
-async function loadKernel() {
+async function loadKernel(options = {}) {
   let requestCount = 0;
   const requests = [];
   const context = {
@@ -64,12 +64,16 @@ async function loadKernel() {
     GM_xmlhttpRequest: (opts) => {
       requestCount++;
       requests.push(opts);
+      const scriptedStatuses = Array.isArray(options.gmStatuses) ? options.gmStatuses : [];
+      const scriptedStatus = scriptedStatuses.length
+        ? scriptedStatuses[Math.min(requestCount - 1, scriptedStatuses.length - 1)]
+        : 200;
       let payload = { choices: [{ message: { content: '{"entries":[]}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 4 } };
       if (/\/responses$/i.test(String(opts.url || ''))) payload = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '{"entries":[]}' }] }], usage: { input_tokens: 10, output_tokens: 4 } };
       else if (/\/messages$/i.test(String(opts.url || ''))) payload = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"entries":[]}' }], usage: { input_tokens: 10, output_tokens: 4 } };
       const timer = setTimeout(() => opts.onload({
-        status: 200,
-        responseText: JSON.stringify(payload)
+        status: scriptedStatus,
+        responseText: scriptedStatus >= 200 && scriptedStatus < 300 ? JSON.stringify(payload) : JSON.stringify({ error: { message: 'scripted ' + scriptedStatus } })
       }), 15);
       return { abort: () => { clearTimeout(timer); if (opts.onabort) opts.onabort(); } };
     }
@@ -145,6 +149,22 @@ async function testKernelHelpers() {
     C.callGeminiApi('different prompt B', common)
   ]);
   assert.strictEqual(getRequestCount(), 3, 'distinct prompts were incorrectly coalesced');
+
+  const retryKernel = await loadKernel({ gmStatuses: [503, 200] });
+  const retried = await retryKernel.C.callGeminiApi('retry after 503', {
+    apiType: 'deepseek', deepSeekKey: 'test-key', model: 'test-model',
+    responseMimeType: 'application/json', maxRetries: 0
+  });
+  assert.strictEqual(retried.text, '{"entries":[]}', 'generation did not recover after a temporary 503');
+  assert.strictEqual(retryKernel.getRequestCount(), 2, 'temporary 503 did not perform exactly one bounded retry');
+
+  const hardFailureKernel = await loadKernel({ gmStatuses: [400] });
+  const hardFailure = await hardFailureKernel.C.callGeminiApi('do not retry 400', {
+    apiType: 'deepseek', deepSeekKey: 'test-key', model: 'test-model',
+    responseMimeType: 'application/json', maxRetries: 2
+  });
+  assert.strictEqual(hardFailure.text, null, 'non-retryable 400 unexpectedly produced output');
+  assert.strictEqual(hardFailureKernel.getRequestCount(), 1, 'non-retryable 400 was requested more than once');
 
   const responsesResult = await C.callGeminiApi('responses prompt', {
     apiType: 'openai', openAIBaseUrl: 'https://api.openai.com/v1', openAIKey: 'test-key', openAIFormat: 'responses',
@@ -256,9 +276,12 @@ function testSourceContracts() {
 
   const refinerDom = read('embedding/refiner-dom.js');
   const refinerCore = read('embedding/refiner-core.js');
+  const injectionSource = read('embedding/injecter-5.js');
   assert(refinerDom.includes("exactButton(document, '수정')"), 'native response-edit fallback does not open the current message editor');
   assert(refinerDom.includes("exactButton(document, '수정 완료')"), 'native response-edit fallback does not submit the corrected message');
+  assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');
   assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
+  assert(injectionSource.includes('refreshCleanedMessageInDOM(currentText, clean.text, item.messageId)'), 'successful cleanup does not refresh the visible user message');
 
   const apiUi = read('embedding/injecter-6-sub-api.js');
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');
