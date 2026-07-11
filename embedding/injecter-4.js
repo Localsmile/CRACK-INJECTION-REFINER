@@ -1228,7 +1228,11 @@ ${TEMPORAL_PATCH_SCHEMA}`;
   });
 
   async function runAutoExtract(isManual = false) {
-    if (_extQ.running) { _extQ.pendingTurns++; if (isManual) _extQ.manualPending = true; return; }
+    if (_extQ.running) {
+      if (isManual) throw new Error('이미 로어 추출이 진행 중입니다. 완료 후 다시 시도해 주세요.');
+      _extQ.pendingTurns++;
+      return;
+    }
     _extQ.running = true; _extQ.pendingTurns = 0; _extQ.manualPending = false;
     extBadgeShow('에리가 대화 분석 중');
     try { await _doExtract(isManual); }

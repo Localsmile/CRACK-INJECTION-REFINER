@@ -235,6 +235,7 @@ function testSourceContracts() {
   assert(extraction.includes('isRecognizedExtractResponse(parsed)'), 'structured JSON envelopes are not validated');
   assert(extraction.includes('!!(res && res.text) && !validStructure'), 'JSON repair can run without a provider response body');
   assert(extraction.includes('if (!validStructure) parsed = null'), 'malformed structured output can still be accepted as empty');
+  assert(extraction.includes("if (isManual) throw new Error('이미 로어 추출이 진행 중입니다."), 'duplicate manual extraction is still queued while another extraction is running');
   const resumableBatch = extraction.slice(extraction.indexOf('async function runBatchExtractResumable'));
   assert(extraction.includes("const BATCH_RETRY_STORAGE_KEY = 'lore-batch-extraction-jobs-v1'"), 'persistent batch retry state is missing');
   assert(resumableBatch.includes('successfulStages.push'), 'successful batch stages are not preserved independently');
@@ -252,6 +253,12 @@ function testSourceContracts() {
     assert(menu.includes(`name: '${label}'`), `menu group missing: ${label}`);
   }
   assert(!menu.includes('flatMenuAdapter'), 'flat menu adapter is still active');
+
+  const refinerDom = read('embedding/refiner-dom.js');
+  const refinerCore = read('embedding/refiner-core.js');
+  assert(refinerDom.includes("exactButton(document, '수정')"), 'native response-edit fallback does not open the current message editor');
+  assert(refinerDom.includes("exactButton(document, '수정 완료')"), 'native response-edit fallback does not submit the corrected message');
+  assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
 
   const apiUi = read('embedding/injecter-6-sub-api.js');
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');

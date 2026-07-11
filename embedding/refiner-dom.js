@@ -759,9 +759,10 @@
     return summary;
   }
 
-  function nudgeMessageNativeRender(messageId) {
+  async function nudgeMessageNativeRender(messageId, newText, originalText) {
     try {
-      const container = findMessageContainerById(messageId);
+      const originalEl = originalText ? findDeepestMatchingElement(stripMarkdown(originalText)) : null;
+      const container = findMessageContainerById(messageId) || getMessageContainer(originalEl);
       if (!container || !document.contains(container)) return false;
       const host = container.closest?.('article, section, li, [data-message-id], [data-testid*="message"], [class*="message"]') || container;
 
@@ -792,26 +793,68 @@
         return null;
       };
 
-      const editBtn = findButton(host, /(수정|편집|edit)/i)
-                   || findButton(host.parentElement, /(수정|편집|edit)/i);
+      const waitFor = async (getter, timeoutMs) => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          const value = getter();
+          if (value) return value;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        return null;
+      };
+      const exactButton = (root, text) => {
+        const nodes = root.querySelectorAll('button, [role="button"], [role="menuitem"]');
+        for (const node of nodes) {
+          if ((node.textContent || '').trim() === text) return node;
+        }
+        return null;
+      };
+
+      let actionScope = host;
+      let optionBtn = null;
+      for (let depth = 0; actionScope && depth < 8; depth++, actionScope = actionScope.parentElement) {
+        const matches = Array.from(actionScope.querySelectorAll('button, [role="button"]'))
+          .filter(node => /(메시지 옵션|message options|더보기)/i.test(labelOf(node)));
+        if (matches.length === 1) { optionBtn = matches[0]; break; }
+      }
+      actionScope = actionScope || host.parentElement || host;
+      let editBtn = findButton(actionScope, /^(수정|편집|edit)$/i);
+      if (!editBtn) {
+        if (!optionBtn) return false;
+        try { optionBtn.click(); } catch (_) { return false; }
+        editBtn = await waitFor(() => exactButton(document, '수정'), 800);
+      }
       if (!editBtn) return false;
-
       try { editBtn.click(); } catch (_) { return false; }
-
-      setTimeout(() => {
+      const cancelEdit = () => {
         try {
-          const cancelBtn = findButton(host, /(취소|cancel|닫기|close)/i)
-                         || findButton(document, /(취소|cancel)/i);
-          if (cancelBtn) {
-            try { cancelBtn.click(); return; } catch (_) {}
-          }
-          const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
-          try { (document.activeElement || document.body).dispatchEvent(esc); } catch (_) {}
-          try { document.dispatchEvent(esc); } catch (_) {}
+          const cancelBtn = exactButton(actionScope, '취소') || exactButton(document, '취소');
+          if (cancelBtn) cancelBtn.click();
         } catch (_) {}
-      }, 180);
+      };
 
-      return true;
+      const editor = await waitFor(() => {
+        const editors = Array.from(actionScope.querySelectorAll('[contenteditable="true"]'));
+        return editors.find(el => !el.classList.contains('__chat_input_textarea')) || null;
+      }, 1000);
+      if (!editor || !newText) { cancelEdit(); return false; }
+
+      editor.focus();
+      try {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const inserted = document.execCommand('insertText', false, newText);
+        const expected = normalizeText(stripMarkdown(newText)).slice(0, 48);
+        if (!inserted || !normalizeText(editor.textContent).includes(expected)) throw new Error('native editor did not accept text');
+      } catch (_) { cancelEdit(); return false; }
+
+      const doneBtn = await waitFor(() => exactButton(actionScope, '수정 완료') || exactButton(document, '수정 완료'), 800);
+      if (!doneBtn) { cancelEdit(); return false; }
+      try { doneBtn.click(); } catch (_) { return false; }
+      return waitForVisibleText(newText, messageId, 2500);
     } catch (_) {
       return false;
     }

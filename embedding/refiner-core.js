@@ -515,7 +515,7 @@
 
                   if (!visible && R.nudgeMessageNativeRender) {
                     let nudged = false;
-                    try { nudged = !!R.nudgeMessageNativeRender(serverMessageId); } catch (_) {}
+                    try { nudged = !!(await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)); } catch (_) {}
                     _w.__LR_LAST_NATIVE_NUDGE = nudged;
                     if (nudged) {
                       try {
