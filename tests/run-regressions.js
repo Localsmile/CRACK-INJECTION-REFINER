@@ -372,6 +372,7 @@ function testSourceContracts() {
   assert(refinerEntry.includes("R.processQueue, msgId || ''"), 'manual correction loses the assistant message id');
   assert(refinerCore.includes('isAssistantLog(targetLog)') && refinerCore.includes('isUserMessageEcho(correctedText, allMsgsForContext)'), 'correction target/user-echo guards are missing');
   assert(refinerCore.includes('Every replacements.from must be an exact substring of [New Speech]'), 'correction prompt does not isolate the assistant response');
+  assert(refinerCore.includes("Core.showStatusBadge('에리: 이상 없음')"), 'PASS no longer shows the non-popup status badge');
   assert(!refinerCore.includes("ToastCallback('에리: 통과'"), 'PASS still creates a popup notification');
 }
 

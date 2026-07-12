@@ -444,7 +444,8 @@
       const finishPass = (reason) => {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         R.lastState = { state: 'idle', detail: '교정할 내용 없음', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: false };
-        Core.hideStatusBadge();
+        Core.showStatusBadge('에리: 이상 없음');
+        setTimeout(Core.hideStatusBadge, 2000);
       };
 
       const isPass = text.includes(passWord) && text.length < passWord.length + 10;
