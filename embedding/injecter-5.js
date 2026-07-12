@@ -596,7 +596,6 @@
           responseMimeType: 'application/json',
           maxRetries: 1,
           timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
-          maxOutputTokens: 512,
           signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
         }, { feature: 'judge', chatKey: getChatKey() || 'global' })
         : {
@@ -605,7 +604,6 @@
           responseMimeType: 'application/json',
           maxRetries: 1,
           timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
-          maxOutputTokens: 512,
           deepSeekThinking: config.autoExtDeepSeekThinking !== false,
           deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
           costContext: { feature: 'judge', chatKey: getChatKey() || 'global' },

@@ -211,7 +211,6 @@
 
   const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.<br>Convert the following source material into structured lore entries for an RP memory system.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full/compact/micro, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>7. summary and inject must both be produced.<br>   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.<br>   - summary.compact: preserve entity, state, relationship, and unresolved hooks.<br>   - summary.micro: stable recall handle + current state only; never a vague teaser.<br>   - inject.full/compact/micro: short text intended for direct OOC injection.<br>8. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.<br>9. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.<br>10. Extract timeline, entities, state, imp/sur/emo when inferable. imp/sur/emo are 1-10.<br>11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>12. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
 
-  const DEEPSEEK_IMPORT_MAX_OUTPUT_TOKENS = 65536;
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
     if (!apiOpts || apiOpts.apiType !== 'deepseek' || apiOpts.deepSeekPromptOverridesEnabled === false) return prompt;
@@ -269,7 +268,7 @@
         attempts++;
         if (onProgress) { try { onProgress({ phase: 'chunk', chunk: ci + 1, total: chunks.length, attempt: attempts, maxAttempts: maxTotalAttempts }); } catch(_){} }
         try {
-          const res = await callGeminiApi(prompt, { ...safeApiOpts, responseMimeType: 'application/json', maxRetries: 0, maxOutputTokens: safeApiOpts.apiType === 'deepseek' ? Math.max(Number(safeApiOpts.maxOutputTokens) || 0, DEEPSEEK_IMPORT_MAX_OUTPUT_TOKENS) : safeApiOpts.maxOutputTokens });
+          const res = await callGeminiApi(prompt, { ...safeApiOpts, responseMimeType: 'application/json', maxRetries: 0 });
           if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
           rawSnippet = String(res.text).slice(0, 200);
           // Markdown fence 제거 + 선두/후미 잡텍스트 제거

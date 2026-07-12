@@ -561,12 +561,6 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       .slice(0, max);
   }
 
-  const DEEPSEEK_JSON_MAX_OUTPUT_TOKENS = 65536;
-
-  function deepSeekJsonMaxOutput(apiOpts) {
-    return Math.max(Number(apiOpts && apiOpts.maxOutputTokens) || 0, DEEPSEEK_JSON_MAX_OUTPUT_TOKENS);
-  }
-
   async function callGeminiJsonWithRepair(prompt, apiOpts, repairHint) {
     const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
     const finalPrompt = isDeepSeek ? `${prompt}
@@ -593,7 +587,6 @@ Structured output reminder:
       res = await C.callGeminiApi(retryPrompt, {
           ...apiOpts,
           maxRetries: 0,
-          maxOutputTokens: isDeepSeek ? deepSeekJsonMaxOutput(apiOpts) : null,
           responseMimeType: 'application/json'
       });
       parsed = parseJsonLoose(res && res.text);
@@ -708,7 +701,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       responseMimeType: 'application/json',
       maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
       timeoutMs: apiOpts.timeoutMs || (isDeepSeekTemporal ? 150000 : 120000),
-      maxOutputTokens: isDeepSeekTemporal ? deepSeekJsonMaxOutput(apiOpts) : (_patchOn ? (apiOpts.maxOutputTokens || 4096) : null),
     };
     const temporalApiOpts = _w.__LoreInj.buildGenerationApiOpts
       ? _w.__LoreInj.buildGenerationApiOpts(temporalOverrides, { feature: 'temporalExtract', chatKey: chatKey || 'global' })
@@ -777,7 +769,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         responseMimeType: 'application/json',
         maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
         timeoutMs: apiOpts.timeoutMs || (isDeepSeekTemporal ? 150000 : 120000),
-        maxOutputTokens: isDeepSeekTemporal ? deepSeekJsonMaxOutput(apiOpts) : (_patchOn ? (apiOpts.maxOutputTokens || 4096) : null),
       };
       const temporalApiOpts = _w.__LoreInj.buildGenerationApiOpts
         ? _w.__LoreInj.buildGenerationApiOpts(temporalOverrides, { feature: 'temporalExtract', chatKey: chatKey || 'global' })
@@ -1296,7 +1287,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
         timeoutMs: apiType === 'deepseek' ? 150000 : 120000,
-        maxOutputTokens: apiType === 'deepseek' ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       }, { feature: 'autoExtract', chatKey: chatKey || 'global' }) : {
         apiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey,
@@ -1307,7 +1297,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         model: _extModel,
         maxRetries: settings.config.autoExtMaxRetries || 1, responseMimeType: 'application/json',
         timeoutMs: apiType === 'deepseek' ? 150000 : 120000,
-        maxOutputTokens: apiType === 'deepseek' ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (_patchOn ? 4096 : null),
         costContext: { feature: 'autoExtract', chatKey: chatKey || 'global' }
       });
       const _extT0 = Date.now();
@@ -1540,7 +1529,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             maxRetries: 0,
             responseMimeType: 'application/json',
             timeoutMs,
-            maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (patchOn ? 4096 : null)
           }, { feature, chatKey });
           const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
           addBatchCost(batchCost, res && res.cost);
@@ -1576,7 +1564,6 @@ ${TEMPORAL_PATCH_SCHEMA}`;
               maxRetries: 0,
               responseMimeType: 'application/json',
               timeoutMs,
-              maxOutputTokens: isDeepSeek ? DEEPSEEK_JSON_MAX_OUTPUT_TOKENS : (patchOn ? 4096 : null)
             }, { feature, chatKey });
             temporalResult = await collectTemporalExtractItems({ context, apiOpts, url, chatKey, isManual: true, msgCount: messages.length, skipEmbedding: true });
             addBatchCost(batchCost, temporalResult && temporalResult.cost);

@@ -395,7 +395,7 @@
     try {
       const _isDeepSeekConfig = (config.autoExtApiType || 'key') === 'deepseek';
       const apiOpts = _w.__LoreInj && _w.__LoreInj.buildGenerationApiOpts
-        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: _isDeepSeekConfig ? 90000 : 60000, maxOutputTokens: _isDeepSeekConfig ? 4096 : 2048 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
+        ? _w.__LoreInj.buildGenerationApiOpts({ model: _refModel, maxRetries: 1, timeoutMs: _isDeepSeekConfig ? 90000 : 60000 }, { feature: 'refine', chatKey: chatRoomId || 'global' })
         : {
           apiType: config.autoExtApiType || 'key',
           key: config.autoExtKey,
@@ -411,7 +411,6 @@
           model: _refModel,
           maxRetries: 1,
           timeoutMs: _isDeepSeekConfig ? 90000 : 60000,
-          maxOutputTokens: _isDeepSeekConfig ? 4096 : 2048,
           costContext: { feature: 'refine', chatKey: chatRoomId || 'global' }
         };
       const isDeepSeekRefiner = apiOpts.apiType === 'deepseek';

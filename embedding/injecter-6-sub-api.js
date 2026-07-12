@@ -144,11 +144,6 @@
     const grid = document.createElement('div');
     grid.style.cssText = 'display:grid;grid-template-columns:minmax(88px,1fr) minmax(120px,1.2fr) minmax(70px,.7fr);gap:6px;align-items:center;';
     details.appendChild(grid);
-    const opts = isOpenAI
-      ? [['기본값', 'default'], ['보내지 않음', 'off'], ['None', 'none'], ['Minimal', 'minimal'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high'], ['XHigh', 'xhigh'], ['Max', 'max']]
-      : (isDeepSeek
-        ? [['기본값', 'default'], ['끄기', 'off'], ['High', 'high'], ['Max', 'max']]
-        : [['기본값', 'default'], ['끄기(2.5)', 'off'], ['최소', 'minimal'], ['낮음', 'low'], ['보통', 'medium'], ['높음', 'high'], ['예산', 'budget']]);
     const rows = [
       ['로어 추출/변환', 'autoExt'],
       ['전체 추출', 'batchExt'],
@@ -159,24 +154,48 @@
       ['응답 교정', 'refiner'],
       ['로어 병합', 'merge']
     ];
+    const featureModel = (key) => {
+      const pair = key === 'rerank'
+        ? ['rerankModel', 'rerankCustomModel']
+        : key === 'temporalRecallJudge'
+          ? ['temporalRecallJudgeModel', 'temporalRecallJudgeCustomModel']
+          : key === 'refiner'
+            ? ['refinerModel', 'refinerCustomModel']
+            : ['autoExtModel', 'autoExtCustomModel'];
+      const raw = settings.config[pair[0]];
+      return String(raw === '_custom' ? settings.config[pair[1]] : (raw || settings.config.autoExtModel || '')).toLowerCase();
+    };
     rows.forEach(([label, key]) => {
       const reasonKey = isOpenAI ? (key + 'OpenAIReasoning') : (isDeepSeek ? (key + 'DeepSeekReasoning') : (key + 'Reasoning'));
       const budgetKey = key + 'Budget';
+      const isGemini25 = !isOpenAI && !isDeepSeek && featureModel(key).includes('gemini-2.5');
+      const opts = isOpenAI
+        ? [['기본값', 'default'], ['보내지 않음', 'off'], ['None', 'none'], ['Minimal', 'minimal'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high'], ['XHigh', 'xhigh'], ['Max', 'max']]
+        : (isDeepSeek
+          ? [['기본값', 'default'], ['끄기', 'off'], ['High', 'high'], ['Max', 'max']]
+          : (isGemini25
+            ? [['기본값', 'default'], ['끄기(2.5)', 'off'], ['최소', 'minimal'], ['낮음', 'low'], ['보통', 'medium'], ['높음', 'high'], ['예산', 'budget']]
+            : [['기본값', 'default'], ['최소', 'minimal'], ['낮음', 'low'], ['보통', 'medium'], ['높음', 'high']]));
       const lab = document.createElement('div');
       lab.textContent = label;
       lab.style.cssText = 'font-size:11px;color:#aaa;';
       const sel = document.createElement('select');
       sel.style.cssText = FIELD_STYLE + 'padding:4px 6px;font-size:11px;';
       opts.forEach(([l, v]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o); });
-      sel.value = isDeepSeek && key === 'autoExt'
+      let selectedReasoning = isDeepSeek && key === 'autoExt'
         ? (settings.config.autoExtDeepSeekThinking === false ? 'off' : (settings.config.autoExtDeepSeekReasoning || 'high'))
         : (settings.config[reasonKey] || (isOpenAI ? 'off' : (key === 'autoExt' ? (settings.config.autoExtReasoning || 'medium') : 'default')));
+      if (!isGemini25 && !isOpenAI && !isDeepSeek && selectedReasoning === 'budget') {
+        const b = Number(settings.config[budgetKey] || settings.config.autoExtBudget || 2048) || 2048;
+        selectedReasoning = b >= 4096 ? 'high' : (b >= 2048 ? 'medium' : (b >= 1024 ? 'low' : 'minimal'));
+      }
+      sel.value = selectedReasoning;
       const budget = document.createElement('input');
       budget.type = 'number';
       budget.min = '-1';
       budget.step = '256';
       budget.value = settings.config[budgetKey] || (key === 'autoExt' ? (settings.config.autoExtBudget || 2048) : 1024);
-      budget.style.cssText = FIELD_STYLE + 'padding:4px 6px;font-size:11px;' + ((sel.value === 'budget' && !isOpenAI && !isDeepSeek) ? '' : 'visibility:hidden;');
+      budget.style.cssText = FIELD_STYLE + 'padding:4px 6px;font-size:11px;' + ((isGemini25 && sel.value === 'budget') ? '' : 'visibility:hidden;');
       sel.onchange = () => {
         if (isDeepSeek && key === 'autoExt') {
           settings.config.autoExtDeepSeekThinking = sel.value !== 'off';
@@ -184,7 +203,7 @@
         } else {
           settings.config[reasonKey] = sel.value;
         }
-        budget.style.visibility = (sel.value === 'budget' && !isOpenAI && !isDeepSeek) ? 'visible' : 'hidden';
+        budget.style.visibility = (isGemini25 && sel.value === 'budget') ? 'visible' : 'hidden';
         settings.save();
       };
       budget.onchange = () => { settings.config[budgetKey] = parseInt(budget.value, 10) || 0; settings.save(); };
@@ -497,8 +516,8 @@
               const fallbackModel = _w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(settings.config) : (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : ((settings.config.autoExtApiType || 'key') === 'openai' ? '' : 'gemini-3-flash-preview'));
               const testModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : (settings.config.autoExtModel || fallbackModel);
               const testOpts = _w.__LoreInj.buildGenerationApiOpts
-                ? _w.__LoreInj.buildGenerationApiOpts({ model: testModel, maxRetries: 0, responseMimeType: 'application/json', maxOutputTokens: 512 }, { feature: 'autoExtract', chatKey: 'global' })
-                : { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, openAIBaseUrl: settings.config.autoExtOpenAIBaseUrl, openAIKey: settings.config.autoExtOpenAIKey, openAIFormat: settings.config.autoExtOpenAIFormat || 'custom', vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, responseMimeType: 'application/json', maxOutputTokens: 512, costContext: { feature: 'autoExtract', chatKey: 'global' } };
+                ? _w.__LoreInj.buildGenerationApiOpts({ model: testModel, maxRetries: 0, responseMimeType: 'application/json' }, { feature: 'autoExtract', chatKey: 'global' })
+                : { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, openAIBaseUrl: settings.config.autoExtOpenAIBaseUrl, openAIKey: settings.config.autoExtOpenAIKey, openAIFormat: settings.config.autoExtOpenAIFormat || 'custom', vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, responseMimeType: 'application/json', costContext: { feature: 'autoExtract', chatKey: 'global' } };
               const r = await C.callGeminiApi('Return exactly one JSON object: {"ok":true}', testOpts);
               testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
             } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = '#d66'; }

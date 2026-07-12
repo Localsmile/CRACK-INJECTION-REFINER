@@ -175,17 +175,6 @@ async function testKernelHelpers() {
   assert.strictEqual(hardFailure.text, null, 'non-retryable 400 unexpectedly produced output');
   assert.strictEqual(hardFailureKernel.getRequestCount(), 1, 'non-retryable 400 was requested more than once');
 
-  const budgetKernel = await loadKernel({ gmPayloads: [
-    { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'internal reasoning', thought: true }] } }] },
-    { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{"entries":[]}' }] } }] }
-  ] });
-  const budgetRecovered = await budgetKernel.C.callGeminiApi('structured extraction', {
-    apiType: 'key', key: 'test-key', model: 'gemini-2.5-flash', responseMimeType: 'application/json',
-    maxRetries: 1, maxOutputTokens: 4096
-  });
-  assert.strictEqual(budgetRecovered.text, '{"entries":[]}', 'Gemini extraction did not recover after reasoning exhausted the first output budget');
-  assert.strictEqual(budgetKernel.getRequestCount(), 2, 'MAX_TOKENS recovery did not perform exactly one retry');
-  assert.strictEqual(JSON.parse(budgetKernel.requests[1].data).generationConfig.maxOutputTokens, 8192, 'MAX_TOKENS retry did not increase the output budget');
 
   const responsesResult = await C.callGeminiApi('responses prompt', {
     apiType: 'openai', openAIBaseUrl: 'https://api.openai.com/v1', openAIKey: 'test-key', openAIFormat: 'responses',
@@ -294,11 +283,12 @@ function testSourceContracts() {
   assert(!settings.includes('persistStorageIfPossible()'), 'persistent storage permission is still requested during settings saves');
   assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
   assert(!settings.includes('cleanupStaleEmbeddings(null'), 'startup migration still deletes existing embeddings');
+  assert(settings.includes("if (isGemini25)") && settings.includes('thinkingBudget:'), 'Gemini 2.5 thinking-budget behavior was removed');
 
   const kernel = read('embedding/core-kernel.js');
   const coreEmbedding = read('embedding/core-embedding.js');
   assert(kernel.includes('function enqueueEmbeddingApi') && kernel.includes('embeddingMinGapMs'), 'embedding calls are not globally serialized');
-  assert(kernel.includes("finishReason === 'MAX_TOKENS'") && kernel.includes('activeMaxOutputTokens = Math.min(32768'), 'Gemini extraction cannot recover when reasoning consumes the output budget');
+  assert(!kernel.includes('activeMaxOutputTokens'), 'Gemini output limits are still being rewritten internally');
   assert(coreEmbedding.includes('if (isTransientEmbeddingFailure(batchError)) throw batchError'), '429/5xx batch failures still fan out into individual calls');
   assert(coreEmbedding.includes('const EMBED_BATCH_GAP_MS = 1200'), 'embedding batch pacing is too aggressive for low-quota keys');
   assert(coreEmbedding.lastIndexOf('cleanup = await cleanupStaleEmbeddings(packName, apiOpts)') > coreEmbedding.indexOf('await runBatches(pendingConditions'), 'old embeddings are deleted before replacement generation succeeds');
@@ -333,7 +323,8 @@ function testSourceContracts() {
   assert(apiUi.includes("autoExtOpenAIFormat || 'custom'"), 'custom full-URL format is not the new-install UI default');
   assert(apiUi.includes('추출 항목 체크는 커스텀 프롬프트에도 동일하게 적용됩니다.'), 'custom prompt and extraction-scope behavior is not explained');
   assert(!apiUi.includes('지시문'), 'developer-facing instruction terminology remains in API UI');
-  assert(apiUi.includes("{ feature: 'autoExtract', chatKey: 'global' }") && apiUi.includes("responseMimeType: 'application/json', maxOutputTokens: 512"), 'API test does not exercise the structured generation and reasoning path used by extraction');
+  assert(apiUi.includes("{ feature: 'autoExtract', chatKey: 'global' }") && apiUi.includes("responseMimeType: 'application/json'"), 'API test does not exercise the structured generation and reasoning path used by extraction');
+  assert(apiUi.includes("featureModel(key).includes('gemini-2.5')") && apiUi.includes("['예산', 'budget']"), 'Gemini 2.5 thinking-budget UI was not preserved');
 
   const extractionUi = read('embedding/injecter-6-sub-extract.js');
   assert(extractionUi.includes('시간과 생성 API 사용량이 늘어남'), 'extra temporal API call is not disclosed in the UI');
@@ -350,6 +341,8 @@ function testSourceContracts() {
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
   assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
   assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');
+  const featureGenerationSources = [extraction, read('embedding/core-importer.js'), refinerCore, injection, read('embedding/core-search.js'), apiUi];
+  assert(featureGenerationSources.every(source => !source.includes('maxOutputTokens')), 'a feature still imposes a separate generation output limit');
   const mainUi = read('embedding/injecter-6-sub-main.js');
   assert(mainUi.includes("extractRemaining + '턴 남음'"), 'home does not show turns remaining until automatic extraction');
 

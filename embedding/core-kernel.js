@@ -1022,16 +1022,14 @@ Entries:
     const genConfig = {};
     if (Object.keys(thinkingConfig).length > 0) genConfig.thinkingConfig = thinkingConfig;
     if (responseMimeType) genConfig.responseMimeType = responseMimeType;
-    let activeMaxOutputTokens = maxOutputTokens != null ? Number(maxOutputTokens) : null;
+    if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
+    const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
 
     let lastStatus = 0, lastError = null;
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
-        const attemptConfig = { ...genConfig };
-        if (activeMaxOutputTokens != null && Number.isFinite(activeMaxOutputTokens)) attemptConfig.maxOutputTokens = activeMaxOutputTokens;
-        const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: attemptConfig });
         const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
         lastStatus = r.status;
 
@@ -1062,11 +1060,6 @@ Entries:
           const _restCost = _trackCost(json.usageMetadata, prompt, text);
           if (text) return { text, status: r.status, error: null, retries: attempt, cost: _restCost };
           lastError = geminiEmptyResponseError(json);
-          const finishReason = json && json.candidates && json.candidates[0] && json.candidates[0].finishReason;
-          if (finishReason === 'MAX_TOKENS' && attempt < effectiveMaxRetries) {
-            activeMaxOutputTokens = Math.min(32768, Math.max(8192, (Number(activeMaxOutputTokens) || 4096) * 2));
-            continue;
-          }
         }
       } catch (e) {
         lastError = e.message;
