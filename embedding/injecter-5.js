@@ -25,11 +25,13 @@
   const CLEANUP_MAX_ITEMS = 160;
   const CLEANUP_RECONCILE_LIMIT = 40;
   const CLEANUP_LOG_LIMIT = 90;
-  const CLEANUP_FALLBACK_MAX_EDITS = 2;
-  const CLEANUP_FALLBACK_MIN_INTERVAL_MS = 20000;
+  const CLEANUP_QUEUE_MAX_EDITS = 5;
+  const CLEANUP_FALLBACK_MAX_EDITS = 5;
+  const CLEANUP_FALLBACK_MIN_INTERVAL_MS = 4000;
   const LORE_CONTEXT_TAG_PATTERN = /\s*<ooc_lore_context>[\s\S]*?<\/ooc_lore_context>\s*/gi;
   let _cleanupTimer = null;
   let _cleanupRunning = false;
+  let _cleanupPending = false;
   const _fallbackCleanupLastByChat = new Map();
 
   function cleanupHash(text) {
@@ -94,8 +96,12 @@
     const kept = compactCleanupItems(state && state.items);
     try {
       if (db.cleanupQueue) {
-        await db.cleanupQueue.clear();
+        // Additive writes prevent a cleanup pass from deleting an item queued by a concurrent send.
         if (kept.length) await db.cleanupQueue.bulkPut(kept);
+        try {
+          const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+          await db.cleanupQueue.where('completedAt').below(cutoff).delete();
+        } catch (_) {}
         return true;
       }
     } catch (e) {
@@ -298,24 +304,32 @@
     const configuredTurns = Math.max(1, parseInt(settings.config.injectionCleanupTurns || 8, 10) || 8);
     const availableLogs = Array.isArray(logs) && logs.length ? logs : await fetchRawLogs(chatId, CLEANUP_LOG_LIMIT, true);
     const userMsgs = availableLogs.filter(log => log && messageRoleOf(log) === 'user' && messageIdOf(log) && messageTextOf(log) != null);
-    if (userMsgs.length <= configuredTurns) return 0;
+    if (userMsgs.length <= configuredTurns) return { cleaned: 0, deferred: 0, failed: 0 };
     const candidates = userMsgs.slice(0, Math.max(0, userMsgs.length - configuredTurns));
     const currentTurn = getTurnCounter(chatKey);
     let cleaned = 0;
+    let attempted = 0;
+    let deferred = 0;
+    let failed = 0;
     for (const log of candidates) {
-      if (cleaned >= maxEdits) break;
       const cleanText = cleanLoreContextTags(messageTextOf(log));
       if (!cleanText) continue;
+      if (attempted >= maxEdits) {
+        deferred++;
+        continue;
+      }
+      attempted++;
       const patched = await patchUserMessage(chatId, messageIdOf(log), cleanText);
       if (patched.ok) {
         refreshCleanedMessageInDOM(messageTextOf(log), cleanText, messageIdOf(log));
         cleaned++;
         addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_fallback_done', note: `${configuredTurns}턴 지난 삽입 태그 흔적 정리`, messageId: messageIdOf(log) });
       } else {
+        failed++;
         addInjLog(chatKey, { time: new Date().toLocaleTimeString(), turn: currentTurn, matched: [], count: 0, reason: 'cleanup_fallback_failed', note: '삽입 태그 흔적 정리 실패', status: patched.status });
       }
     }
-    return cleaned;
+    return { cleaned, deferred, failed };
   }
 
   function countUserTurnsAfter(logs, item) {
@@ -372,7 +386,10 @@
 
   async function runInjectionCleanup(reason) {
     if (settings.config.injectionCleanupEnabled === false) return;
-    if (_cleanupRunning) return;
+    if (_cleanupRunning) {
+      _cleanupPending = true;
+      return;
+    }
     const chatId = currentChatIdSafe();
     const chatKey = getChatKey();
     if (!chatId || !chatKey) return;
@@ -403,13 +420,19 @@
       }
       const currentTurn = getTurnCounter(chatKey);
       let cleaned = 0;
+      let attempted = 0;
+      let queueDeferred = false;
       for (const item of items) {
-        if (cleaned >= 3) break;
         if (!item.messageId || item.status === 'stale') continue;
-        const configuredTurns = Math.max(1, parseInt(item.cleanupAfterTurns || settings.config.injectionCleanupTurns || 8, 10) || 8);
+        const configuredTurns = Math.max(1, parseInt(settings.config.injectionCleanupTurns || item.cleanupAfterTurns || 8, 10) || 8);
         const serverTurns = countUserTurnsAfter(logs, item);
         const fallbackExpired = currentTurn && item.turn && (currentTurn - item.turn) >= configuredTurns;
         if (!(serverTurns != null ? serverTurns >= configuredTurns : fallbackExpired)) continue;
+        if (attempted >= CLEANUP_QUEUE_MAX_EDITS) {
+          queueDeferred = true;
+          continue;
+        }
+        attempted++;
 
         const cur = await getMessageById(item.chatId || chatId, item.messageId);
         const currentText = messageTextOf(cur);
@@ -446,15 +469,21 @@
         }
         changed = true;
       }
-      const fallbackBudget = Math.max(0, CLEANUP_FALLBACK_MAX_EDITS - cleaned);
+      const fallbackBudget = Math.max(0, CLEANUP_FALLBACK_MAX_EDITS - attempted);
       if (fallbackBudget > 0 && shouldRunFallbackCleanupScan(chatKey, reason, items.length, cleaned)) {
         _fallbackCleanupLastByChat.set(chatKey, Date.now());
-        await runFallbackTagCleanup(chatId, chatKey, logs, fallbackBudget);
+        const fallback = await runFallbackTagCleanup(chatId, chatKey, logs, fallbackBudget);
+        if (fallback.deferred > 0) scheduleInjectionCleanup('fallback-drain', 5000);
       }
+      if (queueDeferred) scheduleInjectionCleanup('queue-drain', 5000);
       if (changed) await saveCleanupState(state);
       if (items.some(it => it && !it.messageId && it.status !== 'stale')) scheduleInjectionCleanup('pending-reconcile', 10000);
     } finally {
       _cleanupRunning = false;
+      if (_cleanupPending) {
+        _cleanupPending = false;
+        scheduleInjectionCleanup('pending-run', 1000);
+      }
     }
   }
 
@@ -1132,6 +1161,13 @@
   if (_w.__loreRegister) _w.__loreRegister(inject);
 
   scheduleInjectionCleanup('module-load', 4000);
+  try {
+    _w.addEventListener('online', () => scheduleInjectionCleanup('online', 1000));
+    _w.addEventListener('focus', () => scheduleInjectionCleanup('focus', 1500));
+    _w.document.addEventListener('visibilitychange', () => {
+      if (_w.document.visibilityState === 'visible') scheduleInjectionCleanup('visible', 1500);
+    });
+  } catch (_) {}
 
   Object.assign(_w.__LoreInj, { inject, runInjectionCleanup, queueInjectionCleanup, __injectLoaded: true });
   console.log('[LoreInj:5] inject loaded & registered');

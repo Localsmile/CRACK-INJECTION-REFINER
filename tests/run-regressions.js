@@ -287,6 +287,11 @@ function testSourceContracts() {
   assert(injectionSource.includes('refreshCleanedMessageInDOM(currentText, clean.text, item.messageId)'), 'successful cleanup does not refresh the visible user message');
   assert(injectionSource.includes('safeMatch.ok || normalizedMatch'), 'cleanup queue reconciliation still requires byte-identical message text');
   assert(injectionSource.includes("mode: 'tag'"), 'cleanup cannot safely recover from server-normalized whitespace');
+  assert(!injectionSource.includes('await db.cleanupQueue.clear()'), 'cleanup queue saves can erase concurrently queued items');
+  assert(injectionSource.includes('_cleanupPending = true') && injectionSource.includes("scheduleInjectionCleanup('pending-run', 1000)"), 'overlapping cleanup triggers are still dropped');
+  assert(injectionSource.includes('settings.config.injectionCleanupTurns || item.cleanupAfterTurns'), 'current cleanup retention does not apply to existing queue items');
+  assert(injectionSource.includes("scheduleInjectionCleanup('fallback-drain', 5000)"), 'fallback cleanup does not drain an eligible backlog');
+  assert(injectionSource.includes("scheduleInjectionCleanup('queue-drain', 5000)"), 'tracked cleanup does not drain an eligible backlog');
 
   const apiUi = read('embedding/injecter-6-sub-api.js');
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');
