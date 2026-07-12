@@ -50,7 +50,6 @@
   const ACTIVE_PACKS_STORAGE_KEY = 'lore-active-packs-v1';
   const MAX_SNAPSHOTS_PER_PACK = 3;
   const ORPHAN_STORAGE_CLEANUP_KEY = 'lore-orphan-storage-cleanup-v1';
-  const EMBEDDING_MODEL_CLEANUP_KEY = 'lore-embedding-model-cleanup-v1';
 
   function isChatRoute() {
     const fn = _w.__LoreInj && _w.__LoreInj.isChatPath;
@@ -153,10 +152,13 @@
     return cfg;
   }
 
-  function persistStorageIfPossible() {
-    try {
-      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    } catch (_) {}
+  async function requestPersistentStorage() {
+    if (!navigator.storage || typeof navigator.storage.persist !== 'function') {
+      throw new Error('이 브라우저는 저장소 보호 요청을 지원하지 않습니다.');
+    }
+    // Call persist() immediately from the click handler so transient user activation is retained.
+    const granted = await navigator.storage.persist();
+    return { granted: !!granted, already: false };
   }
 
   function getApiConfigSnapshot(config) {
@@ -546,15 +548,6 @@
     else setTimeout(run, 5000);
   }
 
-  async function cleanupEmbeddingsForSelectedModel() {
-    const model = settings.config.embeddingModel || C.DEFAULTS.embeddingModel;
-    if (_ls.getItem(EMBEDDING_MODEL_CLEANUP_KEY) === model) return 0;
-    if (!C.cleanupStaleEmbeddings) return 0;
-    const report = await C.cleanupStaleEmbeddings(null, { model });
-    _ls.setItem(EMBEDDING_MODEL_CLEANUP_KEY, model);
-    return report.removed || 0;
-  }
-
   // Phase 12: legacy 'event' / 'scene' 엔트리를 timeline_event 스키마로 변환하는 옵트인 헬퍼.
   // UI 트리거는 별도 phase에서 결정. 호출 측에서만 명시적으로 사용해야 하며 자동 변환은 하지 않는다.
   function convertLegacyEventToTimeline(entry, opts = {}) {
@@ -683,7 +676,6 @@
     _lastSaveError: '',
     save: function() {
       try {
-        persistStorageIfPossible();
         const storable = pruneConfigForStorage(this.config, false);
         const payload = JSON.stringify(storable);
         _ls.setItem('lore-injector-v5', payload);
@@ -1028,14 +1020,13 @@
         try { prior = JSON.parse(_ls.getItem('lore-local-migration-status') || 'null'); } catch (_) {}
       }
       try {
-        const staleEmbeddingsRemoved = await cleanupEmbeddingsForSelectedModel();
         const orphanCleanup = await cleanupOrphanedLoreStorageOnce();
-        if (orphanCleanup || staleEmbeddingsRemoved) {
-          const removed = staleEmbeddingsRemoved + (orphanCleanup?.orphanEmbeddingsRemoved || 0) + (orphanCleanup?.orphanEntryVersionsRemoved || 0) + (orphanCleanup?.orphanSnapshotsRemoved || 0) + (orphanCleanup?.emptyPacksRemoved || 0);
+        if (orphanCleanup) {
+          const removed = (orphanCleanup?.orphanEmbeddingsRemoved || 0) + (orphanCleanup?.orphanEntryVersionsRemoved || 0) + (orphanCleanup?.orphanSnapshotsRemoved || 0) + (orphanCleanup?.emptyPacksRemoved || 0);
           prior = {
             ...(prior || {}),
             version: target,
-            staleEmbeddingsRemoved,
+            staleEmbeddingsRemoved: 0,
             orphanedHistoryRemoved: (orphanCleanup?.orphanEntryVersionsRemoved || 0) + (orphanCleanup?.orphanSnapshotsRemoved || 0),
             checkedAt: Date.now(),
             message: removed ? '로어 상태 점검 완료. 사용하지 않는 저장 데이터 ' + removed + '개를 정리했습니다.' : '로어 상태 점검 완료.'
@@ -1064,12 +1055,6 @@
           await db.entries.update(e.id, update);
           status.migratedEntries++;
         }
-      }
-      if (C.cleanupStaleEmbeddings) {
-        const model = settings.config.embeddingModel || C.DEFAULTS.embeddingModel;
-        const clean = await C.cleanupStaleEmbeddings(null, { model });
-        status.staleEmbeddingsRemoved = clean.removed || 0;
-        _ls.setItem(EMBEDDING_MODEL_CLEANUP_KEY, model);
       }
       const orphanCleanup = await cleanupOrphanedLoreStorageOnce();
       if (orphanCleanup) {
@@ -1669,7 +1654,7 @@
     readActivePackMap, saveActivePackMap, syncActivePackStateToSettings,
     getApiConfigSnapshot, resetSettingsKeepApi,
     resolveConfiguredModel, getGenerationFallbackModel, normalizeApiModelDefaults, getApiMissingReason, buildGenerationApiOpts, buildEmbeddingApiOpts, getGeminiEmbeddingKey,
-    getStableChatStateKey, applyPresetKeepState, backupSettings, getSettingsStorageHealth,
+    getStableChatStateKey, applyPresetKeepState, backupSettings, getSettingsStorageHealth, requestPersistentStorage,
     runLocalMigration, getMigrationStatus, ensureHeavyRuntimeInit,
     __settingsLoaded: true
   });

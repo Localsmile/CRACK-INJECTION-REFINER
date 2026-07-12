@@ -485,7 +485,7 @@
           }
   
           const testRow = document.createElement('div'); testRow.style.cssText = 'margin:12px 0 16px;display:flex;gap:8px;align-items:center;';
-          const testBtn = document.createElement('button'); testBtn.textContent = 'API 키 테스트';
+          const testBtn = document.createElement('button'); testBtn.textContent = '생성 API 테스트';
           testBtn.style.cssText = 'padding:6px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;';
           const testResult = document.createElement('span'); testResult.style.cssText = 'font-size:12px;color:#888;word-break:break-all;';
           testBtn.onclick = async () => {
@@ -496,7 +496,10 @@
             try {
               const fallbackModel = _w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(settings.config) : (((settings.config.autoExtApiType || 'key') === 'deepseek') ? 'deepseek-v4-flash' : ((settings.config.autoExtApiType || 'key') === 'openai' ? '' : 'gemini-3-flash-preview'));
               const testModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : (settings.config.autoExtModel || fallbackModel);
-              const r = await C.callGeminiApi('Say "OK" in one word.', { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, openAIBaseUrl: settings.config.autoExtOpenAIBaseUrl, openAIKey: settings.config.autoExtOpenAIKey, openAIReasoning: settings.config.autoExtOpenAIReasoning || 'off', openAIFormat: settings.config.autoExtOpenAIFormat || 'custom', vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, deepSeekThinking: settings.config.autoExtDeepSeekThinking !== false, deepSeekReasoning: settings.config.autoExtDeepSeekReasoning || 'high', costContext: { feature: 'apiTest', chatKey: 'global' } });
+              const testOpts = _w.__LoreInj.buildGenerationApiOpts
+                ? _w.__LoreInj.buildGenerationApiOpts({ model: testModel, maxRetries: 0, responseMimeType: 'application/json', maxOutputTokens: 512 }, { feature: 'autoExtract', chatKey: 'global' })
+                : { apiType: settings.config.autoExtApiType, key: settings.config.autoExtKey, deepSeekKey: settings.config.autoExtDeepSeekKey, openAIBaseUrl: settings.config.autoExtOpenAIBaseUrl, openAIKey: settings.config.autoExtOpenAIKey, openAIFormat: settings.config.autoExtOpenAIFormat || 'custom', vertexJson: settings.config.autoExtVertexJson, vertexLocation: settings.config.autoExtVertexLocation, vertexProjectId: settings.config.autoExtVertexProjectId, firebaseScript: settings.config.autoExtFirebaseScript, model: testModel, maxRetries: 0, responseMimeType: 'application/json', maxOutputTokens: 512, costContext: { feature: 'autoExtract', chatKey: 'global' } };
+              const r = await C.callGeminiApi('Return exactly one JSON object: {"ok":true}', testOpts);
               testResult.textContent = r.text ? '성공: ' + r.text.trim().slice(0, 50) : '실패: ' + r.error; testResult.style.color = r.text ? '#4a9' : '#d66';
             } catch(e) { testResult.textContent = '오류: ' + e.message; testResult.style.color = '#d66'; }
             testBtn.disabled = false;

@@ -69,7 +69,9 @@ async function loadKernel(options = {}) {
         ? scriptedStatuses[Math.min(requestCount - 1, scriptedStatuses.length - 1)]
         : 200;
       let payload = { choices: [{ message: { content: '{"entries":[]}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 4 } };
-      if (/\/responses$/i.test(String(opts.url || ''))) payload = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '{"entries":[]}' }] }], usage: { input_tokens: 10, output_tokens: 4 } };
+      const scriptedPayloads = Array.isArray(options.gmPayloads) ? options.gmPayloads : [];
+      if (scriptedPayloads.length) payload = scriptedPayloads[Math.min(requestCount - 1, scriptedPayloads.length - 1)];
+      else if (/\/responses$/i.test(String(opts.url || ''))) payload = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '{"entries":[]}' }] }], usage: { input_tokens: 10, output_tokens: 4 } };
       else if (/\/messages$/i.test(String(opts.url || ''))) payload = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"entries":[]}' }], usage: { input_tokens: 10, output_tokens: 4 } };
       const timer = setTimeout(() => opts.onload({
         status: scriptedStatus,
@@ -128,6 +130,13 @@ async function testKernelHelpers() {
   assert.strictEqual(C.normalizeOpenAICompatUrl('https://proxy.example/custom/generate?mode=rp', 'custom'), 'https://proxy.example/custom/generate?mode=rp');
   assert.strictEqual(C.openAICompatResponseText({ output: [{ content: [{ type: 'output_text', text: 'responses-ok' }] }] }, 'responses'), 'responses-ok');
   assert.strictEqual(C.openAICompatResponseText({ content: [{ type: 'text', text: 'anthropic-ok' }] }, 'anthropic_messages'), 'anthropic-ok');
+  const globalVertex = C.resolveVertexEndpoint('global', 'gemini-2.5-flash');
+  assert.strictEqual(globalVertex.host, 'aiplatform.googleapis.com', 'Vertex global location still produces an invalid regional hostname');
+  assert.strictEqual(globalVertex.location, 'global', 'Vertex global location was rewritten unexpectedly');
+  const regionalVertex = C.resolveVertexEndpoint('us-central1', 'gemini-2.5-flash');
+  assert.strictEqual(regionalVertex.host, 'us-central1-aiplatform.googleapis.com', 'Vertex regional hostname is incorrect');
+  assert.strictEqual(C.geminiResponseText({ candidates: [{ content: { parts: [{ text: 'thinking', thought: true }, { text: '{"entries":' }, { text: '[]}' }] } }] }), '{"entries":[]}', 'Gemini multipart response was not joined');
+  assert(C.geminiEmptyResponseError({ candidates: [{ finishReason: 'MAX_TOKENS' }] }).includes('MAX_TOKENS'), 'Gemini empty response hides the finish reason');
   const responseVariants = C.buildOpenAIFormatVariants('responses', 'prompt', { model: 'm', jsonMode: true, maxOutputTokens: 200, reasoning: 'low' });
   assert(responseVariants.some(body => body.text && body.text.format.type === 'json_object'), 'Responses JSON variant is missing');
   const anthropicVariants = C.buildOpenAIFormatVariants('anthropic_messages', 'prompt', { model: 'm', jsonMode: true, maxOutputTokens: 200 });
@@ -165,6 +174,18 @@ async function testKernelHelpers() {
   });
   assert.strictEqual(hardFailure.text, null, 'non-retryable 400 unexpectedly produced output');
   assert.strictEqual(hardFailureKernel.getRequestCount(), 1, 'non-retryable 400 was requested more than once');
+
+  const budgetKernel = await loadKernel({ gmPayloads: [
+    { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'internal reasoning', thought: true }] } }] },
+    { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{"entries":[]}' }] } }] }
+  ] });
+  const budgetRecovered = await budgetKernel.C.callGeminiApi('structured extraction', {
+    apiType: 'key', key: 'test-key', model: 'gemini-2.5-flash', responseMimeType: 'application/json',
+    maxRetries: 1, maxOutputTokens: 4096
+  });
+  assert.strictEqual(budgetRecovered.text, '{"entries":[]}', 'Gemini extraction did not recover after reasoning exhausted the first output budget');
+  assert.strictEqual(budgetKernel.getRequestCount(), 2, 'MAX_TOKENS recovery did not perform exactly one retry');
+  assert.strictEqual(JSON.parse(budgetKernel.requests[1].data).generationConfig.maxOutputTokens, 8192, 'MAX_TOKENS retry did not increase the output budget');
 
   const responsesResult = await C.callGeminiApi('responses prompt', {
     apiType: 'openai', openAIBaseUrl: 'https://api.openai.com/v1', openAIKey: 'test-key', openAIFormat: 'responses',
@@ -270,6 +291,17 @@ function testSourceContracts() {
   assert(settings.includes("const dT = this.config.templates.find(t => t.isDefault || t.id === 'default')"), 'default-template targeting changed');
   assert(settings.includes('LEGACY.some(p => norm(p) === n)'), 'custom prompt migration is not exact-match guarded');
   assert(settings.includes("'autoExtOpenAIFormat'"), 'OpenAI transport format is not preserved by API-only settings reset');
+  assert(!settings.includes('persistStorageIfPossible()'), 'persistent storage permission is still requested during settings saves');
+  assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
+  assert(!settings.includes('cleanupStaleEmbeddings(null'), 'startup migration still deletes existing embeddings');
+
+  const kernel = read('embedding/core-kernel.js');
+  const coreEmbedding = read('embedding/core-embedding.js');
+  assert(kernel.includes('function enqueueEmbeddingApi') && kernel.includes('embeddingMinGapMs'), 'embedding calls are not globally serialized');
+  assert(kernel.includes("finishReason === 'MAX_TOKENS'") && kernel.includes('activeMaxOutputTokens = Math.min(32768'), 'Gemini extraction cannot recover when reasoning consumes the output budget');
+  assert(coreEmbedding.includes('if (isTransientEmbeddingFailure(batchError)) throw batchError'), '429/5xx batch failures still fan out into individual calls');
+  assert(coreEmbedding.includes('const EMBED_BATCH_GAP_MS = 1200'), 'embedding batch pacing is too aggressive for low-quota keys');
+  assert(coreEmbedding.lastIndexOf('cleanup = await cleanupStaleEmbeddings(packName, apiOpts)') > coreEmbedding.indexOf('await runBatches(pendingConditions'), 'old embeddings are deleted before replacement generation succeeds');
 
   const menu = read('embedding/injecter-6.js');
   for (const label of ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', 'API 설정', '활동', '도움말']) {
@@ -301,6 +333,7 @@ function testSourceContracts() {
   assert(apiUi.includes("autoExtOpenAIFormat || 'custom'"), 'custom full-URL format is not the new-install UI default');
   assert(apiUi.includes('추출 항목 체크는 커스텀 프롬프트에도 동일하게 적용됩니다.'), 'custom prompt and extraction-scope behavior is not explained');
   assert(!apiUi.includes('지시문'), 'developer-facing instruction terminology remains in API UI');
+  assert(apiUi.includes("{ feature: 'autoExtract', chatKey: 'global' }") && apiUi.includes("responseMimeType: 'application/json', maxOutputTokens: 512"), 'API test does not exercise the structured generation and reasoning path used by extraction');
 
   const extractionUi = read('embedding/injecter-6-sub-extract.js');
   assert(extractionUi.includes('시간과 생성 API 사용량이 늘어남'), 'extra temporal API call is not disclosed in the UI');
@@ -337,6 +370,7 @@ function testSourceContracts() {
   assert(backup.includes("makeBtn('현재 데이터를 서버에 백업'"), 'server backup action is still ambiguous');
   assert(backup.includes("makeBtn('선택 백업을 현재 데이터에 추가'"), 'server merge action is still ambiguous');
   assert(backup.includes('기존 백업은 덮어쓰지 않습니다'), 'server backup behavior is not explained');
+  assert(backup.includes("makeBtn('기기 저장소 보호 요청'"), 'persistent storage permission has no explicit user action');
   assert(!backup.includes("title.textContent = '저장 공간 정리'") && !backup.includes('사용하지 않는 데이터 정리'), 'storage cleanup UI is still present');
   assert(!settings.includes('deletePackData, cleanupUnusedLoreStorage,'), 'manual storage cleanup remains publicly exposed');
 

@@ -11,7 +11,7 @@
 
   const EMB_SCHEMA_VERSION = 2;
   const EMBED_BATCH_SIZE = 5;
-  const EMBED_BATCH_GAP_MS = 350;
+  const EMBED_BATCH_GAP_MS = 1200;
 
   function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -197,6 +197,10 @@
     }
   }
 
+  function isTransientEmbeddingFailure(error) {
+    return /\b(?:408|409|425|429|5\d{2})\b|네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(error && error.message || error || ''));
+  }
+
   async function ensureEmbedding(entry, apiOpts) {
     const db = getDB();
     const field = 'summary';
@@ -242,7 +246,7 @@
   async function embedPack(packName, apiOpts, onProgress) {
     const db = getDB();
     const entries = await db.entries.where('packName').equals(packName).toArray();
-    const cleanup = await cleanupStaleEmbeddings(packName, apiOpts);
+    let cleanup = { removed: 0, deferred: true };
     const docTaskType = (apiOpts.model || '').includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : apiOpts.taskType;
     const targetModel = apiOpts.model || DEFAULTS.embeddingModel;
 
@@ -272,6 +276,7 @@
     }
     const total = requiredFields.size;
     if (!total) {
+      cleanup = await cleanupStaleEmbeddings(packName, apiOpts);
       if (onProgress) onProgress(0, 0, cleanup);
       return 0;
     }
@@ -313,6 +318,9 @@
         try {
           await writeBatch(batch, field, map);
         } catch (batchError) {
+          // A transient provider failure already exhausted bounded backoff in embedTexts.
+          // Splitting it into individual calls would multiply 429/5xx traffic.
+          if (isTransientEmbeddingFailure(batchError)) throw batchError;
           console.warn('[LoreCore] 배치 임베딩 실패, 개별 재시도:', batchError && batchError.message ? batchError.message : batchError);
           for (const entry of batch) {
             try {
@@ -354,6 +362,8 @@
       const detail = failed[0].error && (failed[0].error.message || String(failed[0].error));
       throw new Error('검색 준비 실패: ' + failed.length + '개 항목 (' + names + ')' + (detail ? ' / ' + detail : ''));
     }
+    cleanup = await cleanupStaleEmbeddings(packName, apiOpts);
+    if (onProgress) onProgress(completed.size, total, cleanup);
     return completed.size;
   }
 

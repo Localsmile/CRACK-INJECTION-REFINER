@@ -245,7 +245,21 @@ Entries:
       xhrHandle = _GM_xhr({
         method: opts.method || 'GET', url, headers: opts.headers || {}, data: opts.body || null, responseType: 'text',
         timeout: opts.timeout || opts.timeoutMs || 0,
-        onload: (r) => { cleanup(); resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: () => Promise.resolve(r.responseText), json: () => Promise.resolve(JSON.parse(r.responseText)) }); },
+        onload: (r) => {
+          cleanup();
+          const rawHeaders = String(r.responseHeaders || '');
+          resolve({
+            ok: r.status >= 200 && r.status < 300,
+            status: r.status,
+            text: () => Promise.resolve(r.responseText),
+            json: () => Promise.resolve(JSON.parse(r.responseText)),
+            headers: { get: (name) => {
+              const target = String(name || '').toLowerCase();
+              const line = rawHeaders.split(/\r?\n/).find(header => header.slice(0, header.indexOf(':')).trim().toLowerCase() === target);
+              return line ? line.slice(line.indexOf(':') + 1).trim() : null;
+            } }
+          });
+        },
         onerror: () => { retryWithFetch(new Error('네트워크 오류')); },
         ontimeout: () => { retryWithFetch(new Error('타임아웃')); },
         onabort: () => { cleanup(); reject(new Error('aborted')); }
@@ -455,6 +469,8 @@ Entries:
 
   let _generationApiQueue = Promise.resolve();
   let _lastGenerationApiAt = 0;
+  let _embeddingApiQueue = Promise.resolve();
+  let _lastEmbeddingApiAt = 0;
   const _openAICompatVariantCache = new Map();
   const _generationInFlight = new Map();
 
@@ -479,6 +495,35 @@ Entries:
     return Math.min(capMs, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
   }
 
+  function resolveVertexEndpoint(vertexLocation, model) {
+    const configured = String(vertexLocation || 'global').trim() || 'global';
+    const forceGlobal = String(model || '').includes('gemini-3') || String(model || '').includes('gemini-2.0-flash-thinking');
+    const location = forceGlobal ? 'global' : configured;
+    const host = location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+    return { host, location };
+  }
+
+  function geminiResponseText(json) {
+    for (const candidate of (json && json.candidates || [])) {
+      const text = (candidate && candidate.content && candidate.content.parts || [])
+        .filter(part => part && typeof part.text === 'string' && !part.thought)
+        .map(part => part.text)
+        .join('')
+        .trim();
+      if (text) return text;
+    }
+    return null;
+  }
+
+  function geminiEmptyResponseError(json) {
+    const feedback = json && json.promptFeedback || {};
+    const candidate = json && json.candidates && json.candidates[0] || {};
+    const reason = feedback.blockReason || candidate.finishReason || '';
+    const detail = feedback.blockReasonMessage || candidate.finishMessage || '';
+    if (reason) return 'AI 응답이 비어 있음: ' + reason + (detail ? ' (' + detail + ')' : '');
+    return 'AI 응답이 비어 있음';
+  }
+
   function enqueueGenerationApi(task, opts = {}) {
     if (opts.skipGenerationQueue === true) return task();
     const minGap = Math.max(0, Number(opts.generationMinGapMs != null ? opts.generationMinGapMs : 250) || 0);
@@ -493,6 +538,22 @@ Entries:
       }
     });
     _generationApiQueue = queued.catch(() => {});
+    return queued;
+  }
+
+  function enqueueEmbeddingApi(task, opts = {}) {
+    if (opts.skipEmbeddingQueue === true) return task();
+    const minGap = Math.max(0, Number(opts.embeddingMinGapMs != null ? opts.embeddingMinGapMs : 1000) || 0);
+    const queued = _embeddingApiQueue.catch(() => {}).then(async () => {
+      const waitMs = Math.max(0, _lastEmbeddingApiAt + minGap - Date.now());
+      if (waitMs > 0) await sleep(waitMs);
+      try {
+        return await task();
+      } finally {
+        _lastEmbeddingApiAt = Date.now();
+      }
+    });
+    _embeddingApiQueue = queued.catch(() => {});
     return queued;
   }
 
@@ -948,10 +1009,8 @@ Entries:
       if (!projId) return { text: null, status: 0, error: 'project_id 누락', retries: 0 };
       try {
         const token = await getVertexAccessToken(sa, cacheKey);
-        const is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
-        const host = is3x ? 'aiplatform.googleapis.com' : `${vertexLocation}-aiplatform.googleapis.com`;
-        const loc = is3x ? 'global' : vertexLocation;
-        url = `https://${host}/v1/projects/${projId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
+        const endpoint = resolveVertexEndpoint(vertexLocation, model);
+        url = `https://${endpoint.host}/v1/projects/${projId}/locations/${endpoint.location}/publishers/google/models/${model}:generateContent`;
         headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
       } catch (e) { return { text: null, status: 0, error: e.message, retries: 0 }; }
     } else {
@@ -963,14 +1022,16 @@ Entries:
     const genConfig = {};
     if (Object.keys(thinkingConfig).length > 0) genConfig.thinkingConfig = thinkingConfig;
     if (responseMimeType) genConfig.responseMimeType = responseMimeType;
-    if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
-    const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
+    let activeMaxOutputTokens = maxOutputTokens != null ? Number(maxOutputTokens) : null;
 
     let lastStatus = 0, lastError = null;
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
+        const attemptConfig = { ...genConfig };
+        if (activeMaxOutputTokens != null && Number.isFinite(activeMaxOutputTokens)) attemptConfig.maxOutputTokens = activeMaxOutputTokens;
+        const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: attemptConfig });
         const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
         lastStatus = r.status;
 
@@ -997,12 +1058,15 @@ Entries:
           }
         } else {
           const json = await r.json();
-          const parts = json.candidates?.[0]?.content?.parts || [];
-          const textPart = parts.find(p => p.text && !p.thought);
-          const text = textPart?.text ?? null;
+          const text = geminiResponseText(json);
           const _restCost = _trackCost(json.usageMetadata, prompt, text);
           if (text) return { text, status: r.status, error: null, retries: attempt, cost: _restCost };
-          lastError = '응답 파싱 실패';
+          lastError = geminiEmptyResponseError(json);
+          const finishReason = json && json.candidates && json.candidates[0] && json.candidates[0].finishReason;
+          if (finishReason === 'MAX_TOKENS' && attempt < effectiveMaxRetries) {
+            activeMaxOutputTokens = Math.min(32768, Math.max(8192, (Number(activeMaxOutputTokens) || 4096) * 2));
+            continue;
+          }
         }
       } catch (e) {
         lastError = e.message;
@@ -1014,6 +1078,9 @@ Entries:
   }
 
   async function embedTexts(texts, opts = {}) {
+    if (opts.skipEmbeddingQueue !== true) {
+      return enqueueEmbeddingApi(() => embedTexts(texts, { ...opts, skipEmbeddingQueue: true }), opts);
+    }
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseEmbedKey = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
       model = DEFAULTS.embeddingModel, dimensions = DEFAULTS.embeddingDimensions, taskType = DEFAULTS.embeddingTaskType, cacheKey = 'embed',
@@ -1038,9 +1105,19 @@ Entries:
     };
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
-    const maxEmbedRetries = Math.max(0, Math.min(3, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 3));
+    const maxEmbedRetries = Math.max(0, Math.min(5, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 4));
     const retryableEmbeddingError = (e) => /\b(?:408|409|425|429|5\d{2})\b|네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(e && e.message || e || ''));
-    const waitEmbeddingRetry = (attempt) => new Promise(res => setTimeout(res, Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.random() * 500));
+    const retryAfterMs = (response) => {
+      try {
+        const raw = response && response.headers && response.headers.get && response.headers.get('retry-after');
+        if (!raw) return 0;
+        const seconds = Number(raw);
+        if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+        const dateMs = Date.parse(raw);
+        return Number.isFinite(dateMs) ? Math.max(0, dateMs - Date.now()) : 0;
+      } catch (_) { return 0; }
+    };
+    const waitEmbeddingRetry = (attempt, response) => new Promise(res => setTimeout(res, Math.max(retryAfterMs(response), Math.min(30000, 1500 * Math.pow(2, attempt))) + Math.random() * 700));
     const validateEmbeddingVectors = (vectors, expectedCount) => {
       if (!Array.isArray(vectors) || vectors.length !== expectedCount) {
         throw new Error('임베딩 결과 수가 요청 수와 다릅니다.');
@@ -1060,9 +1137,11 @@ Entries:
             fetchFallbackOnError: true
           });
           if (!r.ok) {
-            lastError = new Error(errorPrefix + ': ' + r.status);
+            const errorBody = r.text ? await r.text().catch(() => '') : '';
+            lastError = new Error(errorPrefix + ': ' + r.status + (errorBody ? ' ' + errorBody.slice(0, 300).replace(/\n/g, ' ') : ''));
+            lastError.status = r.status;
             if ((r.status === 429 || r.status >= 500 || r.status === 0) && attempt < maxEmbedRetries) {
-              await waitEmbeddingRetry(attempt);
+              await waitEmbeddingRetry(attempt, r);
               continue;
             }
             throw lastError;
@@ -1071,7 +1150,7 @@ Entries:
         } catch (e) {
           lastError = e;
           if (attempt < maxEmbedRetries && retryableEmbeddingError(e)) {
-            await waitEmbeddingRetry(attempt);
+            await waitEmbeddingRetry(attempt, null);
             continue;
           }
           throw e;
@@ -1234,7 +1313,7 @@ Entries:
     getDB, gmFetch, parseServiceAccountJson, getVertexAccessToken,
     callGeminiApi, callDeepSeekApi, embedText, embedTexts, warmupFirebase,
     normalizeVector, cosineSim, simpleHash, packJsonForStorage, unpackJsonFromStorage,
-    nativeFetchWithTimeout, generationRequestFingerprint, normalizeOpenAICompatFormat, normalizeOpenAICompatUrl,
+    nativeFetchWithTimeout, generationRequestFingerprint, resolveVertexEndpoint, geminiResponseText, geminiEmptyResponseError, normalizeOpenAICompatFormat, normalizeOpenAICompatUrl,
     buildOpenAICompatVariants, buildOpenAIFormatVariants, openAICompatResponseText, promiseWithTimeout,
     estimateTextTokens, estimateMessageTokens, deriveAiMemoryTurns,
     loadSettings, saveSettings, incrementTurn, recordMention,

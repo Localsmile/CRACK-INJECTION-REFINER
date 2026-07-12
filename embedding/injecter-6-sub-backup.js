@@ -494,6 +494,28 @@
         importFile.value = '';
       };
       row.appendChild(exportBtn); row.appendChild(importMergeBtn); row.appendChild(importReplaceBtn); row.appendChild(importFile); nd.appendChild(row);
+      if (typeof _w.__LoreInj.requestPersistentStorage === 'function') {
+        const storageRow = document.createElement('div'); storageRow.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;';
+        const storageBtn = makeBtn('기기 저장소 보호 요청', 'border-color:#555;color:#aaa;');
+        storageBtn.title = '브라우저가 저장 공간을 자동 정리할 때 로어 데이터를 유지하도록 요청합니다.';
+        const storageStatus = document.createElement('span'); storageStatus.style.cssText = 'font-size:11px;color:#777;';
+        storageBtn.onclick = async () => {
+          storageBtn.disabled = true;
+          storageStatus.textContent = '브라우저 확인 중...';
+          try {
+            const result = await _w.__LoreInj.requestPersistentStorage();
+            storageStatus.textContent = result.granted
+              ? (result.already ? '이미 보호됨' : '저장소 보호를 허용함')
+              : '브라우저가 이번 요청을 허용하지 않음';
+            storageStatus.style.color = result.granted ? '#8a9' : '#d99';
+          } catch (error) {
+            storageStatus.textContent = error.message || String(error);
+            storageStatus.style.color = '#d88';
+          }
+          storageBtn.disabled = false;
+        };
+        storageRow.appendChild(storageBtn); storageRow.appendChild(storageStatus); nd.appendChild(storageRow);
+      }
       addText(nd, '현재 데이터를 파일에 저장: 이 브라우저의 로어, 로어팩, 설정, 검색 준비와 채팅별 상태를 새 JSON 파일로 내려받습니다. 위 선택에 따라 API 키와 로그 포함 여부가 달라집니다.', 'font-size:10px;color:#8a9;line-height:1.5;margin-top:8px;');
       addText(nd, '파일 내용을 현재 데이터에 추가: 현재 로어를 지우지 않습니다. 이름이 겹치면 새 팩으로 가져올지, 기존 팩에 합칠지, 기존 팩을 바꿀지 선택하고 같은 이름의 로어와 설정 처리 방식도 직접 정합니다.', 'font-size:10px;color:#8bc;line-height:1.5;margin-top:4px;');
       addText(nd, '파일 기준으로 전체 복원: 현재 로컬 로어 DB를 먼저 비운 뒤 파일의 로어, 팩, 설정과 저장 상태로 다시 구성합니다. 현재 상태가 필요하면 실행 전에 별도 파일로 저장해야 합니다.', 'font-size:10px;color:#d99;line-height:1.5;margin-top:4px;');
