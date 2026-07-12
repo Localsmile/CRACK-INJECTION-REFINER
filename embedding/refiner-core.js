@@ -75,6 +75,31 @@
     };
   }
 
+  function normalizeRefinerText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isAssistantLog(log) {
+    if (!log || log instanceof Error) return false;
+    if (String(log.role || '').toLowerCase() !== 'assistant') return false;
+    if (typeof log.isBot === 'function' && !log.isBot()) return false;
+    return !!String(log.content || '').trim();
+  }
+
+  function isUserMessageEcho(value, recentMsgs) {
+    const candidate = normalizeRefinerText(value);
+    if (candidate.length < 8) return false;
+    return (recentMsgs || []).some(msg => {
+      if (!msg || String(msg.role || '').toLowerCase() !== 'user') return false;
+      const userText = normalizeRefinerText(msg.message || msg.content);
+      if (!userText) return false;
+      if (candidate === userText) return true;
+      const shorter = Math.min(candidate.length, userText.length);
+      const longer = Math.max(candidate.length, userText.length);
+      return shorter / longer >= 0.92 && (candidate.includes(userText) || userText.includes(candidate));
+    });
+  }
+
   async function patchChatMessage(chatId, messageId, nextText) {
     try {
       if (typeof CrackUtil !== 'undefined' && CrackUtil.chatRoom && typeof CrackUtil.chatRoom().editMessage === 'function') {
@@ -220,7 +245,7 @@
   }
 
   // 메인 로직
-  async function refineMessage(assistantText, force, enqueueCallback) {
+  async function refineMessage(assistantText, force, enqueueCallback, requestedMsgId) {
     const config = ConfigGetter();
     if (!config.refinerEnabled && !force) return;
 
@@ -230,7 +255,18 @@
     const url = Core.getCurUrl();
     let targetLog = null;
     try { targetLog = await CrackUtil.chatRoom().findLastBotMessage(chatRoomId); } catch (_) {}
-    const targetMsgId = targetLog && !(targetLog instanceof Error) ? targetLog.id : '';
+    if (!isAssistantLog(targetLog)) {
+      R.lastState = { state: 'skipped', detail: 'AI 응답을 찾지 못함', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
+      Core.hideStatusBadge();
+      return;
+    }
+    const targetMsgId = targetLog.id || '';
+    if (requestedMsgId && String(requestedMsgId) !== String(targetMsgId)) {
+      R.lastState = { state: 'skipped', detail: '지난 AI 응답 교정 생략', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
+      Core.hideStatusBadge();
+      return;
+    }
+    assistantText = String(targetLog.content || '');
     const releaseRefineLock = _acquireRefineLock(chatRoomId, targetMsgId, assistantText);
     if (!releaseRefineLock) {
       R.lastState = { state: 'skipped', detail: '중복 교정 요청 생략', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
@@ -350,6 +386,7 @@
       .replace('{context}', contextText)
       .replace('{message}', assistantText)
       .replace('{passWord}', passWord);
+    prompt += '\n\nTARGET BOUNDARY: [New Speech] is the only text you may correct. [Recent Context] user messages are reference context and are never correction targets. Never return, rewrite, or substitute a user message as refined_text. Every replacements.from must be an exact substring of [New Speech]. If [New Speech] needs no change, return PASS only.';
 
     const _fallbackModel = _w.__LoreInj && _w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3-flash-preview';
     const _refModel = (config.refinerModel === '_custom' ? config.refinerCustomModel : config.refinerModel)
@@ -404,12 +441,15 @@
       }
       const text = response.text.trim();
 
+      const finishPass = (reason) => {
+        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
+        R.lastState = { state: 'idle', detail: '교정할 내용 없음', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: false };
+        Core.hideStatusBadge();
+      };
+
       const isPass = text.includes(passWord) && text.length < passWord.length + 10;
       if (isPass) {
-        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
-        Core.showStatusBadge('에리: 이상 없음');
-        setTimeout(Core.hideStatusBadge, 2000);
-        if (ToastCallback) ToastCallback('에리: 통과', '#4a9');
+        finishPass('PASS');
         return;
       }
 
@@ -427,10 +467,7 @@
       }
 
       if (parsed && parsed.pass === true) {
-        if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'PASS', isPass: true, reason: parsed.reason || 'PASS', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
-        Core.showStatusBadge('에리: 이상 없음');
-        setTimeout(Core.hideStatusBadge, 2000);
-        if (ToastCallback) ToastCallback('에리: 통과', '#4a9');
+        finishPass(parsed.reason || 'PASS');
         return;
       }
 
@@ -446,10 +483,19 @@
         const replacements = parsed.replacements || [];
         if (replacements.length > 0) {
           for (const r of replacements) {
-            if (r.from && r.to !== undefined) correctedText = correctedText.replace(r.from, r.to);
+            if (r.from && r.to !== undefined && assistantText.includes(r.from)) correctedText = correctedText.replace(r.from, r.to);
           }
         } else if (parsed.refined_text) {
           correctedText = parsed.refined_text;
+        }
+
+        if (normalizeRefinerText(correctedText) === normalizeRefinerText(assistantText)) {
+          finishPass(parsed.reason || '교정 대상 변경 없음');
+          return;
+        }
+        if (isUserMessageEcho(correctedText, allMsgsForContext)) {
+          finishPass('유저 입력이 교정본으로 반환되어 원본 유지');
+          return;
         }
 
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: parsed.reason, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });

@@ -36,7 +36,7 @@
   R.manualRefine = async function(text, msgId) {
     if (!text) return;
     if (msgId) R.getProcessedFingerprints().delete(msgId);
-    try { await R.refineMessage(text, true, R.processQueue); } catch(e) { console.error('[Refiner] manual fail:', e); throw e; }
+    try { await R.refineMessage(text, true, R.processQueue, msgId || ''); } catch(e) { console.error('[Refiner] manual fail:', e); throw e; }
   };
 
   R.__loaded = true;

@@ -51,7 +51,7 @@
             }, 1500);
             try {
               const lastBot = await CrackUtil.chatRoom().findLastBotMessage(cid);
-              if (!lastBot || lastBot instanceof Error || !lastBot.content) throw new Error('마지막 AI 응답 없음');
+              if (!lastBot || lastBot instanceof Error || String(lastBot.role || '').toLowerCase() !== 'assistant' || (typeof lastBot.isBot === 'function' && !lastBot.isBot()) || !lastBot.content) throw new Error('마지막 AI 응답 없음');
               await R.manualRefine(lastBot.content, lastBot.id);
               clearInterval(tick);
               const sec = Math.floor((Date.now() - start) / 1000);

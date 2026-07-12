@@ -361,11 +361,18 @@ function testSourceContracts() {
   assert(!mergeUi.includes('merged.summary = mergeSummaries(base.summary'), 'AI merge preview can duplicate summary facts');
 
   const refinerQueue = read('embedding/refiner-queue.js');
+  const refinerEntry = read('embedding/refiner.js');
   const refinerObserver = read('embedding/refiner-observer.js');
   const refinerUi = read('embedding/injecter-6-sub-refiner.js');
   assert(!refinerQueue.includes('queued for refine') && !refinerQueue.includes('calling refiner api'), 'raw refiner queue status is user-visible');
   assert(!refinerObserver.includes('stable assistant response'), 'raw observer status is user-visible');
   assert(refinerUi.includes("queued: '교정 대기'"), 'refiner state labels are not localized');
+  assert(refinerUi.includes("String(lastBot.role || '').toLowerCase() !== 'assistant'"), 'manual correction does not reject a user-role target');
+  assert(refinerQueue.includes('msgId: msgId ||') && refinerQueue.includes('item.msgId'), 'automatic correction loses the assistant message id');
+  assert(refinerEntry.includes("R.processQueue, msgId || ''"), 'manual correction loses the assistant message id');
+  assert(refinerCore.includes('isAssistantLog(targetLog)') && refinerCore.includes('isUserMessageEcho(correctedText, allMsgsForContext)'), 'correction target/user-echo guards are missing');
+  assert(refinerCore.includes('Every replacements.from must be an exact substring of [New Speech]'), 'correction prompt does not isolate the assistant response');
+  assert(!refinerCore.includes("ToastCallback('에리: 통과'"), 'PASS still creates a popup notification');
 }
 
 async function testMenuRuntime() {

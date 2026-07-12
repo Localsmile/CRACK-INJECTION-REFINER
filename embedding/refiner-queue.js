@@ -22,7 +22,7 @@
       R.Core && R.Core.hideStatusBadge(); return;
     }
     if (refineQueue.some(item => item.fingerprint === fingerprint)) return;
-    refineQueue.push({ text, fingerprint, enqueuedAt: Date.now() });
+    refineQueue.push({ text, msgId: msgId || '', fingerprint, enqueuedAt: Date.now() });
     processQueue();
   }
 
@@ -50,7 +50,7 @@
     R.saveProcessedFingerprints();
     try {
       await Promise.race([
-        R.refineMessage(item.text, false, processQueue),
+        R.refineMessage(item.text, false, processQueue, item.msgId),
         new Promise((_, rej) => setTimeout(() => rej(new Error('refineMessage 60초 타임아웃')), 60000))
       ]);
     } catch (e) {
