@@ -99,7 +99,7 @@
 
   function renderLorePackImportSection(parent, onDone) {
     const title = document.createElement('div'); title.textContent = '로어팩 가져오기'; title.style.cssText = 'font-size:14px;color:#ccc;font-weight:bold;margin-bottom:5px;'; parent.appendChild(title);
-    const desc = document.createElement('div'); desc.textContent = '로어 JSON 파일이나 직접 입력한 JSON을 하나의 로어팩으로 가져오고 현재 채팅에서 바로 켬.'; desc.style.cssText = 'font-size:11px;color:#888;line-height:1.45;margin-bottom:8px;'; parent.appendChild(desc);
+    const desc = document.createElement('div'); desc.textContent = '입력한 이름의 로어팩이 없으면 새로 만듭니다. 이미 있으면 같은 이름의 로어는 가져온 내용으로 갱신하고, 새로운 로어는 기존 팩에 추가한 뒤 현재 채팅에서 켭니다.'; desc.style.cssText = 'font-size:11px;color:#999;line-height:1.5;margin-bottom:8px;'; parent.appendChild(desc);
     const nameInput = document.createElement('input'); nameInput.placeholder = '저장할 로어팩 이름'; nameInput.style.cssText = 'width:100%;padding:7px 8px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;box-sizing:border-box;margin-bottom:7px;'; parent.appendChild(nameInput);
     const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = '.json,application/json'; fileInput.style.display = 'none';
     const fileButton = document.createElement('button'); fileButton.textContent = '로어 JSON 파일 선택'; fileButton.style.cssText = 'padding:7px 12px;font-size:12px;border-radius:4px;cursor:pointer;background:#258;color:#fff;border:1px solid #258;font-weight:bold;'; fileButton.onclick = () => fileInput.click();

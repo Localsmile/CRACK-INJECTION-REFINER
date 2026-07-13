@@ -1098,7 +1098,9 @@ Entries:
     };
     const isVertex = apiType === 'vertex';
     const isFirebase = apiType === 'firebase';
-    const maxEmbedRetries = Math.max(0, Math.min(5, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 4));
+    // Search preparation is commonly run against free-tier quotas. Five retries
+    // span a one-minute RPM window without turning one 429 into parallel traffic.
+    const maxEmbedRetries = Math.max(0, Math.min(6, Number.isFinite(Number(opts.maxRetries)) ? Number(opts.maxRetries) : 5));
     const retryableEmbeddingError = (e) => /\b(?:408|409|425|429|5\d{2})\b|네트워크 오류|타임아웃|failed to fetch|networkerror|load failed|fetch/i.test(String(e && e.message || e || ''));
     const retryAfterMs = (response) => {
       try {

@@ -9,6 +9,7 @@
 
   const _origFetch = _w.fetch.bind(_w);
   const _origWsSend = _w.WebSocket.prototype.send;
+  const WS_INJECTION_MAX_WAIT_MS = 3200;
   let _injectFn = null;
 
   // WebSocket 인터셉터
@@ -23,8 +24,24 @@
             if (!arr[1].message.includes('OOC:')) {
               const orig = arr[1].message;
               (async () => {
+                let timer = null;
+                const injectionAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
                 try {
-                  const mod = await _injectFn(orig);
+                  const timedOut = Symbol('lore-injection-timeout');
+                  const mod = await Promise.race([
+                    Promise.resolve().then(() => _injectFn(orig, {
+                      transport: 'websocket',
+                      maxWaitMs: WS_INJECTION_MAX_WAIT_MS - 250,
+                      signal: injectionAbort ? injectionAbort.signal : null
+                    })),
+                    new Promise(resolve => { timer = setTimeout(() => resolve(timedOut), WS_INJECTION_MAX_WAIT_MS); })
+                  ]);
+                  if (mod === timedOut) {
+                    try { if (injectionAbort) injectionAbort.abort(); } catch (_) {}
+                    console.warn('[Lore] 삽입 준비가 지연되어 원문을 우선 전송합니다.');
+                    _origWsSend.call(ws, data);
+                    return;
+                  }
                   if (orig !== mod) {
                     arr[1].message = mod;
                     _origWsSend.call(ws, prefix + JSON.stringify(arr));
@@ -34,6 +51,8 @@
                 } catch(e) {
                   console.error('[Lore] WS err:', e);
                   _origWsSend.call(ws, data);
+                } finally {
+                  if (timer) clearTimeout(timer);
                 }
               })();
               return;

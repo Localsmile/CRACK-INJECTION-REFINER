@@ -34,6 +34,27 @@
   let _cleanupPending = false;
   const _fallbackCleanupLastByChat = new Map();
 
+  async function settleWithin(promise, timeoutMs, fallback, onTimeout) {
+    const ms = Math.max(0, Number(timeoutMs) || 0);
+    if (!ms) {
+      try { if (typeof onTimeout === 'function') onTimeout(); } catch (_) {}
+      return fallback;
+    }
+    let timer = null;
+    const timeoutValue = Symbol('lore-timeout');
+    const value = await Promise.race([
+      Promise.resolve(promise).catch(error => ({ __loreError: error })),
+      new Promise(resolve => { timer = setTimeout(() => resolve(timeoutValue), ms); })
+    ]);
+    if (timer) clearTimeout(timer);
+    if (value === timeoutValue) {
+      try { if (typeof onTimeout === 'function') onTimeout(); } catch (_) {}
+      return fallback;
+    }
+    if (value && value.__loreError) throw value.__loreError;
+    return value;
+  }
+
   function cleanupHash(text) {
     try { return C.simpleHash(String(text || '')); } catch (_) { return String(String(text || '').length); }
   }
@@ -713,7 +734,12 @@
     };
   }
 
-  async function inject(userInput) {
+  async function inject(userInput, runtimeOpts = {}) {
+    const maxWaitMs = Math.max(0, Number(runtimeOpts.maxWaitMs) || 0);
+    const injectionDeadline = maxWaitMs ? Date.now() + maxWaitMs : 0;
+    const remainingMs = (reserve = 0) => injectionDeadline
+      ? Math.max(0, injectionDeadline - Date.now() - Math.max(0, reserve))
+      : 0;
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const turnCounter = incrementTurnCounter(chatKey);
     scheduleInjectionCleanup('turn-start', 2500);
@@ -752,7 +778,9 @@
     }
 
     const fetchCount = Math.max(48, (settings.config.scanRange || 6) * 3);
-    const recentMsgs = await C.fetchLogs(fetchCount);
+    const recentMsgs = maxWaitMs
+      ? await settleWithin(C.fetchLogs(fetchCount), Math.min(700, remainingMs(1700)), [], null)
+      : await C.fetchLogs(fetchCount);
 
     const config = settings.config;
     const effectiveAiMemoryTurns = C.deriveAiMemoryTurns
@@ -792,8 +820,38 @@
     };
 
     let scored = [], activeNames = [], temporalJudgeDecision = null;
+    let localSearch = null;
     try {
-      const r = await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts);
+      // Build a complete local result first. Remote semantic search may enrich it,
+      // but must never hold the site's message acknowledgement open indefinitely.
+      localSearch = await C.hybridSearch(userInput, recentMsgs, enabled, {
+        ...searchConfig,
+        embeddingEnabled: false
+      }, apiOpts);
+      let r = localSearch;
+      if (searchConfig.embeddingEnabled) {
+        const searchAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (runtimeOpts.signal && searchAbort) {
+          try { runtimeOpts.signal.addEventListener('abort', () => searchAbort.abort(), { once: true }); } catch (_) {}
+        }
+        const remoteBudget = maxWaitMs ? remainingMs(950) : 0;
+        if (!maxWaitMs || remoteBudget >= 250) {
+          const remoteOpts = {
+            ...apiOpts,
+            signal: searchAbort ? searchAbort.signal : apiOpts.signal,
+            timeoutMs: maxWaitMs ? Math.max(250, remoteBudget) : apiOpts.timeoutMs,
+            maxRetries: maxWaitMs ? 0 : apiOpts.maxRetries
+          };
+          r = maxWaitMs
+            ? await settleWithin(
+                C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, remoteOpts),
+                remoteBudget,
+                localSearch,
+                () => { try { if (searchAbort) searchAbort.abort(); } catch (_) {} }
+              )
+            : await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, remoteOpts);
+        }
+      }
       scored = r.scored || []; activeNames = r.activeNames || [];
       if (C.resolveTemporalRecall && config.timelineRetrievalEnabled !== false) {
         const resolved = C.resolveTemporalRecall(userInput, recentMsgs, enabled, { currentTurn: turnCounter, activeNames, limit: 4 });
@@ -818,7 +876,15 @@
           scored.sort((a,b) => b.score - a.score);
         }
       }
-      temporalJudgeDecision = await runTemporalRecallJudge(userInput, recentMsgs, scored, config, apiOpts);
+      const judgeBudget = maxWaitMs ? remainingMs(650) : 0;
+      if (!maxWaitMs || judgeBudget >= 250) {
+        const judgeConfig = maxWaitMs
+          ? { ...config, temporalRecallJudgeTimeoutMs: Math.min(config.temporalRecallJudgeTimeoutMs || judgeBudget, judgeBudget) }
+          : config;
+        temporalJudgeDecision = maxWaitMs
+          ? await settleWithin(runTemporalRecallJudge(userInput, recentMsgs, scored, judgeConfig, apiOpts), judgeBudget, { error: 'injection_budget', fallback: true }, null)
+          : await runTemporalRecallJudge(userInput, recentMsgs, scored, judgeConfig, apiOpts);
+      }
       if (temporalJudgeDecision && !temporalJudgeDecision.fallback && !temporalJudgeDecision.error) {
         scored = applyTemporalJudge(scored, temporalJudgeDecision);
       }
@@ -851,9 +917,14 @@
         _ls.setItem(sk, JSON.stringify(st));
       }
     } catch(e) {
-      const tr = C.triggerScan(userInput, recentMsgs, enabled, searchConfig);
-      scored = tr.map(r => ({ entry: r.entry, score: r.triggerScore }));
-      activeNames = C.detectActiveCharacters(recentMsgs, enabled);
+      if (localSearch) {
+        scored = localSearch.scored || [];
+        activeNames = localSearch.activeNames || [];
+      } else {
+        const tr = C.triggerScan(userInput, recentMsgs, enabled, searchConfig);
+        scored = tr.map(r => ({ entry: r.entry, score: r.triggerScore }));
+        activeNames = C.detectActiveCharacters(recentMsgs, enabled);
+      }
     }
 
     if (config.pendingPromiseBoost !== false) {
@@ -878,6 +949,8 @@
 
     if (config.rerankEnabled) {
       try {
+        const rerankBudget = maxWaitMs ? remainingMs(600) : 0;
+        if (maxWaitMs && rerankBudget < 250) throw new Error('injection_budget');
         C.showStatusBadge('에리가 로어 재정렬 중');
         const last2 = recentMsgs.slice(-4).map(m => m.role + ': ' + m.message).join('\n');
         const rerankModel = (config.rerankModel === '_custom' ? config.rerankCustomModel : config.rerankModel)
@@ -895,7 +968,22 @@
           model: rerankModel,
           costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
         };
-        scored = await C.smartRerank(userInput, scored, last2, rerankApiOpts, config);
+        const rerankAbort = maxWaitMs && typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (rerankAbort) {
+          rerankApiOpts.signal = rerankAbort.signal;
+          rerankApiOpts.timeoutMs = Math.max(250, rerankBudget);
+          if (runtimeOpts.signal) {
+            try { runtimeOpts.signal.addEventListener('abort', () => rerankAbort.abort(), { once: true }); } catch (_) {}
+          }
+        }
+        scored = maxWaitMs
+          ? await settleWithin(
+              C.smartRerank(userInput, scored, last2, rerankApiOpts, config),
+              rerankBudget,
+              scored,
+              () => { try { if (rerankAbort) rerankAbort.abort(); } catch (_) {} }
+            )
+          : await C.smartRerank(userInput, scored, last2, rerankApiOpts, config);
       } catch(e) {}
       // 리랭크 직후 hide 대신 "응답 기다리는 중"으로 전환 — Refiner가 실제 응답 감지 시 다음 상태로 교체/hide 담당
       C.showStatusBadge('에리가 응답 기다리는 중');
@@ -1085,6 +1173,8 @@
       }
       return Array.from(m.values());
     })();
+
+    if (runtimeOpts.signal && runtimeOpts.signal.aborted) return userInput;
 
     try {
       for (const e of allIncluded) {
