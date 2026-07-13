@@ -115,7 +115,7 @@
           const eml1 = document.createElement('div'); eml1.textContent = '의미 검색 모델'; eml1.style.cssText = 'font-size:13px;color:#ccc;font-weight:bold;';
           emL.appendChild(eml1);
           const emSel = document.createElement('select'); emSel.style.cssText = 'width:200px;padding:6px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:12px;';
-          [{v:'gemini-embedding-001',l:'gemini-embedding-001'},{v:'gemini-embedding-2-preview',l:'gemini-embedding-2-preview'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; emSel.appendChild(opt); });
+          [{v:'gemini-embedding-001',l:'gemini-embedding-001'},{v:'gemini-embedding-2',l:'gemini-embedding-2'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; emSel.appendChild(opt); });
           emSel.value = settings.config.embeddingModel || 'gemini-embedding-001';
           emSel.onchange = () => { settings.config.embeddingModel = emSel.value; settings.save(); alert('의미 검색 모델을 변경했습니다. 기존 로어팩의 검색 준비를 다시 실행해 주세요.'); };
           emRow.appendChild(emL); emRow.appendChild(emSel); nd.appendChild(emRow);

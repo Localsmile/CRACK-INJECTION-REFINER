@@ -211,6 +211,20 @@ async function testKernelHelpers() {
     'native fetch timeout did not abort and classify the request'
   );
 
+  const embedding2Kernel = await loadKernel({
+    gmPayloads: [{ embeddings: [{ values: [3, 4] }] }]
+  });
+  const embedding2Vectors = await embedding2Kernel.C.embedTexts(['찾고 싶은 사건'], {
+    apiType: 'key', key: 'ai-studio-key', model: 'gemini-embedding-2',
+    taskType: 'RETRIEVAL_QUERY', dimensions: 2, maxRetries: 0
+  });
+  assert.deepStrictEqual(Array.from(embedding2Vectors[0]), [0.6, 0.8], 'Embedding 2 vector normalization changed');
+  const embedding2Request = embedding2Kernel.requests[0];
+  assert(String(embedding2Request.url).includes('generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent'), 'Embedding 2 did not use the Gemini Developer API endpoint');
+  const embedding2Body = JSON.parse(embedding2Request.data);
+  assert.strictEqual(embedding2Body.content.parts[0].text, 'task: search result | query: 찾고 싶은 사건', 'Embedding 2 query instruction is missing');
+  assert(!Object.prototype.hasOwnProperty.call(embedding2Body, 'taskType'), 'Embedding 2 sent the unsupported taskType field');
+
   vm.runInContext(read('embedding/core-importer.js'), context, { filename: 'core-importer.js' });
   const merged = C.mergeImportedEntries([
     { type: 'character', name: 'A', triggers: ['A'], summary: { full: 'first', compact: 'first', micro: 'A=first' }, imp: 4 },
@@ -253,6 +267,15 @@ function testPromptContract() {
 }
 
 function testSourceContracts() {
+  const settingsSource = read('embedding/injecter-3.js');
+  assert(settingsSource.includes("apiType === 'vertex' && geminiEmbedKey"), 'Vertex generation does not prefer the separate AI Studio embedding key');
+  assert(settingsSource.includes("opts.apiType = 'key';") && settingsSource.includes('opts.key = geminiEmbedKey;'), 'separate embedding key is not routed to the Gemini Developer API');
+  assert(settingsSource.includes("cfg.embeddingModel === 'gemini-embedding-2-preview'") && settingsSource.includes("cfg.embeddingModel = 'gemini-embedding-2'"), 'legacy Embedding 2 model setting is not migrated');
+
+  const embeddingUi = read('embedding/injecter-6-sub-main.js');
+  assert(embeddingUi.includes("v:'gemini-embedding-2'"), 'stable Gemini Embedding 2 is missing from the UI');
+  assert(!embeddingUi.includes("v:'gemini-embedding-2-preview'"), 'retired Gemini Embedding 2 preview remains selectable');
+
   const extraction = read('embedding/injecter-4.js');
   const normalStart = extraction.indexOf('async function _doExtract');
   const batchStart = extraction.indexOf('const BATCH_RETRY_STORAGE_KEY');

@@ -1079,6 +1079,20 @@ Entries:
       model = DEFAULTS.embeddingModel, dimensions = DEFAULTS.embeddingDimensions, taskType = DEFAULTS.embeddingTaskType, cacheKey = 'embed',
       costContext = null } = opts;
     const arr = Array.isArray(texts) ? texts : [texts];
+    const prepareEmbedding2Text = (text) => {
+      const raw = String(text == null ? '' : text);
+      if (model !== 'gemini-embedding-2') return raw;
+      if (taskType === 'RETRIEVAL_QUERY') return `task: search result | query: ${raw}`;
+      if (taskType === 'RETRIEVAL_DOCUMENT') return `title: none | text: ${raw}`;
+      if (taskType === 'QUESTION_ANSWERING') return `task: question answering | query: ${raw}`;
+      if (taskType === 'FACT_VERIFICATION') return `task: fact checking | query: ${raw}`;
+      if (taskType === 'CODE_RETRIEVAL_QUERY') return `task: code retrieval | query: ${raw}`;
+      if (taskType === 'CLASSIFICATION') return `task: classification | query: ${raw}`;
+      if (taskType === 'CLUSTERING') return `task: clustering | query: ${raw}`;
+      if (taskType === 'SEMANTIC_SIMILARITY') return `task: sentence similarity | query: ${raw}`;
+      return raw;
+    };
+    const apiTexts = arr.map(prepareEmbedding2Text);
     // 임베딩 비용 추적: usageMetadata 부재 → char/4 추정. costContext 없으면 embed/global 폴백.
     const _trackEmbedCost = (textArr, modelUsed) => {
       const core = _w.__LoreCore;
@@ -1152,21 +1166,14 @@ Entries:
       throw lastError || new Error(errorPrefix);
     };
     if (isFirebase) {
-      // Firebase SDK는 임베딩 미지원 → 별도 Gemini API Key 로 REST 우회 (embedding-001 한정, 무료 티어 OK)
-      if (!firebaseEmbedKey) throw new Error('Firebase 모드 임베딩: 별도 Gemini API Key 필요 (embedding-001 한정)');
-      return embedTexts(arr, { ...opts, apiType: 'key', key: firebaseEmbedKey, model: 'gemini-embedding-001' });
-      // (도달 불가, 구파서 호환용 잔존)
-      const fbKey = firebaseKey || key;
-      if (!fbKey) throw new Error('Firebase Web API Key 누락');
-      if (!firebaseProjectId) throw new Error('Firebase projectId 누락');
-      const embLoc = (!firebaseLocation || firebaseLocation === 'global') ? 'us-central1' : firebaseLocation;
-      const url = `https://firebasevertexai.googleapis.com/v1beta/projects/${firebaseProjectId}/locations/${embLoc}/publishers/google/models/${model}:predict`;
-      const body = JSON.stringify({ instances: arr.map(t => ({ content: t })), parameters: { outputDimensionality: dimensions } });
-      const r = await gmFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': fbKey }, body });
-      if (!r.ok) throw new Error('Firebase 임베딩 실패: ' + r.status);
-      const json = await r.json();
-      return validateEmbeddingVectors(json.predictions.map(p => normalizeVector(p.embeddings.values)), arr.length);
+      // Firebase AI Logic does not expose embeddings. Use the separately supplied
+      // AI Studio key and preserve the user's selected Gemini embedding model.
+      if (!firebaseEmbedKey) throw new Error('Firebase 모드 임베딩: 별도 Gemini API 키 필요');
+      return embedTexts(arr, { ...opts, apiType: 'key', key: firebaseEmbedKey, model });
     } else if (isVertex) {
+      if (model !== 'gemini-embedding-001') {
+        throw new Error('Vertex 직접 임베딩은 gemini-embedding-001만 지원합니다. 의미 검색용 Gemini API 키를 입력해 주세요.');
+      }
       const sa = parseServiceAccountJson(vertexJson);
       if (!sa.ok) throw new Error(sa.error);
       const projId = vertexProjectId || sa.projectId;
@@ -1174,15 +1181,27 @@ Entries:
       const embLoc = (!vertexLocation || vertexLocation === 'global') ? 'us-central1' : vertexLocation;
       const host = `${embLoc}-aiplatform.googleapis.com`;
       const url = `https://${host}/v1/projects/${projId}/locations/${embLoc}/publishers/google/models/${model}:predict`;
-      const json = await fetchEmbeddingJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ instances: arr.map(t => ({ content: t })), parameters: { outputDimensionality: dimensions } }) }, 'Vertex 임베딩 실패');
+      const vectors = [];
+      for (const text of arr) {
+        const instance = { content: text };
+        if (taskType) instance.taskType = taskType;
+        const json = await fetchEmbeddingJson(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ instances: [instance], parameters: { outputDimensionality: dimensions } })
+        }, 'Vertex 임베딩 실패');
+        const prediction = json && json.predictions && json.predictions[0];
+        const values = prediction && prediction.embeddings && prediction.embeddings.values;
+        vectors.push(normalizeVector(values || []));
+      }
       _trackEmbedCost(arr, model);
-      return json.predictions.map(p => normalizeVector(p.embeddings.values));
+      return validateEmbeddingVectors(vectors, arr.length);
     } else {
       if (!key) throw new Error('API 키 누락');
       const embHeaders = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
-      if (arr.length === 1) {
+      if (apiTexts.length === 1) {
         const url = _gBase + model + ':embedContent';
-        const bodyObj = { content: { parts: [{ text: arr[0] }] }, output_dimensionality: dimensions };
+        const bodyObj = { content: { parts: [{ text: apiTexts[0] }] }, output_dimensionality: dimensions };
         if (model.includes('embedding-001')) bodyObj.taskType = taskType;
         const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) }, '임베딩 API 실패');
         const embs = json.embeddings || [json.embedding];
@@ -1190,7 +1209,7 @@ Entries:
         return validateEmbeddingVectors(embs.map(e => normalizeVector(e.values)), arr.length);
       } else {
         const url = _gBase + model + ':batchEmbedContents';
-        const requests = arr.map(t => {
+        const requests = apiTexts.map(t => {
           const req = { model: 'models/' + model, content: { parts: [{ text: t }] }, outputDimensionality: dimensions };
           if (model.includes('embedding-001')) req.taskType = taskType;
           return req;

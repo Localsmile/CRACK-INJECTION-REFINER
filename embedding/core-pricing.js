@@ -14,7 +14,8 @@
   const PRICING = {
     'gemini-3.1-pro-preview':        { in: 2.00,  out: 12.00, longIn: 4.00,  longOut: 18.00, longThreshold: 200000 },
     'gemini-3-pro-preview':          { in: 2.00,  out: 12.00, longIn: 4.00,  longOut: 18.00, longThreshold: 200000 },
-    'gemini-3.1-flash-lite-preview': { in: 0.25,  out: 1.50 },
+    'gemini-3.1-flash-lite':         { in: 0.25,  out: 1.50 },
+    'gemini-3.1-flash-lite-preview': { in: 0.25,  out: 1.50 }, // legacy log compatibility
     'gemini-3.5-flash':              { in: 1.50,  out: 9.00 },
     'gemini-3-flash-preview':        { in: 0.50,  out: 3.00 },
     'gemini-2.5-pro':                { in: 1.25,  out: 10.00, longIn: 2.50,  longOut: 15.00, longThreshold: 200000 },
@@ -23,7 +24,7 @@
     'gemini-2.0-flash':              { in: 0.10,  out: 0.40 },
     'gemini-2.0-flash-lite':         { in: 0.075, out: 0.30 },
     'gemini-embedding-001':          { in: 0.15,  out: 0 },
-    // prefix 폴백: 미등록 임베딩 변종(gemini-embedding-2-preview 등) 기본 단가.
+    // prefix 폴백: 미등록 임베딩 변종 기본 단가.
     'gemini-embedding':              { in: 0.15,  out: 0 },
     // DeepSeek V4 official pricing, 2026-05 docs. Cache hit is tracked separately when usage exposes it.
     'deepseek-v4-flash':             { in: 0.14,  out: 0.28, cacheHitIn: 0.0028 },

@@ -624,7 +624,7 @@
     temporalCompressionEnabled: true, temporalCompressionMinChars: 40,
     temporalCompressionApiEnabled: false, temporalCompressionTargetChars: 140,
     temporalCompressionPreserveFields: ['participants', 'location', 'hooks'],
-    temporalRecallJudgeEnabled: false, temporalRecallJudgeModel: 'gemini-3.1-flash-lite-preview', temporalRecallJudgeCustomModel: '',
+    temporalRecallJudgeEnabled: false, temporalRecallJudgeModel: 'gemini-3.1-flash-lite', temporalRecallJudgeCustomModel: '',
     temporalRecallJudgeReasoning: 'minimal', temporalRecallJudgeBudget: 512, temporalRecallJudgeTimeoutMs: 8000,
     temporalRecallJudgeCandidateLimit: 6,
     temporalRecallFallbackMode: 'deterministic',
@@ -659,7 +659,7 @@
     rerankPrompt: C.DEFAULTS.rerankPrompt,
 
     refinerEnabled: false, refinerAutoMode: false, refinerPassKeyword: 'PASS',
-    refinerModel: 'gemini-3.1-flash-lite-preview', refinerCustomModel: '',
+    refinerModel: 'gemini-3.1-flash-lite', refinerCustomModel: '',
     refinerReasoning: 'minimal', refinerBudget: 512,
     refinerContextTurns: 3, refinerCustomPrompt: defaultRefinerPrompt(), refinerLoreMode: 'semantic', refinerMatchTurns: 5,
     refinerUseDynamic: true, refinerTopics: defaultRefinerTopics(), refinerPromptVersion: R ? R.PROMPT_VERSION : '',
@@ -1504,6 +1504,15 @@
 
   function normalizeApiModelDefaults(config) {
     const cfg = config || settings.config || {};
+    const retiredModels = {
+      'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite',
+      'gemini-2.0-flash': 'gemini-3.5-flash',
+      'gemini-2.0-flash-001': 'gemini-3.5-flash'
+    };
+    for (const key of ['autoExtModel', 'rerankModel', 'temporalRecallJudgeModel', 'refinerModel']) {
+      if (retiredModels[cfg[key]]) cfg[key] = retiredModels[cfg[key]];
+    }
+    if (cfg.embeddingModel === 'gemini-embedding-2-preview') cfg.embeddingModel = 'gemini-embedding-2';
     const apiType = cfg.autoExtApiType || 'key';
     const fallback = getGenerationFallbackModel(cfg);
     const forceOpenAICustom = (modelKey, customKey) => {
@@ -1529,8 +1538,8 @@
     } else {
       if (!cfg.autoExtModel || cfg.autoExtModel === '_custom' || !isModelCompatibleWithApi(cfg.autoExtModel, apiType)) cfg.autoExtModel = fallback;
       if (!cfg.rerankModel || cfg.rerankModel === '_custom' || !isModelCompatibleWithApi(cfg.rerankModel, apiType)) cfg.rerankModel = 'gemini-3-flash-preview';
-      if (!cfg.temporalRecallJudgeModel || cfg.temporalRecallJudgeModel === '_custom' || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite-preview';
-      if (cfg.refinerModel === '' || cfg.refinerModel === '_custom' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite-preview';
+      if (!cfg.temporalRecallJudgeModel || cfg.temporalRecallJudgeModel === '_custom' || !isModelCompatibleWithApi(cfg.temporalRecallJudgeModel, apiType)) cfg.temporalRecallJudgeModel = 'gemini-3.1-flash-lite';
+      if (cfg.refinerModel === '' || cfg.refinerModel === '_custom' || !isModelCompatibleWithApi(cfg.refinerModel, apiType)) cfg.refinerModel = 'gemini-3.1-flash-lite';
     }
     return cfg;
   }
@@ -1544,7 +1553,13 @@
       if ((cfg.autoExtApiType || 'key') === 'openai') {
         return getGeminiEmbeddingKey(cfg) ? '' : '의미 검색용 Gemini API 키 필요.';
       }
-      if ((cfg.autoExtApiType || 'key') === 'vertex') return cfg.autoExtVertexJson ? '' : 'Vertex JSON 필요.';
+      if ((cfg.autoExtApiType || 'key') === 'vertex') {
+        if (getGeminiEmbeddingKey(cfg)) return '';
+        if (!cfg.autoExtVertexJson) return '의미 검색용 Gemini API 키 또는 Vertex JSON 필요.';
+        return (cfg.embeddingModel || 'gemini-embedding-001') === 'gemini-embedding-001'
+          ? ''
+          : 'Vertex 직접 검색 준비는 gemini-embedding-001만 지원함. 다른 모델은 의미 검색용 Gemini API 키가 필요.';
+      }
       if ((cfg.autoExtApiType || 'key') === 'firebase') return getGeminiEmbeddingKey(cfg) ? '' : '의미 검색용 Gemini API 키 필요.';
       return getGeminiEmbeddingKey(cfg, { allowGenerationKey: true }) ? '' : 'Gemini API 키 필요.';
     }
@@ -1627,6 +1642,13 @@
       opts.key = geminiEmbedKey || '';
       delete opts.openAIKey;
       delete opts.openAIBaseUrl;
+    } else if (apiType === 'vertex' && geminiEmbedKey) {
+      // Generation uses Vertex, but semantic search uses the separately supplied
+      // AI Studio key. This is the same credential contract as Firebase/DeepSeek/OpenAI.
+      opts.apiType = 'key';
+      opts.key = geminiEmbedKey;
+      delete opts.vertexJson;
+      delete opts.vertexProjectId;
     } else if (apiType === 'firebase') {
       opts.firebaseEmbedKey = geminiEmbedKey || '';
     } else if (apiType === 'key') {

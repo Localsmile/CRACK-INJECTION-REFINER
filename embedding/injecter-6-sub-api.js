@@ -233,7 +233,7 @@
     }
     return [
       ['Gemini 3.x', [['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]],
-      ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.0 Flash', 'gemini-2.0-flash']]]
+      ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash']]]
     ];
   }
 
@@ -250,8 +250,8 @@
       ];
     }
     return [
-      ['Gemini 3.x', [['3.1 Flash Lite', 'gemini-3.1-flash-lite-preview'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]],
-      ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite'], ['2.0 Flash', 'gemini-2.0-flash']]]
+      ['Gemini 3.x', [['3.1 Flash Lite', 'gemini-3.1-flash-lite'], ['3.5 Flash', 'gemini-3.5-flash'], ['3.0 Flash', 'gemini-3-flash-preview'], ['3.1 Pro', 'gemini-3.1-pro-preview']]],
+      ['Gemini 2.x', [['2.5 Pro', 'gemini-2.5-pro'], ['2.5 Flash', 'gemini-2.5-flash'], ['2.5 Flash Lite', 'gemini-2.5-flash-lite']]]
     ];
   }
 
@@ -499,7 +499,7 @@
             if (apiTypeNow === 'key') {
               addGeminiEmbeddingKeyInput(nd, { note: '의미 검색 준비용 키. 비워두면 위 Gemini API 키를 같이 사용함.' });
             } else if (apiTypeNow === 'vertex') {
-              addGeminiEmbeddingKeyInput(nd, { note: '선택 사항. 비워두면 Vertex 설정으로 검색 준비를 실행함.' });
+              addGeminiEmbeddingKeyInput(nd, { note: '입력하면 Vertex JSON 대신 이 AI Studio 키로 의미 검색을 실행함. 비워두면 gemini-embedding-001에 한해 Vertex 설정을 사용함.' });
             }
           }
   

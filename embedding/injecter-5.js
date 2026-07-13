@@ -610,7 +610,7 @@
       const _judgeTimeoutMs = Math.max(0, Number(config.temporalRecallJudgeTimeoutMs || 0));
       const _judgeModel = (config.temporalRecallJudgeModel === '_custom' ? config.temporalRecallJudgeCustomModel : config.temporalRecallJudgeModel)
         || (config.autoExtModel === '_custom' ? config.autoExtCustomModel : config.autoExtModel)
-        || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3.1-flash-lite-preview');
+        || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3.1-flash-lite');
       const _judgeAbortCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
       const _judgeOpts = _w.__LoreInj.buildGenerationApiOpts
         ? _w.__LoreInj.buildGenerationApiOpts({
