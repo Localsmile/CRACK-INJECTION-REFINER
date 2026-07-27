@@ -22,6 +22,10 @@
     return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
   }
 
+  function escapeFactAtom(value) {
+    return cleanFactText(value).replace(/([\\|=\[\]])/g, '\\$1');
+  }
+
   function normalizeFactList(entry) {
     const source = Array.isArray(entry?.facts)
       ? entry.facts
@@ -69,28 +73,47 @@
       if (!groups.has(fact.subject)) groups.set(fact.subject, []);
       const fields = [];
       const time = factTimeLabel(fact.time);
-      const key = time ? `${time}.${fact.relation}` : fact.relation;
-      fields.push(`${key}=${fact.value}${factPolaritySuffix(fact.polarity)}`);
-      if (fact.condition) fields.push(`조건=${fact.condition}`);
-      if (fact.knownBy.length) fields.push(`인지=${fact.knownBy.join('·')}`);
-      if (fact.hiddenFrom.length) fields.push(`비인지=${fact.hiddenFrom.join('·')}`);
+      const key = time ? `${time}.${escapeFactAtom(fact.relation)}` : escapeFactAtom(fact.relation);
+      fields.push(`${key}=${escapeFactAtom(fact.value)}${factPolaritySuffix(fact.polarity)}`);
+      if (fact.condition) fields.push(`조건=${escapeFactAtom(fact.condition)}`);
+      if (fact.knownBy.length) fields.push(`인지=${fact.knownBy.map(escapeFactAtom).join('·')}`);
+      if (fact.hiddenFrom.length) fields.push(`비인지=${fact.hiddenFrom.map(escapeFactAtom).join('·')}`);
       groups.get(fact.subject).push(fields.join('|'));
     }
     const lines = [];
-    for (const [subject, fields] of groups) lines.push(`[${subject}] ${fields.join('|')}`);
-    const loops = Array.isArray(entry?.openLoops) ? entry.openLoops.map(cleanFactText).filter(Boolean) : [];
-    if (loops.length) lines.push(`[미해결:${cleanFactText(entry?.name)}] ${loops.join('|')}`);
+    for (const [subject, fields] of groups) lines.push(`[${escapeFactAtom(subject)}] ${fields.join('|')}`);
+    const loops = Array.isArray(entry?.openLoops) ? entry.openLoops.map(escapeFactAtom).filter(Boolean) : [];
+    if (loops.length) lines.push(`[미해결:${escapeFactAtom(entry?.name)}] ${loops.join('|')}`);
     return lines.join(' ');
   }
 
   function deriveMemoryMicro(entry) {
     const name = cleanFactText(entry?.name);
     const state = cleanFactText(entry?.state || entry?.detail?.current_status || entry?.detail?.status);
-    if (name && state) return `${name}=${state}`;
     const facts = normalizeFactList(entry);
-    if (!facts.length) return name;
-    const fact = facts.find(item => factTimeLabel(item.time) === '현재') || facts[0];
-    return `${fact.subject}:${fact.relation}=${fact.value}${factPolaritySuffix(fact.polarity)}`;
+    const loops = Array.isArray(entry?.openLoops) ? entry.openLoops.map(cleanFactText).filter(Boolean) : [];
+    const units = [];
+    const addUnit = text => {
+      const value = cleanFactText(text);
+      if (!value || units.includes(value) || units.length >= 2) return;
+      const next = units.concat(value).join(' ');
+      if (units.length && charLen(next) > 110) return;
+      units.push(value);
+    };
+    if (name && state) addUnit(`${escapeFactAtom(name)}=${escapeFactAtom(state)}`);
+    const orderedFacts = [...facts].sort((a, b) => {
+      const aCurrent = factTimeLabel(a.time) === '현재' ? 1 : 0;
+      const bCurrent = factTimeLabel(b.time) === '현재' ? 1 : 0;
+      return bCurrent - aCurrent;
+    });
+    for (const fact of orderedFacts) {
+      let unit = `${escapeFactAtom(fact.subject)}:${escapeFactAtom(fact.relation)}=${escapeFactAtom(fact.value)}${factPolaritySuffix(fact.polarity)}`;
+      if (fact.hiddenFrom.length) unit += `(비인지=${fact.hiddenFrom.map(escapeFactAtom).join('·')})`;
+      addUnit(unit);
+      if (units.length >= 2) break;
+    }
+    if (units.length < 2 && loops.length) addUnit(`${escapeFactAtom(name || '미해결')}?${escapeFactAtom(loops[0])}`);
+    return units.join(' ') || name;
   }
 
   function callStatePairs(e, limit = 2) {
@@ -450,11 +473,28 @@
     };
   }
 
-  function trimToBudget(text, budget) {
-    text = String(text || '');
-    if (charLen(text) <= budget) return text;
-    if (budget <= 3) return '';
-    return [...text].slice(0, budget - 3).join('') + '...';
+  function packWholeSection(text, budget) {
+    const raw = String(text || '').trim();
+    const cap = Math.max(0, Number(budget || 0));
+    if (!raw || cap <= 0) return { text: '', included: 0, omitted: raw ? 1 : 0 };
+    if (charLen(raw) <= cap) {
+      const count = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean).length;
+      return { text: raw, included: count, omitted: 0 };
+    }
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length <= 1) return { text: '', included: 0, omitted: lines.length };
+    const hasHeader = /^\[[^\]]+\]$/.test(lines[0]);
+    const selected = [];
+    let omitted = 0;
+    for (const line of lines) {
+      const next = selected.concat(line).join('\n');
+      if (charLen(next) <= cap) selected.push(line);
+      else omitted++;
+    }
+    if (hasHeader && (selected[0] !== lines[0] || selected.length === 1)) {
+      return { text: '', included: 0, omitted: lines.length };
+    }
+    return { text: selected.join('\n'), included: selected.length, omitted };
   }
 
   function planInjectionBudget(opts) {
@@ -470,12 +510,14 @@
     if (available < 20) { result.reason = 'no_space_after_user_and_wrapper'; return result; }
 
     const sections = [];
+    const sectionDrops = {};
     const addSection = (key, text, max) => {
       if (!text || available <= 0) return 0;
-      const capped = trimToBudget(text, Math.min(max, available));
-      if (!capped) return 0;
-      sections.push({ key, text: capped });
-      const used = charLen(capped) + 1;
+      const packed = packWholeSection(text, Math.min(max, available));
+      if (packed.omitted) sectionDrops[key] = packed.omitted;
+      if (!packed.text) return 0;
+      sections.push({ key, text: packed.text });
+      const used = charLen(packed.text) + 1;
       available -= used;
       return used;
     };
@@ -522,7 +564,7 @@
       downgraded: lore.downgraded,
       dropped: lore.dropped,
       variants: lore.variants || [],
-      budgetPlan: { ...lore.budgetPlan, userChars, wrapperOverhead, availableAfterCritical: available, finalChars, maxInputChars },
+      budgetPlan: { ...lore.budgetPlan, userChars, wrapperOverhead, availableAfterCritical: available, finalChars, maxInputChars, sectionDrops },
       finalChars,
       reason: lore.included.length ? 'ok' : (body ? 'critical_only' : 'empty'),
       sections: sectionChars,
@@ -701,6 +743,7 @@
     charLen, summaryTier, callStatePairs, normalizeFactList, formatMemoryFactsCompact, deriveMemoryMicro,
     cfFull, cfCompact, cfMicro, adaptiveFormat, bundleGroupKey,
     entryPriority, formatEntryAtLevel, formatTimelineEventAtLevel, buildTemporalRecallBlock, buildLoreBudgetPlan, planInjectionBudget,
+    packWholeSection,
     formatEntryFull, formatEntryCompact, formatEntryMicro, budgetFormat, assembleInjection,
     formatFirstEncounterBlock, formatReunionTag,
     __formatLoaded: true

@@ -91,6 +91,8 @@ async function testKernelHelpers() {
   const { C, context, requests, getRequestCount } = await loadKernel();
   assert(C && C.__kernelLoaded, 'kernel did not load');
   vm.runInContext(read('embedding/core-format.js'), context, { filename: 'core-format.js' });
+  vm.runInContext(read('embedding/core-memory.js'), context, { filename: 'core-memory.js' });
+  vm.runInContext(read('embedding/core-search.js'), context, { filename: 'core-search.js' });
 
   assert(C.estimateTextTokens('안녕하세요') >= 4, 'CJK token estimate is unexpectedly low');
   assert(C.estimateTextTokens('hello world') >= 2, 'Latin token estimate is unexpectedly low');
@@ -119,6 +121,21 @@ async function testKernelHelpers() {
   assert(budgeted.finalChars <= 2000, 'injection planner exceeded the 2000-character message limit');
   const noSpace = C.planInjectionBudget({ userInput: 'u'.repeat(1990), maxInputChars: 2000, entries: [], prefix: '<ooc>', suffix: '</ooc>' });
   assert.strictEqual(noSpace.injected, '', 'injection planner should cancel when user input and wrapper leave no room');
+  const wholeSection = C.packWholeSection('[시간축 회상]\n- ' + '가'.repeat(100) + '\n- 짧은 사건', 30);
+  assert(wholeSection.text.includes('짧은 사건') && !wholeSection.text.includes('...'), 'auxiliary context was truncated instead of packed by whole items');
+  const droppedSingleSection = C.packWholeSection('장면=' + '가'.repeat(100), 30);
+  assert.strictEqual(droppedSingleSection.text, '', 'an oversized single-line section was partially retained');
+
+  const memoryPool = C.buildScanPool('현재 입력', [], {
+    workingMemory: { scene: '[현재 장면: 장소=옥상]', activeChars: ['서윤', '리아'] }
+  });
+  assert(memoryPool.includes('옥상') && memoryPool.includes('서윤'), 'working memory is not included in deterministic retrieval context');
+  const diverse = C.selectDiverseCandidates([
+    { entry: { id: 1, name: '서윤', type: 'character', triggers: ['서윤'], entities: ['서윤'] }, score: 1 },
+    { entry: { id: 2, name: '서윤', type: 'character', triggers: ['서윤'], entities: ['서윤'] }, score: 0.95 },
+    { entry: { id: 3, name: '봉인된 반지', type: 'item', triggers: ['반지'], entities: ['리아'] }, score: 0.8 }
+  ], 2);
+  assert.deepStrictEqual(Array.from(diverse.map(row => row.entry.id)), [1, 3], 'deterministic diversity selection still allowed a duplicate topic to occupy the next slot');
 
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
@@ -239,6 +256,12 @@ async function testKernelHelpers() {
   assert(boundEntry.inject.compact.includes('[리아] 현재.머리=갈색'), 'compact memory lost the second attribute owner');
   assert(!boundEntry.inject.compact.includes('금발,갈색'), 'compact memory flattened separately owned attributes');
   assert.strictEqual(boundEntry.inject.full, '서윤은 금발이고 리아는 갈색 머리다.', 'full memory was rewritten as a compressed form');
+  assert(boundEntry.inject.micro.includes('서윤:머리=금발') && boundEntry.inject.micro.includes('리아:머리=갈색'), 'micro memory dropped a separately bound second fact');
+  const escapedCompact = C.formatMemoryFactsCompact({
+    name: '혼합',
+    facts: [{ subject: '서윤', relation: '색상', value: '금발|갈색=혼합', time: 'current', polarity: 'affirmed' }]
+  });
+  assert(escapedCompact.includes('금발\\|갈색\\=혼합'), 'compact fact delimiters are not escaped');
 
   const evolvedFacts = C.mergeMemoryFacts(
     [{ subject: '서윤↔리아', relation: '관계', value: '적대', time: 'current', polarity: 'affirmed' }],
@@ -256,6 +279,18 @@ async function testKernelHelpers() {
   );
   assert(additiveFacts.some(fact => fact.value === '검' && fact.time === 'current'), 'an additive fact incorrectly replaced an existing value');
   assert(additiveFacts.some(fact => fact.value === '반지' && fact.time === 'current'), 'an additive fact was not stored');
+  const guardedConflicts = [];
+  const guardedFacts = C.mergeMemoryFacts(
+    [
+      { subject: '서윤', relation: '소유', value: '검', time: 'current', polarity: 'affirmed' },
+      { subject: '서윤', relation: '소유', value: '반지', time: 'current', polarity: 'affirmed' }
+    ],
+    [{ subject: '서윤', relation: '소유', value: '열쇠', time: 'now', polarity: 'affirmed' }],
+    '서윤',
+    { replaceCurrent: true, conflicts: guardedConflicts }
+  );
+  assert(guardedFacts.filter(fact => fact.time === 'current').length === 3, 'ambiguous multi-value replacement deleted existing current facts');
+  assert.strictEqual(guardedConflicts[0]?.reason, 'ambiguous_multi_value_replace', 'ambiguous fact replacement was not reported');
   const legacyCompactPatch = C.mergeLoreSummary(
     { full: '완전한 기존 기록', compact: '기존 요약', micro: '기존' },
     { compact: '새 간결 요약' },
@@ -391,6 +426,7 @@ function testSourceContracts() {
   const routerBootstrap = read('embedding_pre/erie_crack_inject.user.js');
   assert(chatBootstrap.includes('260727-memory-v2') && routerBootstrap.includes('260727-memory-v2'), 'bootstrap update paths do not target the new branch');
   assert(!chatBootstrap.includes('260706-hotfix') && !routerBootstrap.includes('260706-hotfix'), 'bootstrap still loads modules from the deployed branch');
+  assert(injectionSource.includes('C.getWorkingMemory(_url)') && injectionSource.includes('C.selectDiverseCandidates'), 'live injection does not use working memory and deterministic diversity selection');
   assert(injectionSource.indexOf('findUnmetPairs(activeNames)') < injectionSource.indexOf('recordFirstEncounter(activeNames[i], activeNames[j]'), 'first encounters are recorded before unmet-pair detection');
   assert(injectionSource.indexOf('findReunionPairs(activeNames') < injectionSource.indexOf('recordFirstEncounter(activeNames[i], activeNames[j]'), 'current encounters are recorded before reunion detection');
   assert(refinerDom.includes("exactButton(document, '수정')"), 'native response-edit fallback does not open the current message editor');

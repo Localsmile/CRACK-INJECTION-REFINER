@@ -782,6 +782,14 @@
     const effectiveAiMemoryTurns = C.deriveAiMemoryTurns
       ? C.deriveAiMemoryTurns(recentMsgs, config)
       : (config.aiMemoryTurns || 4);
+    let priorMemory = null;
+    if (C.getWorkingMemory) {
+      try {
+        const memory = await C.getWorkingMemory(_url);
+        const age = turnCounter - Number(memory && memory.turn || 0);
+        if (memory && age >= 0 && age <= Math.max(1, Number(config.workingMemoryMaxAgeTurns || 3))) priorMemory = memory;
+      } catch (_) {}
+    }
     const baseApiOpts = _w.__LoreInj.buildEmbeddingApiOpts
       ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
       : {
@@ -815,7 +823,8 @@
       timelineRecallPoolLimit: config.timelineRecallPoolLimit || 12,
       aiMemoryTurns: effectiveAiMemoryTurns, activeCharDetection: config.activeCharDetection !== false,
       activeCharBoost: config.activeCharBoostEnabled !== false ? C.DEFAULTS.activeCharBoost : 1.0,
-      inactiveCharPenalty: config.activeCharBoostEnabled !== false ? C.DEFAULTS.inactiveCharPenalty : 1.0
+      inactiveCharPenalty: config.activeCharBoostEnabled !== false ? C.DEFAULTS.inactiveCharPenalty : 1.0,
+      workingMemory: priorMemory
     };
 
     let scored = [], activeNames = [], temporalJudgeDecision = null;
@@ -972,8 +981,30 @@
       if (C.isTimelineEvent && C.isTimelineEvent(s.entry)) return false;
       return true;
     });
-    const topScored = _loreScored.slice(0, config.maxEntries || 4);
+    const topScored = C.selectDiverseCandidates
+      ? C.selectDiverseCandidates(_loreScored, config.maxEntries || 4, {
+          enabled: config.diversitySelectionEnabled !== false,
+          relevanceWeight: config.diversityRelevanceWeight || 0.84,
+          poolLimit: config.diversityCandidatePool || 12
+        })
+      : _loreScored.slice(0, config.maxEntries || 4);
     const topEntries = topScored.map(s => { if (s.components) s.entry._nway = s.components; return s.entry; });
+    let sceneTag = '';
+    if (recentMsgs.length > 0 && config.firstEncounterWarning !== false) {
+      try {
+        const kw = C.extractSceneKeywords(recentMsgs);
+        sceneTag = C.formatSceneTag(kw);
+      } catch(e) {}
+    }
+    try {
+      await C.updateWorkingMemory(_url, {
+        turn: turnCounter,
+        activeChars: activeNames.slice(0, 5),
+        scene: sceneTag,
+        lastAction: (recentMsgs[recentMsgs.length - 1]?.message || '').slice(0, 80),
+        updatedAt: Date.now()
+      });
+    } catch(e) {}
     if (!topEntries.length && !temporalPlan.text) {
       if (!cooldownFilteredAll) {
         addInjLog(chatKey, {
@@ -1058,24 +1089,6 @@
         }
       }
     }
-
-    let sceneTag = '';
-    if (recentMsgs.length > 0 && config.firstEncounterWarning !== false) {
-      try {
-        const kw = C.extractSceneKeywords(recentMsgs);
-        sceneTag = C.formatSceneTag(kw);
-      } catch(e) {}
-    }
-
-    try {
-      await C.updateWorkingMemory(_url, {
-        turn: turnCounter,
-        activeChars: activeNames.slice(0, 5),
-        scene: sceneTag,
-        lastAction: (recentMsgs[recentMsgs.length - 1]?.message || '').slice(0, 80),
-        updatedAt: Date.now()
-      });
-    } catch(e) {}
 
     const temporalHints = (config.firstEncounterWarning !== false && C.formatTemporalHints)
       ? C.formatTemporalHints(topEntries, { currentTurn: turnCounter, activeNames, budget: Math.min(config.temporalHintChars || C.DEFAULTS.temporalHintChars || 120, 120) })

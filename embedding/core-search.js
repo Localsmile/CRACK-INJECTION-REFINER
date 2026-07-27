@@ -28,6 +28,15 @@
     return (2 * inter) / (A.size + B.size);
   }
 
+  function workingMemoryText(memory) {
+    if (!memory || typeof memory !== 'object') return '';
+    return [
+      memory.scene,
+      Array.isArray(memory.activeChars) ? memory.activeChars.join(' ') : '',
+      memory.emotion
+    ].filter(Boolean).join(' ').slice(0, 300);
+  }
+
   // 스캔 풀: 유저 입력 + 최근 메세지 범위 (config.scanRange / scanOffset)
   function buildScanPool(userInput, recentMsgs, config) {
     const range = Math.max(1, (config && config.scanRange) || 6);
@@ -36,8 +45,75 @@
     const end = Math.max(0, arr.length - offset);
     const start = Math.max(0, end - range);
     const sliceText = arr.slice(start, end).map(m => (m && m.message) || '').join(' ');
-    return ((userInput || '') + ' ' + sliceText).toLowerCase();
+    return ((userInput || '') + ' ' + sliceText + ' ' + workingMemoryText(config && config.workingMemory)).toLowerCase();
   }
+
+  function candidateTerms(entry) {
+    if (!entry) return [];
+    const values = [
+      entry.name,
+      ...(entry.triggers || []),
+      ...(entry.entities || []),
+      ...(entry.parties || [])
+    ].filter(Boolean).join(' ').toLowerCase();
+    const words = values.split(/[\s,.!?;:"'()[\]{}<>\/\\|=:+→↔&_-]+/).map(x => x.trim()).filter(x => x.length >= 2);
+    return Array.from(new Set(words)).slice(0, 80);
+  }
+
+  function candidateSimilarity(a, b) {
+    const ea = a && (a.entry || a), eb = b && (b.entry || b);
+    if (!ea || !eb) return 0;
+    if (ea.id != null && eb.id != null && ea.id === eb.id) return 1;
+    if (ea.rootId && eb.rootId && ea.rootId === eb.rootId) return 0.95;
+    const an = String(ea.name || '').trim().toLowerCase();
+    const bn = String(eb.name || '').trim().toLowerCase();
+    if (an && bn && an === bn) return 0.9;
+    const A = new Set(candidateTerms(ea)), B = new Set(candidateTerms(eb));
+    if (!A.size || !B.size) return 0;
+    let overlap = 0;
+    for (const term of A) if (B.has(term)) overlap++;
+    const jaccard = overlap / Math.max(1, A.size + B.size - overlap);
+    const entityA = new Set((C.inferEntryEntities ? C.inferEntryEntities(ea) : (ea.entities || [])).map(x => String(x).toLowerCase()));
+    const entityB = new Set((C.inferEntryEntities ? C.inferEntryEntities(eb) : (eb.entities || [])).map(x => String(x).toLowerCase()));
+    let entityOverlap = 0;
+    for (const term of entityA) if (entityB.has(term)) entityOverlap++;
+    const entityScore = entityOverlap / Math.max(1, Math.min(entityA.size || 1, entityB.size || 1));
+    return Math.min(1, jaccard * 0.7 + entityScore * 0.3);
+  }
+
+  function selectDiverseCandidates(candidates, limit, options = {}) {
+    const rows = (candidates || []).filter(row => row && row.entry && Number(row.score) > 0);
+    const maxCount = Math.max(0, Number(limit || 0));
+    if (!maxCount || !rows.length) return [];
+    if (options.enabled === false || rows.length <= 1) return rows.slice(0, maxCount);
+    const poolLimit = Math.max(maxCount, Number(options.poolLimit || Math.max(12, maxCount * 4)));
+    const pool = rows.slice(0, poolLimit);
+    const maxScore = Math.max(...pool.map(row => Number(row.score) || 0), 0.000001);
+    const relWeight = Math.max(0.7, Math.min(0.95, Number(options.relevanceWeight || 0.84)));
+    const selected = [];
+    const remaining = pool.map((row, index) => ({ row, index }));
+    while (selected.length < maxCount && remaining.length) {
+      let bestIndex = 0;
+      let bestValue = -Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const item = remaining[i];
+        const relevance = Math.max(0, Math.min(1, (Number(item.row.score) || 0) / maxScore));
+        const similarity = selected.length
+          ? Math.max(...selected.map(chosen => candidateSimilarity(item.row, chosen)))
+          : 0;
+        const directEvidence = (Number(item.row.tScore) > 0 || Number(item.row.eSim) > 0) ? 0.025 : 0;
+        const value = relevance * relWeight + (1 - similarity) * (1 - relWeight) + directEvidence - item.index * 0.0001;
+        if (value > bestValue) {
+          bestValue = value;
+          bestIndex = i;
+        }
+      }
+      const picked = remaining.splice(bestIndex, 1)[0].row;
+      selected.push(picked);
+    }
+    return selected;
+  }
+
 
   // ---- 트리거 스캔 ----
   function triggerScan(userInput, recentMsgs, entries, config) {
@@ -130,7 +206,7 @@
     if (embEnabled && hasKey && typeof C.embedText === 'function') {
       try {
         const tail = Array.isArray(recentMsgs) ? recentMsgs.slice(-2).map(m => (m && m.message) || '').join(' ') : '';
-        const qText = ((userInput || '') + ' ' + tail).slice(0, 2000);
+        const qText = ((userInput || '') + ' ' + tail + ' ' + workingMemoryText(cfg.workingMemory)).slice(0, 2000);
         const model = apiOpts.model || 'gemini-embedding-001';
         const qTaskType = model.includes('embedding-001') ? 'RETRIEVAL_QUERY' : (apiOpts.taskType || 'RETRIEVAL_QUERY');
         const queryVec = await C.embedText(qText, Object.assign({}, apiOpts, { taskType: qTaskType }));
@@ -160,9 +236,13 @@
     }
 
     // 3) 활성 캐릭터
-    const activeNames = cfg.activeCharDetection !== false
+    const detectedActiveNames = cfg.activeCharDetection !== false
       ? (detectActiveCharacters(recentMsgs || [], enabled) || [])
       : [];
+    const memoryActiveNames = cfg.workingMemory && Array.isArray(cfg.workingMemory.activeChars)
+      ? cfg.workingMemory.activeChars
+      : [];
+    const activeNames = Array.from(new Set([...detectedActiveNames, ...memoryActiveNames].filter(Boolean))).slice(0, 8);
 
     const temporalRecallMap = {};
     let temporalRecallHasCue = false, temporalRecallCount = 0;
@@ -342,7 +422,7 @@
   }
 
   Object.assign(C, {
-    bigramSimilarity, buildScanPool, triggerScan, hybridSearch, smartRerank,
+    bigramSimilarity, buildScanPool, selectDiverseCandidates, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });
   console.log('[LoreCore:search] loaded v1.3.9');

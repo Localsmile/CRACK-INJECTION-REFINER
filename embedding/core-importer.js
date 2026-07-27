@@ -52,16 +52,23 @@
 
   function normalizeMemoryFacts(entry) {
     const facts = C.normalizeFactList ? C.normalizeFactList(entry) : [];
-    return facts.map(fact => ({
-      subject: fact.subject,
-      relation: fact.relation,
-      value: fact.value,
-      time: fact.time || 'current',
-      polarity: fact.polarity || 'affirmed',
-      ...(fact.condition ? { condition: fact.condition } : {}),
-      ...(fact.knownBy.length ? { knownBy: fact.knownBy } : {}),
-      ...(fact.hiddenFrom.length ? { hiddenFrom: fact.hiddenFrom } : {})
-    }));
+    return facts.map(fact => {
+      const rawTime = String(fact.time || 'current').toLowerCase();
+      const time = rawTime === 'now' ? 'current'
+        : (rawTime === 'previous' ? 'past'
+          : (rawTime === 'foreshadow' ? 'future'
+            : (rawTime === 'stable' ? 'timeless' : rawTime)));
+      return {
+        subject: fact.subject,
+        relation: fact.relation,
+        value: fact.value,
+        time,
+        polarity: fact.polarity || 'affirmed',
+        ...(fact.condition ? { condition: fact.condition } : {}),
+        ...(fact.knownBy.length ? { knownBy: fact.knownBy } : {}),
+        ...(fact.hiddenFrom.length ? { hiddenFrom: fact.hiddenFrom } : {})
+      };
+    });
   }
 
   function memoryFactKey(fact, includeValue = false) {
@@ -91,12 +98,28 @@
         groups.get(key).push(fact);
       }
       for (const [key, replacements] of groups) {
-        const replacementValues = new Set(replacements.map(fact => memoryFactKey(fact, true)));
+        const replValues = new Set(replacements.map(fact => memoryFactKey(fact, true)));
+        const currValues = out.filter(fact => memoryFactKey(fact, false) === key);
+        const overlaps = currValues.filter(fact => replValues.has(memoryFactKey(fact, true))).length;
+        const ambiguous = options.protectMultiValue !== false &&
+          currValues.length > 1 && replacements.length < currValues.length && overlaps === 0;
+        if (ambiguous) {
+          if (Array.isArray(options.conflicts)) {
+            options.conflicts.push({
+              subject: replacements[0]?.subject || '',
+              relation: replacements[0]?.relation || '',
+              existingValues: currValues.map(fact => fact.value),
+              incomingValues: replacements.map(fact => fact.value),
+              reason: 'ambiguous_multi_value_replace'
+            });
+          }
+          continue;
+        }
         for (let index = out.length - 1; index >= 0; index--) {
           const old = out[index];
           if (memoryFactKey(old, false) !== key) continue;
           out.splice(index, 1);
-          if (!replacementValues.has(memoryFactKey(old, true))) {
+          if (!replValues.has(memoryFactKey(old, true))) {
             const historical = { ...old, time: 'past' };
             const historyKey = memoryFactKey(historical, true);
             if (!out.some(item => memoryFactKey(item, true) === historyKey)) out.push(historical);

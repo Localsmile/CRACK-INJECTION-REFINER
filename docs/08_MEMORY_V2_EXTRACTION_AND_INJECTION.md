@@ -81,6 +81,9 @@ Facts are merged by subject, relation, value, and time role.
 - `append.facts` and imported chunks add independently coexisting values.
 - The replaced value is retained once as a past fact.
 - Multiple values supplied together in `set.facts` remain current together.
+- An incomplete, non-overlapping replacement cannot erase an existing
+  multi-value set. The incoming fact is added and the conflict is reported for
+  diagnostics.
 - Historical facts with distinct values remain separate.
 - Exact duplicate facts are removed.
 - Open loops are merged without duplicate text.
@@ -111,8 +114,14 @@ does not shorten text by deleting arbitrary substrings.
 
 ### Micro
 
-Keeps one stable entity-state or subject-relation-value handle. It is a
-last-resort representation, not the default extraction format.
+Keeps up to two complete semantic units. A unit is an entity state, a
+subject-relation-value fact, or an unresolved loop. Subject ownership and
+knowledge scope remain attached, and a unit is never cut to meet the budget.
+Micro is a last-resort representation, not the default extraction format.
+
+Compact and Micro escape structural delimiters (`\`, `|`, `=`, `[`, and `]`)
+inside fact values. This keeps the serialized bindings unambiguous without
+requiring a model-specific abbreviation dictionary.
 
 ## Global Budget Planning
 
@@ -126,6 +135,10 @@ block.
    `micro`.
 4. If it still exceeds the budget, drop the lowest-priority candidates.
 5. Never truncate a lore line in the middle.
+
+Scene, timeline, encounter, reunion, honorific, and temporal-hint sections use
+the same whole-item rule. If a complete auxiliary item cannot fit, it is
+omitted instead of leaving a partial sentence or an orphan section header.
 
 The planner records the selected representation for each included entry. This
 allows injection logs to explain which memories were rendered as full, compact,
@@ -152,10 +165,15 @@ representation cannot fit.
 This release does not replace the existing trigger, embedding, temporal, entity,
 or unresolved-context scoring. It also keeps the optional reranker.
 
-The default path adds no reranker API call. The change improves what is stored
-and how selected memories share the character budget. Retrieval ranking can be
-reworked separately with dedicated relevance and continuity evaluation because
-changing it has a larger behavioral risk.
+The default path adds no reranker API call. The previous three-turn working
+memory contributes its scene and active-character names to the existing trigger
+scan and embedding query. This reuses the one existing embedding request.
+
+After cooldown, delta, and timeline handling, the generic lore candidates use a
+deterministic relevance-and-novelty pass over a small top pool. Relevance keeps
+most of the weight; novelty prevents near-duplicate entries for the same entity
+or topic from occupying every available slot. This pass makes no API request
+and does not alter timeline recall selection.
 
 ## Encounter Ordering Fix
 
@@ -167,8 +185,11 @@ pair as already seen and could suppress their output.
 
 - Full summaries remain complete.
 - Compact output preserves subject-value ownership.
+- Micro output preserves complete fact bindings for up to two units.
 - Current state replacement retains the previous value as history.
+- Ambiguous partial updates do not erase existing multi-value state.
 - No injected lore line is partially truncated.
+- Auxiliary sections are packed as whole lines.
 - The final injection stays within the configured character budget.
 - Legacy entries remain renderable.
 - User-edited extraction prompts are not overwritten.
@@ -182,9 +203,12 @@ Regression coverage must verify:
 - complete full summaries
 - current-to-past state transitions
 - compact and micro downgrade before candidate removal
+- whole-item auxiliary section packing
 - final character-budget compliance
 - facts-based extraction schemas
 - prompt migration boundaries
 - fact and open-loop patch merging
+- conservative multi-value conflict handling
+- working-memory query enrichment and deterministic candidate diversity
 - first-encounter and reunion read-before-write ordering
 - generated userscript metadata, syntax, required modules, and update URL
