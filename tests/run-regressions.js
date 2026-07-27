@@ -555,6 +555,7 @@ function testSourceContracts() {
   assert(injectionSource.includes('settings.config.injectionCleanupTurns || item.cleanupAfterTurns'), 'current cleanup retention does not apply to existing queue items');
   assert(injectionSource.includes("scheduleInjectionCleanup('fallback-drain', 5000)"), 'fallback cleanup does not drain an eligible backlog');
   assert(injectionSource.includes("scheduleInjectionCleanup('queue-drain', 5000)"), 'tracked cleanup does not drain an eligible backlog');
+  assert(injectionSource.includes('CLEANUP_FALLBACK_MAX_EDITS - cleaned') && !injectionSource.includes('CLEANUP_FALLBACK_MAX_EDITS - attempted'), 'failed queue reconciliation can still consume the entire tag-cleanup fallback budget');
   assert(injectionSource.includes("typeof log.isUser === 'function'") && injectionSource.includes('messageRoleOf(logs[i])'), 'cleanup does not support method-based CrackUtil user logs');
   assert(injectionSource.includes('C.findUnmetPairs(activeNames, chatKey)') && injectionSource.includes('C.findReunionPairs(activeNames, turnCounter, 10, chatKey)'), 'live encounter lookup is not scoped to the current chat');
 

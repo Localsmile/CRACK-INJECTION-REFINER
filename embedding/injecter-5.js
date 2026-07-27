@@ -476,7 +476,10 @@
         }
         changed = true;
       }
-      const fallbackBudget = Math.max(0, CLEANUP_FALLBACK_MAX_EDITS - attempted);
+      // Queue reconciliation can reject normalized legacy rows before making
+      // any PATCH request. Preserve the fallback budget for those rows so the
+      // tag-based pass can still clean them in the same run.
+      const fallbackBudget = Math.max(0, CLEANUP_FALLBACK_MAX_EDITS - cleaned);
       if (fallbackBudget > 0 && shouldRunFallbackCleanupScan(chatKey, reason, items.length, cleaned)) {
         _fallbackCleanupLastByChat.set(chatKey, Date.now());
         const fallback = await runFallbackTagCleanup(chatId, chatKey, logs, fallbackBudget);
