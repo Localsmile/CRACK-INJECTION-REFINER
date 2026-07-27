@@ -407,13 +407,16 @@
 
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
-    if (!apiOpts || apiOpts.apiType !== 'deepseek' || apiOpts.deepSeekPromptOverridesEnabled === false) return prompt;
-    const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
-    if (fullPrompt) {
-      return fullPrompt
-        .replace('{source}', values.source || '')
-        .replace('{schema}', values.schema || '')
-        .replace('{maxEntries}', String(values.maxEntries || DEFAULTS.importMaxEntries));
+    const objectEnvelope = !!(apiOpts && (apiOpts.apiType === 'deepseek' || apiOpts.apiType === 'openai'));
+    if (!objectEnvelope) return prompt;
+    if (apiOpts.apiType === 'deepseek' && apiOpts.deepSeekPromptOverridesEnabled !== false) {
+      const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
+      if (fullPrompt) {
+        return fullPrompt
+          .replace('{source}', values.source || '')
+          .replace('{schema}', values.schema || '')
+          .replace('{maxEntries}', String(values.maxEntries || DEFAULTS.importMaxEntries));
+      }
     }
     return String(prompt || '')
       .replace('JSON ONLY. Output a valid JSON array. No markdown.', 'JSON ONLY. Output one valid JSON object with top-level shape {"entries":[...]}. No markdown.')
@@ -462,7 +465,7 @@
         attempts++;
         if (onProgress) { try { onProgress({ phase: 'chunk', chunk: ci + 1, total: chunks.length, attempt: attempts, maxAttempts: maxTotalAttempts }); } catch(_){} }
         try {
-          const res = await callGeminiApi(prompt, { ...safeApiOpts, responseMimeType: 'application/json', maxRetries: 0 });
+          const res = await callGeminiApi(prompt, { ...safeApiOpts, responseMimeType: 'application/json', maxRetries: 0, retryOnServerError: false });
           if (!res || !res.text) { lastErr = 'API 응답 없음 (' + ((res && res.error) || '알 수 없음') + ')'; continue; }
           rawSnippet = String(res.text).slice(0, 200);
           // Markdown fence 제거 + 선두/후미 잡텍스트 제거
@@ -475,7 +478,10 @@
           let parsed;
           try { parsed = JSON.parse(raw); }
           catch (pe) { lastErr = 'JSON 파싱 실패: ' + pe.message; continue; }
-          if (parsed && !Array.isArray(parsed) && Array.isArray(parsed.entries)) parsed = parsed.entries;
+          if (parsed && !Array.isArray(parsed)) {
+            if (Array.isArray(parsed.entries)) parsed = parsed.entries;
+            else if (Array.isArray(parsed.operations)) parsed = parsed.operations;
+          }
           if (!Array.isArray(parsed)) { lastErr = '응답이 배열 아님 (type=' + typeof parsed + ')'; continue; }
           gotEntries = parsed.length;
           if (parsed.length === 0) { status = 'empty'; ok = true; break; }

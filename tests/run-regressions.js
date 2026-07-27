@@ -63,7 +63,7 @@ async function loadKernel(options = {}) {
     }),
     GM_xmlhttpRequest: (opts) => {
       requestCount++;
-      requests.push(opts);
+      requests.push({ ...opts, __startedAt: Date.now() });
       const scriptedStatuses = Array.isArray(options.gmStatuses) ? options.gmStatuses : [];
       const scriptedStatus = scriptedStatuses.length
         ? scriptedStatuses[Math.min(requestCount - 1, scriptedStatuses.length - 1)]
@@ -177,6 +177,28 @@ async function testKernelHelpers() {
     C.callGeminiApi('different prompt B', common)
   ]);
   assert.strictEqual(getRequestCount(), 3, 'distinct prompts were incorrectly coalesced');
+  const diagnostics = C.getGenerationApiDiagnostics();
+  assert(diagnostics.length >= 3, 'generation requests were not recorded in bounded internal diagnostics');
+  assert(diagnostics.every(row => Number.isFinite(row.queueWaitMs) && Number.isFinite(row.providerMs)), 'generation timing does not separate queue wait and provider time');
+  assert(diagnostics.every(row => Number.isFinite(row.requestAttempts)), 'generation diagnostics omit physical provider request counts');
+
+  const laneKernel = await loadKernel();
+  const laneCommon = {
+    apiType: 'deepseek', deepSeekKey: 'test-key', model: 'test-model',
+    responseMimeType: 'application/json', maxRetries: 0, retryOnServerError: false
+  };
+  await Promise.all([
+    laneKernel.C.callGeminiApi('background extraction', { ...laneCommon, costContext: { feature: 'autoExtract', chatKey: 'test' } }),
+    laneKernel.C.callGeminiApi('interactive refinement', { ...laneCommon, costContext: { feature: 'refine', chatKey: 'test' } })
+  ]);
+  assert.strictEqual(laneKernel.getRequestCount(), 2, 'generation lanes dropped a request');
+  const laneStartDelta = Math.abs(laneKernel.requests[0].__startedAt - laneKernel.requests[1].__startedAt);
+  assert(laneStartDelta < 100, 'interactive refinement still waits behind background extraction');
+  assert.deepStrictEqual(
+    Array.from(new Set(laneKernel.C.getGenerationApiDiagnostics().map(row => row.lane))).sort(),
+    ['background', 'interactive'],
+    'generation diagnostics did not identify both queue lanes'
+  );
 
   const retryKernel = await loadKernel({ gmStatuses: [503, 200] });
   const retried = await retryKernel.C.callGeminiApi('retry after 503', {
@@ -185,6 +207,7 @@ async function testKernelHelpers() {
   });
   assert.strictEqual(retried.text, '{"entries":[]}', 'generation did not recover after a temporary 503');
   assert.strictEqual(retryKernel.getRequestCount(), 2, 'temporary 503 did not perform exactly one bounded retry');
+  assert.strictEqual(retried.requestAttempts, 2, 'physical request count did not include the retry');
 
   const hardFailureKernel = await loadKernel({ gmStatuses: [400] });
   const hardFailure = await hardFailureKernel.C.callGeminiApi('do not retry 400', {
@@ -193,6 +216,7 @@ async function testKernelHelpers() {
   });
   assert.strictEqual(hardFailure.text, null, 'non-retryable 400 unexpectedly produced output');
   assert.strictEqual(hardFailureKernel.getRequestCount(), 1, 'non-retryable 400 was requested more than once');
+  assert.strictEqual(hardFailure.requestAttempts, 1, 'non-retryable failure reported the configured retry ceiling instead of actual requests');
 
 
   const responsesResult = await C.callGeminiApi('responses prompt', {
@@ -223,6 +247,14 @@ async function testKernelHelpers() {
   const customRequest = requests[requests.length - 1];
   assert.strictEqual(customRequest.url, 'https://proxy.example/custom/generate?mode=rp', 'custom format modified the user-provided URL');
   assert.strictEqual(JSON.parse(customRequest.data).messages[0].role, 'system', 'custom format lost the Chat Completions-compatible JSON instruction');
+
+  const variantKernel = await loadKernel({ gmStatuses: [400, 200] });
+  const variantResult = await variantKernel.C.callGeminiApi('variant fallback', {
+    apiType: 'openai', openAIBaseUrl: 'https://proxy.example/v1/chat/completions', openAIKey: 'test-key', openAIFormat: 'chat_completions',
+    model: 'test-model', responseMimeType: 'application/json', maxRetries: 0, retryOnServerError: false
+  });
+  assert.strictEqual(variantResult.text, '{"entries":[]}', 'OpenAI-compatible body fallback did not recover from an unsupported JSON variant');
+  assert.strictEqual(variantResult.requestAttempts, 2, 'OpenAI-compatible body fallback hid a physical provider request');
 
   await assert.rejects(
     C.nativeFetchWithTimeout('https://timeout.test', { timeoutMs: 10 }),
@@ -492,15 +524,26 @@ function testSourceContracts() {
   assert(!extraction.includes('prefer append.hooks, append.recallTriggers, append.actions, or set.summary.compact/micro'), 'temporal patch prompt still requests model-generated compact summaries');
   assert(extraction.includes('Return summary.full only when the complete event memory changed.'), 'temporal patch prompt does not preserve the complete-summary contract');
   assert(extraction.includes('isRecognizedExtractResponse(parsed)'), 'structured JSON envelopes are not validated');
+  assert(extraction.includes("'entries', 'operations'"), 'OpenAI-compatible operations envelopes are not accepted');
+  assert(extraction.includes("apiOpts.apiType === 'deepseek' || apiOpts.apiType === 'openai'"), 'OpenAI-compatible JSON mode is not instructed to return an object envelope');
+  assert(extraction.includes("diagnosticStage: 'jsonRepair'"), 'JSON repair calls cannot be distinguished in internal diagnostics');
   assert(extraction.includes('!!(res && res.text) && !validStructure'), 'JSON repair can run without a provider response body');
   assert(extraction.includes('if (!validStructure) parsed = null'), 'malformed structured output can still be accepted as empty');
   assert(extraction.includes("if (isManual) throw new Error('이미 로어 추출이 진행 중입니다."), 'duplicate manual extraction is still queued while another extraction is running');
   const resumableBatch = extraction.slice(extraction.indexOf('async function runBatchExtractResumable'));
   assert(extraction.includes("const BATCH_RETRY_STORAGE_KEY = 'lore-batch-extraction-jobs-v1'"), 'persistent batch retry state is missing');
-  assert(resumableBatch.includes('successfulStages.push'), 'successful batch stages are not preserved independently');
+  assert(!resumableBatch.includes('successfulStages.push'), 'successful batches are still held in memory until the entire run finishes');
+  assert(resumableBatch.includes("mergeExtractedData(generalItems, url, { skipSnapshot: true })"), 'successful batches are not committed immediately');
+  assert(resumableBatch.includes('persistBatchProgress();'), 'batch extraction progress is not checkpointed');
+  assert(resumableBatch.includes('const unresolved = new Set(onlyBatchIndexes && priorJob ? priorJob.failedBatchIndexes : selected)'), 'not-yet-run batches are missing from interruption recovery state');
+  assert(resumableBatch.includes('retryOnServerError: false'), 'batch outer retries still nest hidden provider retries');
+  assert(resumableBatch.includes('pendingEmbedding'), 'interrupted batch extraction can lose pending search preparation');
   assert(resumableBatch.includes('onlyBatchIndexes'), 'failed-only retry selection is missing');
-  assert(resumableBatch.includes('saveBatchRetryJob(chatKey, job)'), 'failed batch indexes are not persisted');
+  assert(resumableBatch.includes('saveBatchRetryJob(chatKey, (remaining.length || pendingEmbedding)'), 'failed batch indexes are not persisted');
   assert(resumableBatch.includes('runBatchExtract: runBatchExtractResumable'), 'resumable batch extractor is not the exported runtime path');
+
+  const batchExtractionUi = read('embedding/injecter-6-sub-extract.js');
+  assert(batchExtractionUi.includes('Array.isArray(runOpts.failedBatchIndexes)'), 'failed-only retry button does not pass saved batch indexes');
 
   const settings = read('embedding/injecter-3.js');
   assert(settings.includes("const dT = this.config.templates.find(t => t.isDefault || t.id === 'default')"), 'default-template targeting changed');
@@ -517,6 +560,8 @@ function testSourceContracts() {
   const kernel = read('embedding/core-kernel.js');
   const coreEmbedding = read('embedding/core-embedding.js');
   const coreMemory = read('embedding/core-memory.js');
+  assert(kernel.includes("interactive: Promise.resolve()") && kernel.includes("background: Promise.resolve()"), 'interactive and background generation work still share one blocking queue');
+  assert(kernel.includes('getGenerationApiDiagnostics') && kernel.includes('queueWaitMs') && kernel.includes('providerMs'), 'generation diagnostics do not separate queue wait from provider time');
   assert(kernel.includes('function enqueueEmbeddingApi') && kernel.includes('embeddingMinGapMs'), 'embedding calls are not globally serialized');
   assert(!kernel.includes('activeMaxOutputTokens'), 'Gemini output limits are still being rewritten internally');
   assert(coreEmbedding.includes('if (isTransientEmbeddingFailure(batchError)) throw batchError'), '429/5xx batch failures still fan out into individual calls');
@@ -576,7 +621,7 @@ function testSourceContracts() {
   assert(apiUi.includes("autoExtOpenAIFormat || 'custom'"), 'custom full-URL format is not the new-install UI default');
   assert(apiUi.includes('추출 항목 체크는 커스텀 프롬프트에도 동일하게 적용됩니다.'), 'custom prompt and extraction-scope behavior is not explained');
   assert(!apiUi.includes('지시문'), 'developer-facing instruction terminology remains in API UI');
-  assert(apiUi.includes("{ feature: 'autoExtract', chatKey: 'global' }") && apiUi.includes("responseMimeType: 'application/json'"), 'API test does not exercise the structured generation and reasoning path used by extraction');
+  assert(apiUi.includes("{ feature: 'autoExtract', chatKey: 'global' }") && apiUi.includes("responseMimeType: 'application/json'") && apiUi.includes("generationLane: 'interactive'"), 'API test does not exercise the extraction configuration without blocking behind background work');
   assert(apiUi.includes("featureModel(key).includes('gemini-2.5')") && apiUi.includes("['예산', 'budget']"), 'Gemini 2.5 thinking-budget UI was not preserved');
 
   const extractionUi = read('embedding/injecter-6-sub-extract.js');
@@ -592,6 +637,7 @@ function testSourceContracts() {
   const injection = read('embedding/injecter-5.js');
   assert(injection.includes('deriveAiMemoryTurns(recentMsgs, config)'), 'adaptive reinjection is not wired into injection');
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
+  assert(!injection.includes('skipGenerationQueue: true') && injection.includes("generationLane: 'interactive'"), 'judge or rerank bypasses queue diagnostics and pacing');
   assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
   assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');
   assert(extraction.includes('_extQ.pendingTurns += Math.max(1, Number(settings.config.autoExtTurns) || 1)') && extraction.includes('_doExtract(isManual, carriedTurns)'), 'automatic extraction can leave an unscanned gap while a prior pass is running');
@@ -605,6 +651,9 @@ function testSourceContracts() {
 
   const importer = read('embedding/core-importer.js');
   assert(importer.includes("db.transaction('rw', db.entries, db.packs"), 'knowledge conversion commit is not transactional');
+  assert(importer.includes("apiOpts.apiType === 'deepseek' || apiOpts.apiType === 'openai'"), 'OpenAI-compatible knowledge conversion still requests a top-level array');
+  assert(importer.includes('Array.isArray(parsed.operations)'), 'knowledge conversion rejects a valid operations envelope');
+  assert(importer.includes('retryOnServerError: false'), 'knowledge conversion outer recovery still nests hidden provider retries');
   assert(importer.includes('mergeImportedEntries(allEntries)'), 'knowledge conversion does not consolidate cross-chunk duplicates');
 
   const backup = read('embedding/injecter-6-sub-backup.js');

@@ -625,7 +625,7 @@
           model: _judgeModel,
           responseMimeType: 'application/json',
           maxRetries: 1,
-          skipGenerationQueue: true,
+          generationLane: 'interactive',
           timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
           signal: _judgeAbortCtrl ? _judgeAbortCtrl.signal : undefined
         }, { feature: 'judge', chatKey: getChatKey() || 'global' })
@@ -634,7 +634,7 @@
           model: _judgeModel,
           responseMimeType: 'application/json',
           maxRetries: 1,
-          skipGenerationQueue: true,
+          generationLane: 'interactive',
           timeoutMs: Math.max(8000, _judgeTimeoutMs + 2000),
           deepSeekThinking: config.autoExtDeepSeekThinking !== false,
           deepSeekReasoning: config.autoExtDeepSeekReasoning || 'high',
@@ -921,7 +921,7 @@
           || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3-flash-preview');
         const rerankApiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
           model: rerankModel,
-          skipGenerationQueue: true,
+          generationLane: 'interactive',
           costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
         }, { feature: 'rerank', chatKey: chatKey || 'global' }) : {
           apiType: config.autoExtApiType || 'key', key: config.autoExtKey, deepSeekKey: config.autoExtDeepSeekKey,
@@ -930,7 +930,7 @@
           vertexProjectId: config.autoExtVertexProjectId,
           firebaseScript: config.autoExtFirebaseScript,
           model: rerankModel,
-          skipGenerationQueue: true,
+          generationLane: 'interactive',
           costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
         };
         scored = await C.smartRerank(userInput, scored, last2, rerankApiOpts, config);

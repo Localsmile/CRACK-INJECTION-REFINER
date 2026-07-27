@@ -481,8 +481,16 @@ Entries:
     } catch (_) { return null; }
   }
 
-  let _generationApiQueue = Promise.resolve();
-  let _lastGenerationApiAt = 0;
+  const GENERATION_DIAGNOSTIC_LIMIT = 200;
+  const _generationApiQueues = {
+    interactive: Promise.resolve(),
+    background: Promise.resolve()
+  };
+  const _lastGenerationApiAt = {
+    interactive: 0,
+    background: 0
+  };
+  const _generationApiDiagnostics = [];
   let _embeddingApiQueue = Promise.resolve();
   let _lastEmbeddingApiAt = 0;
   const _openAICompatVariantCache = new Map();
@@ -507,6 +515,27 @@ Entries:
 
   function generationRetryDelay(attempt, capMs = 10000) {
     return Math.min(capMs, 1000 * Math.pow(2, attempt)) + Math.random() * 500;
+  }
+
+  function generationQueueLane(opts = {}) {
+    if (opts.generationLane === 'interactive' || opts.generationLane === 'background') return opts.generationLane;
+    const feature = String(opts.costContext && opts.costContext.feature || '');
+    return ['refine', 'rerank', 'judge', 'apiTest'].includes(feature) ? 'interactive' : 'background';
+  }
+
+  function recordGenerationDiagnostic(row) {
+    _generationApiDiagnostics.push(Object.freeze({ ...row }));
+    if (_generationApiDiagnostics.length > GENERATION_DIAGNOSTIC_LIMIT) {
+      _generationApiDiagnostics.splice(0, _generationApiDiagnostics.length - GENERATION_DIAGNOSTIC_LIMIT);
+    }
+  }
+
+  function getGenerationApiDiagnostics() {
+    return _generationApiDiagnostics.map(row => ({ ...row }));
+  }
+
+  function clearGenerationApiDiagnostics() {
+    _generationApiDiagnostics.length = 0;
   }
 
   function resolveVertexEndpoint(vertexLocation, model) {
@@ -540,18 +569,72 @@ Entries:
 
   function enqueueGenerationApi(task, opts = {}) {
     if (opts.skipGenerationQueue === true) return task();
+    const lane = generationQueueLane(opts);
+    const queuedAt = Date.now();
     const minGap = Math.max(0, Number(opts.generationMinGapMs != null ? opts.generationMinGapMs : 250) || 0);
-    const queued = _generationApiQueue.catch(() => {}).then(async () => {
-      const waitMs = Math.max(0, _lastGenerationApiAt + minGap - Date.now());
+    const queued = _generationApiQueues[lane].catch(() => {}).then(async () => {
+      const waitMs = Math.max(0, _lastGenerationApiAt[lane] + minGap - Date.now());
       if (waitMs > 0) await sleep(waitMs);
-      if (opts.signal && opts.signal.aborted) return { text: null, status: 0, error: 'aborted', retries: 0 };
+      const startedAt = Date.now();
       try {
-        return await task();
+        const result = opts.signal && opts.signal.aborted
+          ? { text: null, status: 0, error: 'aborted', retries: 0, requestAttempts: 0 }
+          : await task();
+        const endedAt = Date.now();
+        const timing = {
+          lane,
+          queuedAt,
+          startedAt,
+          endedAt,
+          queueWaitMs: startedAt - queuedAt,
+          providerMs: endedAt - startedAt,
+          totalMs: endedAt - queuedAt
+        };
+        if (result && typeof result === 'object') {
+          try { result.timing = timing; } catch (_) {}
+        }
+        recordGenerationDiagnostic({
+          ...timing,
+          feature: String(opts.costContext && opts.costContext.feature || 'unknown'),
+          stage: String(opts.diagnosticStage || 'primary'),
+          provider: String(opts.apiType || 'key'),
+          model: String(opts.model || ''),
+          promptChars: Math.max(0, Number(opts.diagnosticPromptChars) || 0),
+          outputChars: result && result.text ? String(result.text).length : 0,
+          status: Number(result && result.status) || 0,
+          retries: Math.max(0, Number(result && result.retries) || 0),
+          requestAttempts: Math.max(0, Number(result && result.requestAttempts) || 0),
+          ok: !!(result && result.text)
+        });
+        return result;
+      } catch (error) {
+        const endedAt = Date.now();
+        recordGenerationDiagnostic({
+          lane,
+          queuedAt,
+          startedAt,
+          endedAt,
+          queueWaitMs: startedAt - queuedAt,
+          providerMs: endedAt - startedAt,
+          totalMs: endedAt - queuedAt,
+          feature: String(opts.costContext && opts.costContext.feature || 'unknown'),
+          stage: String(opts.diagnosticStage || 'primary'),
+          provider: String(opts.apiType || 'key'),
+          model: String(opts.model || ''),
+          promptChars: Math.max(0, Number(opts.diagnosticPromptChars) || 0),
+          outputChars: 0,
+          status: 0,
+          retries: 0,
+          requestAttempts: 0,
+          ok: false,
+          error: String(error && error.message || error || 'unknown').slice(0, 300)
+        });
+        throw error;
       } finally {
-        _lastGenerationApiAt = Date.now();
+        _lastGenerationApiAt[lane] = Date.now();
       }
     });
-    _generationApiQueue = queued.catch(() => {});
+    _generationApiQueues[lane] = queued.catch(() => {});
     return queued;
   }
 
@@ -619,11 +702,13 @@ Entries:
     bodyObj.thinking = { type: thinkingOn ? 'enabled' : 'disabled' };
     if (thinkingOn) bodyObj.reasoning_effort = deepSeekReasoning === 'max' || deepSeekReasoning === 'xhigh' ? 'max' : 'high';
     const body = JSON.stringify(bodyObj);
-    let lastStatus = 0, lastError = null;
+    let lastStatus = 0, lastError = null, requestAttempts = 0, lastAttempt = 0;
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
+      lastAttempt = attempt;
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
+        requestAttempts++;
         const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
         lastStatus = r.status;
         if (!r.ok) {
@@ -645,7 +730,7 @@ Entries:
           const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
           const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
           const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
-          if (text) return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
+          if (text) return { text, status: r.status, error: null, retries: attempt, requestAttempts, cost, finishReason };
           lastError = finishReason === 'length'
             ? 'DeepSeek 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
             : ('DeepSeek 최종 응답이 비어 있음' + (reasoning ? ' (reasoning_content만 반환됨)' : '') + (finishReason ? ' [' + finishReason + ']' : ''));
@@ -656,7 +741,7 @@ Entries:
       }
       if (attempt < effectiveMaxRetries) await sleep(generationRetryDelay(attempt, 8000));
     }
-    return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
+    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts };
   }
 
   function normalizeOpenAICompatFormat(format) {
@@ -852,13 +937,15 @@ Entries:
       ? bodyVariants.filter(v => bodyVariantId(v) === cachedVariantId).concat(bodyVariants.filter(v => bodyVariantId(v) !== cachedVariantId))
       : bodyVariants;
 
-    let lastStatus = 0, lastError = null;
+    let lastStatus = 0, lastError = null, requestAttempts = 0, lastAttempt = 0;
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
+      lastAttempt = attempt;
       for (const variant of orderedVariants) {
         try {
           if (signal && signal.aborted) { lastError = 'aborted'; break; }
           const requestBody = specializedBodies ? JSON.stringify(variant) : makeBody(variant.withJsonMode, variant.tokenField, variant.reasoningStyle);
+          requestAttempts++;
           const r = await gmFetch(url, { method: 'POST', headers, body: requestBody, signal, timeout: timeoutMs });
           lastStatus = r.status;
           if (!r.ok) {
@@ -877,7 +964,7 @@ Entries:
             const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
             if (text) {
               _openAICompatVariantCache.set(variantCacheKey, bodyVariantId(variant));
-              return { text, status: r.status, error: null, retries: attempt, cost, finishReason };
+              return { text, status: r.status, error: null, retries: attempt, requestAttempts, cost, finishReason };
             }
             lastError = finishReason === 'length'
               ? 'OpenAI 호환 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
@@ -893,7 +980,7 @@ Entries:
       else if (attempt < effectiveMaxRetries && retryableGenerationError(lastError)) await sleep(generationRetryDelay(attempt, 8000));
       else break;
     }
-    return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
+    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts };
   }
 
   // Gemini 생성
@@ -902,7 +989,10 @@ Entries:
       const requestKey = generationRequestFingerprint(prompt, opts);
       const allowDedupe = opts.dedupeGeneration !== false && !opts.signal;
       if (allowDedupe && _generationInFlight.has(requestKey)) return _generationInFlight.get(requestKey);
-      const queued = enqueueGenerationApi(() => callGeminiApi(prompt, { ...opts, skipGenerationQueue: true }), opts);
+      const queued = enqueueGenerationApi(
+        () => callGeminiApi(prompt, { ...opts, skipGenerationQueue: true }),
+        { ...opts, diagnosticPromptChars: String(prompt || '').length }
+      );
       if (allowDedupe) {
         _generationInFlight.set(requestKey, queued);
         queued.finally(() => {
@@ -972,8 +1062,9 @@ Entries:
       // Firebase SDK는 generateContent에 signal 미지원: 진입 시점만 검사.
       if (signal && signal.aborted) return { text: null, status: 0, error: 'aborted', retries: 0 };
       const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
-      let fbLastError = null;
+      let fbLastError = null, requestAttempts = 0, lastAttempt = 0;
       for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) try {
+        lastAttempt = attempt;
         const sdk = await loadFirebaseSdk();
         const fb_is3x = model.includes('gemini-3') || model.includes('gemini-2.0-flash-thinking');
         const fb_loc = fb_is3x ? 'global' : 'us-central1';
@@ -998,16 +1089,17 @@ Entries:
         const modelKey = aiKey + '|' + model + '|' + simpleHash(JSON.stringify(fbGenConfig));
         let gm = _fbModelCache[modelKey];
         if (!gm) { gm = sdk.getGenerativeModel(ai, { model, safetySettings: fbSafety, generationConfig: fbGenConfig }); _fbModelCache[modelKey] = gm; }
+        requestAttempts++;
         const result = await promiseWithTimeout(gm.generateContent(prompt), timeoutMs, 'Firebase 생성 요청');
         const fbText = result.response.text();
         const _fbCost = _trackCost(result.response && result.response.usageMetadata, prompt, fbText);
-        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: attempt, cost: _fbCost };
+        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: attempt, requestAttempts, cost: _fbCost };
       } catch (fbErr) {
         fbLastError = fbErr;
         if (!(attempt < effectiveMaxRetries && retryableGenerationError(fbErr))) break;
         await sleep(generationRetryDelay(attempt, 8000));
       }
-      return { text: null, status: 0, error: 'Firebase: ' + ((fbLastError && fbLastError.message) || String(fbLastError)), retries: effectiveMaxRetries };
+      return { text: null, status: 0, error: 'Firebase: ' + ((fbLastError && fbLastError.message) || String(fbLastError)), retries: lastAttempt, requestAttempts };
       // (도달 불가, 구파서 호환용 잔존)
       const fbKey = firebaseKey || key;
       if (!fbKey) return { text: null, status: 0, error: 'Firebase Web API Key 누락', retries: 0 };
@@ -1039,11 +1131,13 @@ Entries:
     if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
     const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
 
-    let lastStatus = 0, lastError = null;
+    let lastStatus = 0, lastError = null, requestAttempts = 0, lastAttempt = 0;
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
+      lastAttempt = attempt;
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
+        requestAttempts++;
         const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
         lastStatus = r.status;
 
@@ -1072,7 +1166,7 @@ Entries:
           const json = await r.json();
           const text = geminiResponseText(json);
           const _restCost = _trackCost(json.usageMetadata, prompt, text);
-          if (text) return { text, status: r.status, error: null, retries: attempt, cost: _restCost };
+          if (text) return { text, status: r.status, error: null, retries: attempt, requestAttempts, cost: _restCost };
           lastError = geminiEmptyResponseError(json);
         }
       } catch (e) {
@@ -1081,7 +1175,7 @@ Entries:
       }
       if (attempt < effectiveMaxRetries) await sleep(generationRetryDelay(attempt, 8000));
     }
-    return { text: null, status: lastStatus, error: lastError, retries: effectiveMaxRetries };
+    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts };
   }
 
   async function embedTexts(texts, opts = {}) {
@@ -1369,6 +1463,7 @@ Entries:
     nativeFetchWithTimeout, generationRequestFingerprint, resolveVertexEndpoint, geminiResponseText, geminiEmptyResponseError, normalizeOpenAICompatFormat, normalizeOpenAICompatUrl,
     buildOpenAICompatVariants, buildOpenAIFormatVariants, openAICompatResponseText, promiseWithTimeout,
     estimateTextTokens, estimateMessageTokens, deriveAiMemoryTurns,
+    generationQueueLane, getGenerationApiDiagnostics, clearGenerationApiDiagnostics,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true
   });

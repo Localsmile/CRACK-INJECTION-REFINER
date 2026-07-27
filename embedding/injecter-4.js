@@ -189,8 +189,12 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
       .replace(/For each UPDATED existing scene, output the complete updated timeline_event object/g, 'For each UPDATED existing scene, put the complete updated timeline_event object inside entries');
   }
 
+  function providerUsesObjectEnvelope(apiOpts) {
+    return !!(apiOpts && (apiOpts.apiType === 'deepseek' || apiOpts.apiType === 'openai'));
+  }
+
   function providerOutputMode(baseText, apiOpts, kind) {
-    if (!(apiOpts && apiOpts.apiType === 'deepseek')) return baseText;
+    if (!providerUsesObjectEnvelope(apiOpts)) return baseText;
     return deepSeekObjectOutputMode(baseText, '{"entries":[]}') + '\n- Top-level object shape must be exactly {"entries":[...]}.';
   }
 
@@ -500,7 +504,7 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
   function normalizeExtractItems(entries) {
     if (Array.isArray(entries)) return entries.filter(Boolean);
     if (entries && !Array.isArray(entries)) {
-      const arrayKeys = ['entries', 'items', 'patches', 'events', 'lore', 'lores', 'memories', 'results'];
+      const arrayKeys = ['entries', 'operations', 'items', 'patches', 'events', 'lore', 'lores', 'memories', 'results'];
       for (const key of arrayKeys) {
         if (Array.isArray(entries[key])) return entries[key].filter(Boolean);
       }
@@ -520,7 +524,7 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
   function isRecognizedExtractResponse(value) {
     if (Array.isArray(value)) return true;
     if (!value || typeof value !== 'object') return false;
-    const arrayKeys = ['entries', 'items', 'patches', 'events', 'lore', 'lores', 'memories', 'results', 'timeline_events'];
+    const arrayKeys = ['entries', 'operations', 'items', 'patches', 'events', 'lore', 'lores', 'memories', 'results', 'timeline_events'];
     if (arrayKeys.some(key => Array.isArray(value[key]))) return true;
     if (isExtractItemObject(value)) return true;
     if (value.data && typeof value.data === 'object' && isRecognizedExtractResponse(value.data)) return true;
@@ -531,7 +535,7 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
   function normalizeTemporalCandidates(parsed, limit) {
     let arr = parsed;
     if (arr && !Array.isArray(arr)) {
-      const arrayKeys = ['events', 'entries', 'items', 'timeline_events', 'memories', 'results'];
+      const arrayKeys = ['events', 'entries', 'operations', 'items', 'timeline_events', 'memories', 'results'];
       for (const key of arrayKeys) {
         if (Array.isArray(arr[key])) { arr = arr[key]; break; }
       }
@@ -574,32 +578,33 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
   }
 
   async function callGeminiJsonWithRepair(prompt, apiOpts, repairHint) {
-    const isDeepSeek = apiOpts && apiOpts.apiType === 'deepseek';
-    const finalPrompt = isDeepSeek ? `${prompt}
+    const objectEnvelope = providerUsesObjectEnvelope(apiOpts);
+    const finalPrompt = objectEnvelope ? `${prompt}
 
 Structured output reminder:
 - Return exactly one valid json object.
 - The top-level shape is {"entries":[...]}.
 - No markdown, no prose, no comments, no trailing text.` : prompt;
-    let res = await C.callGeminiApi(finalPrompt, apiOpts);
+    let res = await C.callGeminiApi(finalPrompt, { ...apiOpts, diagnosticStage: 'primary' });
     let parsed = parseJsonLoose(res && res.text);
     let validStructure = isRecognizedExtractResponse(parsed);
     const shouldRepair = !!(res && res.text) && !validStructure && apiOpts;
     if (shouldRepair) {
       const firstCost = res && res.cost;
-      const safeRepairHint = isDeepSeek
+      const safeRepairHint = objectEnvelope
         ? String(repairHint || '')
             .replace(/one JSON array/gi, 'one JSON object with an entries array')
             .replace(/complete JSON array/gi, 'complete JSON object with an entries array')
             .replace(/Wrap patch\/add items in an array\./gi, 'Wrap patch/add items in {"entries":[...]}.')
         : (repairHint || '');
-      const retryPrompt = finalPrompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n' + (isDeepSeek
+      const retryPrompt = finalPrompt + '\n\nJSON REPAIR REQUEST:\n- Your previous response was not valid complete JSON, or it was truncated.\n' + (objectEnvelope
         ? '- Return only one complete JSON object in this exact shape: {"entries":[...]}.\n- If there is no change, return exactly {"entries":[]}.\n'
         : '- Return only one complete JSON array.\n- If there is no change, return exactly [].\n') + safeRepairHint;
       res = await C.callGeminiApi(retryPrompt, {
           ...apiOpts,
           maxRetries: 0,
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          diagnosticStage: 'jsonRepair'
       });
       parsed = parseJsonLoose(res && res.text);
       validStructure = isRecognizedExtractResponse(parsed);
@@ -717,6 +722,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       model: (apiOpts && apiOpts.model) || (settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel),
       responseMimeType: 'application/json',
       maxRetries: apiOpts.maxRetries != null ? apiOpts.maxRetries : 1,
+      retryOnServerError: apiOpts.retryOnServerError,
       timeoutMs: apiOpts.timeoutMs || (isDeepSeekTemporal ? 150000 : 120000),
     };
     const temporalApiOpts = _w.__LoreInj.buildGenerationApiOpts
@@ -1426,14 +1432,14 @@ ${TEMPORAL_PATCH_SCHEMA}`;
 
   function getBatchRetryJob(chatKey = getChatKey()) {
     const job = readBatchRetryJobs()[chatKey || 'global'];
-    if (!job || !Array.isArray(job.failedBatchIndexes) || !job.failedBatchIndexes.length) return null;
+    if (!job || !Array.isArray(job.failedBatchIndexes) || (!job.failedBatchIndexes.length && !job.pendingEmbedding)) return null;
     return JSON.parse(JSON.stringify(job));
   }
 
   function saveBatchRetryJob(chatKey, job) {
     const key = chatKey || 'global';
     const jobs = readBatchRetryJobs();
-    if (!job || !Array.isArray(job.failedBatchIndexes) || !job.failedBatchIndexes.length) delete jobs[key];
+    if (!job || !Array.isArray(job.failedBatchIndexes) || (!job.failedBatchIndexes.length && !job.pendingEmbedding)) delete jobs[key];
     else jobs[key] = { ...job, version: 1, chatKey: key, updatedAt: Date.now() };
     try { _ls.setItem(BATCH_RETRY_STORAGE_KEY, JSON.stringify(jobs)); }
     catch (e) { console.warn('[Lore:batch] 재시도 상태 저장 실패:', e); }
@@ -1489,13 +1495,17 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const allMsgs = await C.fetchLogs(99999);
     if (!allMsgs || !allMsgs.length) { extBadgeHide(); throw new Error('대화 기록 없음'); }
     const batches = splitConversationBatches(allMsgs, turnsPerBatch, overlap);
+    const priorJob = getBatchRetryJob(chatKey);
     const selected = onlyBatchIndexes
       ? new Set(onlyBatchIndexes.filter(index => index >= 1 && index <= batches.length))
       : new Set(batches.map((_, index) => index + 1));
-    if (!selected.size) { extBadgeHide(); throw new Error('다시 시도할 대화 구간이 없음'); }
+    const embeddingOnlyRetry = !!(onlyBatchIndexes && !selected.size && priorJob && priorJob.pendingEmbedding);
+    if (!selected.size && !embeddingOnlyRetry) { extBadgeHide(); throw new Error('다시 시도할 대화 구간이 없음'); }
 
-    const priorJob = getBatchRetryJob(chatKey);
-    const unresolved = new Set(onlyBatchIndexes && priorJob ? priorJob.failedBatchIndexes : []);
+    const unresolved = new Set(onlyBatchIndexes && priorJob ? priorJob.failedBatchIndexes : selected);
+    const batchErrors = new Map((priorJob && Array.isArray(priorJob.batchErrors) ? priorJob.batchErrors : [])
+      .map(row => [Number(row.batch), String(row.error || '')]));
+    let pendingEmbedding = !!(priorJob && priorJob.pendingEmbedding);
     const report = {
       totalBatches: batches.length,
       attemptedBatches: selected.size,
@@ -1523,7 +1533,23 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       } catch (_) {}
     }
 
-    const successfulStages = [];
+    let batchSnapshotCreated = false;
+    const persistBatchProgress = () => {
+      const remaining = Array.from(unresolved).filter(index => index >= 1 && index <= batches.length).sort((a, b) => a - b);
+      return saveBatchRetryJob(chatKey, (remaining.length || pendingEmbedding) ? {
+        url,
+        turnsPerBatch,
+        overlap,
+        maxAttempts,
+        totalBatches: batches.length,
+        totalMsgs: allMsgs.length,
+        failedBatchIndexes: remaining,
+        batchErrors: remaining.map(batch => ({ batch, error: batchErrors.get(batch) || '' })),
+        lastEntriesAdded: report.entriesAdded,
+        pendingEmbedding
+      } : null);
+    };
+    persistBatchProgress();
     for (let batchIndex = 1; batchIndex <= batches.length; batchIndex++) {
       if (!selected.has(batchIndex)) continue;
       const messages = batches[batchIndex - 1];
@@ -1561,6 +1587,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           const apiOpts = _w.__LoreInj.buildGenerationApiOpts({
             model,
             maxRetries: 0,
+            retryOnServerError: false,
             responseMimeType: 'application/json',
             timeoutMs,
           }, { feature, chatKey });
@@ -1578,8 +1605,10 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         report.failed++;
         report.failedBatchIndexes.push(batchIndex);
         unresolved.add(batchIndex);
+        batchErrors.set(batchIndex, generalError);
         report.batchResults.push({ batch: batchIndex, status: 'failed', attempts: generalAttempts, error: generalError });
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: messages.length, isManual: true, status: '전체 추출 구간 ' + batchIndex + '/' + batches.length + ' 실패', error: generalError, model });
+        persistBatchProgress();
         continue;
       }
 
@@ -1596,6 +1625,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             const apiOpts = _w.__LoreInj.buildGenerationApiOpts({
               model,
               maxRetries: 0,
+              retryOnServerError: false,
               responseMimeType: 'application/json',
               timeoutMs,
             }, { feature, chatKey });
@@ -1611,38 +1641,54 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         report.failed++;
         report.failedBatchIndexes.push(batchIndex);
         unresolved.add(batchIndex);
+        batchErrors.set(batchIndex, temporalError);
         report.batchResults.push({ batch: batchIndex, status: 'temporal_failed', attempts: temporalAttempts, error: temporalError });
         addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: 0, msgs: messages.length, isManual: true, status: '전체 추출 구간 ' + batchIndex + '/' + batches.length + ' 중요 장면 실패', error: temporalError, model });
+        persistBatchProgress();
         continue;
       }
 
       const temporalCount = temporalResult ? Number(temporalResult.count || 0) : 0;
-      successfulStages.push({ batchIndex, generalItems, temporalResult });
+      let committed = 0;
+      try {
+        if (generalItems.length || temporalCount) {
+          const packName = await getAutoExtPackForUrl(url);
+          if (!batchSnapshotCreated) {
+            const existingPack = await db.packs.get(packName);
+            if (existingPack) await createSnapshot(packName, '전체 추출 전 백업', 'auto');
+            batchSnapshotCreated = true;
+          }
+          if (generalItems.length) committed += await mergeExtractedData(generalItems, url, { skipSnapshot: true });
+          for (const temporalPatch of (temporalResult && temporalResult.patches || [])) {
+            committed += await applyTemporalPatchOp(temporalPatch, packName, chatKey);
+          }
+          if (temporalResult && temporalResult.events && temporalResult.events.length) {
+            committed += await mergeExtractedData(temporalResult.events, url, { skipSnapshot: true });
+          }
+          report.entriesAdded += committed;
+          if (committed > 0) pendingEmbedding = true;
+        }
+      } catch (commitError) {
+        const message = commitError && commitError.message ? commitError.message : String(commitError);
+        report.failed++;
+        report.failedBatchIndexes.push(batchIndex);
+        unresolved.add(batchIndex);
+        batchErrors.set(batchIndex, message);
+        report.batchResults.push({ batch: batchIndex, status: 'commit_failed', attempts: generalAttempts, error: message });
+        addExtLog(chatKey, { time: new Date().toLocaleTimeString(), count: committed, msgs: messages.length, isManual: true, status: '전체 추출 구간 ' + batchIndex + '/' + batches.length + ' 저장 실패', error: message, model });
+        persistBatchProgress();
+        continue;
+      }
       unresolved.delete(batchIndex);
+      batchErrors.delete(batchIndex);
       if (generalItems.length || temporalCount) report.ok++;
       else report.empty++;
-      report.batchResults.push({ batch: batchIndex, status: generalItems.length || temporalCount ? 'ok' : 'empty', attempts: generalAttempts, entries: generalItems.length + temporalCount });
+      report.batchResults.push({ batch: batchIndex, status: generalItems.length || temporalCount ? 'ok' : 'empty', attempts: generalAttempts, entries: committed });
+      persistBatchProgress();
     }
 
-    if (successfulStages.length) {
-      const packName = await getAutoExtPackForUrl(url);
-      const rollbackState = await snapshotPackState(packName);
-      try {
-        const generalItems = successfulStages.flatMap(stage => stage.generalItems || []);
-        const temporalPatches = successfulStages.flatMap(stage => stage.temporalResult && stage.temporalResult.patches || []);
-        const temporalEvents = successfulStages.flatMap(stage => stage.temporalResult && stage.temporalResult.events || []);
-        if (generalItems.length) report.entriesAdded += await mergeExtractedData(generalItems, url);
-        for (const temporalPatch of temporalPatches) report.entriesAdded += await applyTemporalPatchOp(temporalPatch, packName, chatKey);
-        if (temporalEvents.length) report.entriesAdded += await mergeExtractedData(temporalEvents, url);
-      } catch (commitError) {
-        try { await restorePackState(rollbackState); }
-        catch (rollbackError) { commitError.message += ' / 롤백 실패: ' + (rollbackError.message || String(rollbackError)); }
-        extBadgeHide();
-        throw commitError;
-      }
-    }
-
-    if (report.entriesAdded > 0 && settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false) {
+    const shouldEmbedAfterBatch = settings.config.embeddingEnabled && settings.config.autoEmbedOnExtract !== false;
+    if (pendingEmbedding && shouldEmbedAfterBatch) {
       try {
         if (onProgress) { try { onProgress({ phase: 'embedding' }); } catch (_) {} }
         const packName = await getAutoExtPackForUrl(url);
@@ -1650,26 +1696,18 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         const embedOpts = _w.__LoreInj.buildEmbeddingApiOpts({ model: settings.config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey });
         await C.embedPack(packName, embedOpts);
         report.embedded = true;
+        pendingEmbedding = false;
       } catch (error) {
         report.embedError = error && error.message ? error.message : String(error);
       }
+    } else if (pendingEmbedding) {
+      pendingEmbedding = false;
     }
 
     const remainingFailed = Array.from(unresolved).filter(index => index >= 1 && index <= batches.length).sort((a, b) => a - b);
     report.failedBatchIndexes = remainingFailed;
     report.failed = remainingFailed.length;
-    const job = remainingFailed.length ? {
-      url,
-      turnsPerBatch,
-      overlap,
-      maxAttempts,
-      totalBatches: batches.length,
-      totalMsgs: allMsgs.length,
-      failedBatchIndexes: remainingFailed,
-      batchErrors: report.batchResults.filter(result => /failed/.test(result.status)).map(result => ({ batch: result.batch, error: result.error || '' })),
-      lastEntriesAdded: report.entriesAdded
-    } : null;
-    saveBatchRetryJob(chatKey, job);
+    persistBatchProgress();
     addExtLog(chatKey, {
       time: new Date().toLocaleTimeString(),
       count: report.entriesAdded,
@@ -1677,6 +1715,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       isManual: true,
       status: remainingFailed.length
         ? '전체 추출 일부 완료 (성공 ' + (report.ok + report.empty) + ' / 다시 시도 ' + remainingFailed.length + ')'
+        : pendingEmbedding
+          ? '전체 추출 완료 / 검색 준비 다시 시도 필요'
         : '전체 추출 완료 (' + batches.length + '개 구간)',
       model,
       elapsedMs: Date.now() - startedAt,

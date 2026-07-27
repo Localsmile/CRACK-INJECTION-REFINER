@@ -248,7 +248,9 @@
           const jobTitle = document.createElement('div'); jobTitle.textContent = '전체 추출 작업 현황'; jobTitle.style.cssText = 'font-size:12px;font-weight:bold;color:#ccc;margin-bottom:4px;'; jobBox.appendChild(jobTitle);
           const jobText = document.createElement('div'); jobText.style.cssText = 'font-size:11px;color:' + (retryJob ? '#da8' : '#777') + ';line-height:1.45;';
           jobText.textContent = retryJob
-            ? '다시 시도할 구간 ' + retryJob.failedBatchIndexes.join(', ') + ' / 전체 ' + retryJob.totalBatches + '개 구간 · 마지막 저장 ' + (retryJob.lastEntriesAdded || 0) + '건'
+            ? (retryJob.failedBatchIndexes.length
+              ? '다시 시도할 구간 ' + retryJob.failedBatchIndexes.join(', ') + ' / 전체 ' + retryJob.totalBatches + '개 구간 · 마지막 저장 ' + (retryJob.lastEntriesAdded || 0) + '건'
+              : '로어 추출은 저장됨 · 검색 준비만 다시 시도 필요')
             : '다시 시도할 실패 구간 없음';
           jobBox.appendChild(jobText);
           nd.appendChild(jobBox);
@@ -266,7 +268,9 @@
                 turnsPerBatch: runOpts.turnsPerBatch || settings.config.batchExtTurnsPerBatch || 50,
                 overlap: runOpts.overlap !== undefined ? runOpts.overlap : (settings.config.batchExtOverlap !== undefined ? settings.config.batchExtOverlap : 5),
                 maxAttempts: runOpts.maxAttempts || settings.config.batchExtMaxAttempts || 3,
-                onlyBatchIndexes: runOpts.onlyBatchIndexes,
+                onlyBatchIndexes: Array.isArray(runOpts.onlyBatchIndexes)
+                  ? runOpts.onlyBatchIndexes
+                  : (Array.isArray(runOpts.failedBatchIndexes) ? runOpts.failedBatchIndexes : undefined),
                 onProgress: (ev) => {
                   const sec = Math.floor((Date.now() - start) / 1000);
                   if (ev.phase === 'batch') bStatus.textContent = '구간 ' + ev.index + '/' + ev.total + ' 처리 중 (' + sec + '초)';
@@ -291,9 +295,12 @@
             await runBatch(bBtn, {});
           };
           if (retryJob) {
-            const retryBtn = document.createElement('button'); retryBtn.textContent = '실패 구간만 다시 시도'; retryBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#642;color:#f2d2a0;border:1px solid #864;font-weight:bold;width:100%;margin-top:6px;';
+            const retryBtn = document.createElement('button'); retryBtn.textContent = retryJob.failedBatchIndexes.length ? '실패 구간만 다시 시도' : '검색 준비 다시 시도'; retryBtn.style.cssText = 'padding:8px 16px;font-size:12px;border-radius:4px;cursor:pointer;background:#642;color:#f2d2a0;border:1px solid #864;font-weight:bold;width:100%;margin-top:6px;';
             retryBtn.onclick = async () => {
-              if (!confirm('실패한 ' + retryJob.failedBatchIndexes.length + '개 구간만 다시 추출할까요?')) return;
+              const question = retryJob.failedBatchIndexes.length
+                ? '실패한 ' + retryJob.failedBatchIndexes.length + '개 구간만 다시 추출할까요?'
+                : '저장된 로어의 검색 준비를 다시 시도할까요?';
+              if (!confirm(question)) return;
               await runBatch(retryBtn, retryJob);
             };
             nd.appendChild(retryBtn);
