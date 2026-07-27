@@ -849,6 +849,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     if (!ap.includes(packName)) { ap.push(packName); settings.config.autoPacks = ap; settings.save(); }
     const proj = settings.config.activeProject || '';
     let pack = await db.packs.get(packName);
+    const packWasCreated = !pack;
     if (!pack) await db.packs.put({ name: packName, entryCount: 0, project: proj });
     else if (!options.skipSnapshot) await createSnapshot(packName, '자동 병합 전 백업', 'auto');
 
@@ -1091,7 +1092,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
           if (parties && parties.length >= 2) {
             const [c1, c2] = parties;
-            try { await C.recordFirstEncounter(c1, c2, { turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
+            try { await C.recordFirstEncounter(c1, c2, { chatKey, turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
           }
         }
         // Narrative Anchor: 보호 필드 복원
@@ -1155,7 +1156,9 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     if (processedCount > 0) {
       const count = await db.entries.where('packName').equals(packName).count();
       await db.packs.update(packName, { entryCount: count });
-      await setPackEnabled(packName, true);
+      // Enable a newly created extraction pack once. Respect a user's later
+      // decision to keep an existing pack disabled while extraction continues.
+      if (packWasCreated) await setPackEnabled(packName, true);
     }
     return processedCount;
   }
@@ -1245,19 +1248,26 @@ ${TEMPORAL_PATCH_SCHEMA}`;
   async function runAutoExtract(isManual = false) {
     if (_extQ.running) {
       if (isManual) throw new Error('이미 로어 추출이 진행 중입니다. 완료 후 다시 시도해 주세요.');
-      _extQ.pendingTurns++;
+      // This call is made once per automatic extraction interval, not once per
+      // chat turn. Preserve the whole interval so a slow request cannot leave
+      // an unscanned gap between the running pass and the queued pass.
+      _extQ.pendingTurns += Math.max(1, Number(settings.config.autoExtTurns) || 1);
       return;
     }
+    const carriedTurns = Math.max(0, Number(_extQ.pendingTurns) || 0);
     _extQ.running = true; _extQ.pendingTurns = 0; _extQ.manualPending = false;
     extBadgeShow('에리가 대화 분석 중');
-    try { await _doExtract(isManual); }
+    try { await _doExtract(isManual, carriedTurns); }
     finally {
       _extQ.running = false; extBadgeHide();
-      if (_extQ.pendingTurns > 0 || _extQ.manualPending) { const nextManual = _extQ.manualPending; setTimeout(() => runAutoExtract(nextManual), 500); }
+      if (_extQ.pendingTurns > 0 || _extQ.manualPending) {
+        const nextManual = _extQ.manualPending;
+        setTimeout(() => runAutoExtract(nextManual).catch(error => console.warn('[Lore:auto-extract] queued run failed:', error)), 500);
+      }
     }
   }
 
-  async function _doExtract(isManual) {
+  async function _doExtract(isManual, queuedExtraTurns = 0) {
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const apiType = settings.config.autoExtApiType || 'key';
     const missingReason = typeof _w.__LoreInj.getApiMissingReason === 'function'
@@ -1272,7 +1282,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       ? (settings.config.manualExtOffset != null ? settings.config.manualExtOffset : (settings.config.autoExtOffset || 0))
       : (settings.config.autoExtOffset || 0);
     const topics = normalizeExtractTopics(isManual ? settings.config.manualExtractTopics : settings.config.autoExtractTopics);
-    const extraTurns = _extQ.pendingTurns || 0;
+    const extraTurns = Math.max(0, Number(queuedExtraTurns) || 0);
     const effectiveRange = scanR + extraTurns; const fetchCount = (effectiveRange + scanOffset) * 2;
     let recentMsgs = await C.fetchLogs(fetchCount > 0 ? fetchCount : 20);
     if (!recentMsgs.length) { if (isManual) throw new Error('대화 기록 없음.'); return; }

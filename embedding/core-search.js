@@ -220,6 +220,12 @@
             const entry = entryMap[eb.entryId];
             if (!entry) continue;
             if (eb.packName && eb.packName !== entry.packName) continue;
+            // Vectors from different model spaces or dimensions are not
+            // comparable even when their source text is still current.
+            if (eb.model && eb.model !== model) continue;
+            if (!Array.isArray(eb.vector) || eb.vector.length !== queryVec.length) continue;
+            const expectedDocTask = model.includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : null;
+            if (expectedDocTask && eb.taskType && eb.taskType !== expectedDocTask) continue;
             if (C.embeddingSourceHash) {
               const expected = C.embeddingSourceHash(entry, eb.field || 'summary');
               if ((eb.sourceHash || eb.hash) !== expected) continue;

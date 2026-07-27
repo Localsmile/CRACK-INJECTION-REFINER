@@ -109,7 +109,9 @@
     // v1.4.0-test.38 B1+B2 fix: R.workerBusy/R.workerStartTime은 이제 refiner-queue가 노출함. 핸들 저장으로 누수 방지.
     _watchdogInterval = setInterval(() => {
       if (R.workerBusy && Date.now() - R.workerStartTime > R.WORKER_TIMEOUT) {
-        R.workerBusy = false; R.Core && R.Core.hideStatusBadge();
+        // Do not unlock a live request here. The provider call owns cancellation
+        // and timeout; clearing only the flag could start a duplicate API call.
+        R.Core && R.Core.hideStatusBadge();
         setRefinerState('timeout', '교정 처리 시간 초과');
       }
       if (_waitingSince && Date.now() - _waitingSince > 45000) {

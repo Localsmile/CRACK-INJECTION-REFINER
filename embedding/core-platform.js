@@ -17,6 +17,23 @@
     } catch (e) { return null; }
   }
 
+  function platformLogRole(log) {
+    const direct = String(log && (log.role || log.speaker || log.data?.role) || '').toLowerCase();
+    if (direct) return direct;
+    try { if (log && typeof log.isUser === 'function' && log.isUser()) return 'user'; } catch (_) {}
+    try { if (log && typeof log.isBot === 'function' && log.isBot()) return 'assistant'; } catch (_) {}
+    try { if (log && typeof log.isAssistant === 'function' && log.isAssistant()) return 'assistant'; } catch (_) {}
+    return '';
+  }
+
+  function platformLogText(log) {
+    if (!log) return '';
+    if (typeof log.content === 'string') return log.content;
+    if (typeof log.message === 'string') return log.message;
+    if (log.data) return platformLogText(log.data);
+    return '';
+  }
+
   async function fetchLogs(count) {
     const chatId = getCurrentChatId();
     if (!chatId) return [];
@@ -25,7 +42,9 @@
       if (!CU) return [];
       const items = await CU.chatRoom().extractLogs(chatId, { maxCount: count, naturalOrder: true });
       if (items instanceof Error || !Array.isArray(items)) return [];
-      return items.map(m => ({ role: m.role, message: m.content }));
+      return items
+        .map(m => ({ role: platformLogRole(m), message: platformLogText(m) }))
+        .filter(m => m.role && m.message);
     } catch (e) { return []; }
   }
 

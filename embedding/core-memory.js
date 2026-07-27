@@ -73,17 +73,29 @@
   }
 
   // 첫만남 추적
-  async function checkFirstEncounter(char1, char2) {
+  function normalizeEncounterPair(char1, char2) {
+    return [String(char1 || '').trim(), String(char2 || '').trim()].sort((a, b) => a.localeCompare(b));
+  }
+
+  async function checkFirstEncounter(char1, char2, chatKey = '') {
     const db = getDB();
-    let enc = await db.encounters.where({ char1, char2 }).first();
-    if (!enc) enc = await db.encounters.where({ char1: char2, char2: char1 }).first();
+    const [first, second] = normalizeEncounterPair(char1, char2);
+    if (!first || !second) return null;
+    const scope = String(chatKey || '');
+    let enc = await db.encounters.where({ chatKey: scope, char1: first, char2: second }).first();
+    // Rows created before v11 have an empty chatKey and may use the old direction.
+    if (!enc && !scope) enc = await db.encounters.where({ chatKey: '', char1: second, char2: first }).first();
     return enc || null;
   }
 
   async function recordFirstEncounter(char1, char2, data) {
     const db = getDB();
-    const existing = await checkFirstEncounter(char1, char2);
-    const turn = data.turnApprox || 0;
+    const payload = data || {};
+    const chatKey = String(payload.chatKey || '');
+    const [first, second] = normalizeEncounterPair(char1, char2);
+    if (!first || !second) return;
+    const existing = await checkFirstEncounter(first, second, chatKey);
+    const turn = payload.turnApprox || 0;
     if (existing) {
       await db.encounters.update(existing.id, {
         lastSeenTurn: turn,
@@ -92,37 +104,38 @@
       });
     } else {
       await db.encounters.put({
-        char1, char2,
-        location: data.location || '',
-        introducer: data.introducer || '',
+        chatKey,
+        char1: first, char2: second,
+        location: payload.location || '',
+        introducer: payload.introducer || '',
         turnApprox: turn,
         firstMetTurn: turn,
         lastSeenTurn: turn,
         totalEncounters: 1,
-        impressions: data.impressions || {},
+        impressions: payload.impressions || {},
         timestamp: Date.now(),
         lastSeenAt: Date.now()
       });
     }
   }
 
-  async function findUnmetPairs(activeNames) {
+  async function findUnmetPairs(activeNames, chatKey = '') {
     const unmet = [];
     for (let i = 0; i < activeNames.length; i++) {
       for (let j = i + 1; j < activeNames.length; j++) {
-        const enc = await checkFirstEncounter(activeNames[i], activeNames[j]);
+        const enc = await checkFirstEncounter(activeNames[i], activeNames[j], chatKey);
         if (!enc) unmet.push([activeNames[i], activeNames[j]]);
       }
     }
     return unmet;
   }
 
-  async function findReunionPairs(activeNames, currentTurn, minGap) {
+  async function findReunionPairs(activeNames, currentTurn, minGap, chatKey = '') {
     const gap = minGap || 10;
     const out = [];
     for (let i = 0; i < activeNames.length; i++) {
       for (let j = i + 1; j < activeNames.length; j++) {
-        const enc = await checkFirstEncounter(activeNames[i], activeNames[j]);
+        const enc = await checkFirstEncounter(activeNames[i], activeNames[j], chatKey);
         if (!enc) continue;
         const last = enc.lastSeenTurn != null ? enc.lastSeenTurn : (enc.firstMetTurn != null ? enc.firstMetTurn : (enc.turnApprox || 0));
         const diff = currentTurn - last;

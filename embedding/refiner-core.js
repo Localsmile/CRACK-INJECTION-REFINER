@@ -247,31 +247,31 @@
   // 메인 로직
   async function refineMessage(assistantText, force, enqueueCallback, requestedMsgId) {
     const config = ConfigGetter();
-    if (!config.refinerEnabled && !force) return;
+    if (!config.refinerEnabled && !force) return { handled: true, status: 'disabled' };
 
     Core.showStatusBadge('에리가 문장 훑는 중');
     const chatRoomId = Core.getCurrentChatId();
-    if (!chatRoomId) { Core.hideStatusBadge(); return; }
+    if (!chatRoomId) { Core.hideStatusBadge(); return { handled: true, status: 'no_chat' }; }
     const url = Core.getCurUrl();
     let targetLog = null;
     try { targetLog = await CrackUtil.chatRoom().findLastBotMessage(chatRoomId); } catch (_) {}
     if (!isAssistantLog(targetLog)) {
       R.lastState = { state: 'skipped', detail: 'AI 응답을 찾지 못함', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
       Core.hideStatusBadge();
-      return;
+      return { handled: true, status: 'no_target' };
     }
     const targetMsgId = targetLog.id || '';
     if (requestedMsgId && String(requestedMsgId) !== String(targetMsgId)) {
       R.lastState = { state: 'skipped', detail: '지난 AI 응답 교정 생략', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
       Core.hideStatusBadge();
-      return;
+      return { handled: true, status: 'stale_target' };
     }
     assistantText = String(targetLog.content || '');
     const releaseRefineLock = _acquireRefineLock(chatRoomId, targetMsgId, assistantText);
     if (!releaseRefineLock) {
       R.lastState = { state: 'skipped', detail: '중복 교정 요청 생략', at: Date.now(), queue: R.refineQueue ? R.refineQueue.length : 0, busy: !!R.workerBusy };
       Core.hideStatusBadge();
-      return;
+      return { handled: false, retryable: true, status: 'locked' };
     }
     let holdRefineLock = false;
 
@@ -447,10 +447,10 @@
         setTimeout(Core.hideStatusBadge, 2000);
       };
 
-      const isPass = text.includes(passWord) && text.length < passWord.length + 10;
+      const isPass = text.toLocaleUpperCase() === String(passWord).trim().toLocaleUpperCase();
       if (isPass) {
         finishPass('PASS');
-        return;
+        return { handled: true, status: 'pass' };
       }
 
       let parsed = null;
@@ -463,19 +463,19 @@
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Parsing Error: ' + text.slice(0, 50), isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
         if (ToastCallback) ToastCallback('에리: 응답 해석 실패, 원본 유지', '#a55');
-        return;
+        return { handled: false, retryable: true, status: 'parse_error' };
       }
 
       if (parsed && parsed.pass === true) {
         finishPass(parsed.reason || 'PASS');
-        return;
+        return { handled: true, status: 'pass' };
       }
 
       if (parsed && !parsed.replacements && !parsed.refined_text) {
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: '응답 구조 불명', isError: true, reason: parsed.reason || '(이유 없음)', model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
         Core.hideStatusBadge();
         if (ToastCallback) ToastCallback('에리: 응답 구조 불명', '#a55');
-        return;
+        return { handled: false, retryable: true, status: 'invalid_shape' };
       }
 
       if (parsed && (parsed.replacements || parsed.refined_text)) {
@@ -491,11 +491,11 @@
 
         if (normalizeRefinerText(correctedText) === normalizeRefinerText(assistantText)) {
           finishPass(parsed.reason || '교정 대상 변경 없음');
-          return;
+          return { handled: true, status: 'pass' };
         }
         if (isUserMessageEcho(correctedText, allMsgsForContext)) {
           finishPass('유저 입력이 교정본으로 반환되어 원본 유지');
-          return;
+          return { handled: true, status: 'user_echo_rejected' };
         }
 
         if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'Refined', isPass: false, refined: correctedText, reason: parsed.reason, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
@@ -583,22 +583,28 @@
                 if (newFingerprint) { _loadChat(_currentChatKey()).add(newFingerprint); saveProcessedFingerprints(); }
                 if (ToastCallback) ToastCallback(`에리가 고침 — ${parsed.reason}`, '#285');
                 console.log('[Refiner] PATCH 성공. id=', serverMessageId, 'status=', editResult.status, 'storeOk=', storeOk, 'rerenderOk=', rerenderOk, 'domResult=', domResult);
+                return true;
               } else {
                 console.error('[Refiner] PATCH 실패. status=', editResult.status, 'body=', (editText || '').slice(0, 300));
                 if (ToastCallback) ToastCallback(`에리: 서버 수정 실패 (${editResult.status})`, '#a55');
+                return false;
               }
             } else {
               if (ToastCallback) ToastCallback('에리: 대상 메시지 못 찾음, 로그에 보관', '#a55');
+              return false;
             }
           } catch (e) {
             if (ToastCallback) ToastCallback('에리: 수정 중 오류', '#a55');
+            return false;
+          } finally {
+            // 큐 다음 처리
+            if (enqueueCallback) setTimeout(enqueueCallback, 100);
           }
-          // 큐 다음 처리
-          if (enqueueCallback) setTimeout(enqueueCallback, 100);
         };
 
         if (config.refinerAutoMode) {
-          await applyRefinement(correctedText);
+          const applied = await applyRefinement(correctedText);
+          if (!applied) return { handled: false, retryable: true, status: 'apply_failed' };
         } else {
           const existingPopup = document.querySelector('#refiner-confirm-overlay');
           if (existingPopup) {
@@ -614,11 +620,13 @@
             );
           }
         }
+        return { handled: true, status: config.refinerAutoMode ? 'auto_applied' : 'proposal_ready' };
       }
     } catch (e) {
       if (LogCallback) LogCallback(url, { time: new Date().toLocaleTimeString(), original: assistantText, result: 'System Error: ' + e.message, isError: true, model: _refModel, elapsedMs: _refElapsedMs, cost: _refCost });
       Core.hideStatusBadge();
       if (ToastCallback) ToastCallback(`에리: 교정 실패 — ${e.message}`, '#a55');
+      return { handled: false, retryable: true, status: 'error', error: e.message || String(e) };
     }
     } finally {
       if (!holdRefineLock) releaseRefineLock();

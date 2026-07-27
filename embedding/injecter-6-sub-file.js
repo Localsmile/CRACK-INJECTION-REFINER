@@ -15,6 +15,7 @@
   const BACKUP_SCHEMA = 'crack-lore-full-backup';
   const BACKUP_VERSION = 1;
   const DB_TABLES = ['packs', 'entries', 'embeddings', 'workingMemory', 'encounters', 'entryVersions', 'snapshots'];
+  const CLEAR_ONLY_TABLES = ['cleanupQueue'];
   const HEAVY_HISTORY_TABLES = ['entryVersions', 'snapshots'];
   const LS_KEYS = ['lore-active-packs-v1', 'lore-turn-counters', 'lore-last-mention', 'lore-api-cost-log', 'lore-api-cost-cumulative', 'lore-local-migration-version', 'lore-local-migration-status'];
   const SECRET_SETTING_KEYS = ['autoExtKey', 'autoExtVertexJson', 'autoExtFirebaseScript', 'autoExtFirebaseEmbedKey', 'autoExtGeminiEmbedKey', 'autoExtDeepSeekKey', 'autoExtOpenAIKey', 'backupServerPassword', 'backupServerToken'];
@@ -188,8 +189,12 @@
         tables[name] = [];
         continue;
       }
-      try { tables[name] = db[name] ? await db[name].toArray() : []; }
-      catch (_) { tables[name] = []; }
+      if (!db[name]) {
+        tables[name] = [];
+        continue;
+      }
+      try { tables[name] = await db[name].toArray(); }
+      catch (error) { throw new Error('백업 데이터 읽기 실패 (' + name + '): ' + (error.message || String(error))); }
     }
     const localStorageData = {};
     for (const key of LS_KEYS) {
@@ -225,8 +230,8 @@
   }
 
   async function clearKnownTables() {
-    for (const name of [...DB_TABLES].reverse()) {
-      try { if (db[name]) await db[name].clear(); } catch (_) {}
+    for (const name of [...DB_TABLES, ...CLEAR_ONLY_TABLES].reverse()) {
+      if (db[name]) await db[name].clear();
     }
   }
 
@@ -379,110 +384,176 @@
     const conflictPlan = opts.conflictPlan || {};
     const packPlan = conflictPlan.packPlan || {};
     const entryConflictMode = conflictPlan.entryConflictMode || 'add_new';
-
-    if (replace) await clearKnownTables();
-
-    if (data.settings && (replace || opts.importSettings || conflictPlan.settingsMode)) applySettingsPolicy(data.settings, replace, { ...opts, settingsMode: conflictPlan.settingsMode, pageMode: conflictPlan.pageMode });
-
     const packs = Array.isArray(sourceDb.packs) ? sourceDb.packs : [];
-    if (!replace) {
-      for (const p of Object.values(packPlan)) {
-        if (p && p.action === 'replace' && p.targetName) await deletePackData(p.targetName);
-      }
-    }
-    for (const p of packs) {
-      if (!p || !p.name) continue;
-      const plan = !replace ? (packPlan[p.name] || { action: 'merge', targetName: p.name }) : { action: 'merge', targetName: p.name };
-      if (plan.action === 'skip') continue;
-      const targetName = plan.targetName || p.name;
-      try {
-        const cp = clonePlain(p);
-        cp.name = targetName;
-        if (replace || plan.action !== 'merge' || !(await db.packs.get(targetName))) await db.packs.put(cp);
-      } catch (_) {}
-    }
-
     const entries = Array.isArray(sourceDb.entries) ? sourceDb.entries : [];
     const touchedPacks = new Set();
-    for (const raw of entries) {
-      if (!raw || !raw.name) continue;
-      const oldId = raw.id;
-      const e = clonePlain(raw);
-      if (!e.packName) e.packName = '가져온 백업';
-      const plan = !replace ? (packPlan[e.packName] || { action: 'merge', targetName: e.packName }) : { action: 'merge', targetName: e.packName };
-      if (plan.action === 'skip') {
-        if (oldId != null) idMap[oldId] = null;
-        continue;
-      }
-      e.packName = plan.targetName || e.packName;
-      touchedPacks.add(e.packName);
-      if (!e.triggers) e.triggers = [e.name];
-      if (C.normalizeLoreEntry) Object.assign(e, C.normalizeLoreEntry(e, { source: 'backup_import' }));
-      if (replace) {
-        await db.entries.put(e);
-        if (oldId != null) idMap[oldId] = e.id != null ? e.id : oldId;
-      } else {
-        delete e.id;
-        const ex = await db.entries.where('packName').equals(e.packName).and(x => x.name === e.name).first();
-        if (ex) {
-          if (entryConflictMode === 'update') {
-            await db.entries.update(ex.id, e);
-            if (oldId != null) idMap[oldId] = ex.id;
-            try { if (C.invalidateEntryEmbeddings) await C.invalidateEntryEmbeddings(ex.id); } catch (_) {}
-          } else if (entryConflictMode === 'keep') {
-            if (oldId != null) idMap[oldId] = null;
-          } else {
-            const names = new Set((await db.entries.where('packName').equals(e.packName).toArray()).map(x => x.name));
-            e.name = uniqueName(e.name, names);
-            const newId = await db.entries.add(e);
-            if (oldId != null) idMap[oldId] = newId;
-          }
-        } else {
-          const newId = await db.entries.add(e);
-          if (oldId != null) idMap[oldId] = newId;
+    const embeddings = Array.isArray(sourceDb.embeddings) ? sourceDb.embeddings : [];
+    const pageMode = conflictPlan.pageMode || (replace ? 'backup' : 'add_missing');
+    const targetPack = (sourceName) => {
+      const name = sourceName || '가져온 백업';
+      const plan = !replace ? (packPlan[name] || { action: 'merge', targetName: name }) : { action: 'merge', targetName: name };
+      return { plan, name: plan.targetName || name };
+    };
+    const transactionTables = [...DB_TABLES, ...CLEAR_ONLY_TABLES].map(name => db[name]).filter(Boolean);
+    let importedEntries = 0;
+
+    await db.transaction('rw', ...transactionTables, async () => {
+      const deletePackRows = async (packName) => {
+        if (!packName) return;
+        const rows = await db.entries.where('packName').equals(packName).toArray();
+        const ids = rows.map(row => row && row.id).filter(id => id != null);
+        if (ids.length && db.embeddings) await db.embeddings.where('entryId').anyOf(ids).delete();
+        if (ids.length && db.entryVersions) await db.entryVersions.where('entryId').anyOf(ids).delete();
+        if (db.snapshots) await db.snapshots.where('packName').equals(packName).delete();
+        await db.entries.where('packName').equals(packName).delete();
+        await db.packs.delete(packName);
+      };
+
+      if (replace) await clearKnownTables();
+      else {
+        for (const plan of Object.values(packPlan)) {
+          if (plan && plan.action === 'replace' && plan.targetName) await deletePackRows(plan.targetName);
         }
       }
-    }
 
-    const embeddings = Array.isArray(sourceDb.embeddings) ? sourceDb.embeddings : [];
-    for (const raw of embeddings) {
-      if (!raw || raw.entryId == null) continue;
-      const newEntryId = replace ? raw.entryId : idMap[raw.entryId];
-      if (newEntryId == null) continue;
-      const emb = clonePlain(raw);
-      emb.entryId = newEntryId;
-      if (!replace) delete emb.id;
-      try { await db.embeddings.put(emb); } catch (_) {}
-    }
-
-    for (const name of ['workingMemory', 'encounters', 'entryVersions', 'snapshots']) {
-      const rows = Array.isArray(sourceDb[name]) ? sourceDb[name] : [];
-      if (!db[name]) continue;
-      for (const raw of rows) {
-        const row = clonePlain(raw);
-        if (!replace && row.id != null) delete row.id;
-        if (name === 'entryVersions' && row.entryId != null && idMap[row.entryId] != null) row.entryId = idMap[row.entryId];
-        try { await db[name].put(row); } catch (_) {}
+      for (const rawPack of packs) {
+        if (!rawPack || !rawPack.name) continue;
+        const resolved = targetPack(rawPack.name);
+        if (resolved.plan.action === 'skip') continue;
+        const copy = clonePlain(rawPack);
+        copy.name = resolved.name;
+        if (replace || resolved.plan.action !== 'merge' || !(await db.packs.get(resolved.name))) await db.packs.put(copy);
       }
-    }
 
-    for (const packName of touchedPacks) {
-      if (!packName) continue;
-      const exists = await db.packs.get(packName);
-      if (!exists) await db.packs.put({ name: packName, entryCount: 0, project: settings.config.activeProject || '' });
-    }
+      for (const raw of entries) {
+        if (!raw || !raw.name) continue;
+        const oldId = raw.id;
+        const entry = clonePlain(raw);
+        const resolved = targetPack(entry.packName || '가져온 백업');
+        if (resolved.plan.action === 'skip') {
+          if (oldId != null) idMap[oldId] = null;
+          continue;
+        }
+        entry.packName = resolved.name;
+        if (!entry.triggers) entry.triggers = [entry.name];
+        if (C.normalizeLoreEntry) Object.assign(entry, C.normalizeLoreEntry(entry, { source: 'backup_import' }));
+        if (replace) {
+          await db.entries.put(entry);
+          if (oldId != null) idMap[oldId] = entry.id != null ? entry.id : oldId;
+          touchedPacks.add(entry.packName);
+          importedEntries++;
+          continue;
+        }
 
-    const allPacks = await db.packs.toArray();
-    for (const p of allPacks) {
-      const count = await db.entries.where('packName').equals(p.name).count();
-      if (count <= 0) await deletePackData(p.name);
-      else await db.packs.update(p.name, { entryCount: count });
+        delete entry.id;
+        const existing = await db.entries.where('packName').equals(entry.packName).and(item => item.name === entry.name).first();
+        if (!existing) {
+          const newId = await db.entries.add(entry);
+          if (oldId != null) idMap[oldId] = newId;
+          touchedPacks.add(entry.packName);
+          importedEntries++;
+        } else if (entryConflictMode === 'update') {
+          await db.entries.update(existing.id, entry);
+          if (db.embeddings) await db.embeddings.where('entryId').equals(existing.id).delete();
+          if (oldId != null) idMap[oldId] = existing.id;
+          touchedPacks.add(entry.packName);
+          importedEntries++;
+        } else if (entryConflictMode === 'keep') {
+          if (oldId != null) idMap[oldId] = null;
+        } else {
+          const names = new Set((await db.entries.where('packName').equals(entry.packName).toArray()).map(item => item.name));
+          entry.name = uniqueName(entry.name, names);
+          const newId = await db.entries.add(entry);
+          if (oldId != null) idMap[oldId] = newId;
+          touchedPacks.add(entry.packName);
+          importedEntries++;
+        }
+      }
+
+      for (const raw of embeddings) {
+        if (!raw || raw.entryId == null) continue;
+        const newEntryId = replace ? raw.entryId : idMap[raw.entryId];
+        if (newEntryId == null) continue;
+        const embedding = clonePlain(raw);
+        embedding.entryId = newEntryId;
+        if (!replace) delete embedding.id;
+        await db.embeddings.put(embedding);
+      }
+
+      const workingRows = Array.isArray(sourceDb.workingMemory) ? sourceDb.workingMemory : [];
+      if (db.workingMemory && (replace || pageMode !== 'current')) {
+        for (const raw of workingRows) {
+          const row = clonePlain(raw);
+          if (!row || !row.url) continue;
+          if (!replace && pageMode === 'add_missing' && await db.workingMemory.get(row.url)) continue;
+          await db.workingMemory.put(row);
+        }
+      }
+
+      const encounterRows = Array.isArray(sourceDb.encounters) ? sourceDb.encounters : [];
+      if (db.encounters && (replace || pageMode !== 'current')) {
+        for (const raw of encounterRows) {
+          const row = clonePlain(raw);
+          if (!row || !row.char1 || !row.char2) continue;
+          const pair = [String(row.char1), String(row.char2)].sort((a, b) => a.localeCompare(b));
+          row.chatKey = String(row.chatKey || '');
+          row.char1 = pair[0]; row.char2 = pair[1];
+          const existing = await db.encounters.where({ chatKey: row.chatKey, char1: row.char1, char2: row.char2 }).first();
+          if (!replace && pageMode === 'add_missing' && existing) continue;
+          if (existing) row.id = existing.id;
+          else if (!replace) delete row.id;
+          await db.encounters.put(row);
+        }
+      }
+
+      const versionRows = Array.isArray(sourceDb.entryVersions) ? sourceDb.entryVersions : [];
+      if (db.entryVersions) {
+        for (const raw of versionRows) {
+          const row = clonePlain(raw);
+          if (!replace) {
+            const mappedId = idMap[row.entryId];
+            if (mappedId == null) continue;
+            delete row.id;
+            row.entryId = mappedId;
+          }
+          await db.entryVersions.put(row);
+        }
+      }
+
+      const snapshotRows = Array.isArray(sourceDb.snapshots) ? sourceDb.snapshots : [];
+      if (db.snapshots) {
+        for (const raw of snapshotRows) {
+          const row = clonePlain(raw);
+          const resolved = targetPack(row.packName || '가져온 백업');
+          if (resolved.plan.action === 'skip') continue;
+          row.packName = resolved.name;
+          if (Array.isArray(row.data)) row.data = row.data.map(entry => ({ ...entry, packName: resolved.name }));
+          if (!replace) delete row.id;
+          await db.snapshots.put(row);
+        }
+      }
+
+      for (const packName of touchedPacks) {
+        if (!packName) continue;
+        if (!(await db.packs.get(packName))) await db.packs.put({ name: packName, entryCount: 0, project: settings.config.activeProject || '' });
+      }
+      const currentPacks = await db.packs.toArray();
+      for (const pack of currentPacks) {
+        const count = await db.entries.where('packName').equals(pack.name).count();
+        if (count <= 0) await deletePackRows(pack.name);
+        else await db.packs.update(pack.name, { entryCount: count });
+      }
+    });
+
+    if (data.settings && (replace || opts.importSettings || conflictPlan.settingsMode)) {
+      applySettingsPolicy(data.settings, replace, { ...opts, settingsMode: conflictPlan.settingsMode, pageMode: conflictPlan.pageMode });
     }
 
     applyLocalStoragePolicy(data.localStorage, replace, { ...opts, includeSecrets, pageMode: conflictPlan.pageMode });
 
     settings.load();
-    return { packs: allPacks.length, entries: entries.length, embeddings: embeddings.length, touchedPacks: Array.from(touchedPacks), mode };
+    const finalPackCount = await db.packs.count();
+    return { packs: finalPackCount, entries: importedEntries, embeddings: embeddings.length, touchedPacks: Array.from(touchedPacks), mode };
   }
 
   function showBackupImportDialog(analysis) {

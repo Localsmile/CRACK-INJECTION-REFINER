@@ -145,7 +145,8 @@
     const keys = Object.keys(map).slice(-Math.max(1, maxKeys || 20));
     for (const key of keys) {
       const arr = Array.isArray(map[key]) ? map[key] : [];
-      out[key] = arr.slice(-Math.max(0, maxItems || 20));
+      // Activity logs are newest-first (unshift). Keep the recent rows.
+      out[key] = arr.slice(0, Math.max(0, maxItems || 20));
     }
     return out;
   }
@@ -1132,7 +1133,9 @@
   }
 
   function getMigrationStatus() {
-    return settings.config.migrationStatus || JSON.parse(_ls.getItem('lore-local-migration-status') || 'null') || null;
+    if (settings.config.migrationStatus) return settings.config.migrationStatus;
+    try { return JSON.parse(_ls.getItem('lore-local-migration-status') || 'null') || null; }
+    catch (_) { return null; }
   }
 
   settings.load();
@@ -1268,13 +1271,21 @@
   function incrementTurnCounter(chatKey) { return C.incrementTurn(chatKey); }
   function recordEntryMention(chatKey, entryId) { return C.recordMention(chatKey, entryId); }
   function getTurnCounter(chatKey) {
-    const c = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    return c[chatKey] || 0;
+    try {
+      const c = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
+      return c && typeof c === 'object' ? (Number(c[chatKey]) || 0) : 0;
+    } catch (_) {
+      return 0;
+    }
   }
   function setTurnCounter(chatKey, val) {
-    const c = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    c[chatKey] = val;
-    _ls.setItem('lore-turn-counters', JSON.stringify(c));
+    let c = {};
+    try {
+      const parsed = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) c = parsed;
+    } catch (_) {}
+    c[chatKey] = Number(val) || 0;
+    try { _ls.setItem('lore-turn-counters', JSON.stringify(c)); } catch (_) {}
   }
   function getCooldownMap(chatKey) {
     if (!settings.config.urlCooldownMaps) settings.config.urlCooldownMaps = {};
@@ -1415,7 +1426,7 @@
       hasOwn(activeMap, curUrl) ? activeMap[curUrl] :
       (hasOwn(activeMap, stableKey) ? activeMap[stableKey] : up[curUrl])
     );
-    up[curUrl] = normalizePackList(up[curUrl].length ? up[curUrl] : currentActive);
+    up[curUrl] = currentActive;
     if (state) {
       if (!up[curUrl].includes(packName)) up[curUrl].push(packName);
       const its = await db.entries.where('packName').equals(packName).toArray();
@@ -1443,7 +1454,7 @@
       hasOwn(activeMap, curUrl) ? activeMap[curUrl] :
       (hasOwn(activeMap, stableKey) ? activeMap[stableKey] : up[curUrl])
     );
-    up[curUrl] = normalizePackList(up[curUrl].length ? up[curUrl] : currentActive);
+    up[curUrl] = currentActive;
     if (state) {
       ud[curUrl] = ud[curUrl].filter(id => id !== entry.id);
       if (!up[curUrl].includes(entry.packName)) up[curUrl].push(entry.packName);

@@ -9,7 +9,7 @@
 
   // 버전 / 최종 마이그레이션 타깃
   const VER = '1.4.0-test';
-  const DB_SCHEMA_VERSION = 10;
+  const DB_SCHEMA_VERSION = 11;
   const LOCAL_MIGRATION_VERSION = '1.4.0-test-pass11-local';
   const TIMELINE_EVENT_TYPE = 'timeline_event';
   const TIMELINE_SCHEMA_VERSION = 1;
@@ -190,6 +190,20 @@ Entries:
       entryVersions: '++id, entryId, ts, turn',
       cleanupQueue: 'id, chatId, chatKey, status, createdAt, completedAt'
     });
+    // v11: encounter state is scoped per chat. The old global pair index could
+    // leak a meeting/reunion from one RP room into another room using the same names.
+    _db.version(11).stores({
+      entries: '++id, name, type, packName, project, rootId, isCurrentArc, createdTurn, updatedTurn, lastMentionedTurn, eventTurn, sceneId, arcId, realTimestamp, *entities, *subjects, *objects, *locations, *promises, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, packName, model, field, sourceHash, entryUpdatedAt, schemaVersion, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, chatKey, &[chatKey+char1+char2], lastSeenTurn',
+      entryVersions: '++id, entryId, ts, turn',
+      cleanupQueue: 'id, chatId, chatKey, status, createdAt, completedAt'
+    }).upgrade(tx => tx.table('encounters').toCollection().modify(row => {
+      if (!row.chatKey) row.chatKey = '';
+    }));
     return _db;
   }
 
@@ -1201,7 +1215,7 @@ Entries:
       const embHeaders = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
       if (apiTexts.length === 1) {
         const url = _gBase + model + ':embedContent';
-        const bodyObj = { content: { parts: [{ text: apiTexts[0] }] }, output_dimensionality: dimensions };
+        const bodyObj = { content: { parts: [{ text: apiTexts[0] }] }, outputDimensionality: dimensions };
         if (model.includes('embedding-001')) bodyObj.taskType = taskType;
         const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) }, '임베딩 API 실패');
         const embs = json.embeddings || [json.embedding];
@@ -1239,8 +1253,13 @@ Entries:
   }
 
   function cosineSim(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || !a.length || a.length !== b.length) return 0;
     let dot = 0, na = 0, nb = 0;
-    for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    for (let i = 0; i < a.length; i++) {
+      const av = Number(a[i]), bv = Number(b[i]);
+      if (!Number.isFinite(av) || !Number.isFinite(bv)) return 0;
+      dot += av * bv; na += av * av; nb += bv * bv;
+    }
     const denom = Math.sqrt(na) * Math.sqrt(nb);
     return denom === 0 ? 0 : dot / denom;
   }
@@ -1252,6 +1271,28 @@ Entries:
 
   // 설정/턴 유틸
   const _ls = (typeof unsafeWindow !== 'undefined') ? unsafeWindow.localStorage : localStorage;
+  const _runtimeStateFallback = Object.create(null);
+
+  function readStateMap(key) {
+    try {
+      const parsed = JSON.parse(_ls.getItem(key) || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        _runtimeStateFallback[key] = parsed;
+        return parsed;
+      }
+    } catch (_) {}
+    return { ...(_runtimeStateFallback[key] || {}) };
+  }
+
+  function writeStateMap(key, value) {
+    _runtimeStateFallback[key] = value;
+    try {
+      _ls.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   function loadSettings(key, defaults) {
     try {
@@ -1266,18 +1307,18 @@ Entries:
   }
 
   function incrementTurn(url) {
-    const counters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
-    counters[url] = (counters[url] || 0) + 1;
-    _ls.setItem('lore-turn-counters', JSON.stringify(counters));
+    const counters = readStateMap('lore-turn-counters');
+    counters[url] = (Number(counters[url]) || 0) + 1;
+    writeStateMap('lore-turn-counters', counters);
     return counters[url];
   }
 
   function recordMention(url, entryId) {
-    const all = JSON.parse(_ls.getItem('lore-last-mention') || '{}');
+    const all = readStateMap('lore-last-mention');
     if (!all[url]) all[url] = {};
-    const counters = JSON.parse(_ls.getItem('lore-turn-counters') || '{}');
+    const counters = readStateMap('lore-turn-counters');
     all[url][entryId] = counters[url] || 0;
-    _ls.setItem('lore-last-mention', JSON.stringify(all));
+    writeStateMap('lore-last-mention', all);
   }
 
   function estimateTextTokens(text) {

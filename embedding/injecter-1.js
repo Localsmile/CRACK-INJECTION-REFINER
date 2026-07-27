@@ -10,6 +10,22 @@
   const _origFetch = _w.fetch.bind(_w);
   const _origWsSend = _w.WebSocket.prototype.send;
   let _injectFn = null;
+  const _injectInFlight = new Map();
+  const INJECTION_DEDUPE_MS = 1500;
+
+  function runInjection(original) {
+    const key = String(_w.location && _w.location.pathname || '') + '\u0000' + String(original || '');
+    const cached = _injectInFlight.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.task;
+    const task = Promise.resolve().then(() => _injectFn(original));
+    const record = { task, expiresAt: Date.now() + INJECTION_DEDUPE_MS };
+    _injectInFlight.set(key, record);
+    task.then(
+      () => setTimeout(() => { if (_injectInFlight.get(key) === record) _injectInFlight.delete(key); }, INJECTION_DEDUPE_MS),
+      () => { if (_injectInFlight.get(key) === record) _injectInFlight.delete(key); }
+    );
+    return task;
+  }
 
   // WebSocket 인터셉터
   _w.WebSocket.prototype.send = function(data){
@@ -24,7 +40,7 @@
               const orig = arr[1].message;
               (async () => {
                 try {
-                  const mod = await _injectFn(orig);
+                  const mod = await runInjection(orig);
                   if (orig !== mod) {
                     arr[1].message = mod;
                     _origWsSend.call(ws, prefix + JSON.stringify(arr));
@@ -65,7 +81,7 @@
                   if (body.messages[i].role === 'user' && typeof body.messages[i].content === 'string') {
                     if (!body.messages[i].content.includes('OOC:')) {
                       const original = body.messages[i].content;
-                      body.messages[i].content = await _injectFn(original);
+                      body.messages[i].content = await runInjection(original);
                       if (original !== body.messages[i].content) injected = true;
                     }
                     break;
@@ -77,7 +93,7 @@
                   if (body[key] !== undefined && typeof body[key] === 'string') {
                     if (!body[key].includes('OOC:')) {
                       const original = body[key];
-                      body[key] = await _injectFn(original);
+                      body[key] = await runInjection(original);
                       if (original !== body[key]) injected = true;
                     }
                     break;
@@ -89,7 +105,7 @@
                   if (body.variables[key] !== undefined && typeof body.variables[key] === 'string') {
                     if (!body.variables[key].includes('OOC:')) {
                       const original = body.variables[key];
-                      body.variables[key] = await _injectFn(original);
+                      body.variables[key] = await runInjection(original);
                       if (original !== body.variables[key]) injected = true;
                     }
                     break;

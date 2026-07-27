@@ -9,20 +9,24 @@
   if (R.__queueLoaded) return;
 
   const refineQueue = [];
+  const inFlightFingerprints = new Set();
+  const retryAfterByFingerprint = new Map();
   // v1.4.0-test.38 B1 fix: workerBusy/workerStartTime을 R에 노출. observer 워치독이 읽음.
   R.workerBusy = false;
   R.workerStartTime = 0;
-  const WORKER_TIMEOUT = 90000;
+  const WORKER_TIMEOUT = 240000;
 
   function enqueueRefine(text, msgId) {
-    R.lastState = { state: 'queued', detail: '교정 대기열에 추가됨', at: Date.now(), queue: refineQueue.length + 1, busy: !!R.workerBusy };
     const fingerprints = R.getProcessedFingerprints();
     const fingerprint = msgId || text.slice(0, 40);
     if (fingerprints.has(fingerprint)) {
       R.Core && R.Core.hideStatusBadge(); return;
     }
+    if (inFlightFingerprints.has(fingerprint)) return;
+    if ((retryAfterByFingerprint.get(fingerprint) || 0) > Date.now()) return;
     if (refineQueue.some(item => item.fingerprint === fingerprint)) return;
     refineQueue.push({ text, msgId: msgId || '', fingerprint, enqueuedAt: Date.now() });
+    R.lastState = { state: 'queued', detail: '교정 대기열에 추가됨', at: Date.now(), queue: refineQueue.length, busy: !!R.workerBusy };
     processQueue();
   }
 
@@ -30,9 +34,10 @@
     if (refineQueue.length === 0) return;
     if (document.querySelector('#refiner-confirm-overlay')) return;
     if (R.workerBusy) {
-      if (Date.now() - R.workerStartTime > WORKER_TIMEOUT) {
-        R.workerBusy = false; R.Core && R.Core.hideStatusBadge();
-      } else return;
+      // Provider calls have their own bounded timeout/retry policy. Releasing
+      // this lock cannot cancel the old request and would allow two corrections
+      // for the same response to overlap.
+      return;
     }
     R.workerBusy = true;
     R.workerStartTime = Date.now();
@@ -46,16 +51,23 @@
       if (refineQueue.length > 0) processQueue();
       return;
     }
-    fingerprints.add(item.fingerprint);
-    R.saveProcessedFingerprints();
+    inFlightFingerprints.add(item.fingerprint);
     try {
-      await Promise.race([
-        R.refineMessage(item.text, false, processQueue, item.msgId),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('refineMessage 60초 타임아웃')), 60000))
-      ]);
+      const result = await R.refineMessage(item.text, false, processQueue, item.msgId);
+      if (result && result.handled === true) {
+        fingerprints.add(item.fingerprint);
+        R.saveProcessedFingerprints();
+        retryAfterByFingerprint.delete(item.fingerprint);
+      } else {
+        retryAfterByFingerprint.set(item.fingerprint, Date.now() + 30000);
+        R.lastState = { state: 'error', detail: '교정 재시도 대기', at: Date.now(), queue: refineQueue.length, busy: false };
+      }
     } catch (e) {
       R.Core && R.Core.hideStatusBadge();
+      retryAfterByFingerprint.set(item.fingerprint, Date.now() + 30000);
       R.lastState = { state: 'error', detail: e.message || String(e), at: Date.now(), queue: refineQueue.length, busy: false };
+    } finally {
+      inFlightFingerprints.delete(item.fingerprint);
     }
 
     // B6 fix: 중복 add/save 제거 (위 try 진입 전 이미 처리됨)

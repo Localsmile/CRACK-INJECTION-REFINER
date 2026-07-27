@@ -247,7 +247,12 @@
 
   function messageRoleOf(log) {
     if (!log) return '';
-    return log.role || log.speaker || log.data?.role || '';
+    const direct = String(log.role || log.speaker || log.data?.role || '').toLowerCase();
+    if (direct) return direct;
+    try { if (typeof log.isUser === 'function' && log.isUser()) return 'user'; } catch (_) {}
+    try { if (typeof log.isBot === 'function' && log.isBot()) return 'assistant'; } catch (_) {}
+    try { if (typeof log.isAssistant === 'function' && log.isAssistant()) return 'assistant'; } catch (_) {}
+    return '';
   }
 
   function buildInjectedMessage(originalText, injectedText, position) {
@@ -346,7 +351,7 @@
     }
     if (idx < 0) return null;
     let count = 0;
-    for (let i = idx + 1; i < logs.length; i++) if (logs[i] && logs[i].role === 'user') count++;
+    for (let i = idx + 1; i < logs.length; i++) if (logs[i] && messageRoleOf(logs[i]) === 'user') count++;
     return count;
   }
 
@@ -741,7 +746,9 @@
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const turnCounter = incrementTurnCounter(chatKey);
     scheduleInjectionCleanup('turn-start', 2500);
-    if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
+    if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) {
+      setTimeout(() => runAutoExtract(false).catch(error => console.warn('[Lore:auto-extract] scheduled run failed:', error)), 100);
+    }
     if (settings.config.enabled === false) {
       addInjLog(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
@@ -1036,7 +1043,7 @@
     let honorifics = '';
     if (config.honorificMatrixEnabled !== false) honorifics = C.formatHonorificMatrix(C.buildHonorificMatrix(enabled, activeNames), 80);
     let unmetPairs = [];
-    if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames); } catch(e) {}
+    if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames, chatKey); } catch(e) {}
     if (unmetPairs.length > 0) {
       const knownPairs = new Set();
       for (const r of enabled) {
@@ -1076,7 +1083,7 @@
     let reunionTags = '';
     if (config.firstEncounterWarning !== false) {
       try {
-        const reunions = await C.findReunionPairs(activeNames, turnCounter, 10);
+        const reunions = await C.findReunionPairs(activeNames, turnCounter, 10, chatKey);
         if (reunions.length > 0) {
           reunionTags = reunions.slice(0, 2).map(r => C.formatReunionTag(r.pair, r.gap)).join('\n');
         }
@@ -1088,7 +1095,7 @@
       for (let i = 0; i < activeNames.length; i++) {
         for (let j = i + 1; j < activeNames.length; j++) {
           try {
-            await C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter });
+            await C.recordFirstEncounter(activeNames[i], activeNames[j], { chatKey, turnApprox: turnCounter });
           } catch(e) {}
         }
       }

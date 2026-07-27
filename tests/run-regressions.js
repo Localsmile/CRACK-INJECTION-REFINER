@@ -96,6 +96,8 @@ async function testKernelHelpers() {
 
   assert(C.estimateTextTokens('안녕하세요') >= 4, 'CJK token estimate is unexpectedly low');
   assert(C.estimateTextTokens('hello world') >= 2, 'Latin token estimate is unexpectedly low');
+  assert.strictEqual(C.cosineSim([1, 0], [1]), 0, 'mismatched embedding dimensions should not produce a score');
+  assert.strictEqual(C.cosineSim([1, 0], [1, Number.NaN]), 0, 'invalid embedding values should not produce NaN');
 
   const shortTurns = [];
   for (let i = 0; i < 12; i++) {
@@ -240,6 +242,8 @@ async function testKernelHelpers() {
   assert(String(embedding2Request.url).includes('generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent'), 'Embedding 2 did not use the Gemini Developer API endpoint');
   const embedding2Body = JSON.parse(embedding2Request.data);
   assert.strictEqual(embedding2Body.content.parts[0].text, 'task: search result | query: 찾고 싶은 사건', 'Embedding 2 query instruction is missing');
+  assert.strictEqual(embedding2Body.outputDimensionality, 2, 'single embedding request uses the wrong REST dimension field');
+  assert(!Object.prototype.hasOwnProperty.call(embedding2Body, 'output_dimensionality'), 'single embedding request still uses the SDK-style snake_case field');
   assert(!Object.prototype.hasOwnProperty.call(embedding2Body, 'taskType'), 'Embedding 2 sent the unsupported taskType field');
 
   vm.runInContext(read('embedding/core-importer.js'), context, { filename: 'core-importer.js' });
@@ -372,6 +376,59 @@ async function testKernelHelpers() {
   assert(importantLine.entities.includes('A'), 'important-line speaker is missing from entities');
 }
 
+async function testRuntimeCompatibilityHelpers() {
+  const encounterKernel = await loadKernel();
+  const encounterRows = [];
+  let encounterId = 1;
+  const encounterTable = {
+    where(query) {
+      return {
+        first: async () => encounterRows.find(row => Object.entries(query).every(([key, value]) => row[key] === value)) || null
+      };
+    },
+    async update(id, patch) {
+      const row = encounterRows.find(item => item.id === id);
+      if (row) Object.assign(row, patch);
+    },
+    async put(row) {
+      const copy = JSON.parse(JSON.stringify(row));
+      if (copy.id == null) copy.id = encounterId++;
+      const index = encounterRows.findIndex(item => item.id === copy.id);
+      if (index >= 0) encounterRows[index] = copy;
+      else encounterRows.push(copy);
+      return copy.id;
+    }
+  };
+  encounterKernel.C.getDB = () => ({ encounters: encounterTable });
+  vm.runInContext(read('embedding/core-memory.js'), encounterKernel.context, { filename: 'core-memory.js' });
+  await encounterKernel.C.recordFirstEncounter('리아', '서윤', { chatKey: 'chat:A', turnApprox: 3 });
+  assert(await encounterKernel.C.checkFirstEncounter('서윤', '리아', 'chat:A'), 'same-chat encounter was not found in canonical pair order');
+  assert.strictEqual(await encounterKernel.C.checkFirstEncounter('서윤', '리아', 'chat:B'), null, 'encounter state leaked into another chat');
+  assert.deepStrictEqual(
+    Array.from(await encounterKernel.C.findUnmetPairs(['서윤', '리아'], 'chat:B')).map(pair => Array.from(pair)),
+    [['서윤', '리아']],
+    'a new chat did not report its own unmet pair'
+  );
+
+  const platformKernel = await loadKernel();
+  platformKernel.context.CrackUtil = {
+    path: () => ({ chatRoom: () => 'room-1' }),
+    chatRoom: () => ({
+      extractLogs: async () => [
+        { content: '사용자 입력', isUser: () => true },
+        { message: 'AI 응답', isBot: () => true }
+      ]
+    })
+  };
+  vm.runInContext(read('embedding/core-platform.js'), platformKernel.context, { filename: 'core-platform.js' });
+  const normalizedLogs = await platformKernel.C.fetchLogs(2);
+  assert.deepStrictEqual(
+    Array.from(normalizedLogs, row => ({ role: row.role, message: row.message })),
+    [{ role: 'user', message: '사용자 입력' }, { role: 'assistant', message: 'AI 응답' }],
+    'method-based CrackUtil logs were not normalized'
+  );
+}
+
 function testPromptContract() {
   const context = { console };
   context.window = context;
@@ -454,14 +511,19 @@ function testSourceContracts() {
   assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
   assert(!settings.includes('cleanupStaleEmbeddings(null'), 'startup migration still deletes existing embeddings');
   assert(settings.includes("if (isGemini25)") && settings.includes('thinkingBudget:'), 'Gemini 2.5 thinking-budget behavior was removed');
+  assert(settings.includes('arr.slice(0, Math.max(0, maxItems || 20))'), 'settings compaction does not preserve newest-first activity logs');
+  assert(settings.match(/up\[curUrl\] = currentActive;/g)?.length >= 2, 'pack toggles can revive stale active-pack settings');
 
   const kernel = read('embedding/core-kernel.js');
   const coreEmbedding = read('embedding/core-embedding.js');
+  const coreMemory = read('embedding/core-memory.js');
   assert(kernel.includes('function enqueueEmbeddingApi') && kernel.includes('embeddingMinGapMs'), 'embedding calls are not globally serialized');
   assert(!kernel.includes('activeMaxOutputTokens'), 'Gemini output limits are still being rewritten internally');
   assert(coreEmbedding.includes('if (isTransientEmbeddingFailure(batchError)) throw batchError'), '429/5xx batch failures still fan out into individual calls');
   assert(coreEmbedding.includes('const EMBED_BATCH_GAP_MS = 1200'), 'embedding batch pacing is too aggressive for low-quota keys');
   assert(coreEmbedding.lastIndexOf('cleanup = await cleanupStaleEmbeddings(packName, apiOpts)') > coreEmbedding.indexOf('await runBatches(pendingConditions'), 'old embeddings are deleted before replacement generation succeeds');
+  assert(kernel.includes('const DB_SCHEMA_VERSION = 11') && kernel.includes('&[chatKey+char1+char2]'), 'encounter state is not isolated per chat');
+  assert(coreMemory.includes('checkFirstEncounter(char1, char2, chatKey') && coreMemory.includes('payload.chatKey'), 'encounter helpers ignore the current chat scope');
 
   const menu = read('embedding/injecter-6.js');
   for (const label of ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', 'API 설정', '활동', '도움말']) {
@@ -493,6 +555,17 @@ function testSourceContracts() {
   assert(injectionSource.includes('settings.config.injectionCleanupTurns || item.cleanupAfterTurns'), 'current cleanup retention does not apply to existing queue items');
   assert(injectionSource.includes("scheduleInjectionCleanup('fallback-drain', 5000)"), 'fallback cleanup does not drain an eligible backlog');
   assert(injectionSource.includes("scheduleInjectionCleanup('queue-drain', 5000)"), 'tracked cleanup does not drain an eligible backlog');
+  assert(injectionSource.includes("typeof log.isUser === 'function'") && injectionSource.includes('messageRoleOf(logs[i])'), 'cleanup does not support method-based CrackUtil user logs');
+  assert(injectionSource.includes('C.findUnmetPairs(activeNames, chatKey)') && injectionSource.includes('C.findReunionPairs(activeNames, turnCounter, 10, chatKey)'), 'live encounter lookup is not scoped to the current chat');
+
+  const interceptor = read('embedding/injecter-1.js');
+  assert(interceptor.includes('const _injectInFlight = new Map()') && interceptor.includes('const INJECTION_DEDUPE_MS = 1500') && interceptor.includes('runInjection(original)'), 'adjacent transport hooks can run the same injection twice');
+
+  const search = read('embedding/core-search.js');
+  assert(search.includes('eb.model !== model') && search.includes('eb.vector.length !== queryVec.length'), 'hybrid search can compare stale vectors from another model space');
+
+  const platform = read('embedding/core-platform.js');
+  assert(platform.includes("typeof log.isUser === 'function'") && platform.includes("typeof log.isBot === 'function'"), 'platform log normalization depends only on role fields');
 
   const apiUi = read('embedding/injecter-6-sub-api.js');
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');
@@ -520,12 +593,13 @@ function testSourceContracts() {
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
   assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
   assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');
+  assert(extraction.includes('_extQ.pendingTurns += Math.max(1, Number(settings.config.autoExtTurns) || 1)') && extraction.includes('_doExtract(isManual, carriedTurns)'), 'automatic extraction can leave an unscanned gap while a prior pass is running');
+  assert(extraction.includes('if (packWasCreated) await setPackEnabled(packName, true)'), 'automatic extraction re-enables an existing pack against the user selection');
   const featureGenerationSources = [extraction, read('embedding/core-importer.js'), refinerCore, injection, read('embedding/core-search.js'), apiUi];
   assert(featureGenerationSources.every(source => !source.includes('maxOutputTokens')), 'a feature still imposes a separate generation output limit');
   const mainUi = read('embedding/injecter-6-sub-main.js');
   assert(mainUi.includes("extractRemaining + '턴 남음'"), 'home does not show turns remaining until automatic extraction');
 
-  const platform = read('embedding/core-platform.js');
   assert(platform.includes('{ maxCount: count, naturalOrder: true }'), 'recent-message order is implicit');
 
   const importer = read('embedding/core-importer.js');
@@ -547,6 +621,17 @@ function testSourceContracts() {
   assert(!settings.includes('deletePackData, cleanupUnusedLoreStorage,'), 'manual storage cleanup remains publicly exposed');
 
   const fileUi = read('embedding/injecter-6-sub-file.js');
+  const backupImport = fileUi.slice(fileUi.indexOf('async function importFullBackup'), fileUi.indexOf('function showBackupImportDialog'));
+  assert(fileUi.includes("const CLEAR_ONLY_TABLES = ['cleanupQueue']"), 'full replacement leaves stale injection-cleanup work behind');
+  assert(backupImport.includes("await db.transaction('rw', ...transactionTables"), 'backup restore is not atomic');
+  assert(backupImport.indexOf("await db.transaction('rw', ...transactionTables") < backupImport.indexOf('applySettingsPolicy(data.settings'), 'settings are changed before database restore commits');
+  assert(backupImport.includes('const mappedId = idMap[row.entryId]') && backupImport.includes('if (mappedId == null) continue'), 'merged entry history can attach to an unrelated old entry id');
+  assert(backupImport.includes('row.packName = resolved.name'), 'snapshot pack references are not remapped during merge');
+  const keepConflictBranch = backupImport.slice(
+    backupImport.indexOf("entryConflictMode === 'keep'"),
+    backupImport.indexOf('} else {', backupImport.indexOf("entryConflictMode === 'keep'"))
+  );
+  assert(!keepConflictBranch.includes('touchedPacks.add(entry.packName)'), 'unchanged backup conflicts still trigger pack-wide embedding regeneration');
   assert(fileUi.includes('async function renameLorePack'), 'lore-pack rename is missing');
   assert(fileUi.includes('renamedData.map') || fileUi.includes('data.map(entry => ({ ...entry, packName: newName }))'), 'pack rename does not update snapshot contents');
   assert(fileUi.includes("modal.createSubMenu('로어팩 관리'"), 'lore-pack manager label is missing');
@@ -585,6 +670,13 @@ function testSourceContracts() {
   assert(refinerCore.includes('Every replacements.from must be an exact substring of [New Speech]'), 'correction prompt does not isolate the assistant response');
   assert(refinerCore.includes("Core.showStatusBadge('에리: 이상 없음')"), 'PASS no longer shows the non-popup status badge');
   assert(!refinerCore.includes("ToastCallback('에리: 통과'"), 'PASS still creates a popup notification');
+  assert(refinerCore.includes("text.toLocaleUpperCase() === String(passWord).trim().toLocaleUpperCase()"), 'refiner PASS detection still accepts partial words such as BYPASS');
+  assert(refinerCore.includes("if (!applied) return { handled: false, retryable: true, status: 'apply_failed'"), 'failed automatic correction edits are marked complete');
+  assert(refinerQueue.includes('const inFlightFingerprints = new Set()') && refinerQueue.includes('retryAfterByFingerprint'), 'failed refiner calls can be duplicated immediately');
+  assert(!refinerQueue.includes('Promise.race(['), 'refiner queue can abandon a live API call and start another one');
+  assert(refinerQueue.indexOf('fingerprints.add(item.fingerprint)') > refinerQueue.indexOf('await R.refineMessage'), 'refiner marks a response complete before the API result is known');
+  assert(refinerCore.includes("return { handled: false, retryable: true, status: 'error'"), 'refiner failures cannot be retried safely');
+  assert(!refinerObserver.includes('R.workerBusy = false; R.Core && R.Core.hideStatusBadge()'), 'refiner watchdog can unlock a request that is still running');
 }
 
 async function testMenuRuntime() {
@@ -646,6 +738,7 @@ async function testMenuRuntime() {
 async function main() {
   testSourceSyntax();
   await testKernelHelpers();
+  await testRuntimeCompatibilityHelpers();
   testPromptContract();
   testSourceContracts();
   await testMenuRuntime();
