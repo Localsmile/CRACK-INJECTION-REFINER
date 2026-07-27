@@ -988,9 +988,13 @@
           poolLimit: config.diversityCandidatePool || 12
         })
       : _loreScored.slice(0, config.maxEntries || 4);
-    const topEntries = topScored.map(s => { if (s.components) s.entry._nway = s.components; return s.entry; });
+    const topEntries = topScored.map(s => {
+      if (s.components) s.entry._nway = s.components;
+      s.entry._retrievalScore = Number(s.score) || 0;
+      return s.entry;
+    });
     let sceneTag = '';
-    if (recentMsgs.length > 0 && config.firstEncounterWarning !== false) {
+    if (recentMsgs.length > 0) {
       try {
         const kw = C.extractSceneKeywords(recentMsgs);
         sceneTag = C.formatSceneTag(kw);
@@ -1090,7 +1094,7 @@
       }
     }
 
-    const temporalHints = (config.firstEncounterWarning !== false && C.formatTemporalHints)
+    const temporalHints = C.formatTemporalHints
       ? C.formatTemporalHints(topEntries, { currentTurn: turnCounter, activeNames, budget: Math.min(config.temporalHintChars || C.DEFAULTS.temporalHintChars || 120, 120) })
       : '';
     const fmtResult = C.planInjectionBudget ? C.planInjectionBudget({

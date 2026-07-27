@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260727.2';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v1';
+  const VER = '1.4.0.260727.3';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v2';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -36,7 +36,7 @@ EXTRACTION PRIORITIES (in order of importance):
 5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks that may matter later.
 6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.`;
   const MEMORY_FORMAT_RULES = `MEMORY FORMAT RULES:
-- "summary.full": complete and self-contained continuity record. Do not shorten it for an injection budget.
+- "summary.full": complete and self-contained continuity record. It must express the same established continuity as facts in natural language, including ownership, direction, quantity, negation, uncertainty, conditions, time, and knowledge scope when present. Do not shorten it for an injection budget.
 - "facts": lossless structured facts used to create a dense injection form. Do not omit a fact from facts merely because it already appears in summary.full.
 - Fact shape: ${FACT_SHAPE_SCHEMA}.
 - "openLoops": unresolved goals, promises, questions, threats, or conflicts. Omit when none.
@@ -275,7 +275,7 @@ CRITICAL RULES:
    - Include literal names, places, actions, nicknames, objects, and user recall cues such as "그때", "기억해", "전에".
    - Include both concrete scene terms and semantic cues.
 7. MEMORY FORMAT:
-   - Produce one self-contained summary.full.
+   - Produce one self-contained summary.full that expresses the same established continuity as facts, including ownership, direction, negation, uncertainty, conditions, time, and knowledge scope when present.
    - Produce facts with an explicit subject, relation, and value.
    - Keep actions, consequences, knowledge scope, and attributes attached to the correct participant.
    - Do not output summary.compact or summary.micro.
@@ -516,7 +516,14 @@ Conversation Log:
 {context}`
   ];
   */
-  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB = ['7055:1e3201f9'];
+  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB = ['7055:1e3201f9', '7595:1ddfdc4', '7822:83cfc73b'];
+  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB = ['5751:3da5c7e7', '5830:5a632fb0'];
+  const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITH_DB = ['7852:86d21868', '8079:de8a3c7b'];
+  const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB = ['6008:cdf91e6d', '6087:fff85132'];
+  const LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES = ['2343:b62dcc66', '2391:98387c58'];
+  const LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES = ['1867:a23b0019', '1472:1026ef34'];
+  const LEGACY_TEMPORAL_PROMPT_SIGNATURES = ['2101:e6c29640', '2149:97797312'];
+  const LEGACY_TEMPORAL_SCHEMA_SIGNATURES = ['1093:aadefd10', '1245:7d91ee86'];
 
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB);
@@ -539,6 +546,13 @@ Conversation Log:
     DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
     AUTO_EXTRACT_PROMPT_VERSION,
     LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB,
+    LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB,
+    LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITH_DB,
+    LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB,
+    LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES,
+    LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES,
+    LEGACY_TEMPORAL_PROMPT_SIGNATURES,
+    LEGACY_TEMPORAL_SCHEMA_SIGNATURES,
     DEFAULT_AUTO_EXTRACT_SCHEMA,
     DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA,
     DEFAULT_TEMPORAL_EXTRACT_PROMPT,

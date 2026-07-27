@@ -15,6 +15,16 @@
     return text.slice(0, Math.max(0, max - 1)).trim() + '…';
   }
 
+  function textSignature(value) {
+    const text = String(value || '');
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
   function normalizeSummaryValue(summary, name, state) {
     if (summary && typeof summary === 'object' && !Array.isArray(summary)) {
       const full = clampText(summary.full || summary.compact || summary.micro || '', 0);
@@ -118,20 +128,45 @@
         for (let index = out.length - 1; index >= 0; index--) {
           const old = out[index];
           if (memoryFactKey(old, false) !== key) continue;
+          if (replValues.has(memoryFactKey(old, true))) continue;
           out.splice(index, 1);
-          if (!replValues.has(memoryFactKey(old, true))) {
-            const historical = { ...old, time: 'past' };
-            const historyKey = memoryFactKey(historical, true);
-            if (!out.some(item => memoryFactKey(item, true) === historyKey)) out.push(historical);
-          }
+          const historical = { ...old, time: 'past' };
+          const historyKey = memoryFactKey(historical, true);
+          if (!out.some(item => memoryFactKey(item, true) === historyKey)) out.push(historical);
         }
       }
     }
     for (const fact of incoming) {
       const exactKey = memoryFactKey(fact, true);
       const index = out.findIndex(item => memoryFactKey(item, true) === exactKey);
-      if (index >= 0) out[index] = fact;
-      else out.push(fact);
+      if (index < 0) {
+        out.push(fact);
+        continue;
+      }
+      const old = out[index];
+      if (old.polarity !== fact.polarity && ['current', 'future'].includes(fact.time)) {
+        const historical = { ...old, time: 'past' };
+        const historyKey = memoryFactKey(historical, true);
+        if (!out.some((item, itemIndex) => itemIndex !== index &&
+          memoryFactKey(item, true) === historyKey &&
+          item.polarity === historical.polarity &&
+          (item.condition || '') === (historical.condition || ''))) {
+          out.push(historical);
+        }
+      }
+      const knownBy = Array.from(new Set([...(old.knownBy || []), ...(fact.knownBy || [])].filter(Boolean)));
+      const knownSet = new Set(knownBy.map(value => String(value).trim().toLowerCase()));
+      const hiddenFrom = Array.from(new Set([...(old.hiddenFrom || []), ...(fact.hiddenFrom || [])].filter(Boolean)))
+        .filter(value => !knownSet.has(String(value).trim().toLowerCase()));
+      out[index] = {
+        ...old,
+        ...fact,
+        condition: fact.condition || old.condition || '',
+        ...(knownBy.length ? { knownBy } : {}),
+        ...(hiddenFrom.length ? { hiddenFrom } : {})
+      };
+      if (!knownBy.length) delete out[index].knownBy;
+      if (!hiddenFrom.length) delete out[index].hiddenFrom;
     }
 
     const seen = new Set();
@@ -282,11 +317,21 @@
     const rawSummary = e.summary;
     const rawInject = e.inject;
     const derivedBefore = e.memoryDerivedCompact === true;
+    const facts = normalizeMemoryFacts(e);
     const explicitSummaryCompact = !derivedBefore && !!(rawSummary && typeof rawSummary === 'object' && !Array.isArray(rawSummary) && rawSummary.compact);
     const explicitSummaryMicro = !derivedBefore && !!(rawSummary && typeof rawSummary === 'object' && !Array.isArray(rawSummary) && rawSummary.micro);
+    const legacyDerivedFull = facts.length && derivedBefore && rawInject && rawInject.full && (
+      rawInject.full === (rawSummary && typeof rawSummary === 'object' ? rawSummary.full : rawSummary) ||
+      String(rawInject.full).startsWith(String(rawSummary && typeof rawSummary === 'object' ? rawSummary.full || '' : rawSummary || '') + ' | 최근:')
+    );
+    const markedDerivedFull = e.memoryDerivedFull === true && (
+      !e.memoryDerivedFullSignature ||
+      textSignature(rawInject && rawInject.full) === e.memoryDerivedFullSignature
+    );
+    const derivedFullBefore = markedDerivedFull || legacyDerivedFull;
+    const explicitInjectFull = !derivedFullBefore && !!(rawInject && typeof rawInject === 'object' && rawInject.full);
     const explicitInjectCompact = !derivedBefore && !!(rawInject && typeof rawInject === 'object' && rawInject.compact);
     const explicitInjectMicro = !derivedBefore && !!(rawInject && typeof rawInject === 'object' && rawInject.micro);
-    const facts = normalizeMemoryFacts(e);
     if (facts.length) {
       e.facts = facts;
       e.memorySchemaVersion = 2;
@@ -298,31 +343,18 @@
     if (derivedCompact && !explicitSummaryCompact) e.summary.compact = derivedCompact;
     if (derivedMicro && !explicitSummaryMicro) e.summary.micro = derivedMicro;
     e.inject = rawInject && typeof rawInject === 'object' ? { ...rawInject } : {};
-    e.inject.full = e.inject.full || e.summary.full;
+    e.inject.full = explicitInjectFull ? e.inject.full : e.summary.full;
+    if (!explicitInjectFull && e.summary.full) {
+      e.memoryDerivedFull = true;
+      e.memoryDerivedFullSignature = textSignature(e.inject.full);
+    } else {
+      delete e.memoryDerivedFull;
+      delete e.memoryDerivedFullSignature;
+    }
     e.inject.compact = explicitInjectCompact ? e.inject.compact : (derivedCompact || e.summary.compact);
     e.inject.micro = explicitInjectMicro ? e.inject.micro : (derivedMicro || e.summary.micro);
     if (derivedCompact && !explicitSummaryCompact && !explicitInjectCompact) e.memoryDerivedCompact = true;
-    if (!e.embed_text) {
-      const entities = Array.isArray(e.entities) ? e.entities.join(' ') : '';
-      const importantLineText = String(e.type || '').toLowerCase() === 'key_quote'
-        ? [e.speaker, e.quote, e.context, e.meaning, (e.recallTriggers || []).join(' '), (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
-        : '';
-      const temporalText = String(e.type || '').toLowerCase() === (C.TIMELINE_EVENT_TYPE || 'timeline_event')
-        ? [e.title, e.location, (e.actions || []).join(' '), (e.hooks || []).join(' '), (e.recallTriggers || []).join(' '), e.when?.anchor, (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
-        : '';
-      const factText = facts.map(fact => [
-        fact.subject, fact.relation, fact.value, fact.time, fact.condition,
-        ...(fact.knownBy || []), ...(fact.hiddenFrom || [])
-      ].filter(Boolean).join(' ')).join(' ');
-      e.embed_text = clampText([e.name, temporalText, importantLineText, entities, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
-    }
-    const callState = normalizeCallState(e, turn);
-    if (callState) e.callState = callState;
-    if (!e.timeline || typeof e.timeline !== 'object') e.timeline = {};
-    e.timeline.eventTurn = e.timeline.eventTurn || turn || 0;
-    e.timeline.relativeOrder = e.timeline.relativeOrder || 'current';
-    e.timeline.sceneLabel = e.timeline.sceneLabel || '';
-    e.timeline.observedRecency = e.timeline.observedRecency || 'recent';
+    const priorEntitiesText = Array.isArray(e.entities) ? e.entities.join(' ') : '';
     if (!Array.isArray(e.entities)) {
       const names = [];
       if (Array.isArray(e.parties)) names.push(...e.parties);
@@ -331,12 +363,47 @@
       if (e.name) names.push(...String(e.name).split(/[↔&]/).map(x => x.trim()).filter(Boolean));
       e.entities = Array.from(new Set(names)).filter(Boolean);
     }
+    const entities = Array.isArray(e.entities) ? e.entities.join(' ') : '';
+    const importantLineText = String(e.type || '').toLowerCase() === 'key_quote'
+      ? [e.speaker, e.quote, e.context, e.meaning, (e.recallTriggers || []).join(' '), (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
+      : '';
+    const temporalText = String(e.type || '').toLowerCase() === (C.TIMELINE_EVENT_TYPE || 'timeline_event')
+      ? [e.title, e.location, (e.actions || []).join(' '), (e.hooks || []).join(' '), (e.recallTriggers || []).join(' '), e.when?.anchor, (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
+      : '';
+    const factText = facts.map(fact => [
+      fact.subject, fact.relation, fact.value, fact.time, fact.condition,
+      ...(fact.knownBy || []), ...(fact.hiddenFrom || [])
+    ].filter(Boolean).join(' ')).join(' ');
+    const derivedEmbedText = clampText([e.name, temporalText, importantLineText, entities, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
+    const previousDerivedEmbedText = clampText([e.name, temporalText, importantLineText, priorEntitiesText, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
+    const markedDerivedEmbed = e.memoryDerivedEmbed === true && (
+      !e.memoryDerivedEmbedSignature ||
+      textSignature(e.embed_text) === e.memoryDerivedEmbedSignature
+    );
+    const legacyDerivedEmbed = facts.length && derivedBefore && (e.embed_text === derivedEmbedText || e.embed_text === previousDerivedEmbedText);
+    if (!e.embed_text || markedDerivedEmbed || legacyDerivedEmbed) {
+      e.embed_text = derivedEmbedText;
+      if (derivedEmbedText) {
+        e.memoryDerivedEmbed = true;
+        e.memoryDerivedEmbedSignature = textSignature(e.embed_text);
+      }
+    } else {
+      delete e.memoryDerivedEmbed;
+      delete e.memoryDerivedEmbedSignature;
+    }
+    const callState = normalizeCallState(e, turn);
+    if (callState) e.callState = callState;
+    if (!e.timeline || typeof e.timeline !== 'object') e.timeline = {};
+    e.timeline.eventTurn = e.timeline.eventTurn || turn || 0;
+    e.timeline.relativeOrder = e.timeline.relativeOrder || 'current';
+    e.timeline.sceneLabel = e.timeline.sceneLabel || '';
+    e.timeline.observedRecency = e.timeline.observedRecency || 'recent';
     return e;
   }
 
   const IMPORT_SCHEMA = `[<br>  {<br>    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|rel|prom|key_quote",<br>    "name": "Entity Name",<br>    "triggers": ["keyword1", "keyword2", "A&&B"],<br>    "summary": {"full": "complete self-contained continuity record"},<br>    "facts": [<br>      {"subject": "exact owner", "relation": "attribute or relation", "value": "bound value", "time": "current|past|future|timeless", "polarity": "affirmed|negated|uncertain", "condition": "", "knownBy": [], "hiddenFrom": []}<br>    ],<br>    "openLoops": ["unresolved goal, promise, question, threat, or conflict"],<br>    "state": "current situation noun phrase",<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },<br>    "entities": ["characters/places/items involved"],<br>    "parties": ["relationship parties when relevant"],<br>    "callState": {},<br>    "detail": {},<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  }<br>]`;
 
-  const IMPORT_PROMPT_TEMPLATE = `Convert the source material into structured continuity entries.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful in later scenes. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full, facts, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. Every fact needs an explicit subject, relation, and value. Keep each attribute attached to its owner.<br>7. Preserve relationship direction, quantity, time, negation, uncertainty, conditions, and who knows or does not know a fact.<br>8. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>9. Do not output summary.compact, summary.micro, inject, or embed_text. They are derived from facts.<br>10. Extract callState, timeline, entities, state, and openLoops when inferable.<br>11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>12. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
+  const IMPORT_PROMPT_TEMPLATE = `Convert the source material into structured continuity entries.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful in later scenes. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full, facts, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. Every fact needs an explicit subject, relation, and value. Keep each attribute attached to its owner.<br>7. Preserve relationship direction, quantity, time, negation, uncertainty, conditions, and who knows or does not know a fact.<br>8. summary.full must express the same established continuity as facts in natural language, including those bindings and scopes.<br>9. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>10. Do not output summary.compact, summary.micro, inject, or embed_text. They are derived from facts.<br>11. Extract callState, timeline, entities, state, and openLoops when inferable.<br>12. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>13. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
 
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {

@@ -149,7 +149,7 @@
     let line = abbr ? '[' + abbr + ':' + e.name : '[' + e.name;
     if (status) line += '|' + status; line += ']';
     const fullSummary = summaryTier(e, 'full');
-    if (fullSummary) { const sum = charLen(fullSummary) > 90 ? [...fullSummary].slice(0, 87).join('') + '...' : fullSummary; line += ' ' + sum; }
+    if (fullSummary) line += ' ' + fullSummary;
     if (d.nicknames && typeof d.nicknames === 'object') {
       const pairs = Object.entries(d.nicknames);
       if (pairs.length > 0) {
@@ -221,7 +221,7 @@
   }
 
   function entryPriority(e, idx = 0, activeNames = []) {
-    let s = Number(e.score || 0) * 100;
+    let s = Number(e._retrievalScore != null ? e._retrievalScore : (e.score || 0)) * 100;
     s += (e.imp || 5) * 3 + (e.emo || 5) * 2 + (e.sur || 5);
     if (e.anchor) s += 1000;
     if (e.type === 'promise' || e.type === 'prom') s += 80;

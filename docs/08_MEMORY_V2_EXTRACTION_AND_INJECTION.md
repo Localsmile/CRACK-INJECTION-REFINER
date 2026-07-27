@@ -84,6 +84,9 @@ Facts are merged by subject, relation, value, and time role.
 - An incomplete, non-overlapping replacement cannot erase an existing
   multi-value set. The incoming fact is added and the conflict is reported for
   diagnostics.
+- Re-observing the same value preserves an existing condition and knowledge
+  scope. Newly informed characters are removed from `hiddenFrom`.
+- A polarity change retains the prior polarity as a past fact.
 - Historical facts with distinct values remain separate.
 - Exact duplicate facts are removed.
 - Open loops are merged without duplicate text.
@@ -99,7 +102,8 @@ The stored memory and the injected text are separate concerns.
 ### Full
 
 Uses the complete readable summary. This is the preferred representation when
-the input budget permits it.
+the input budget permits it. The renderer does not shorten Full text; the
+global planner downgrades or removes a candidate when it cannot fit.
 
 ### Compact
 
@@ -175,6 +179,36 @@ most of the weight; novelty prevents near-duplicate entries for the same entity
 or topic from occupying every available slot. This pass makes no API request
 and does not alter timeline recall selection.
 
+The selected retrieval score is forwarded to the final budget planner. Static
+importance, promises, anchors, and continuity signals still contribute, but a
+candidate cannot lose its query relevance merely because formatting begins.
+Scene working memory and temporal hints are independent from the first
+encounter/reunion switch.
+
+## Derived Fields
+
+`inject.full`, deterministic compact/micro text, and `embed_text` may be
+application-derived. Small signatures distinguish the last derived value from
+a later user edit.
+
+- A derived Full value follows a changed `summary.full`.
+- Derived embedding text follows changed facts, entities, triggers, state, and
+  summary text before embeddings are rebuilt.
+- An explicit user edit stops automatic replacement of that field.
+- Previous Memory V2 entries without signatures are recognized only when their
+  stored value exactly matches the earlier derived form.
+
+## Prompt Migration
+
+Only exact signatures of prior bundled defaults are migrated. This includes
+general extraction, DeepSeek extraction, important-scene extraction, conversion
+prompts, and their default schemas. User-edited text with a different signature
+is preserved.
+
+Important-scene patch application supports the same `set.facts`,
+`append.facts`, `set.openLoops`, and `append.openLoops` contract as general lore
+patches.
+
 ## Encounter Ordering Fix
 
 First-encounter and reunion checks must read encounter history before the
@@ -188,6 +222,8 @@ pair as already seen and could suppress their output.
 - Micro output preserves complete fact bindings for up to two units.
 - Current state replacement retains the previous value as history.
 - Ambiguous partial updates do not erase existing multi-value state.
+- Conditions, polarity history, and knowledge scope survive fact refreshes.
+- Derived Full and embedding text cannot remain stale after a patch.
 - No injected lore line is partially truncated.
 - Auxiliary sections are packed as whole lines.
 - The final injection stays within the configured character budget.
@@ -209,6 +245,10 @@ Regression coverage must verify:
 - prompt migration boundaries
 - fact and open-loop patch merging
 - conservative multi-value conflict handling
+- fact-scope and polarity-history preservation
+- derived Full and embedding-text synchronization
+- important-scene fact/open-loop patch application
 - working-memory query enrichment and deterministic candidate diversity
+- retrieval-score propagation into final budget priority
 - first-encounter and reunion read-before-write ordering
 - generated userscript metadata, syntax, required modules, and update URL

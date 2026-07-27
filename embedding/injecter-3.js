@@ -41,7 +41,14 @@
     DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
     DEFAULT_TEMPORAL_RECALL_JUDGE_SCHEMA,
     AUTO_EXTRACT_PROMPT_VERSION,
-    LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB
+    LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB,
+    LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB,
+    LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITH_DB,
+    LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB,
+    LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES,
+    LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES,
+    LEGACY_TEMPORAL_PROMPT_SIGNATURES,
+    LEGACY_TEMPORAL_SCHEMA_SIGNATURES
   } = _w.__LoreInj;
 
   const db = C.getDB();
@@ -757,7 +764,6 @@
         // v1.4.0-test.47: 자동추출 promptWithDb LEGACY 마이그레이션. default 템플릿은 위에서 강제 덮어쓰이므로 여기는 non-default(사용자 복제) 템플릿 보호용. norm 불일치면 사용자 소유물로 간주하고 보존.
         try {
           const APV = AUTO_EXTRACT_PROMPT_VERSION;
-          const LEGACY = LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB || [];
           const savedAPV = this.config.autoExtractPromptVersion || '';
           if (savedAPV !== APV && Array.isArray(this.config.templates)) {
             const signature = (value) => {
@@ -770,12 +776,30 @@
               return `${text.length}:${(hash >>> 0).toString(16)}`;
             };
             let migrated = 0;
+            const fields = [
+              ['promptWithoutDb', LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB, DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB],
+              ['promptWithDb', LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB, DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB],
+              ['deepSeekPromptWithoutDb', LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB, DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB],
+              ['deepSeekPromptWithDb', LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITH_DB, DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB],
+              ['deepSeekTemporalExtractPrompt', LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES, DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT],
+              ['deepSeekImportPrompt', LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES, DEFAULT_DEEPSEEK_IMPORT_PROMPT]
+            ];
             for (const t of this.config.templates) {
-              if (!t || !t.promptWithDb) continue;
-              if (LEGACY.includes(signature(t.promptWithDb))) {
-                t.promptWithDb = DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;
-                migrated++;
+              if (!t) continue;
+              for (const [key, signatures, replacement] of fields) {
+                if (t[key] && (signatures || []).includes(signature(t[key]))) {
+                  t[key] = replacement;
+                  migrated++;
+                }
               }
+            }
+            if ((LEGACY_TEMPORAL_PROMPT_SIGNATURES || []).includes(signature(this.config.temporalExtractPrompt))) {
+              this.config.temporalExtractPrompt = DEFAULT_TEMPORAL_EXTRACT_PROMPT;
+              migrated++;
+            }
+            if ((LEGACY_TEMPORAL_SCHEMA_SIGNATURES || []).includes(signature(this.config.temporalExtractSchema))) {
+              this.config.temporalExtractSchema = DEFAULT_TEMPORAL_EXTRACT_SCHEMA;
+              migrated++;
             }
             this.config.autoExtractPromptVersion = APV;
             this.save();
@@ -799,7 +823,7 @@
             return `${text.length}:${(hash >>> 0).toString(16)}`;
           };
           let changed = false;
-          if (signature(this.config.importPrompt) === '1783:6fa83999') {
+          if (['1783:6fa83999', '1367:e3318e85'].includes(signature(this.config.importPrompt))) {
             this.config.importPrompt = DEFAULT_IMPORT_PROMPT || C.DEFAULT_IMPORT_PROMPT;
             changed = true;
           }

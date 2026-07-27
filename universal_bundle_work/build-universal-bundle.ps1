@@ -36,7 +36,11 @@ terser.minify(input, {
     unsafe: false,
     drop_console: false
   },
-  mangle: false,
+  mangle: {
+    toplevel: false,
+    keep_fnames: true,
+    keep_classnames: true
+  },
   format: {
     comments: false,
     beautify: false,

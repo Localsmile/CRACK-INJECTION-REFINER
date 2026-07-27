@@ -23,8 +23,8 @@
   } = _w.__LoreInj;
 
   // v1.4.0-test.56: patch ON/OFF must not change the DB context payload. Only output instructions differ.
-  const OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
-- Existing entries are provided as compact digests with stable "id".
+const OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
+- Existing entries are provided as focused digests with stable "id".
 - Output must be one JSON array. Never return a bare object.
 - For an existing entry, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
@@ -40,8 +40,8 @@
 - Prefer append.triggers for new literal aliases.
 - Anchored entries: only append new triggers/eventHistory/callHistory.`;
 
-  const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
-- Existing entries are provided as compact digests with stable "id".
+const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
+- Existing entries are provided as focused digests with stable "id".
 - Output must be one JSON array. Never return a bare object.
 - For each NEW lore, output the complete entry object.
 - For each UPDATED existing entry, output the complete updated entry object and keep the same "name" when possible.
@@ -105,8 +105,8 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return `\n\nEXTRACTION SCOPE FOR THIS RUN:\n${enabled.length ? enabled.join('\n') : '- No general category selected. Return the required empty JSON shape.'}${disabled.length ? '\n' + disabled.join('\n') : ''}`;
   }
 
-  const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
-- Existing important scene memories are provided as compact digests with stable "id".
+const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
+- Existing important scene memories are provided as focused digests with stable "id".
 - Output must be one JSON array. Never return a bare object.
 - For an existing scene memory, do NOT re-output the full object.
 - Output {"op":"patch","id":...} only when something changed.
@@ -118,8 +118,8 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 - Use set.facts for a replaced current value and append.facts for an independently coexisting fact.
 - Return summary.full only when the complete event memory changed. Do not output summary.compact or summary.micro.`;
 
-  const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
-- Existing important scene memories are provided as compact digests with stable "id".
+const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
+- Existing important scene memories are provided as focused digests with stable "id".
 - Output must be one JSON array. Never return a bare object.
 - For each NEW important scene, output the complete timeline_event object.
 - For each UPDATED existing scene, output the complete updated timeline_event object and keep the same "name" when possible.
@@ -161,7 +161,8 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       "when": {},
       "location": "",
       "summary": {"full": ""},
-      "facts": []
+      "facts": [],
+      "openLoops": []
     },
     "append": {
       "participants": [],
@@ -256,8 +257,11 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   }
 
   function entryDigestForExtract(e) {
+    const factBacked = Array.isArray(e.facts) && e.facts.length > 0;
     const summary = e.summary && typeof e.summary === 'object'
-      ? { compact: e.summary.compact || e.summary.full || '', micro: e.summary.micro || '' }
+      ? (factBacked
+        ? { full: e.summary.full || '' }
+        : { compact: e.summary.compact || e.summary.full || '', micro: e.summary.micro || '' })
       : { compact: String(e.summary || e.inject?.compact || '').slice(0, 180), micro: '' };
     const out = {
       id: e.id,
@@ -352,46 +356,11 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return bestScore >= 60 ? best : null;
   }
 
-  function hasMeaningfulPatchModeFullUpdate(existing, incoming) {
-    if (!existing || !incoming) return true;
-    const newTriggers = arrOverlapScore(incoming.triggers || [], existing.triggers || []) < (incoming.triggers || []).filter(Boolean).length;
-    const newEntities = arrOverlapScore(incoming.entities || incoming.parties || incoming.detail?.parties || [], existing.entities || existing.parties || existing.detail?.parties || []) < (incoming.entities || incoming.parties || incoming.detail?.parties || []).filter(Boolean).length;
-    const oldState = existing.state || existing.detail?.current_status || existing.detail?.status || existing.detail?.current_state || '';
-    const newState = incoming.state || incoming.detail?.current_status || incoming.detail?.status || incoming.detail?.current_state || '';
-    if (newState && normKey(newState) !== normKey(oldState)) return true;
-    if (incoming.cond !== undefined && normKey(incoming.cond) !== normKey(existing.cond)) return true;
-    if (newTriggers || newEntities) return true;
-    if (Array.isArray(incoming.callDelta) && incoming.callDelta.length) return true;
-    if (Array.isArray(incoming.eventHistory) && incoming.eventHistory.some(ev => {
-      const s = String(ev && ev.summary || '').trim();
-      return s && !(existing.eventHistory || []).some(x => String(x && x.summary || '').trim() === s);
-    })) return true;
-    if (Array.isArray(incoming.facts) && incoming.facts.length) {
-      const mergedFacts = C.mergeMemoryFacts ? C.mergeMemoryFacts(existing.facts, incoming.facts, existing.name, { replaceCurrent: true }) : incoming.facts;
-      if (JSON.stringify(mergedFacts) !== JSON.stringify(existing.facts || [])) return true;
-    }
-    if (Array.isArray(incoming.openLoops) && arrOverlapScore(incoming.openLoops, existing.openLoops || []) < incoming.openLoops.filter(Boolean).length) return true;
-    return false;
-  }
-
-  function hasMeaningfulTemporalFullUpdate(existing, incoming) {
-    if (!existing || !incoming) return true;
-    if (incoming.location && normKey(incoming.location) !== normKey(existing.location)) return true;
-    const keys = ['participants', 'actions', 'hooks', 'linkedLore', 'recallTriggers'];
-    for (const k of keys) {
-      const arr = incoming[k] || [];
-      if (Array.isArray(arr) && arr.length && arrOverlapScore(arr, existing[k] || []) < arr.filter(Boolean).length) return true;
-    }
-    const oldAnchor = existing.when?.anchor || '';
-    const newAnchor = incoming.when?.anchor || '';
-    if (newAnchor && normKey(newAnchor) !== normKey(oldAnchor)) return true;
-    return false;
-  }
-
   async function applyExtractPatchOp(op, packName, chatKey) {
     if (!op || op.op !== 'patch' || op.id == null) return 0;
     let existing = await db.entries.get(op.id);
     if (!existing || existing.packName !== packName) return 0;
+    existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
     const beforeSig = entryContentSignature(existing);
 
     const anchorGuard = existing.anchor === true;
@@ -473,6 +442,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     let existing = await db.entries.get(op.id);
     const TL_TYPE = C.TIMELINE_EVENT_TYPE || 'timeline_event';
     if (!existing || existing.packName !== packName || existing.type !== TL_TYPE) return 0;
+    existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
     const beforeSig = entryContentSignature(existing);
 
     try { if (C.saveEntryVersion) await C.saveEntryVersion(existing, 'temporal_patch'); } catch (_) {}
@@ -486,6 +456,10 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     if (set.summary) existing.summary = C.mergeLoreSummary
       ? C.mergeLoreSummary(existing.summary, set.summary, existing.name)
       : { ...(existing.summary || {}), ...set.summary };
+    if (Array.isArray(set.facts)) existing.facts = C.mergeMemoryFacts
+      ? C.mergeMemoryFacts(existing.facts, set.facts, existing.name, { replaceCurrent: true })
+      : set.facts;
+    if (Array.isArray(set.openLoops)) existing.openLoops = mergeArrayUnique([], set.openLoops);
 
     const appendArr = (key) => {
       if (Array.isArray(append[key]) && append[key].length) {
@@ -497,10 +471,17 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     appendArr('hooks');
     appendArr('linkedLore');
     appendArr('recallTriggers');
+    if (Array.isArray(append.facts) && append.facts.length) {
+      existing.facts = C.mergeMemoryFacts
+        ? C.mergeMemoryFacts(existing.facts, append.facts, existing.name, { replaceCurrent: false })
+        : mergeArrayUnique(existing.facts, append.facts);
+    }
+    if (Array.isArray(append.openLoops) && append.openLoops.length) existing.openLoops = mergeArrayUnique(existing.openLoops, append.openLoops);
     if (Array.isArray(append.recallTriggers) && append.recallTriggers.length) {
       existing.triggers = mergeArrayUnique(existing.triggers, append.recallTriggers);
     }
 
+    existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
     existing.lastUpdated = Date.now();
     try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
     if (entryContentSignature(existing) === beforeSig) return 0;
@@ -641,8 +622,11 @@ Structured output reminder:
   }
 
   function temporalDigestForExtract(e) {
+    const factBacked = Array.isArray(e.facts) && e.facts.length > 0;
     const summary = e.summary && typeof e.summary === 'object'
-      ? { compact: e.summary.compact || e.summary.full || '', micro: e.summary.micro || '' }
+      ? (factBacked
+        ? { full: e.summary.full || '' }
+        : { compact: e.summary.compact || e.summary.full || '', micro: e.summary.micro || '' })
       : { compact: String(e.summary || '').slice(0, 180), micro: '' };
     return {
       id: e.id,
@@ -1039,7 +1023,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             existing.rootId = null;
             existing.isCurrentArc = true;
           }
-          if (existing.inject && typeof existing.inject === 'object') {
+          if (existing.inject && typeof existing.inject === 'object' && existing.inject.full && !existing.memoryDerivedCompact) {
             const base = (existing.inject.full || '').split(' | 최근:')[0];
             const recent = existing.eventHistory.slice(-2).map(ev => `t${ev.turn}:${ev.summary.slice(0,40)}`).join('|');
             existing.inject.full = recent ? base + ' | 최근:' + recent : base;
@@ -1158,7 +1142,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             imp: ev.imp || 5, emo: ev.emo || 5, ts: Date.now()
           })).sort((a,b) => (a.turn||0) - (b.turn||0));
           if (e.eventHistory.length > 30) e.eventHistory = e.eventHistory.slice(-30);
-          if (e.inject && typeof e.inject === 'object') {
+          if (e.inject && typeof e.inject === 'object' && e.inject.full && !e.memoryDerivedCompact) {
             const base = (e.inject.full || '').split(' | 최근:')[0];
             const recent = e.eventHistory.slice(-2).map(ev => `t${ev.turn}:${ev.summary.slice(0,40)}`).join('|');
             e.inject.full = recent ? base + ' | 최근:' + recent : base;
