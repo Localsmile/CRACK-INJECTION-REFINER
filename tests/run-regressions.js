@@ -226,6 +226,59 @@ async function testKernelHelpers() {
   assert(!Object.prototype.hasOwnProperty.call(embedding2Body, 'taskType'), 'Embedding 2 sent the unsupported taskType field');
 
   vm.runInContext(read('embedding/core-importer.js'), context, { filename: 'core-importer.js' });
+  const boundEntry = C.normalizeLoreEntry({
+    type: 'character',
+    name: '서윤과 리아',
+    summary: { full: '서윤은 금발이고 리아는 갈색 머리다.' },
+    facts: [
+      { subject: '서윤', relation: '머리', value: '금발', time: 'current', polarity: 'affirmed' },
+      { subject: '리아', relation: '머리', value: '갈색', time: 'current', polarity: 'affirmed' }
+    ]
+  });
+  assert(boundEntry.inject.compact.includes('[서윤] 현재.머리=금발'), 'compact memory lost the first attribute owner');
+  assert(boundEntry.inject.compact.includes('[리아] 현재.머리=갈색'), 'compact memory lost the second attribute owner');
+  assert(!boundEntry.inject.compact.includes('금발,갈색'), 'compact memory flattened separately owned attributes');
+  assert.strictEqual(boundEntry.inject.full, '서윤은 금발이고 리아는 갈색 머리다.', 'full memory was rewritten as a compressed form');
+
+  const evolvedFacts = C.mergeMemoryFacts(
+    [{ subject: '서윤↔리아', relation: '관계', value: '적대', time: 'current', polarity: 'affirmed' }],
+    [{ subject: '서윤↔리아', relation: '관계', value: '임시동맹', time: 'current', polarity: 'affirmed' }],
+    '서윤↔리아',
+    { replaceCurrent: true }
+  );
+  assert(evolvedFacts.some(fact => fact.value === '적대' && fact.time === 'past'), 'replaced current fact was not retained as history');
+  assert(evolvedFacts.some(fact => fact.value === '임시동맹' && fact.time === 'current'), 'new current fact was not stored');
+  const additiveFacts = C.mergeMemoryFacts(
+    [{ subject: '서윤', relation: '소유', value: '검', time: 'current', polarity: 'affirmed' }],
+    [{ subject: '서윤', relation: '소유', value: '반지', time: 'current', polarity: 'affirmed' }],
+    '서윤',
+    { replaceCurrent: false }
+  );
+  assert(additiveFacts.some(fact => fact.value === '검' && fact.time === 'current'), 'an additive fact incorrectly replaced an existing value');
+  assert(additiveFacts.some(fact => fact.value === '반지' && fact.time === 'current'), 'an additive fact was not stored');
+  const legacyCompactPatch = C.mergeLoreSummary(
+    { full: '완전한 기존 기록', compact: '기존 요약', micro: '기존' },
+    { compact: '새 간결 요약' },
+    '서윤'
+  );
+  assert.strictEqual(legacyCompactPatch.full, '완전한 기존 기록', 'a legacy compact-only patch overwrote the complete summary');
+  assert.strictEqual(legacyCompactPatch.compact, '새 간결 요약', 'a legacy compact-only patch was not applied');
+
+  const packed = C.buildLoreBudgetPlan([
+    { id: 1, name: 'A', type: 'character', score: 1, imp: 10, inject: { full: 'A'.repeat(170), compact: 'A'.repeat(35), micro: 'A=핵심' } },
+    { id: 2, name: 'B', type: 'character', score: 0.9, imp: 9, inject: { full: 'B'.repeat(170), compact: 'B'.repeat(35), micro: 'B=핵심' } }
+  ], 230, { compressionMode: 'auto', useCompressedFormat: true });
+  assert.strictEqual(packed.included.length, 2, 'global budget planning dropped lore before trying compact variants');
+  assert(packed.downgraded.length >= 1, 'global budget planning did not downgrade any entry');
+  assert(packed.usedChars <= 230, 'global lore packing exceeded its budget');
+  assert(packed.variants.some(item => item.name === 'B' && item.level === 'compact'), 'automatic planning did not downgrade the lower-priority lore first');
+  const explicitFull = C.buildLoreBudgetPlan([
+    { id: 1, name: 'A', type: 'character', score: 1, inject: { full: 'A'.repeat(170), compact: 'short A', micro: 'A' } },
+    { id: 2, name: 'B', type: 'character', score: 0.5, inject: { full: 'B'.repeat(170), compact: 'short B', micro: 'B' } }
+  ], 230, { compressionMode: 'full', useCompressedFormat: true });
+  assert(explicitFull.variants.every(item => item.level === 'full'), 'explicit Full mode silently changed representation');
+  assert(explicitFull.downgraded.length === 0 && explicitFull.dropped.length === 1, 'explicit Full mode did not remove only the entry that could not fit');
+
   const merged = C.mergeImportedEntries([
     { type: 'character', name: 'A', triggers: ['A'], summary: { full: 'first', compact: 'first', micro: 'A=first' }, imp: 4 },
     { type: 'character', name: 'A', triggers: ['Alias'], summary: { full: 'second', compact: 'second', micro: 'A=second' }, imp: 8 }
@@ -253,6 +306,12 @@ function testPromptContract() {
   assert(schema.some(row => String(row.type).includes('ability') && String(row.type).includes('faction')), 'genre-neutral lore types are missing');
   assert(schema.some(row => String(row.type).includes('key_quote')), 'important-line lore type is missing');
   assert(L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB.includes('REQUIRED CORE'), 'weak-model core contract is missing');
+  assert(L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB.includes('FACT BINDING'), 'owner-bound fact contract is missing');
+  assert(schema.every(row => Array.isArray(row.facts)), 'default extraction schema does not require structured facts');
+  assert(!L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB.includes('summary.full/compact/micro'), 'default extraction still asks the model for three summary variants');
+  assert(!L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB.startsWith('You are'), 'default extraction begins with unnecessary role metadata');
+  assert.strictEqual(JSON.stringify(Array.from(L.LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB || [])), '["7055:1e3201f9"]', 'legacy default-prompt migration signature changed');
+  assert(L.DEFAULT_DEEPSEEK_IMPORT_PROMPT.includes('{"entries":[...]}') && L.DEFAULT_DEEPSEEK_IMPORT_PROMPT.includes('{"entries":[]}'), 'DeepSeek import prompt is empty or uses the wrong top-level JSON shape');
   assert(L.DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB.includes('{outputMode}'), 'DB prompt lost the output-mode placeholder');
   const promptText = [
     L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
@@ -287,7 +346,10 @@ function testSourceContracts() {
   assert(normalPath.includes("mergeExtractedData(parsedItems, _url, { skipSnapshot: true })"), 'general extraction can create a duplicate persisted snapshot');
   assert(normalPath.includes("mergeExtractedData(temporalResult.events, _url, { skipSnapshot: true })"), 'temporal extraction can create a duplicate persisted snapshot');
   assert.strictEqual((normalPath.match(/createSnapshot\(commitPackName, '자동 병합 전 백업', 'auto'\)/g) || []).length, 1, 'one extraction transaction must create exactly one persisted snapshot');
-  assert(normalPath.includes('A dedicated scene-memory pass will run'), 'general and dedicated scene extraction are not coordinated');
+  assert(normalPath.includes('scene memories are extracted separately'), 'general and dedicated scene extraction are not coordinated');
+  assert(extraction.includes('set.facts') && extraction.includes('append.openLoops'), 'patch extraction does not expose the structured-memory update path');
+  assert(!extraction.includes('prefer append.hooks, append.recallTriggers, append.actions, or set.summary.compact/micro'), 'temporal patch prompt still requests model-generated compact summaries');
+  assert(extraction.includes('Return summary.full only when the complete event memory changed.'), 'temporal patch prompt does not preserve the complete-summary contract');
   assert(extraction.includes('isRecognizedExtractResponse(parsed)'), 'structured JSON envelopes are not validated');
   assert(extraction.includes('!!(res && res.text) && !validStructure'), 'JSON repair can run without a provider response body');
   assert(extraction.includes('if (!validStructure) parsed = null'), 'malformed structured output can still be accepted as empty');
@@ -301,7 +363,7 @@ function testSourceContracts() {
 
   const settings = read('embedding/injecter-3.js');
   assert(settings.includes("const dT = this.config.templates.find(t => t.isDefault || t.id === 'default')"), 'default-template targeting changed');
-  assert(settings.includes('LEGACY.some(p => norm(p) === n)'), 'custom prompt migration is not exact-match guarded');
+  assert(settings.includes('LEGACY.includes(signature(t.promptWithDb))'), 'custom prompt migration is not exact-signature guarded');
   assert(settings.includes("'autoExtOpenAIFormat'"), 'OpenAI transport format is not preserved by API-only settings reset');
   assert(!settings.includes('persistStorageIfPossible()'), 'persistent storage permission is still requested during settings saves');
   assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
@@ -325,6 +387,12 @@ function testSourceContracts() {
   const refinerDom = read('embedding/refiner-dom.js');
   const refinerCore = read('embedding/refiner-core.js');
   const injectionSource = read('embedding/injecter-5.js');
+  const chatBootstrap = read('embedding_pre/erie_crack_inject_chat.user.js');
+  const routerBootstrap = read('embedding_pre/erie_crack_inject.user.js');
+  assert(chatBootstrap.includes('260727-memory-v2') && routerBootstrap.includes('260727-memory-v2'), 'bootstrap update paths do not target the new branch');
+  assert(!chatBootstrap.includes('260706-hotfix') && !routerBootstrap.includes('260706-hotfix'), 'bootstrap still loads modules from the deployed branch');
+  assert(injectionSource.indexOf('findUnmetPairs(activeNames)') < injectionSource.indexOf('recordFirstEncounter(activeNames[i], activeNames[j]'), 'first encounters are recorded before unmet-pair detection');
+  assert(injectionSource.indexOf('findReunionPairs(activeNames') < injectionSource.indexOf('recordFirstEncounter(activeNames[i], activeNames[j]'), 'current encounters are recorded before reunion detection');
   assert(refinerDom.includes("exactButton(document, '수정')"), 'native response-edit fallback does not open the current message editor');
   assert(refinerDom.includes("exactButton(document, '수정 완료')"), 'native response-edit fallback does not submit the corrected message');
   assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');

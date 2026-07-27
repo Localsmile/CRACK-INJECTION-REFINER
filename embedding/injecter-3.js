@@ -41,7 +41,7 @@
     DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT,
     DEFAULT_TEMPORAL_RECALL_JUDGE_SCHEMA,
     AUTO_EXTRACT_PROMPT_VERSION,
-    LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB
+    LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB
   } = _w.__LoreInj;
 
   const db = C.getDB();
@@ -757,15 +757,22 @@
         // v1.4.0-test.47: 자동추출 promptWithDb LEGACY 마이그레이션. default 템플릿은 위에서 강제 덮어쓰이므로 여기는 non-default(사용자 복제) 템플릿 보호용. norm 불일치면 사용자 소유물로 간주하고 보존.
         try {
           const APV = AUTO_EXTRACT_PROMPT_VERSION;
-          const LEGACY = LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB || [];
+          const LEGACY = LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB || [];
           const savedAPV = this.config.autoExtractPromptVersion || '';
           if (savedAPV !== APV && Array.isArray(this.config.templates)) {
-            const norm = (s) => (s || '').trim().replace(/\s+/g, ' ');
+            const signature = (value) => {
+              const text = String(value || '').trim().replace(/\s+/g, ' ');
+              let hash = 2166136261;
+              for (let i = 0; i < text.length; i++) {
+                hash ^= text.charCodeAt(i);
+                hash = Math.imul(hash, 16777619);
+              }
+              return `${text.length}:${(hash >>> 0).toString(16)}`;
+            };
             let migrated = 0;
             for (const t of this.config.templates) {
               if (!t || !t.promptWithDb) continue;
-              const n = norm(t.promptWithDb);
-              if (LEGACY.some(p => norm(p) === n)) {
+              if (LEGACY.includes(signature(t.promptWithDb))) {
                 t.promptWithDb = DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB;
                 migrated++;
               }
@@ -779,6 +786,29 @@
         try {
           if (this.ensureDeepSeekTemplateFields()) this.save();
         } catch (e) {}
+
+        // Replace only the previous bundled defaults. User-edited conversion prompts and schemas stay untouched.
+        try {
+          const signature = (value) => {
+            const text = String(value || '').replace(/\r\n/g, '\n');
+            let hash = 2166136261;
+            for (let i = 0; i < text.length; i++) {
+              hash ^= text.charCodeAt(i);
+              hash = Math.imul(hash, 16777619);
+            }
+            return `${text.length}:${(hash >>> 0).toString(16)}`;
+          };
+          let changed = false;
+          if (signature(this.config.importPrompt) === '1783:6fa83999') {
+            this.config.importPrompt = DEFAULT_IMPORT_PROMPT || C.DEFAULT_IMPORT_PROMPT;
+            changed = true;
+          }
+          if (signature(this.config.importSchema) === '2242:e08eed11') {
+            this.config.importSchema = DEFAULT_IMPORT_SCHEMA || C.DEFAULT_IMPORT_SCHEMA;
+            changed = true;
+          }
+          if (changed) this.save();
+        } catch (_) {}
 
         const refSaved = _ls.getItem('speech-refiner-v1');
         if (refSaved) {

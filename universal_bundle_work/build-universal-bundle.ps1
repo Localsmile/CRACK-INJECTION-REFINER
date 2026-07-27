@@ -74,7 +74,7 @@ $meta = $metaMatch.Value
 $meta = [regex]::Replace($meta, '// @name\s+.*', '// @name        에리의 크랙 로어 인젝터 (Universal)')
 $meta = [regex]::Replace($meta, '// @version\s+.*', '// @version     ' + [string]$manifest.version)
 $meta = [regex]::Replace($meta, '// @description\s+.*', '// @description 에리를 죽인 크랙을 때린다.')
-$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
+$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260727-memory-v2/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
 $meta = [regex]::Replace($meta, '// @updateURL\s+.*', '// @updateURL   ' + $universalUrl)
 $meta = [regex]::Replace($meta, '// @downloadURL\s+.*', '// @downloadURL ' + $universalUrl)
 

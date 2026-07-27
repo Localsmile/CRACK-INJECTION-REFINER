@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "REPO=Localsmile/CRACK-INJECTION-REFINER"
-set "REF=260706-hotfix"
+set "REF=260727-memory-v2"
 set "ARGS=%*"
 set "DRY_RUN=0"
 set "NO_HEAD=0"

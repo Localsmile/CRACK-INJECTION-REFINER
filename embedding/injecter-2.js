@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260706.16';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260710-selectable-scope-v2';
+  const VER = '1.4.0.260727.1';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v1';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -15,15 +15,15 @@
     return String(prompt || '')
       .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if nothing new\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape {"entries":[...]}. Return exactly ' + empty + ' if nothing new.')
       .replace(/JSON ONLY: Output ONLY a valid JSON array\. No markdown\. Empty array \[\] if no meaningful event occurred\./g, 'JSON ONLY: Output exactly one valid JSON object. No markdown, no prose, no comments. Use top-level shape {"entries":[...]}. Return exactly ' + empty + ' if no meaningful event occurred.')
+      .replace(/JSON ONLY\. Output a valid JSON array\. No markdown\./g, 'JSON ONLY. Output one valid JSON object with top-level shape {"entries":[...]}. No other text. If empty, return {"entries":[]}.')
       .replace(/Output ONLY a valid JSON array/g, 'Output exactly one valid JSON object with top-level shape {"entries":[...]}')
       .replace(/Empty array \[\]/g, empty)
       .replace(/Schema:\n\{schema\}/g, 'Schema for each object inside entries:\n{schema}')
       .replace(/CRITICAL RULES:\n/g, 'CRITICAL RULES:\n0. STRUCTURE: The response must be one JSON object with an "entries" array. Every extracted ' + (eventOnly ? 'timeline_event' : 'lore entry or patch operation') + ' goes inside entries.\n');
   }
-  const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `You are a continuity archivist for roleplay.
-Analyze the conversation and extract NEW established facts that will matter in later scenes.
-
-CONTENT COVERAGE:
+  const FACT_SHAPE_SCHEMA = `{"subject":"exact owner","relation":"attribute or relation","value":"bound value","time":"current|past|future|timeless","polarity":"affirmed|negated|uncertain","condition":"","knownBy":[],"hiddenFrom":[]}`;
+  const TIMELINE_SCHEMA = `{ "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" }`;
+  const EXTRACTION_COVERAGE = `CONTENT COVERAGE:
 - Support every RP genre and tone, including everyday life, romance, mystery, horror, action, fantasy, science fiction, and adult/private relationship continuity.
 - Record concrete source facts in the conversation's language with detail proportional to future continuity needs.
 - Never invent missing motives, dates, relationship labels, or world rules.
@@ -34,12 +34,28 @@ EXTRACTION PRIORITIES (in order of importance):
 3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and their current lifecycle.
 4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
 5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks that may matter later.
-6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.
+6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.`;
+  const MEMORY_FORMAT_RULES = `MEMORY FORMAT RULES:
+- "summary.full": complete and self-contained continuity record. Do not shorten it for an injection budget.
+- "facts": lossless structured facts used to create a dense injection form. Do not omit a fact from facts merely because it already appears in summary.full.
+- Fact shape: ${FACT_SHAPE_SCHEMA}.
+- "openLoops": unresolved goals, promises, questions, threats, or conflicts. Omit when none.
+- Do not output summary.compact, summary.micro, inject, or embed_text. The application derives them from facts.
+- "callState": current vocative state. previousTerms are context only, not permanent requirements.
+- "timeline": event turn/order/scene/observed recency. Do not invent in-story days.
+- "entities": participating characters/places/items.
+- "state": current situation in noun phrases. Replace entirely on update.
+- Field abbreviations: importance→imp, surprise→sur, emotional→emo.
+- Source field is not needed in output (injector adds it).`;
+
+  const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `Extract NEW established continuity facts from the conversation that may matter in later scenes.
+
+${EXTRACTION_COVERAGE}
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
-2. REQUIRED CORE: Every entry needs type, name, 2-4 triggers, summary.full/compact/micro, imp, sur, and emo.
-3. OPTIONAL MODULES: Add inject, embed_text, state, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. A weaker model should omit an uncertain optional module instead of emitting empty or fabricated fields.
+2. REQUIRED CORE: Every entry needs type, name, 2-4 triggers, summary.full, facts, imp, sur, and emo.
+3. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit an uncertain optional module instead of emitting empty or fabricated fields.
 4. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
 5. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
    PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
@@ -47,10 +63,13 @@ CRITICAL RULES:
    COMPOUND (A&&B): Both operands MUST be proper nouns. Never combine a proper noun with an abstract term. Bad: "배신&&채린", "욕망&&도윤". Good: "채린&&도윤", "채린&&결계석".
    For relationships: use both parties' names bidirectionally (A&&B and B&&A).
 6. CONTENT DEPTH: Capture relationship evolution, group dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
-7. STATE REPLACEMENT: When a status CHANGES, describe ONLY the current state.
-8. SUMMARY QUALITY: Produce summary.full, summary.compact, and summary.micro.
+7. FACT BINDING:
+   - Every fact needs an explicit subject, relation, and value.
+   - Keep each attribute attached to its owner. Never put several people and several attributes into one unbound list.
+   - Keep relationship direction, quantity, negation, uncertainty, conditions, and who knows or does not know a fact.
+   - Use time="current" for the latest state and time="past" for an earlier state that still matters.
+8. SUMMARY QUALITY: Produce one self-contained summary.full.
    Bad full: "동맹 관계" Good full: "대한제국과 영국의 상호방위 동맹. 군수물자 지원과 관세 양보를 교환하며 현재 군사 지원 약속이 미해결."
-   compact must keep the relation/status/hook. micro must be a stable recall handle + current state.
 9. IMPORTANCE GATING: Rate each entry on three axes (1-10):
    - importance: How critical to the ongoing story?
    - surprise: How new vs already-known information?
@@ -72,22 +91,7 @@ CRITICAL RULES:
    - If no new significant event occurred, OMIT eventHistory for that entry.
 12. MAJOR SCENE ENTRY: When a scene itself needs independent later recall, output type="timeline_event" with participants, location, actions, hooks, and recallTriggers. Skip this type when the runtime says a dedicated scene-memory pass will handle it.
 
-SUMMARY AND INJECTION FORMAT RULES:
-- "summary" has three semantic levels, not just shorter copies:
-  - "full": self-contained continuity record. Include who/what/why/current state and the unresolved hook.
-  - "compact": preserve entity, state, relationship, and unresolved hook.
-  - "micro": stable recall handle + current state only. Never output a vague teaser.
-- "inject" may mirror summary tiers, but it must stay concise enough for later 2,000-char budget planning:
-  - "full": key facts separated by |. Target 120 chars.
-  - "compact": essential continuity only. Target 70 chars.
-  - "micro": name=status format. Target 35 chars.
-- "embed_text": keyword cluster, NOT prose. Include names, aliases, relationship terms, event causes, stakes, location, and unresolved hooks.
-- "callState": current vocative state. previousTerms are context only, not permanent requirements.
-- "timeline": event turn/order/scene/observed recency. Do not invent in-story days.
-- "entities": participating characters/places/items.
-- "state": current situation in noun phrases. Replace entirely on update.
-- Field abbreviations: importance→imp, surprise→sur, emotional→emo.
-- Source field is not needed in output (injector adds it).
+${MEMORY_FORMAT_RULES}
 
 Schema:
 {schema}
@@ -100,19 +104,13 @@ Conversation Log:
     "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|key_quote",
     "name": "Entity Name",
     "triggers": ["keyword1", "CharName&&keyword2"],
-    "summary": {
-      "full": "Continuity-safe, self-contained: who/what/why/current state.",
-      "compact": "Entity + state + relation/hook preserved.",
-      "micro": "Stable recall handle + current state."
-    },
-    "embed_text": "names aliases relationship terms event causes stakes location unresolved hooks",
-    "inject": {
-      "full": "derived from summary.full; key facts | max 120 chars",
-      "compact": "derived from summary.compact; max 70 chars",
-      "micro": "derived from summary.micro; max 35 chars"
-    },
+    "summary": {"full": "Complete self-contained continuity record."},
+    "facts": [
+      ${FACT_SHAPE_SCHEMA}
+    ],
+    "openLoops": ["unresolved goal, promise, question, threat, or conflict"],
     "state": "current situation noun phrase",
-    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },
+    "timeline": ${TIMELINE_SCHEMA},
     "entities": ["characters/places/items involved"],
     "eventHistory": [
       {"turn": 12, "summary": "significant concrete event", "imp": 8, "emo": 9}
@@ -124,12 +122,11 @@ Conversation Log:
     "name": "CharA↔CharB",
     "parties": ["CharA", "CharB"],
     "triggers": ["CharA&&CharB", "CharB&&CharA"],
-    "summary": {
-      "full": "relationship cause + current state + unresolved hook",
-      "compact": "relationship state + hook",
-      "micro": "A↔B=status"
-    },
-    "embed_text": "CharA CharB aliases call terms relationship stakes hooks",
+    "summary": {"full": "relationship cause + current state + unresolved hook"},
+    "facts": [
+      {"subject": "CharA↔CharB", "relation": "relationship", "value": "current bound state", "time": "current", "polarity": "affirmed", "knownBy": ["CharA", "CharB"], "hiddenFrom": []}
+    ],
+    "openLoops": ["unresolved relationship issue"],
     "state": "one-word status",
     "callState": {
       "CharA→CharB": {
@@ -144,7 +141,7 @@ Conversation Log:
     },
     "call": {"CharA→CharB": "latest vocative"},
     "callDelta": [{"from":"CharA","to":"CharB","term":"newHonorific","prevTerm":"oldHonorific","turnApprox":0}],
-    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },
+    "timeline": ${TIMELINE_SCHEMA},
     "entities": ["CharA", "CharB"],
     "imp": 5, "sur": 5, "emo": 5
   },
@@ -152,15 +149,14 @@ Conversation Log:
     "type": "prom",
     "name": "Promise title",
     "triggers": ["Maker&&keyword", "Target&&keyword"],
-    "summary": {
-      "full": "who promised what, why it matters, current status, condition",
-      "compact": "promise + status + condition",
-      "micro": "Maker=status"
-    },
-    "embed_text": "maker target promise condition stakes",
+    "summary": {"full": "who promised what, why it matters, current status, condition"},
+    "facts": [
+      {"subject": "Maker→Target", "relation": "promise", "value": "exact promised action", "time": "current", "polarity": "affirmed", "condition": "trigger condition", "knownBy": ["Maker", "Target"], "hiddenFrom": []}
+    ],
+    "openLoops": ["unfulfilled promise or consequence"],
     "state": "pending|fulfilled|broken|expired|modified",
     "cond": "trigger condition",
-    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },
+    "timeline": ${TIMELINE_SCHEMA},
     "entities": ["Maker", "Target"],
     "imp": 5, "sur": 5, "emo": 5
   },
@@ -169,7 +165,11 @@ Conversation Log:
     "name": "Stable scene recall handle",
     "title": "Short scene title",
     "triggers": ["participant", "place or unique object"],
-    "summary": {"full": "who, where, what changed, consequence, unresolved hook", "compact": "scene + consequence + hook", "micro": "scene=current meaning"},
+    "summary": {"full": "who, where, what changed, consequence, unresolved hook"},
+    "facts": [
+      {"subject": "exact participant or scene", "relation": "action or consequence", "value": "bound event fact", "time": "past", "polarity": "affirmed", "knownBy": [], "hiddenFrom": []}
+    ],
+    "openLoops": ["future recall reason"],
     "participants": ["Character"],
     "location": "Place",
     "actions": ["concrete action"],
@@ -186,11 +186,11 @@ Conversation Log:
       "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|rel|prom|timeline_event|key_quote",
       "name": "Entity Name",
       "triggers": ["keyword1", "CharA&&CharB"],
-      "summary": { "full": "self-contained continuity", "compact": "state + hook", "micro": "name=status" },
-      "inject": { "full": "max 120 chars", "compact": "max 70 chars", "micro": "max 35 chars" },
-      "embed_text": "names aliases relationship terms causes stakes locations hooks",
+      "summary": { "full": "complete self-contained continuity" },
+      "facts": [${FACT_SHAPE_SCHEMA}],
+      "openLoops": [],
       "state": "current situation",
-      "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },
+      "timeline": ${TIMELINE_SCHEMA},
       "entities": [],
       "eventHistory": [{"turn": 0, "summary": "new concrete event", "imp": 8, "emo": 8}],
       "imp": 5, "sur": 5, "emo": 5
@@ -202,8 +202,9 @@ Conversation Log:
     "reason": "short reason",
     "set": {
       "state": "",
-      "summary": { "full": "", "compact": "", "micro": "" },
-      "inject": { "full": "", "compact": "", "micro": "" },
+      "summary": { "full": "" },
+      "facts": [],
+      "openLoops": [],
       "callState": {},
       "timeline": {},
       "entities": [],
@@ -211,6 +212,8 @@ Conversation Log:
     },
     "append": {
       "triggers": [],
+      "facts": [],
+      "openLoops": [],
       "eventHistory": [{"turn": 0, "summary": "new concrete event", "imp": 8, "emo": 8}],
       "callHistory": [{"turn": 0, "from": "A", "to": "B", "term": "current", "prevTerm": "previous"}]
     }
@@ -236,11 +239,10 @@ Conversation Log:
     "emotions": {
       "Character": ["hesitation", "relief"]
     },
-    "summary": {
-      "full": "Self-contained event memory: who, where, what happened, why it matters, what changed, unresolved hook.",
-      "compact": "Event + consequence + hook.",
-      "micro": "Stable recall handle=current meaning"
-    },
+    "summary": {"full": "Self-contained event memory: who, where, what happened, why it matters, what changed, unresolved hook."},
+    "facts": [
+      {"subject": "exact participant or scene", "relation": "action or consequence", "value": "bound event fact", "time": "past|current|future", "polarity": "affirmed|negated|uncertain", "condition": "", "knownBy": [], "hiddenFrom": []}
+    ],
     "hooks": ["unresolved hook or future recall reason"],
     "linkedLore": ["related character/relationship/promise/location names"],
     "recallTriggers": ["literal words, aliases, scene cues, memory question cues"],
@@ -250,8 +252,7 @@ Conversation Log:
   }
 ]`;
 
-  const DEFAULT_TEMPORAL_EXTRACT_PROMPT = `You are a Temporal Memory Extractor for long-form AI RP.
-Extract ONLY concrete timeline events from the conversation log.
+  const DEFAULT_TEMPORAL_EXTRACT_PROMPT = `Extract ONLY concrete timeline events from the conversation log.
 
 Purpose:
 - Build event memories that can be recalled even 1000 turns later.
@@ -273,10 +274,11 @@ CRITICAL RULES:
 6. RECALL TRIGGERS:
    - Include literal names, places, actions, nicknames, objects, and user recall cues such as "그때", "기억해", "전에".
    - Include both concrete scene terms and semantic cues.
-7. SUMMARY LEVELS:
-   - summary.full: self-contained event memory.
-   - summary.compact: event + consequence + hook.
-   - summary.micro: stable recall handle + current meaning.
+7. MEMORY FORMAT:
+   - Produce one self-contained summary.full.
+   - Produce facts with an explicit subject, relation, and value.
+   - Keep actions, consequences, knowledge scope, and attributes attached to the correct participant.
+   - Do not output summary.compact or summary.micro.
 8. PARTICIPANTS AND LINKS:
    - participants: characters directly involved.
    - linkedLore: related relationship/promise/location/event names if obvious.
@@ -306,11 +308,9 @@ Conversation Log:
   "reason": "short reason in the conversation language"
 }`;
 
-  const DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT = `You are a fast Temporal Recall Judge for an AI RP memory injector.
-Return JSON ONLY. Do not write prose outside JSON.
+  const DEFAULT_TEMPORAL_RECALL_JUDGE_PROMPT = `Return JSON ONLY. Do not write prose outside JSON.
 
-Task:
-Decide whether timeline memories should be injected for the next RP response.
+Decide whether timeline memories should be included for the next response.
 You do NOT write the injection text. You only choose a command.
 
 Rules:
@@ -336,28 +336,15 @@ Recent conversation:
 Timeline candidates:
 {candidates}`;
 
-  const DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB = `You are a continuity archivist for roleplay.
-Analyze the following conversation log ALONGSIDE the EXISTING Lore Database.
-Extract only NEW or UPDATED continuity facts.
+  const DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB = `Compare the conversation with the existing lore and extract only NEW or UPDATED continuity facts.
 
-CONTENT COVERAGE:
-- Support every RP genre and tone, including everyday life, romance, mystery, horror, action, fantasy, science fiction, and adult/private relationship continuity.
-- Record concrete source facts in the conversation's language with detail proportional to future continuity needs.
-- Never invent missing motives, dates, relationship labels, or world rules.
-
-EXTRACTION PRIORITIES (in order of importance):
-1. IDENTITY AND STATE: aliases, forms, roles, goals, knowledge, secrets, injuries, conditions, and current situation.
-2. RELATIONSHIPS: dynamics, forms of address, private/public state, first meetings, reunions, and meaningful changes.
-3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and lifecycle changes.
-4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
-5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks not already stored.
-6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.
+${EXTRACTION_COVERAGE}
 
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
 2. INTEGRATE AND UPDATE: If the entity already exists in the Lore Database, DO NOT duplicate it. Keep the exact same "name".
-3. REQUIRED CORE: Every added entry needs type, name, 2-4 triggers, summary.full/compact/micro, imp, sur, and emo.
-4. OPTIONAL MODULES: Add inject, embed_text, state, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit uncertain optional modules instead of emitting empty or fabricated fields.
+3. REQUIRED CORE: Every added entry needs type, name, 2-4 triggers, summary.full, facts, imp, sur, and emo.
+4. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit uncertain optional modules instead of emitting empty or fabricated fields.
 5. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
 6. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
    PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
@@ -365,8 +352,12 @@ CRITICAL RULES:
    COMPOUND (A&&B): Both operands MUST be proper nouns. Never combine a proper noun with an abstract term. Bad: "배신&&채린", "욕망&&도윤". Good: "채린&&도윤", "채린&&결계석".
    For relationships: use both parties' names bidirectionally (A&&B and B&&A).
 7. CONTENT DEPTH: Capture relationship evolution, faction dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
-8. STATE REPLACEMENT: For relationship and promise types, describe ONLY the CURRENT state.
-9. SUMMARY QUALITY: Produce summary.full, summary.compact, and summary.micro. full must be self-contained; compact keeps relationship/status/hook; micro is only the stable recall handle + current state.
+8. FACT BINDING:
+   - Every fact needs an explicit subject, relation, and value.
+   - Keep each attribute attached to its owner. Never put several people and several attributes into one unbound list.
+   - Keep relationship direction, quantity, negation, uncertainty, conditions, and who knows or does not know a fact.
+   - Use time="current" for the latest state and time="past" for an earlier state that still matters.
+9. SUMMARY QUALITY: Produce one self-contained summary.full. Do not shorten it for an injection budget.
 10. IMPORTANCE GATING: Rate each entry on three axes (1-10):
    - importance: How critical to the ongoing story?
    - surprise: How new vs already-known information?
@@ -390,36 +381,22 @@ CRITICAL RULES:
 12A. MAJOR SCENE ENTRY: When a scene itself needs independent later recall, output type="timeline_event" with participants, location, actions, hooks, and recallTriggers. Skip this type when the runtime says a dedicated scene-memory pass will handle it.
 13. ANCHOR AWARENESS (CRITICAL — USER-LOCKED NARRATIVE FACTS):
     - Some existing entries have "anchor": true. These are user-locked canonical facts.
-    - For anchored entries: NEVER output summary, state, detail, call, inject, cond, imp, sur, emo, gs, arc. These fields are PROTECTED and any output will be discarded by the merge layer.
+    - For anchored entries: NEVER output summary, facts, openLoops, state, detail, call, inject, cond, imp, sur, emo, gs, arc. These fields are PROTECTED and any output will be discarded by the merge layer.
     - You MAY still APPEND new items to eventHistory (if genuinely new and imp+emo >= 10).
     - You MAY add new keywords to triggers.
     - If nothing new qualifies for an anchored entry, OMIT it entirely from output. Do not echo its existing fields.
 14. CONTEXT-SAFE MERGE PATCHES (non-anchored entries):
     - The Existing Lore Database can be partial when the DB is large. Never assume omitted old facts are false.
     - For each existing entry, output ONLY changed/new slots; omitted slots are preserved by the merge layer.
-    - If updating summary or inject, preserve the existing kernel and APPEND the new scene detail. Do NOT replace a continuity record with only the latest scene.
-    - summary.full must remain self-contained after merge: existing identity/relationship/current state + new detail + unresolved hook.
-    - summary.compact must retain relationship/status/hook. summary.micro must remain a stable recall handle + current state.
+    - When updating summary.full, return a complete replacement containing the still-valid existing facts and the new state. Do not concatenate unrelated scene sentences.
+    - Return changed current facts in set.facts. The merge layer retains replaced values as past facts.
+    - Return independently coexisting new facts in append.facts. Do not use set.facts to add another possession, ability, member, or similar multi-value fact.
+    - Return new unresolved items in append.openLoops or a complete current list in set.openLoops.
     - For "state": output only if the status actually changed (e.g. pending→fulfilled, 우호→적대). Stable states are preserved automatically.
     - For "call": output only changed or newly observed pairs. Previous terms are context only, not mandatory future speech.
     - If unsure whether a fact is new or old, output it as eventHistory instead of overwriting summary/state.
 
-SUMMARY AND INJECTION FORMAT RULES:
-- "summary" has three semantic levels, not just shorter copies:
-  - "full": self-contained continuity record. Include who/what/why/current state and the unresolved hook.
-  - "compact": preserve entity, state, relationship, and unresolved hook.
-  - "micro": stable recall handle + current state only. Never output a vague teaser.
-- "inject" may mirror summary tiers, but it must stay concise enough for later 2,000-char budget planning:
-  - "full": key facts separated by |. Target 120 chars.
-  - "compact": essential continuity only. Target 70 chars.
-  - "micro": name=status format. Target 35 chars.
-- "embed_text": keyword cluster, NOT prose. Include names, aliases, relationship terms, event causes, stakes, location, and unresolved hooks.
-- "callState": current vocative state. previousTerms are context only, not permanent requirements.
-- "timeline": event turn/order/scene/observed recency. Do not invent in-story days.
-- "entities": participating characters/places/items.
-- "state": current situation in noun phrases. Replace entirely on update.
-- Field abbreviations: importance→imp, surprise→sur, emotional→emo.
-- Source field is not needed in output (injector adds it).
+${MEMORY_FORMAT_RULES}
 
 {outputMode}
 
@@ -432,8 +409,8 @@ Existing Lore Database:
 Conversation Log:
 {context}`;
 
-  // v1.4.0-test.47: old promptWithDb bodies are preserved as LEGACY.
-  // settings.load() upgrades exact legacy matches to the current default; edited user templates are kept.
+  // Archived only for maintainers. Runtime migration uses the normalized signature below.
+  /*
   const LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB = [
     `You are a Lore Archivist for RP.
 Analyze the following conversation log ALONGSIDE the EXISTING Lore Database.
@@ -538,37 +515,15 @@ Existing Lore Database:
 Conversation Log:
 {context}`
   ];
+  */
+  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB = ['7055:1e3201f9'];
 
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB);
   const DEFAULT_DEEPSEEK_TEMPORAL_EXTRACT_PROMPT = toJsonObjectPrompt(DEFAULT_TEMPORAL_EXTRACT_PROMPT, { eventOnly: true });
-  const DEFAULT_DEEPSEEK_IMPORT_PROMPT = `You are a Lore Structurer for AI RP.
-Convert the following source material into structured lore entries for an RP memory system.
-
-RULES:
-1. JSON ONLY. Output exactly one valid JSON object with top-level shape {"entries":[...]}. No markdown, prose, comments, or trailing text.
-2. Use the ORIGINAL LANGUAGE of the source. Korean source -> Korean output.
-3. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.
-4. Treat adult/private relationship state as ordinary continuity data when it affects later character, relationship, or scene state. Keep detail proportional to future retrieval needs.
-5. Each entity needs 3-5 triggers using exact names, aliases, places, objects, or relationship cues from the source.
-6. For relationships, use bidirectional compound triggers: A&&B and B&&A.
-7. summary and inject must both be produced.
-   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.
-   - summary.compact: preserve entity, state, relationship, and unresolved hooks.
-   - summary.micro: stable recall handle + current state only; never a vague teaser.
-   - inject.full/compact/micro: short text intended for direct OOC injection.
-8. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.
-9. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.
-10. Extract timeline, entities, state, imp/sur/emo for every entry when inferable. imp/sur/emo are 1-10.
-11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.
-12. Maximum {maxEntries} entries.
-13. If no useful lore exists, return exactly {"entries":[]}.
-
-Schema for each object inside entries:
-{schema}
-
-Source Material:
-{source}`;
+  const DEFAULT_DEEPSEEK_IMPORT_PROMPT = toJsonObjectPrompt(
+    String(_w.__LoreCore?.DEFAULT_IMPORT_PROMPT || 'Convert source to lore.\nJSON ONLY. Output a valid JSON array. No markdown.\nSchema:\n{schema}\nSource:\n{source}').replace(/<br>/g, '\n')
+  );
 
   const OOC_FORMATS = {
     default: {name: '참고 맥락 (기본)', prefix: '<ooc_lore_context>\nReference notes about established continuity that may be relevant to the current scene. Treat them as background facts, not directions for what characters must do or say. Apply only details that fit the immediate context; characters may disagree, refuse, forget, reinterpret, or naturally change these states. Do not mention or quote this block.', suffix: '\n</ooc_lore_context>', desc: '장면에 맞는 사실만 자연스럽게 참고'},
@@ -583,7 +538,7 @@ Source Material:
     DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB,
     DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB,
     AUTO_EXTRACT_PROMPT_VERSION,
-    LEGACY_AUTO_EXTRACT_PROMPTS_WITH_DB,
+    LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB,
     DEFAULT_AUTO_EXTRACT_SCHEMA,
     DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA,
     DEFAULT_TEMPORAL_EXTRACT_PROMPT,

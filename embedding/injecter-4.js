@@ -33,9 +33,11 @@
 - For brand-new lore, output {"op":"add","entry":{...}}.
 - Do not repeat unchanged summary.full.
 - Prefer set.state only if state changed.
+- Put changed current facts in set.facts; replaced current values are retained as past facts.
+- Put independently coexisting facts in append.facts.
+- Put new unresolved items in append.openLoops.
 - Prefer append.eventHistory for new concrete events.
 - Prefer append.triggers for new literal aliases.
-- If summary.full is unavoidable, keep it under 220 chars.
 - Anchored entries: only append new triggers/eventHistory/callHistory.`;
 
   const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
@@ -62,7 +64,9 @@ Optional important-line entry when the selected scope includes it:
   "recallTriggers": ["speaker", "distinctive literal phrase"],
   "linkedLore": ["related character, relationship, promise, or event"],
   "triggers": ["literal high-specificity cue"],
-  "summary": {"full":"line + context + later significance", "compact":"line + significance", "micro":"speaker: recall handle"},
+  "summary": {"full":"line + context + later significance"},
+  "facts": [{"subject":"speaker or exact owner","relation":"quote or later significance","value":"bound value","time":"past|timeless","polarity":"affirmed","knownBy":[],"hiddenFrom":[]}],
+  "openLoops": [],
   "imp": 7, "sur": 5, "emo": 7
 }
 
@@ -110,7 +114,9 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
 - If nothing changed at all, return exactly [].
 - For brand-new important scenes, output {"op":"add","entry":{...}}.
 - If the conversation only repeats already stored scene memories, output [].
-- Keep patch fields tiny: prefer append.hooks, append.recallTriggers, append.actions, or set.summary.compact/micro only when changed.`;
+- Keep patch fields focused: prefer append.hooks, append.recallTriggers, append.actions, set.facts, append.facts, or append.openLoops.
+- Use set.facts for a replaced current value and append.facts for an independently coexisting fact.
+- Return summary.full only when the complete event memory changed. Do not output summary.compact or summary.micro.`;
 
   const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
 - Existing important scene memories are provided as compact digests with stable "id".
@@ -132,7 +138,11 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       "participants": [],
       "location": "",
       "actions": [],
-      "summary": {"full": "self-contained event memory", "compact": "event + consequence + hook", "micro": "handle=current meaning"},
+      "summary": {"full": "self-contained event memory"},
+      "facts": [
+        {"subject": "exact participant, object, or place", "relation": "action, state, or consequence", "value": "bound value", "time": "past|current|future|timeless", "polarity": "affirmed|negated|uncertain", "condition": "", "knownBy": [], "hiddenFrom": []}
+      ],
+      "openLoops": [],
       "hooks": [],
       "linkedLore": [],
       "recallTriggers": [],
@@ -150,14 +160,17 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       "name": "",
       "when": {},
       "location": "",
-      "summary": {"compact": "", "micro": ""}
+      "summary": {"full": ""},
+      "facts": []
     },
     "append": {
       "participants": [],
       "actions": [],
       "hooks": [],
       "linkedLore": [],
-      "recallTriggers": []
+      "recallTriggers": [],
+      "facts": [],
+      "openLoops": []
     }
   }
 ]`;
@@ -253,6 +266,8 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       state: e.state || e.detail?.status || e.detail?.current_status || '',
       triggers: (e.triggers || []).slice(0, 6),
       summary,
+      facts: Array.isArray(e.facts) ? e.facts.slice(0, 16) : undefined,
+      openLoops: Array.isArray(e.openLoops) ? e.openLoops.slice(0, 8) : undefined,
       entities: (e.entities || e.parties || e.detail?.parties || []).slice(0, 8),
       anchor: e.anchor === true ? true : undefined
     };
@@ -351,6 +366,11 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       const s = String(ev && ev.summary || '').trim();
       return s && !(existing.eventHistory || []).some(x => String(x && x.summary || '').trim() === s);
     })) return true;
+    if (Array.isArray(incoming.facts) && incoming.facts.length) {
+      const mergedFacts = C.mergeMemoryFacts ? C.mergeMemoryFacts(existing.facts, incoming.facts, existing.name, { replaceCurrent: true }) : incoming.facts;
+      if (JSON.stringify(mergedFacts) !== JSON.stringify(existing.facts || [])) return true;
+    }
+    if (Array.isArray(incoming.openLoops) && arrOverlapScore(incoming.openLoops, existing.openLoops || []) < incoming.openLoops.filter(Boolean).length) return true;
     return false;
   }
 
@@ -386,6 +406,10 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       ? C.mergeLoreSummary(existing.summary, set.summary, existing.name, set.state || existing.state)
       : { ...(existing.summary || {}), ...set.summary };
     if (set.inject) existing.inject = mergeInject(existing.inject, set.inject, existing.name, set.state || existing.state);
+    if (Array.isArray(set.facts)) existing.facts = C.mergeMemoryFacts
+      ? C.mergeMemoryFacts(existing.facts, set.facts, existing.name, { replaceCurrent: true })
+      : set.facts;
+    if (Array.isArray(set.openLoops)) existing.openLoops = mergeArrayUnique([], set.openLoops);
     if (set.callState) existing.callState = mergeCallState(existing.callState, set.callState);
     if (set.timeline) existing.timeline = { ...(existing.timeline || {}), ...set.timeline };
     if (Array.isArray(set.entities)) existing.entities = mergeArrayUnique(existing.entities, set.entities);
@@ -394,6 +418,12 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     if (Array.isArray(append.triggers) && append.triggers.length) {
       existing.triggers = Array.from(new Set([...(existing.triggers || []), ...append.triggers].filter(Boolean)));
     }
+    if (Array.isArray(append.facts) && append.facts.length) {
+      existing.facts = C.mergeMemoryFacts
+        ? C.mergeMemoryFacts(existing.facts, append.facts, existing.name, { replaceCurrent: false })
+        : mergeArrayUnique(existing.facts, append.facts);
+    }
+    if (Array.isArray(append.openLoops) && append.openLoops.length) existing.openLoops = mergeArrayUnique(existing.openLoops, append.openLoops);
 
     if (Array.isArray(append.eventHistory) && append.eventHistory.length) {
       existing.eventHistory = existing.eventHistory || [];
@@ -429,6 +459,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
       if (existing.callHistory.length > 30) existing.callHistory = existing.callHistory.slice(-30);
     }
 
+    existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
     existing.lastUpdated = Date.now();
     try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch (_) {}
     if (entryContentSignature(existing) === beforeSig) return 0;
@@ -624,6 +655,8 @@ Structured output reminder:
       actions: (e.actions || []).slice(0, 6),
       hooks: (e.hooks || []).slice(0, 6),
       recallTriggers: (e.recallTriggers || e.triggers || []).slice(0, 8),
+      facts: Array.isArray(e.facts) ? e.facts.slice(0, 16) : undefined,
+      openLoops: Array.isArray(e.openLoops) ? e.openLoops.slice(0, 8) : undefined,
       summary
     };
   }
@@ -907,6 +940,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           callState: existing.callState ? JSON.parse(JSON.stringify(existing.callState)) : undefined,
           callHistory: existing.callHistory ? JSON.parse(JSON.stringify(existing.callHistory)) : undefined,
           inject: existing.inject ? JSON.parse(JSON.stringify(existing.inject)) : undefined,
+          facts: existing.facts ? JSON.parse(JSON.stringify(existing.facts)) : undefined,
+          openLoops: existing.openLoops ? JSON.parse(JSON.stringify(existing.openLoops)) : undefined,
           timeline: existing.timeline ? JSON.parse(JSON.stringify(existing.timeline)) : undefined,
           entities: existing.entities ? JSON.parse(JSON.stringify(existing.entities)) : undefined,
           cond: existing.cond,
@@ -924,6 +959,10 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
         }
         existing.triggers = [...new Set([...(existing.triggers || []), ...(e.triggers || [])])];
+        if (Array.isArray(e.facts) && e.facts.length) existing.facts = C.mergeMemoryFacts
+          ? C.mergeMemoryFacts(existing.facts, e.facts, existing.name, { replaceCurrent: true })
+          : mergeArrayUnique(existing.facts, e.facts);
+        if (Array.isArray(e.openLoops) && e.openLoops.length) existing.openLoops = mergeArrayUnique(existing.openLoops, e.openLoops);
         if (e.embed_text) existing.embed_text = e.embed_text;
         if (e.inject) existing.inject = mergeInject(existing.inject, e.inject, existing.name, e.state || existing.state);
         if (e.state !== undefined) existing.state = e.state;
@@ -1087,6 +1126,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           if (_tlMergeBackup.actions && _tlMergeBackup.actions.length) existing.actions = _tlMergeBackup.actions;
           if (_tlMergeBackup.when && Object.keys(_tlMergeBackup.when).length) existing.when = _tlMergeBackup.when;
         }
+        existing = normalizeEntryForMerge(existing, getTurnCounter(chatKey));
         try { if (C.normalizeTemporalGraph) existing = C.normalizeTemporalGraph(existing, { currentTurn: getTurnCounter(chatKey), sceneId: chatKey }); } catch(_) {}
         if (entryContentSignature(existing) === _beforeExistingSig) {
           processedCount--;
@@ -1266,8 +1306,8 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     }
     let personaPrefix = '';
     if (settings.config.autoExtIncludePersona) {
-      const pName = await C.fetchPersonaName();
-      if (pName) personaPrefix = `[User Persona: "${pName}"] All "user" role messages are from this character. Use "${pName}" as the character name, NOT "user".\n\n`;
+        const pName = await C.fetchPersonaName();
+        if (pName) personaPrefix = `The character speaking in user-role messages is "${pName}". Use "${pName}" as the character name instead of "user".\n\n`;
     }
     const tpl = settings.getActiveTemplate();
     const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
@@ -1276,7 +1316,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const shouldRunTemporalExtract = topics.majorScenes && settings.config.temporalExtractEnabled !== false &&
       (isManual || settings.config.temporalExtractAutoEnabled === true);
     const temporalCoordination = shouldRunTemporalExtract
-      ? '\n\nRUNTIME COORDINATION: A dedicated scene-memory pass will run after this response. Do not output type="timeline_event" in this general pass.'
+      ? '\n\nDo not output type="timeline_event" in this response; scene memories are extracted separately.'
       : '';
     const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + buildExtractionScope(topics) + temporalCoordination;
 
@@ -1485,7 +1525,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     if (settings.config.autoExtIncludePersona) {
       try {
         const personaName = await C.fetchPersonaName();
-        if (personaName) personaPrefix = '[User Persona: "' + personaName + '"] All "user" role messages are from this character. Use "' + personaName + '" as the character name, NOT "user".\n\n';
+        if (personaName) personaPrefix = 'The character speaking in user-role messages is "' + personaName + '". Use "' + personaName + '" as the character name instead of "user".\n\n';
       } catch (_) {}
     }
 
@@ -1506,7 +1546,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         ? providerOutputMode(patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract')
         : '';
       const temporalCoordination = runTemporal
-        ? '\n\nRUNTIME COORDINATION: A dedicated scene-memory pass will run after this response. Do not output type="timeline_event" in this general pass.'
+        ? '\n\nDo not output type="timeline_event" in this response; scene memories are extracted separately.'
         : '';
       const prompt = personaPrefix + promptTemplate
         .replace('{context}', context)

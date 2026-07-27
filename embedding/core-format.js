@@ -18,6 +18,81 @@
     return String(s || '');
   }
 
+  function cleanFactText(value) {
+    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+  }
+
+  function normalizeFactList(entry) {
+    const source = Array.isArray(entry?.facts)
+      ? entry.facts
+      : (Array.isArray(entry?.memoryFacts) ? entry.memoryFacts : []);
+    return source.map(raw => {
+      if (!raw || typeof raw !== 'object') return null;
+      const subject = cleanFactText(raw.subject || raw.owner || entry?.name);
+      const relation = cleanFactText(raw.relation || raw.predicate || raw.key);
+      const value = cleanFactText(raw.value ?? raw.object ?? raw.fact);
+      if (!subject || !relation || !value) return null;
+      return {
+        subject,
+        relation,
+        value,
+        time: cleanFactText(raw.time || raw.temporal || 'current').toLowerCase(),
+        polarity: cleanFactText(raw.polarity || raw.certainty || 'affirmed').toLowerCase(),
+        condition: cleanFactText(raw.condition),
+        knownBy: Array.isArray(raw.knownBy) ? raw.knownBy.map(cleanFactText).filter(Boolean) : [],
+        hiddenFrom: Array.isArray(raw.hiddenFrom) ? raw.hiddenFrom.map(cleanFactText).filter(Boolean) : []
+      };
+    }).filter(Boolean);
+  }
+
+  function factTimeLabel(time) {
+    const t = cleanFactText(time).toLowerCase();
+    if (!t || t === 'current' || t === 'now') return '현재';
+    if (t === 'past' || t === 'previous') return '과거';
+    if (t === 'future' || t === 'foreshadow') return '예정';
+    if (t === 'timeless' || t === 'stable') return '';
+    return cleanFactText(time);
+  }
+
+  function factPolaritySuffix(polarity) {
+    const p = cleanFactText(polarity).toLowerCase();
+    if (['negated', 'false', 'not'].includes(p)) return '(아님)';
+    if (['uncertain', 'inferred', 'suspected', 'rumor'].includes(p)) return '(불확실)';
+    return '';
+  }
+
+  function formatMemoryFactsCompact(entry) {
+    const facts = normalizeFactList(entry);
+    if (!facts.length) return '';
+    const groups = new Map();
+    for (const fact of facts) {
+      if (!groups.has(fact.subject)) groups.set(fact.subject, []);
+      const fields = [];
+      const time = factTimeLabel(fact.time);
+      const key = time ? `${time}.${fact.relation}` : fact.relation;
+      fields.push(`${key}=${fact.value}${factPolaritySuffix(fact.polarity)}`);
+      if (fact.condition) fields.push(`조건=${fact.condition}`);
+      if (fact.knownBy.length) fields.push(`인지=${fact.knownBy.join('·')}`);
+      if (fact.hiddenFrom.length) fields.push(`비인지=${fact.hiddenFrom.join('·')}`);
+      groups.get(fact.subject).push(fields.join('|'));
+    }
+    const lines = [];
+    for (const [subject, fields] of groups) lines.push(`[${subject}] ${fields.join('|')}`);
+    const loops = Array.isArray(entry?.openLoops) ? entry.openLoops.map(cleanFactText).filter(Boolean) : [];
+    if (loops.length) lines.push(`[미해결:${cleanFactText(entry?.name)}] ${loops.join('|')}`);
+    return lines.join(' ');
+  }
+
+  function deriveMemoryMicro(entry) {
+    const name = cleanFactText(entry?.name);
+    const state = cleanFactText(entry?.state || entry?.detail?.current_status || entry?.detail?.status);
+    if (name && state) return `${name}=${state}`;
+    const facts = normalizeFactList(entry);
+    if (!facts.length) return name;
+    const fact = facts.find(item => factTimeLabel(item.time) === '현재') || facts[0];
+    return `${fact.subject}:${fact.relation}=${fact.value}${factPolaritySuffix(fact.polarity)}`;
+  }
+
   function callStatePairs(e, limit = 2) {
     const cs = e && e.callState;
     if (!cs || typeof cs !== 'object') return '';
@@ -64,6 +139,8 @@
   }
 
   function cfCompact(e) {
+    const factCompact = formatMemoryFactsCompact(e);
+    if (factCompact) return factCompact;
     if (e.inject?.compact) return `${e.name}|${e.state || ''}: ${e.inject.compact}`;
     const d = e.detail || {}; const status = d.current_status || d.status || '';
     let line = e.name; if (status) line += '|' + status; line += ':';
@@ -91,6 +168,7 @@
   }
 
   function cfMicro(e) {
+    if (normalizeFactList(e).length) return deriveMemoryMicro(e);
     if (e.inject?.micro) return e.inject.micro;
     const d = e.detail || {}; const microSummary = summaryTier(e, 'micro'); const val = d.current_status || d.status || (microSummary ? [...microSummary].slice(0, 25).join('') : e.type);
     let hon = ''; if (d.nicknames && typeof d.nicknames === 'object') { const vals = Object.values(d.nicknames); if (vals.length > 0) hon = '/' + vals[0]; }
@@ -148,6 +226,11 @@
   }
 
   function timelineSummary(e, level = 'compact') {
+    if (level === 'compact') {
+      const dense = formatMemoryFactsCompact(e);
+      if (dense) return dense;
+    }
+    if (level === 'micro' && normalizeFactList(e).length) return deriveMemoryMicro(e);
     const s = e && e.summary;
     if (s && typeof s === 'object' && !Array.isArray(s)) {
       return String(s[level] || s.compact || s.full || s.micro || e.title || e.name || '');
@@ -255,21 +338,11 @@
         }
       }
 
-      if (!picked && compressionEnabled) {
-        const current = lines.join('\n');
-        const room = budget - charLen(current) - 2;
-        const microLine = '- ' + formatTimelineEventAtLevel(e, 'micro', opts);
-        if (room >= Math.max(30, opts.minCompressedChars || 40)) {
-          picked = trimToBudget(microLine, room);
-          pickedLevel = 'micro-trimmed';
-        }
-      }
-
       if (picked) {
         lines.push(picked);
         included.push(e);
         if (pickedLevel !== preferredLevel) {
-          compressionActions.push({ eventId: id, action: pickedLevel === 'micro-trimmed' ? 'trim' : 'downgrade', from: preferredLevel, to: pickedLevel });
+          compressionActions.push({ eventId: id, action: 'downgrade', from: preferredLevel, to: pickedLevel });
         }
       } else {
         droppedEventIds.push(id);
@@ -313,26 +386,68 @@
       bundledCount = ordered.length - sortedGroups.length;
       ordered = bundled;
     }
-    const lines = [], included = [], downgraded = [], dropped = [];
-    let used = 0;
-    for (const row of ordered) {
-      const preferred = row.p >= 120 ? 'full' : (row.p >= 75 ? 'compact' : 'micro');
-      const levels = preferred === 'full' ? ['full', 'compact', 'micro'] : (preferred === 'compact' ? ['compact', 'micro'] : ['micro']);
-      let picked = null, pickedLevel = null;
-      for (const level of levels) {
-        const line = formatEntryAtLevel(row.e, level);
-        const len = charLen(line);
-        if (line && used + len + 1 <= budget) { picked = line; pickedLevel = level; break; }
+    const mode = config.useCompressedFormat === false || config.autoCompression === false
+      ? 'full'
+      : (config.compressionMode || 'auto');
+    const initialLevel = mode === 'auto' ? 'full' : mode;
+    const canDowngrade = mode === 'auto';
+    const rows = ordered.map(row => {
+      const variants = {};
+      for (const level of ['full', 'compact', 'micro']) {
+        const text = formatEntryAtLevel(row.e, level);
+        variants[level] = { text, len: charLen(text) };
       }
-      if (picked) {
-        lines.push(picked); included.push(row.e); used += charLen(picked) + 1;
-        if (pickedLevel !== preferred) downgraded.push({ name: row.e.name, from: preferred, to: pickedLevel });
-      } else {
-        dropped.push({ name: row.e.name, reason: 'budget' });
+      return { ...row, variants, level: initialLevel, dropped: false };
+    });
+    const totalLength = () => {
+      const live = rows.filter(row => !row.dropped && row.variants[row.level]?.text);
+      if (!live.length) return 0;
+      return live.reduce((sum, row) => sum + row.variants[row.level].len, 0) + live.length - 1;
+    };
+    const downgraded = [];
+    const dropped = [];
+
+    if (canDowngrade && totalLength() > budget) {
+      // Preserve every selected lore first. Lower-priority entries become dense before any entry is removed.
+      for (const nextLevel of ['compact', 'micro']) {
+        const candidates = [...rows]
+          .filter(row => !row.dropped && row.level !== nextLevel && row.variants[nextLevel]?.text && row.variants[nextLevel].len < row.variants[row.level].len)
+          .sort((a, b) => (a.p - b.p) || ((b.variants[b.level].len - b.variants[nextLevel].len) - (a.variants[a.level].len - a.variants[nextLevel].len)));
+        for (const row of candidates) {
+          if (totalLength() <= budget) break;
+          const from = row.level;
+          row.level = nextLevel;
+          downgraded.push({ id: row.e.id, name: row.e.name, from, to: nextLevel });
+        }
       }
     }
-    const level = included.length ? (downgraded.length ? 'planned+downgraded' : 'planned') : 'none';
-    return { text: lines.join('\n'), included, usedChars: used, level, downgraded, dropped, bundledCount, budgetPlan: { loreBudget: budget, used, candidates: entries.length, included: included.length, dropped: dropped.length } };
+
+    if (totalLength() > budget) {
+      const dropOrder = [...rows].sort((a, b) => (a.p - b.p) || (b.i - a.i));
+      for (const row of dropOrder) {
+        if (totalLength() <= budget) break;
+        row.dropped = true;
+        dropped.push({ id: row.e.id, name: row.e.name, reason: 'budget' });
+      }
+    }
+
+    const liveRows = rows.filter(row => !row.dropped && row.variants[row.level]?.text);
+    const lines = liveRows.map(row => row.variants[row.level].text);
+    const included = liveRows.map(row => row.e);
+    const used = charLen(lines.join('\n'));
+    const usedLevels = Array.from(new Set(liveRows.map(row => row.level)));
+    const level = included.length ? (usedLevels.length === 1 ? usedLevels[0] : 'mixed') : 'none';
+    return {
+      text: lines.join('\n'),
+      included,
+      usedChars: used,
+      level,
+      downgraded,
+      dropped,
+      bundledCount,
+      variants: liveRows.map(row => ({ id: row.e.id, name: row.e.name, level: row.level, chars: row.variants[row.level].len })),
+      budgetPlan: { loreBudget: budget, used, candidates: entries.length, included: included.length, dropped: dropped.length }
+    };
   }
 
   function trimToBudget(text, budget) {
@@ -406,6 +521,7 @@
       level: lore.level,
       downgraded: lore.downgraded,
       dropped: lore.dropped,
+      variants: lore.variants || [],
       budgetPlan: { ...lore.budgetPlan, userChars, wrapperOverhead, availableAfterCritical: available, finalChars, maxInputChars },
       finalChars,
       reason: lore.included.length ? 'ok' : (body ? 'critical_only' : 'empty'),
@@ -582,7 +698,8 @@
   }
 
   Object.assign(C, {
-    charLen, summaryTier, callStatePairs, cfFull, cfCompact, cfMicro, adaptiveFormat, bundleGroupKey,
+    charLen, summaryTier, callStatePairs, normalizeFactList, formatMemoryFactsCompact, deriveMemoryMicro,
+    cfFull, cfCompact, cfMicro, adaptiveFormat, bundleGroupKey,
     entryPriority, formatEntryAtLevel, formatTimelineEventAtLevel, buildTemporalRecallBlock, buildLoreBudgetPlan, planInjectionBudget,
     formatEntryFull, formatEntryCompact, formatEntryMicro, budgetFormat, assembleInjection,
     formatFirstEncounterBlock, formatReunionTag,

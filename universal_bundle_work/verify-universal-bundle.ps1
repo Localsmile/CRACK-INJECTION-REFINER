@@ -15,7 +15,7 @@ function Assert-True([bool]$Cond, [string]$Msg) {
 
 Assert-True ($bundle.Contains('// @name        에리의 크랙 로어 인젝터 (Universal)')) 'wrong userscript name'
 Assert-True ($bundle.Contains('// @version     ' + $manifest.version)) 'wrong userscript version'
-$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
+$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260727-memory-v2/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
 Assert-True ($bundle.Contains('// @updateURL   ' + $universalUrl)) 'missing universal update URL'
 Assert-True ($bundle.Contains('// @downloadURL ' + $universalUrl)) 'missing universal download URL'
 Assert-True ($bundle.Contains('// @match       https://crack.wrtn.ai/stories/*/episodes/*')) 'missing stories match'
@@ -26,6 +26,9 @@ Assert-True ($bundle.Contains('// @grant       unsafeWindow')) 'missing unsafeWi
 Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
 Assert-True ($bundle.Contains('nativeContextTokenBudget')) 'adaptive native-context setting missing'
 Assert-True ($bundle.Contains('deriveAiMemoryTurns')) 'adaptive reinjection helper missing'
+Assert-True ($bundle.Contains('normalizeFactList') -and $bundle.Contains('formatMemoryFactsCompact') -and $bundle.Contains('deriveMemoryMicro')) 'memory fact renderers missing'
+Assert-True ($bundle.Contains('mergeMemoryFacts') -and $bundle.Contains('memorySchemaVersion')) 'memory fact normalization or version marker missing'
+Assert-True ($bundle.Contains('buildLoreBudgetPlan') -and ($bundle -match 'variants\s*:\s*liveRows') -and ($bundle -match 'nextLevel\s+of\s*\[\s*["'']compact["'']\s*,\s*["'']micro["'']\s*\]')) 'global lore budget planner missing'
 Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI compatibility helper missing'
 Assert-True ($bundle.Contains('anthropic_messages') -and (($bundle -match 'raw\s*={2,3}\s*["'']custom["'']') -or ($bundle -match '["'']custom["'']\s*={2,3}\s*raw')) -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'
 Assert-True ($bundle.Contains('lore-batch-extraction-jobs-v1')) 'resumable batch state missing'

@@ -893,16 +893,6 @@
     }
     scored.sort((a,b) => b.score - a.score);
 
-    if (activeNames.length >= 2 && config.firstEncounterWarning !== false) {
-      for (let i = 0; i < activeNames.length; i++) {
-        for (let j = i + 1; j < activeNames.length; j++) {
-          try {
-            await C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter });
-          } catch(e) {}
-        }
-      }
-    }
-
     if (config.rerankEnabled) {
       try {
         C.showStatusBadge('에리가 로어 재정렬 중');
@@ -1058,6 +1048,17 @@
       } catch(e) {}
     }
 
+    // Read encounter/reunion state before recording this turn, then persist the current encounter for later turns.
+    if (activeNames.length >= 2 && config.firstEncounterWarning !== false) {
+      for (let i = 0; i < activeNames.length; i++) {
+        for (let j = i + 1; j < activeNames.length; j++) {
+          try {
+            await C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter });
+          } catch(e) {}
+        }
+      }
+    }
+
     let sceneTag = '';
     if (recentMsgs.length > 0 && config.firstEncounterWarning !== false) {
       try {
@@ -1152,6 +1153,7 @@
       budgetPlan: fmtResult.budgetPlan || {},
       downgraded: fmtResult.downgraded || [],
       dropped: fmtResult.dropped || [],
+      variants: fmtResult.variants || [],
       finalChars: _finalChars,
       reason: fmtResult.reason || 'ok',
       temporalJudge: temporalJudgeDecision,

@@ -17,12 +17,12 @@
 
   function normalizeSummaryValue(summary, name, state) {
     if (summary && typeof summary === 'object' && !Array.isArray(summary)) {
-      const full = clampText(summary.full || summary.compact || summary.micro || '', 700);
+      const full = clampText(summary.full || summary.compact || summary.micro || '', 0);
       const compact = clampText(summary.compact || full, 180);
       const micro = clampText(summary.micro || (state ? `${name}=${state}` : compact || name), 60);
       return { full, compact, micro };
     }
-    const full = clampText(summary || '', 700);
+    const full = clampText(summary || '', 0);
     const compact = clampText(full || state || name || '', 180);
     const micro = clampText(state ? `${name}=${state}` : compact || name || '', 60);
     return { full, compact, micro };
@@ -39,11 +39,91 @@
   function mergeLoreSummary(existingSummary, incomingSummary, name, state) {
     const ex = normalizeSummaryValue(existingSummary, name, state);
     const inc = normalizeSummaryValue(incomingSummary, name, state);
+    const incomingObject = incomingSummary && typeof incomingSummary === 'object' && !Array.isArray(incomingSummary);
+    const hasFull = incomingObject ? !!String(incomingSummary.full || '').trim() : !!String(incomingSummary || '').trim();
+    const hasCompact = incomingObject ? !!String(incomingSummary.compact || '').trim() : hasFull;
+    const hasMicro = incomingObject ? !!String(incomingSummary.micro || '').trim() : hasFull;
     return {
-      full: mergeText(ex.full, inc.full, 700),
-      compact: mergeText(ex.compact, inc.compact, 180),
-      micro: inc.micro || ex.micro
+      full: hasFull ? inc.full : ex.full,
+      compact: hasCompact ? inc.compact : ex.compact,
+      micro: hasMicro ? inc.micro : ex.micro
     };
+  }
+
+  function normalizeMemoryFacts(entry) {
+    const facts = C.normalizeFactList ? C.normalizeFactList(entry) : [];
+    return facts.map(fact => ({
+      subject: fact.subject,
+      relation: fact.relation,
+      value: fact.value,
+      time: fact.time || 'current',
+      polarity: fact.polarity || 'affirmed',
+      ...(fact.condition ? { condition: fact.condition } : {}),
+      ...(fact.knownBy.length ? { knownBy: fact.knownBy } : {}),
+      ...(fact.hiddenFrom.length ? { hiddenFrom: fact.hiddenFrom } : {})
+    }));
+  }
+
+  function memoryFactKey(fact, includeValue = false) {
+    const norm = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return [
+      norm(fact.subject),
+      norm(fact.relation),
+      norm(fact.time || 'current'),
+      includeValue ? norm(fact.value) : ''
+    ].join('|');
+  }
+
+  function mergeMemoryFacts(existingFacts, incomingFacts, name, options = {}) {
+    const existing = normalizeMemoryFacts({ name, facts: existingFacts });
+    const incoming = normalizeMemoryFacts({ name, facts: incomingFacts });
+    if (!incoming.length) return existing;
+    const out = existing.map(fact => ({ ...fact }));
+    const replaceCurrent = options.replaceCurrent === true;
+
+    if (replaceCurrent) {
+      const groups = new Map();
+      for (const fact of incoming) {
+        const currentLike = ['current', 'now', 'future', 'foreshadow'].includes(String(fact.time || '').toLowerCase());
+        if (!currentLike) continue;
+        const key = memoryFactKey(fact, false);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(fact);
+      }
+      for (const [key, replacements] of groups) {
+        const replacementValues = new Set(replacements.map(fact => memoryFactKey(fact, true)));
+        for (let index = out.length - 1; index >= 0; index--) {
+          const old = out[index];
+          if (memoryFactKey(old, false) !== key) continue;
+          out.splice(index, 1);
+          if (!replacementValues.has(memoryFactKey(old, true))) {
+            const historical = { ...old, time: 'past' };
+            const historyKey = memoryFactKey(historical, true);
+            if (!out.some(item => memoryFactKey(item, true) === historyKey)) out.push(historical);
+          }
+        }
+      }
+    }
+    for (const fact of incoming) {
+      const exactKey = memoryFactKey(fact, true);
+      const index = out.findIndex(item => memoryFactKey(item, true) === exactKey);
+      if (index >= 0) out[index] = fact;
+      else out.push(fact);
+    }
+
+    const seen = new Set();
+    return out.filter(fact => {
+      const key = [
+        memoryFactKey(fact, true),
+        fact.polarity || '',
+        fact.condition || '',
+        ...(fact.knownBy || []),
+        ...(fact.hiddenFrom || [])
+      ].join('|').toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   function mergeImportedEntries(entries) {
@@ -64,6 +144,8 @@
         const sig = String(event && (event.summary || event.text) || '').trim().toLowerCase();
         return sig && all.findIndex(candidate => String(candidate && (candidate.summary || candidate.text) || '').trim().toLowerCase() === sig) === index;
       });
+      existing.facts = mergeMemoryFacts(existing.facts, raw.facts || raw.memoryFacts, existing.name);
+      existing.openLoops = Array.from(new Set([...(existing.openLoops || []), ...(raw.openLoops || [])].map(x => String(x || '').trim()).filter(Boolean)));
       existing.summary = mergeLoreSummary(existing.summary, raw.summary, existing.name, raw.state || existing.state);
       existing.inject = mergeLoreSummary(existing.inject, raw.inject || raw.summary, existing.name, raw.state || existing.state);
       existing.embed_text = mergeText(existing.embed_text, raw.embed_text, 500);
@@ -174,11 +256,29 @@
     if (String(e.type || '').toLowerCase() === (C.TIMELINE_EVENT_TYPE || 'timeline_event') && C.normalizeTimelineEvent) {
       e = C.normalizeTimelineEvent(e, { turn, currentTurn: opts.currentTurn || turn });
     }
-    e.summary = normalizeSummaryValue(e.summary, e.name, e.state);
-    if (!e.inject || typeof e.inject !== 'object') e.inject = {};
+    const rawSummary = e.summary;
+    const rawInject = e.inject;
+    const derivedBefore = e.memoryDerivedCompact === true;
+    const explicitSummaryCompact = !derivedBefore && !!(rawSummary && typeof rawSummary === 'object' && !Array.isArray(rawSummary) && rawSummary.compact);
+    const explicitSummaryMicro = !derivedBefore && !!(rawSummary && typeof rawSummary === 'object' && !Array.isArray(rawSummary) && rawSummary.micro);
+    const explicitInjectCompact = !derivedBefore && !!(rawInject && typeof rawInject === 'object' && rawInject.compact);
+    const explicitInjectMicro = !derivedBefore && !!(rawInject && typeof rawInject === 'object' && rawInject.micro);
+    const facts = normalizeMemoryFacts(e);
+    if (facts.length) {
+      e.facts = facts;
+      e.memorySchemaVersion = 2;
+    }
+    if (Array.isArray(e.openLoops)) e.openLoops = Array.from(new Set(e.openLoops.map(x => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean)));
+    e.summary = normalizeSummaryValue(rawSummary, e.name, e.state);
+    const derivedCompact = facts.length && C.formatMemoryFactsCompact ? C.formatMemoryFactsCompact(e) : '';
+    const derivedMicro = facts.length && C.deriveMemoryMicro ? C.deriveMemoryMicro(e) : '';
+    if (derivedCompact && !explicitSummaryCompact) e.summary.compact = derivedCompact;
+    if (derivedMicro && !explicitSummaryMicro) e.summary.micro = derivedMicro;
+    e.inject = rawInject && typeof rawInject === 'object' ? { ...rawInject } : {};
     e.inject.full = e.inject.full || e.summary.full;
-    e.inject.compact = e.inject.compact || e.summary.compact;
-    e.inject.micro = e.inject.micro || e.summary.micro;
+    e.inject.compact = explicitInjectCompact ? e.inject.compact : (derivedCompact || e.summary.compact);
+    e.inject.micro = explicitInjectMicro ? e.inject.micro : (derivedMicro || e.summary.micro);
+    if (derivedCompact && !explicitSummaryCompact && !explicitInjectCompact) e.memoryDerivedCompact = true;
     if (!e.embed_text) {
       const entities = Array.isArray(e.entities) ? e.entities.join(' ') : '';
       const importantLineText = String(e.type || '').toLowerCase() === 'key_quote'
@@ -187,7 +287,11 @@
       const temporalText = String(e.type || '').toLowerCase() === (C.TIMELINE_EVENT_TYPE || 'timeline_event')
         ? [e.title, e.location, (e.actions || []).join(' '), (e.hooks || []).join(' '), (e.recallTriggers || []).join(' '), e.when?.anchor, (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
         : '';
-      e.embed_text = clampText([e.name, temporalText, importantLineText, entities, (e.triggers || []).join(' '), e.summary.compact, e.state].filter(Boolean).join(' '), 360);
+      const factText = facts.map(fact => [
+        fact.subject, fact.relation, fact.value, fact.time, fact.condition,
+        ...(fact.knownBy || []), ...(fact.hiddenFrom || [])
+      ].filter(Boolean).join(' ')).join(' ');
+      e.embed_text = clampText([e.name, temporalText, importantLineText, entities, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
     }
     const callState = normalizeCallState(e, turn);
     if (callState) e.callState = callState;
@@ -207,9 +311,9 @@
     return e;
   }
 
-  const IMPORT_SCHEMA = `[<br>  {<br>    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting",<br>    "name": "Entity Name",<br>    "triggers": ["keyword1", "keyword2", "A&&B"],<br>    "summary": {<br>      "full": "self-contained continuity summary: who/what/why/current state/unresolved hook",<br>      "compact": "entity + state + relation/hook preserved",<br>      "micro": "stable recall handle + current state"<br>    },<br>    "inject": {<br>      "full": "key facts for injection | max 120 chars",<br>      "compact": "essential continuity | max 70 chars",<br>      "micro": "name=status | max 35 chars"<br>    },<br>    "embed_text": "names aliases relationship terms event causes stakes location unresolved hooks",<br>    "state": "current situation noun phrase",<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },<br>    "entities": ["characters/places/items involved"],<br>    "detail": { "attributes": "traits/appearance/abilities", "relations": ["relationship facts"], "background_or_history": "background" },<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  },<br>  {<br>    "type": "relationship|rel",<br>    "name": "A↔B",<br>    "parties": ["A", "B"],<br>    "triggers": ["A&&B", "B&&A"],<br>    "summary": {<br>      "full": "relationship cause + current state + unresolved hook",<br>      "compact": "relationship state + hook",<br>      "micro": "A↔B=status"<br>    },<br>    "inject": {<br>      "full": "relationship facts for injection | max 120 chars",<br>      "compact": "essential relationship continuity | max 70 chars",<br>      "micro": "A↔B=status | max 35 chars"<br>    },<br>    "embed_text": "A B aliases call terms relationship stakes hooks",<br>    "state": "current relationship status",<br>    "callState": {<br>      "A→B": {<br>        "currentTerm": "latest vocative",<br>        "previousTerms": ["older vocative"],<br>        "tone": "affectionate|hostile|formal|neutral",<br>        "scope": "scene|stable|private|public",<br>        "lastChangedTurn": 0,<br>        "confidence": 0.8,<br>        "reason": "why this is current"<br>      }<br>    },<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current", "sceneLabel": "", "observedRecency": "recent" },<br>    "entities": ["A", "B"],<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  }<br>]`;
+  const IMPORT_SCHEMA = `[<br>  {<br>    "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|rel|prom|key_quote",<br>    "name": "Entity Name",<br>    "triggers": ["keyword1", "keyword2", "A&&B"],<br>    "summary": {"full": "complete self-contained continuity record"},<br>    "facts": [<br>      {"subject": "exact owner", "relation": "attribute or relation", "value": "bound value", "time": "current|past|future|timeless", "polarity": "affirmed|negated|uncertain", "condition": "", "knownBy": [], "hiddenFrom": []}<br>    ],<br>    "openLoops": ["unresolved goal, promise, question, threat, or conflict"],<br>    "state": "current situation noun phrase",<br>    "timeline": { "eventTurn": 0, "relativeOrder": "current|past|foreshadow", "sceneLabel": "", "observedRecency": "recent|old|unknown" },<br>    "entities": ["characters/places/items involved"],<br>    "parties": ["relationship parties when relevant"],<br>    "callState": {},<br>    "detail": {},<br>    "imp": 5,<br>    "sur": 5,<br>    "emo": 5<br>  }<br>]`;
 
-  const IMPORT_PROMPT_TEMPLATE = `You are a Lore Structurer for AI RP.<br>Convert the following source material into structured lore entries for an RP memory system.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful for later RP injection. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full/compact/micro, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>7. summary and inject must both be produced.<br>   - summary.full: continuity-safe and self-contained; include who/what/why/current state/unresolved hook.<br>   - summary.compact: preserve entity, state, relationship, and unresolved hooks.<br>   - summary.micro: stable recall handle + current state only; never a vague teaser.<br>   - inject.full/compact/micro: short text intended for direct OOC injection.<br>8. embed_text must include names, aliases, relationship terms, event causes, stakes, locations, and unresolved hooks.<br>9. Extract callState for relationships when vocatives are visible: currentTerm, previousTerms, tone, scope, lastChangedTurn, confidence, reason.<br>10. Extract timeline, entities, state, imp/sur/emo when inferable. imp/sur/emo are 1-10.<br>11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>12. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
+  const IMPORT_PROMPT_TEMPLATE = `Convert the source material into structured continuity entries.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful in later scenes. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full, facts, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. Every fact needs an explicit subject, relation, and value. Keep each attribute attached to its owner.<br>7. Preserve relationship direction, quantity, time, negation, uncertainty, conditions, and who knows or does not know a fact.<br>8. For relationships, use bidirectional compound triggers: A&&B and B&&A.<br>9. Do not output summary.compact, summary.micro, inject, or embed_text. They are derived from facts.<br>10. Extract callState, timeline, entities, state, and openLoops when inferable.<br>11. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>12. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
 
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
@@ -441,7 +545,7 @@
 
   Object.assign(C, {
     importFromText, importFromJson, importFromUrl, detectDuplicatesInSummary,
-    normalizeLoreEntry, normalizeSummaryValue, mergeLoreSummary, mergeImportedEntries,
+    normalizeLoreEntry, normalizeSummaryValue, normalizeMemoryFacts, mergeMemoryFacts, mergeLoreSummary, mergeImportedEntries,
     DEFAULT_IMPORT_PROMPT: DEFAULT_IMPORT_PROMPT_TEXT,
     DEFAULT_IMPORT_SCHEMA: DEFAULT_IMPORT_SCHEMA_TEXT,
     __importerLoaded: true

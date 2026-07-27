@@ -96,11 +96,11 @@
           nd.appendChild(C.createToggleRow('로어 자동 삽입', '현재 메시지에 관련 로어를 자동으로 넣음.', settings.config.enabled !== false, (v) => { settings.config.enabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('로어 자동 추출', '일정 턴마다 대화 내용을 로어로 정리함. 수동 추출은 이 설정과 관계없이 실행할 수 있음.', settings.config.autoExtEnabled !== false, (v) => { settings.config.autoExtEnabled = v; settings.save(); }));
 
-          nd.appendChild(C.createToggleRow('적응형 로어 압축', '주입 공간 부족 시 텍스트를 자동으로 짧게 줄임.', settings.config.useCompressedFormat !== false, (v) => { settings.config.useCompressedFormat = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('남은 공간에 맞추기', '입력 가능한 글자 수에 맞춰 로어 내용을 간결하게 넣음.', settings.config.useCompressedFormat !== false, (v) => { settings.config.useCompressedFormat = v; settings.save(); }));
           const cmpWrap = document.createElement('div'); cmpWrap.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-left:10px;';
-          const cmpLbl = document.createElement('div'); cmpLbl.textContent = '압축 모드'; cmpLbl.style.cssText = 'font-size:12px;color:#aaa;';
+          const cmpLbl = document.createElement('div'); cmpLbl.textContent = '삽입 내용 길이'; cmpLbl.style.cssText = 'font-size:12px;color:#aaa;';
           const cmpSel = document.createElement('select'); cmpSel.style.cssText = 'width:120px;padding:4px;border:1px solid #333;border-radius:4px;background:#0a0a0a;color:#ccc;font-size:11px;';
-          [{v:'auto', l:'자동 (공간 맞춤)'}, {v:'full', l:'길게'}, {v:'compact', l:'짧게'}, {v:'micro', l:'아주 짧게'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; cmpSel.appendChild(opt); });
+          [{v:'auto', l:'자동'}, {v:'full', l:'내용 전체'}, {v:'compact', l:'간결하게'}, {v:'micro', l:'핵심만'}].forEach(o => { const opt = document.createElement('option'); opt.value = o.v; opt.textContent = o.l; cmpSel.appendChild(opt); });
           cmpSel.value = settings.config.compressionMode || 'auto';
           cmpSel.onchange = () => { settings.config.compressionMode = cmpSel.value; settings.save(); };
           cmpWrap.appendChild(cmpLbl); cmpWrap.appendChild(cmpSel); nd.appendChild(cmpWrap);
