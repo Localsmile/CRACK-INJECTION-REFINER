@@ -205,38 +205,46 @@
     const hasKey = apiOpts && (apiOpts.key || apiOpts.geminiKey || apiOpts.vertexJson || apiOpts.firebaseEmbedKey);
     if (embEnabled && hasKey && typeof C.embedText === 'function') {
       try {
-        const tail = Array.isArray(recentMsgs) ? recentMsgs.slice(-2).map(m => (m && m.message) || '').join(' ') : '';
-        const qText = ((userInput || '') + ' ' + tail + ' ' + workingMemoryText(cfg.workingMemory)).slice(0, 2000);
         const model = apiOpts.model || 'gemini-embedding-001';
-        const qTaskType = model.includes('embedding-001') ? 'RETRIEVAL_QUERY' : (apiOpts.taskType || 'RETRIEVAL_QUERY');
-        const queryVec = await C.embedText(qText, Object.assign({}, apiOpts, { taskType: qTaskType }));
-        if (queryVec) {
-          const ids = enabled.map(e => e.id);
-          const allEmbs = ids.length ? await db.embeddings.where('entryId').anyOf(ids).toArray() : [];
-          const entryMap = {};
-          for (const e of enabled) entryMap[e.id] = e;
-          for (const eb of allEmbs) {
-            if (!eb || !eb.vector) continue;
-            const entry = entryMap[eb.entryId];
-            if (!entry) continue;
-            if (eb.packName && eb.packName !== entry.packName) continue;
-            // Vectors from different model spaces or dimensions are not
-            // comparable even when their source text is still current.
-            if (eb.model && eb.model !== model) continue;
-            if (!Array.isArray(eb.vector) || eb.vector.length !== queryVec.length) continue;
-            const expectedDocTask = model.includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : null;
-            if (expectedDocTask && eb.taskType && eb.taskType !== expectedDocTask) continue;
-            if (C.embeddingSourceHash) {
-              const expected = C.embeddingSourceHash(entry, eb.field || 'summary');
-              if ((eb.sourceHash || eb.hash) !== expected) continue;
-            }
-            let boost = 1.0;
-            if (eb.field === 'condition') boost = 1.2;
-            if (eb.schemaVersion && eb.schemaVersion < 2) boost *= 0.95;
-            const s = cosineSimilarity(queryVec, eb.vector) * boost;
-            if (!(eb.entryId in embMap) || s > embMap[eb.entryId]) embMap[eb.entryId] = s;
+        const ids = enabled.map(e => e.id);
+        const allEmbs = ids.length ? await db.embeddings.where('entryId').anyOf(ids).toArray() : [];
+        const entryMap = {};
+        for (const e of enabled) entryMap[e.id] = e;
+        const expectedDocTask = model.includes('embedding-001') ? 'RETRIEVAL_DOCUMENT' : null;
+        const usableEmbeddings = allEmbs.filter(eb => {
+          if (!eb || !Array.isArray(eb.vector) || !eb.vector.length) return false;
+          const entry = entryMap[eb.entryId];
+          if (!entry) return false;
+          if (eb.packName && eb.packName !== entry.packName) return false;
+          if (eb.model && eb.model !== model) return false;
+          if (expectedDocTask && eb.taskType && eb.taskType !== expectedDocTask) return false;
+          if (C.embeddingSourceHash) {
+            const expected = C.embeddingSourceHash(entry, eb.field || 'summary');
+            if ((eb.sourceHash || eb.hash) !== expected) return false;
           }
-          embeddingOk = true;
+          return true;
+        });
+        if (usableEmbeddings.length) {
+          const tail = Array.isArray(recentMsgs) ? recentMsgs.slice(-2).map(m => (m && m.message) || '').join(' ') : '';
+          const qText = ((userInput || '') + ' ' + tail + ' ' + workingMemoryText(cfg.workingMemory)).slice(0, 2000);
+          const qTaskType = model.includes('embedding-001') ? 'RETRIEVAL_QUERY' : (apiOpts.taskType || 'RETRIEVAL_QUERY');
+          const queryVec = await C.embedText(qText, Object.assign({}, apiOpts, { taskType: qTaskType }));
+          if (queryVec) {
+            let comparedVectors = 0;
+            for (const eb of usableEmbeddings) {
+              if (eb.vector.length !== queryVec.length) continue;
+              // Vectors from different model spaces or dimensions are not
+              // comparable even when their source text is still current.
+              const entry = entryMap[eb.entryId];
+              let boost = 1.0;
+              if (eb.field === 'condition') boost = 1.2;
+              if (eb.schemaVersion && eb.schemaVersion < 2) boost *= 0.95;
+              const s = cosineSimilarity(queryVec, eb.vector) * boost;
+              if (!(eb.entryId in embMap) || s > embMap[eb.entryId]) embMap[eb.entryId] = s;
+              comparedVectors++;
+            }
+            embeddingOk = comparedVectors > 0;
+          }
         }
       } catch (e) { console.warn('[LoreCore] 쿼리 임베딩 실패:', e && e.message); }
     }

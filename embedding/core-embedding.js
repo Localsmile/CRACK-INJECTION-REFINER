@@ -10,7 +10,8 @@
   const { getDB, embedText, embedTexts, simpleHash, DEFAULTS } = C;
 
   const EMB_SCHEMA_VERSION = 2;
-  const EMBED_BATCH_SIZE = 5;
+  const EMBED_BATCH_SIZE = 20;
+  const VERTEX_EMBED_BATCH_SIZE = 5;
   const EMBED_BATCH_GAP_MS = 1200;
 
   function wait(ms) {
@@ -291,7 +292,8 @@
       if (!fields.size) completed.add(entry.id);
       if (onProgress) onProgress(completed.size, total, cleanup);
     };
-    const batchSize = Math.max(1, Number(apiOpts.embeddingBatchSize || EMBED_BATCH_SIZE) || EMBED_BATCH_SIZE);
+    const defaultBatchSize = apiOpts.apiType === 'vertex' ? VERTEX_EMBED_BATCH_SIZE : EMBED_BATCH_SIZE;
+    const batchSize = Math.max(1, Number(apiOpts.embeddingBatchSize || defaultBatchSize) || defaultBatchSize);
     const batchGapMs = Math.max(0, Number(apiOpts.embeddingBatchGapMs != null ? apiOpts.embeddingBatchGapMs : EMBED_BATCH_GAP_MS) || 0);
 
     const writeBatch = async (batch, field, map) => {

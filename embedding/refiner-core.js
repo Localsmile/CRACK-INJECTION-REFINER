@@ -297,7 +297,7 @@
       let _lE = [];
       if (config.refinerLoreMode === 'semantic' && config.embeddingEnabled) {
         const apiOpts = _w.__LoreInj && _w.__LoreInj.buildEmbeddingApiOpts
-          ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatRoomId || 'global' })
+          ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001', embeddingLane: 'interactive', maxRetries: 0, timeoutMs: 8000 }, { feature: 'refinerQueryEmbed', chatKey: chatRoomId || 'global' })
           : {
             apiType: config.autoExtApiType === 'deepseek' ? 'key' : (config.autoExtApiType || 'key'),
             key: config.autoExtApiType === 'deepseek' ? config.autoExtFirebaseEmbedKey : config.autoExtKey,
@@ -305,7 +305,10 @@
             vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
             firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
             model: config.embeddingModel || 'gemini-embedding-001',
-            costContext: { feature: 'embed', chatKey: chatRoomId || 'global' }
+            embeddingLane: 'interactive',
+            maxRetries: 0,
+            timeoutMs: 8000,
+            costContext: { feature: 'refinerQueryEmbed', chatKey: chatRoomId || 'global' }
           };
         const searchConfig = { scanRange: matchTurns, strictMatch: true, similarityMatch: true, embeddingEnabled: true, embeddingWeight: 0.5 };
         try {

@@ -237,10 +237,17 @@ Entries:
   // AbortSignal forwarding: GM_xmlhttpRequest의 abort() 호출로 실제 요청 취소.
   function gmFetch(url, opts = {}) {
     const signal = opts && opts.signal;
+    const noteAttempt = (transport) => {
+      try { if (typeof opts.onTransportAttempt === 'function') opts.onTransportAttempt(transport); } catch (_) {}
+    };
     if (!_GM_xhr) {
+      noteAttempt('fetch');
       return nativeFetchWithTimeout(url, opts);
     }
-    const fetchFallback = () => nativeFetchWithTimeout(url, opts);
+    const fetchFallback = () => {
+      noteAttempt('fetch-fallback');
+      return nativeFetchWithTimeout(url, opts);
+    };
     return new Promise((resolve, reject) => {
       if (signal && signal.aborted) { reject(new Error('aborted')); return; }
       let xhrHandle = null;
@@ -256,6 +263,7 @@ Entries:
         });
       };
       if (signal) { try { signal.addEventListener('abort', onAbort, { once: true }); } catch (_) {} }
+      noteAttempt('gm');
       xhrHandle = _GM_xhr({
         method: opts.method || 'GET', url, headers: opts.headers || {}, data: opts.body || null, responseType: 'text',
         timeout: opts.timeout || opts.timeoutMs || 0,
@@ -275,7 +283,10 @@ Entries:
           });
         },
         onerror: () => { retryWithFetch(new Error('네트워크 오류')); },
-        ontimeout: () => { retryWithFetch(new Error('타임아웃')); },
+        ontimeout: () => {
+          if (opts.fetchFallbackOnTimeout === true) retryWithFetch(new Error('타임아웃'));
+          else { cleanup(); reject(new Error('타임아웃')); }
+        },
         onabort: () => { cleanup(); reject(new Error('aborted')); }
       });
     });
@@ -491,8 +502,15 @@ Entries:
     background: 0
   };
   const _generationApiDiagnostics = [];
-  let _embeddingApiQueue = Promise.resolve();
-  let _lastEmbeddingApiAt = 0;
+  const _embeddingApiDiagnostics = [];
+  const _embeddingApiQueues = {
+    interactive: Promise.resolve(),
+    background: Promise.resolve()
+  };
+  const _lastEmbeddingApiAt = {
+    interactive: 0,
+    background: 0
+  };
   const _openAICompatVariantCache = new Map();
   const _generationInFlight = new Map();
 
@@ -536,6 +554,27 @@ Entries:
 
   function clearGenerationApiDiagnostics() {
     _generationApiDiagnostics.length = 0;
+  }
+
+  function recordEmbeddingDiagnostic(row) {
+    _embeddingApiDiagnostics.push(Object.freeze({ ...row }));
+    if (_embeddingApiDiagnostics.length > GENERATION_DIAGNOSTIC_LIMIT) {
+      _embeddingApiDiagnostics.splice(0, _embeddingApiDiagnostics.length - GENERATION_DIAGNOSTIC_LIMIT);
+    }
+  }
+
+  function getEmbeddingApiDiagnostics() {
+    return _embeddingApiDiagnostics.map(row => ({ ...row }));
+  }
+
+  function clearEmbeddingApiDiagnostics() {
+    _embeddingApiDiagnostics.length = 0;
+  }
+
+  function embeddingQueueLane(opts = {}) {
+    if (opts.embeddingLane === 'interactive' || opts.embeddingLane === 'background') return opts.embeddingLane;
+    const feature = String(opts.costContext && opts.costContext.feature || '');
+    return ['injectQueryEmbed', 'refinerQueryEmbed'].includes(feature) ? 'interactive' : 'background';
   }
 
   function resolveVertexEndpoint(vertexLocation, model) {
@@ -604,6 +643,7 @@ Entries:
           status: Number(result && result.status) || 0,
           retries: Math.max(0, Number(result && result.retries) || 0),
           requestAttempts: Math.max(0, Number(result && result.requestAttempts) || 0),
+          fallbackAttempts: Math.max(0, Number(result && result.fallbackAttempts) || 0),
           ok: !!(result && result.text)
         });
         return result;
@@ -626,6 +666,7 @@ Entries:
           status: 0,
           retries: 0,
           requestAttempts: 0,
+          fallbackAttempts: 0,
           ok: false,
           error: String(error && error.message || error || 'unknown').slice(0, 300)
         });
@@ -640,17 +681,60 @@ Entries:
 
   function enqueueEmbeddingApi(task, opts = {}) {
     if (opts.skipEmbeddingQueue === true) return task();
+    const lane = embeddingQueueLane(opts);
+    const queuedAt = Date.now();
     const minGap = Math.max(0, Number(opts.embeddingMinGapMs != null ? opts.embeddingMinGapMs : 1000) || 0);
-    const queued = _embeddingApiQueue.catch(() => {}).then(async () => {
-      const waitMs = Math.max(0, _lastEmbeddingApiAt + minGap - Date.now());
+    const queued = _embeddingApiQueues[lane].catch(() => {}).then(async () => {
+      const waitMs = Math.max(0, _lastEmbeddingApiAt[lane] + minGap - Date.now());
       if (waitMs > 0) await sleep(waitMs);
+      const startedAt = Date.now();
       try {
-        return await task();
+        const result = await task();
+        const endedAt = Date.now();
+        recordEmbeddingDiagnostic({
+          queuedAt,
+          startedAt,
+          endedAt,
+          queueWaitMs: startedAt - queuedAt,
+          providerMs: endedAt - startedAt,
+          totalMs: endedAt - queuedAt,
+          lane,
+          feature: String(opts.costContext && opts.costContext.feature || 'embed'),
+          provider: String(opts.apiType || 'key'),
+          model: String(opts.model || DEFAULTS.embeddingModel || ''),
+          inputCount: Math.max(0, Number(opts.diagnosticInputCount) || 0),
+          inputChars: Math.max(0, Number(opts.diagnosticInputChars) || 0),
+          requestAttempts: Math.max(0, Number(result && result.requestAttempts) || 0),
+          fallbackAttempts: Math.max(0, Number(result && result.fallbackAttempts) || 0),
+          ok: true
+        });
+        return result;
+      } catch (error) {
+        const endedAt = Date.now();
+        recordEmbeddingDiagnostic({
+          queuedAt,
+          startedAt,
+          endedAt,
+          queueWaitMs: startedAt - queuedAt,
+          providerMs: endedAt - startedAt,
+          totalMs: endedAt - queuedAt,
+          lane,
+          feature: String(opts.costContext && opts.costContext.feature || 'embed'),
+          provider: String(opts.apiType || 'key'),
+          model: String(opts.model || DEFAULTS.embeddingModel || ''),
+          inputCount: Math.max(0, Number(opts.diagnosticInputCount) || 0),
+          inputChars: Math.max(0, Number(opts.diagnosticInputChars) || 0),
+          requestAttempts: Math.max(0, Number(error && error.requestAttempts) || 0),
+          fallbackAttempts: Math.max(0, Number(error && error.fallbackAttempts) || 0),
+          ok: false,
+          error: String(error && error.message || error || 'unknown').slice(0, 300)
+        });
+        throw error;
       } finally {
-        _lastEmbeddingApiAt = Date.now();
+        _lastEmbeddingApiAt[lane] = Date.now();
       }
     });
-    _embeddingApiQueue = queued.catch(() => {});
+    _embeddingApiQueues[lane] = queued.catch(() => {});
     return queued;
   }
 
@@ -670,6 +754,10 @@ Entries:
       deepSeekReasoning: opts.deepSeekReasoning || '',
       openAIReasoning: opts.openAIReasoning || '',
       openAIFormat: opts.openAIFormat || 'custom',
+      deepSeekJsonSystemPrompt: opts.deepSeekJsonSystemPrompt || '',
+      maxRetries: opts.maxRetries == null ? null : Number(opts.maxRetries),
+      retryOnServerError: opts.retryOnServerError !== false,
+      timeoutMs: opts.timeoutMs == null ? null : Number(opts.timeoutMs),
       feature: opts.costContext && opts.costContext.feature || '',
       chatKey: opts.costContext && opts.costContext.chatKey || ''
     };
@@ -702,14 +790,17 @@ Entries:
     bodyObj.thinking = { type: thinkingOn ? 'enabled' : 'disabled' };
     if (thinkingOn) bodyObj.reasoning_effort = deepSeekReasoning === 'max' || deepSeekReasoning === 'xhigh' ? 'max' : 'high';
     const body = JSON.stringify(bodyObj);
-    let lastStatus = 0, lastError = null, requestAttempts = 0, lastAttempt = 0;
+    let lastStatus = 0, lastError = null, requestAttempts = 0, fallbackAttempts = 0, lastAttempt = 0;
+    const onTransportAttempt = (transport) => {
+      requestAttempts++;
+      if (transport === 'fetch-fallback') fallbackAttempts++;
+    };
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       lastAttempt = attempt;
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
-        requestAttempts++;
-        const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
+        const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs, onTransportAttempt });
         lastStatus = r.status;
         if (!r.ok) {
           const errBody = r.text ? await r.text().catch(() => '') : '';
@@ -730,7 +821,7 @@ Entries:
           const cacheHitTok = usage ? Number(usage.prompt_cache_hit_tokens || usage.prompt_cache_hit_token_count || 0) : 0;
           const cacheMissTok = usage ? Number(usage.prompt_cache_miss_tokens || usage.prompt_cache_miss_token_count || 0) : 0;
           const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
-          if (text) return { text, status: r.status, error: null, retries: attempt, requestAttempts, cost, finishReason };
+          if (text) return { text, status: r.status, error: null, retries: attempt, requestAttempts, fallbackAttempts, cost, finishReason };
           lastError = finishReason === 'length'
             ? 'DeepSeek 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
             : ('DeepSeek 최종 응답이 비어 있음' + (reasoning ? ' (reasoning_content만 반환됨)' : '') + (finishReason ? ' [' + finishReason + ']' : ''));
@@ -741,7 +832,7 @@ Entries:
       }
       if (attempt < effectiveMaxRetries) await sleep(generationRetryDelay(attempt, 8000));
     }
-    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts };
+    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts, fallbackAttempts };
   }
 
   function normalizeOpenAICompatFormat(format) {
@@ -937,7 +1028,11 @@ Entries:
       ? bodyVariants.filter(v => bodyVariantId(v) === cachedVariantId).concat(bodyVariants.filter(v => bodyVariantId(v) !== cachedVariantId))
       : bodyVariants;
 
-    let lastStatus = 0, lastError = null, requestAttempts = 0, lastAttempt = 0;
+    let lastStatus = 0, lastError = null, requestAttempts = 0, fallbackAttempts = 0, lastAttempt = 0;
+    const onTransportAttempt = (transport) => {
+      requestAttempts++;
+      if (transport === 'fetch-fallback') fallbackAttempts++;
+    };
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       lastAttempt = attempt;
@@ -945,8 +1040,7 @@ Entries:
         try {
           if (signal && signal.aborted) { lastError = 'aborted'; break; }
           const requestBody = specializedBodies ? JSON.stringify(variant) : makeBody(variant.withJsonMode, variant.tokenField, variant.reasoningStyle);
-          requestAttempts++;
-          const r = await gmFetch(url, { method: 'POST', headers, body: requestBody, signal, timeout: timeoutMs });
+          const r = await gmFetch(url, { method: 'POST', headers, body: requestBody, signal, timeout: timeoutMs, onTransportAttempt });
           lastStatus = r.status;
           if (!r.ok) {
             const errBody = r.text ? await r.text().catch(() => '') : '';
@@ -964,7 +1058,7 @@ Entries:
             const cost = trackGenerationCost(model, usage, prompt, text, costContext, { cacheHitTok, cacheMissTok });
             if (text) {
               _openAICompatVariantCache.set(variantCacheKey, bodyVariantId(variant));
-              return { text, status: r.status, error: null, retries: attempt, requestAttempts, cost, finishReason };
+              return { text, status: r.status, error: null, retries: attempt, requestAttempts, fallbackAttempts, cost, finishReason };
             }
             lastError = finishReason === 'length'
               ? 'OpenAI 호환 응답이 max_tokens 또는 컨텍스트 제한으로 잘림'
@@ -980,7 +1074,7 @@ Entries:
       else if (attempt < effectiveMaxRetries && retryableGenerationError(lastError)) await sleep(generationRetryDelay(attempt, 8000));
       else break;
     }
-    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts };
+    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts, fallbackAttempts };
   }
 
   // Gemini 생성
@@ -1007,19 +1101,21 @@ Entries:
       openAIBaseUrl = '', openAIKey = '', openAIReasoning = '',
       openAIFormat = 'custom',
       model = 'gemini-3-flash-preview', thinkingConfig = {}, maxRetries = 1, responseMimeType, cacheKey = 'generate',
-      costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null } = opts;
+      costContext = null, signal = null, timeoutMs = 90000, maxOutputTokens = null,
+      retryOnServerError = true } = opts;
 
     if (apiType === 'deepseek') {
       return await callDeepSeekApi(prompt, {
         key: deepSeekKey || key, model, maxRetries, responseMimeType, costContext, signal,
         timeoutMs, maxOutputTokens, deepSeekThinking, deepSeekReasoning,
-        deepSeekJsonSystemPrompt: opts.deepSeekJsonSystemPrompt
+        deepSeekJsonSystemPrompt: opts.deepSeekJsonSystemPrompt,
+        retryOnServerError
       });
     }
     if (apiType === 'openai') {
       return await callOpenAICompatApi(prompt, {
         key: openAIKey || key, openAIBaseUrl, model, maxRetries, responseMimeType, costContext, signal,
-        timeoutMs, maxOutputTokens, openAIReasoning, openAIFormat
+        timeoutMs, maxOutputTokens, openAIReasoning, openAIFormat, retryOnServerError
       });
     }
 
@@ -1093,13 +1189,13 @@ Entries:
         const result = await promiseWithTimeout(gm.generateContent(prompt), timeoutMs, 'Firebase 생성 요청');
         const fbText = result.response.text();
         const _fbCost = _trackCost(result.response && result.response.usageMetadata, prompt, fbText);
-        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: attempt, requestAttempts, cost: _fbCost };
+        return { text: fbText || null, status: 200, error: fbText ? null : '응답 없음', retries: attempt, requestAttempts, fallbackAttempts: 0, cost: _fbCost };
       } catch (fbErr) {
         fbLastError = fbErr;
         if (!(attempt < effectiveMaxRetries && retryableGenerationError(fbErr))) break;
         await sleep(generationRetryDelay(attempt, 8000));
       }
-      return { text: null, status: 0, error: 'Firebase: ' + ((fbLastError && fbLastError.message) || String(fbLastError)), retries: lastAttempt, requestAttempts };
+      return { text: null, status: 0, error: 'Firebase: ' + ((fbLastError && fbLastError.message) || String(fbLastError)), retries: lastAttempt, requestAttempts, fallbackAttempts: 0 };
       // (도달 불가, 구파서 호환용 잔존)
       const fbKey = firebaseKey || key;
       if (!fbKey) return { text: null, status: 0, error: 'Firebase Web API Key 누락', retries: 0 };
@@ -1131,14 +1227,17 @@ Entries:
     if (maxOutputTokens != null) genConfig.maxOutputTokens = maxOutputTokens;
     const body = JSON.stringify({ safetySettings: SAFETY, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig });
 
-    let lastStatus = 0, lastError = null, requestAttempts = 0, lastAttempt = 0;
+    let lastStatus = 0, lastError = null, requestAttempts = 0, fallbackAttempts = 0, lastAttempt = 0;
+    const onTransportAttempt = (transport) => {
+      requestAttempts++;
+      if (transport === 'fetch-fallback') fallbackAttempts++;
+    };
     const effectiveMaxRetries = generationRetryLimit(maxRetries, opts);
     for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
       lastAttempt = attempt;
       try {
         if (signal && signal.aborted) { lastError = 'aborted'; break; }
-        requestAttempts++;
-        const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs });
+        const r = await gmFetch(url, { method: 'POST', headers, body, signal, timeout: timeoutMs, onTransportAttempt });
         lastStatus = r.status;
 
         // 401 토큰 갱신
@@ -1166,7 +1265,7 @@ Entries:
           const json = await r.json();
           const text = geminiResponseText(json);
           const _restCost = _trackCost(json.usageMetadata, prompt, text);
-          if (text) return { text, status: r.status, error: null, retries: attempt, requestAttempts, cost: _restCost };
+          if (text) return { text, status: r.status, error: null, retries: attempt, requestAttempts, fallbackAttempts, cost: _restCost };
           lastError = geminiEmptyResponseError(json);
         }
       } catch (e) {
@@ -1175,12 +1274,20 @@ Entries:
       }
       if (attempt < effectiveMaxRetries) await sleep(generationRetryDelay(attempt, 8000));
     }
-    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts };
+    return { text: null, status: lastStatus, error: lastError, retries: lastAttempt, requestAttempts, fallbackAttempts };
   }
 
   async function embedTexts(texts, opts = {}) {
     if (opts.skipEmbeddingQueue !== true) {
-      return enqueueEmbeddingApi(() => embedTexts(texts, { ...opts, skipEmbeddingQueue: true }), opts);
+      const diagnosticInputs = Array.isArray(texts) ? texts : [texts];
+      return enqueueEmbeddingApi(
+        () => embedTexts(texts, { ...opts, skipEmbeddingQueue: true }),
+        {
+          ...opts,
+          diagnosticInputCount: diagnosticInputs.length,
+          diagnosticInputChars: diagnosticInputs.reduce((sum, text) => sum + String(text == null ? '' : text).length, 0)
+        }
+      );
     }
     const { apiType = 'key', key = '', vertexJson = '', vertexLocation = 'global', vertexProjectId = '',
       firebaseEmbedKey = '', firebaseKey = '', firebaseProjectId = '', firebaseLocation = 'global',
@@ -1233,6 +1340,29 @@ Entries:
       } catch (_) { return 0; }
     };
     const waitEmbeddingRetry = (attempt, response) => new Promise(res => setTimeout(res, Math.max(retryAfterMs(response), Math.min(30000, 1500 * Math.pow(2, attempt))) + Math.random() * 700));
+    let embeddingRequestAttempts = 0;
+    let embeddingFallbackAttempts = 0;
+    const onEmbeddingTransportAttempt = (transport) => {
+      embeddingRequestAttempts++;
+      if (transport === 'fetch-fallback') embeddingFallbackAttempts++;
+    };
+    const attachEmbeddingDiagnostics = (vectors) => {
+      if (!vectors || typeof vectors !== 'object') return vectors;
+      try {
+        Object.defineProperty(vectors, 'requestAttempts', { value: embeddingRequestAttempts, enumerable: false });
+        Object.defineProperty(vectors, 'fallbackAttempts', { value: embeddingFallbackAttempts, enumerable: false });
+      } catch (_) {}
+      return vectors;
+    };
+    const annotateEmbeddingError = (error) => {
+      if (error && typeof error === 'object') {
+        try {
+          error.requestAttempts = embeddingRequestAttempts;
+          error.fallbackAttempts = embeddingFallbackAttempts;
+        } catch (_) {}
+      }
+      return error;
+    };
     const validateEmbeddingVectors = (vectors, expectedCount) => {
       if (!Array.isArray(vectors) || vectors.length !== expectedCount) {
         throw new Error('임베딩 결과 수가 요청 수와 다릅니다.');
@@ -1244,12 +1374,17 @@ Entries:
     };
     const fetchEmbeddingJson = async (url, fetchOpts, errorPrefix) => {
       let lastError = null;
+      let fetchFallbackTried = false;
       for (let attempt = 0; attempt <= maxEmbedRetries; attempt++) {
         try {
           const r = await gmFetch(url, {
             ...fetchOpts,
             timeout: fetchOpts.timeout || opts.timeoutMs || 45000,
-            fetchFallbackOnError: true
+            fetchFallbackOnError: !fetchFallbackTried,
+            onTransportAttempt: (transport) => {
+              onEmbeddingTransportAttempt(transport);
+              if (transport === 'fetch-fallback') fetchFallbackTried = true;
+            }
           });
           if (!r.ok) {
             const errorBody = r.text ? await r.text().catch(() => '') : '';
@@ -1259,7 +1394,7 @@ Entries:
               await waitEmbeddingRetry(attempt, r);
               continue;
             }
-            throw lastError;
+            throw annotateEmbeddingError(lastError);
           }
           return await r.json();
         } catch (e) {
@@ -1268,10 +1403,10 @@ Entries:
             await waitEmbeddingRetry(attempt, null);
             continue;
           }
-          throw e;
+          throw annotateEmbeddingError(e);
         }
       }
-      throw lastError || new Error(errorPrefix);
+      throw annotateEmbeddingError(lastError || new Error(errorPrefix));
     };
     if (isFirebase) {
       // Firebase AI Logic does not expose embeddings. Use the separately supplied
@@ -1303,7 +1438,7 @@ Entries:
         vectors.push(normalizeVector(values || []));
       }
       _trackEmbedCost(arr, model);
-      return validateEmbeddingVectors(vectors, arr.length);
+      return attachEmbeddingDiagnostics(validateEmbeddingVectors(vectors, arr.length));
     } else {
       if (!key) throw new Error('API 키 누락');
       const embHeaders = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
@@ -1314,7 +1449,7 @@ Entries:
         const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify(bodyObj) }, '임베딩 API 실패');
         const embs = json.embeddings || [json.embedding];
         _trackEmbedCost(arr, model);
-        return validateEmbeddingVectors(embs.map(e => normalizeVector(e.values)), arr.length);
+        return attachEmbeddingDiagnostics(validateEmbeddingVectors(embs.map(e => normalizeVector(e.values)), arr.length));
       } else {
         const url = _gBase + model + ':batchEmbedContents';
         const requests = apiTexts.map(t => {
@@ -1325,7 +1460,7 @@ Entries:
         const json = await fetchEmbeddingJson(url, { method: 'POST', headers: embHeaders, body: JSON.stringify({ requests }) }, '배치 임베딩 API 실패');
         if (!json.embeddings) throw new Error('임베딩 결과가 없습니다.');
         _trackEmbedCost(arr, model);
-        return validateEmbeddingVectors(json.embeddings.map(e => normalizeVector(e.values)), arr.length);
+        return attachEmbeddingDiagnostics(validateEmbeddingVectors(json.embeddings.map(e => normalizeVector(e.values)), arr.length));
       }
     }
   }
@@ -1464,6 +1599,7 @@ Entries:
     buildOpenAICompatVariants, buildOpenAIFormatVariants, openAICompatResponseText, promiseWithTimeout,
     estimateTextTokens, estimateMessageTokens, deriveAiMemoryTurns,
     generationQueueLane, getGenerationApiDiagnostics, clearGenerationApiDiagnostics,
+    embeddingQueueLane, getEmbeddingApiDiagnostics, clearEmbeddingApiDiagnostics,
     loadSettings, saveSettings, incrementTurn, recordMention,
     __kernelLoaded: true
   });

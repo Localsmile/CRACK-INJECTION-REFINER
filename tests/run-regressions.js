@@ -68,15 +68,23 @@ async function loadKernel(options = {}) {
       const scriptedStatus = scriptedStatuses.length
         ? scriptedStatuses[Math.min(requestCount - 1, scriptedStatuses.length - 1)]
         : 200;
+      const scriptedEvents = Array.isArray(options.gmEvents) ? options.gmEvents : [];
+      const scriptedEvent = scriptedEvents.length
+        ? scriptedEvents[Math.min(requestCount - 1, scriptedEvents.length - 1)]
+        : 'load';
       let payload = { choices: [{ message: { content: '{"entries":[]}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 4 } };
       const scriptedPayloads = Array.isArray(options.gmPayloads) ? options.gmPayloads : [];
       if (scriptedPayloads.length) payload = scriptedPayloads[Math.min(requestCount - 1, scriptedPayloads.length - 1)];
       else if (/\/responses$/i.test(String(opts.url || ''))) payload = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '{"entries":[]}' }] }], usage: { input_tokens: 10, output_tokens: 4 } };
       else if (/\/messages$/i.test(String(opts.url || ''))) payload = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"entries":[]}' }], usage: { input_tokens: 10, output_tokens: 4 } };
-      const timer = setTimeout(() => opts.onload({
-        status: scriptedStatus,
-        responseText: scriptedStatus >= 200 && scriptedStatus < 300 ? JSON.stringify(payload) : JSON.stringify({ error: { message: 'scripted ' + scriptedStatus } })
-      }), 15);
+      const timer = setTimeout(() => {
+        if (scriptedEvent === 'timeout') opts.ontimeout();
+        else if (scriptedEvent === 'error') opts.onerror();
+        else opts.onload({
+          status: scriptedStatus,
+          responseText: scriptedStatus >= 200 && scriptedStatus < 300 ? JSON.stringify(payload) : JSON.stringify({ error: { message: 'scripted ' + scriptedStatus } })
+        });
+      }, 15);
       return { abort: () => { clearTimeout(timer); if (opts.onabort) opts.onabort(); } };
     }
   };
@@ -217,6 +225,92 @@ async function testKernelHelpers() {
   assert.strictEqual(hardFailure.text, null, 'non-retryable 400 unexpectedly produced output');
   assert.strictEqual(hardFailureKernel.getRequestCount(), 1, 'non-retryable 400 was requested more than once');
   assert.strictEqual(hardFailure.requestAttempts, 1, 'non-retryable failure reported the configured retry ceiling instead of actual requests');
+
+  const deepSeekServerFailureKernel = await loadKernel({ gmStatuses: [503, 503, 503] });
+  const deepSeekServerFailure = await deepSeekServerFailureKernel.C.callGeminiApi('outer retry owns deepseek', {
+    apiType: 'deepseek', deepSeekKey: 'test-key', model: 'test-model',
+    responseMimeType: 'application/json', maxRetries: 0, retryOnServerError: false
+  });
+  assert.strictEqual(deepSeekServerFailure.status, 503, 'DeepSeek server failure status was lost');
+  assert.strictEqual(deepSeekServerFailureKernel.getRequestCount(), 1, 'DeepSeek nested a hidden server retry inside the batch retry owner');
+
+  const openAIServerFailureKernel = await loadKernel({ gmStatuses: [503, 503, 503] });
+  const openAIServerFailure = await openAIServerFailureKernel.C.callGeminiApi('outer retry owns openai', {
+    apiType: 'openai',
+    openAIBaseUrl: 'https://api.example/v1/chat/completions',
+    openAIKey: 'test-key',
+    openAIFormat: 'chat_completions',
+    model: 'test-model',
+    responseMimeType: 'application/json',
+    maxRetries: 0,
+    retryOnServerError: false
+  });
+  assert.strictEqual(openAIServerFailure.status, 503, 'OpenAI-compatible server failure status was lost');
+  assert.strictEqual(openAIServerFailureKernel.getRequestCount(), 1, 'OpenAI-compatible call nested a hidden server retry inside the batch retry owner');
+
+  const timeoutKernel = await loadKernel({ gmEvents: ['timeout'] });
+  const timeoutTransports = [];
+  await assert.rejects(
+    timeoutKernel.C.gmFetch('https://embedding.test', {
+      method: 'POST',
+      fetchFallbackOnError: true,
+      onTransportAttempt: transport => timeoutTransports.push(transport)
+    }),
+    /타임아웃/,
+    'GM timeout did not surface to the bounded retry owner'
+  );
+  assert.deepStrictEqual(timeoutTransports, ['gm'], 'GM timeout immediately duplicated the request through native fetch');
+
+  const fallbackKernel = await loadKernel({ gmEvents: ['error'] });
+  const fallbackTransports = [];
+  const fallbackResponse = await fallbackKernel.C.gmFetch('https://embedding.test', {
+    method: 'POST',
+    fetchFallbackOnError: true,
+    onTransportAttempt: transport => fallbackTransports.push(transport)
+  });
+  assert.strictEqual(fallbackResponse.status, 200, 'network-error transport fallback did not recover');
+  assert.deepStrictEqual(fallbackTransports, ['gm', 'fetch-fallback'], 'transport fallback attempts are not observable');
+
+  const embeddingKernel = await loadKernel({ gmPayloads: [{ embedding: { values: [1, 0, 0] } }] });
+  const embeddingVector = await embeddingKernel.C.embedText('embedding diagnostic input', {
+    apiType: 'key',
+    key: 'test-key',
+    model: 'gemini-embedding-001',
+    taskType: 'RETRIEVAL_QUERY',
+    maxRetries: 0,
+    embeddingMinGapMs: 0,
+    costContext: { feature: 'embed', chatKey: 'test' }
+  });
+  assert.strictEqual(embeddingVector.length, 3, 'embedding test vector was not parsed');
+  const embeddingDiagnostics = embeddingKernel.C.getEmbeddingApiDiagnostics();
+  assert.strictEqual(embeddingDiagnostics.length, 1, 'embedding request was not recorded');
+  assert.strictEqual(embeddingDiagnostics[0].requestAttempts, 1, 'embedding physical request count is incorrect');
+  assert.strictEqual(embeddingDiagnostics[0].inputCount, 1, 'embedding batch size is missing from diagnostics');
+
+  const embeddingLaneKernel = await loadKernel({
+    gmPayloads: [
+      { embedding: { values: [1, 0] } },
+      { embedding: { values: [0, 1] } }
+    ]
+  });
+  const embeddingCommon = {
+    apiType: 'key',
+    key: 'test-key',
+    model: 'gemini-embedding-001',
+    taskType: 'RETRIEVAL_QUERY',
+    maxRetries: 0
+  };
+  await Promise.all([
+    embeddingLaneKernel.C.embedText('background pack', { ...embeddingCommon, costContext: { feature: 'embed', chatKey: 'test' } }),
+    embeddingLaneKernel.C.embedText('interactive query', { ...embeddingCommon, costContext: { feature: 'injectQueryEmbed', chatKey: 'test' } })
+  ]);
+  const embeddingLaneStartDelta = Math.abs(embeddingLaneKernel.requests[0].__startedAt - embeddingLaneKernel.requests[1].__startedAt);
+  assert(embeddingLaneStartDelta < 100, 'live query embedding still waits behind bulk search preparation');
+  assert.deepStrictEqual(
+    Array.from(new Set(embeddingLaneKernel.C.getEmbeddingApiDiagnostics().map(row => row.lane))).sort(),
+    ['background', 'interactive'],
+    'embedding diagnostics did not identify both queue lanes'
+  );
 
 
   const responsesResult = await C.callGeminiApi('responses prompt', {
@@ -562,9 +656,15 @@ function testSourceContracts() {
   const coreMemory = read('embedding/core-memory.js');
   assert(kernel.includes("interactive: Promise.resolve()") && kernel.includes("background: Promise.resolve()"), 'interactive and background generation work still share one blocking queue');
   assert(kernel.includes('getGenerationApiDiagnostics') && kernel.includes('queueWaitMs') && kernel.includes('providerMs'), 'generation diagnostics do not separate queue wait from provider time');
+  assert(kernel.includes('getEmbeddingApiDiagnostics') && kernel.includes('diagnosticInputChars'), 'embedding calls are not covered by internal diagnostics');
+  assert(kernel.includes("const _embeddingApiQueues = {") && kernel.includes("['injectQueryEmbed', 'refinerQueryEmbed']"), 'live query embeddings still share the bulk preparation queue');
+  assert(kernel.includes("opts.fetchFallbackOnTimeout === true"), 'GM timeouts can immediately duplicate requests through native fetch');
+  assert(kernel.includes('fetchFallbackOnError: !fetchFallbackTried'), 'embedding network fallback can multiply every outer retry');
+  assert(kernel.includes('openAIFormat, retryOnServerError') && kernel.includes('deepSeekJsonSystemPrompt: opts.deepSeekJsonSystemPrompt,'), 'provider adapters do not receive the outer retry ownership contract');
   assert(kernel.includes('function enqueueEmbeddingApi') && kernel.includes('embeddingMinGapMs'), 'embedding calls are not globally serialized');
   assert(!kernel.includes('activeMaxOutputTokens'), 'Gemini output limits are still being rewritten internally');
   assert(coreEmbedding.includes('if (isTransientEmbeddingFailure(batchError)) throw batchError'), '429/5xx batch failures still fan out into individual calls');
+  assert(coreEmbedding.includes('const EMBED_BATCH_SIZE = 20') && coreEmbedding.includes("apiOpts.apiType === 'vertex' ? VERTEX_EMBED_BATCH_SIZE"), 'Gemini batch embeddings are still fragmented or Vertex direct calls can burst at the larger batch size');
   assert(coreEmbedding.includes('const EMBED_BATCH_GAP_MS = 1200'), 'embedding batch pacing is too aggressive for low-quota keys');
   assert(coreEmbedding.lastIndexOf('cleanup = await cleanupStaleEmbeddings(packName, apiOpts)') > coreEmbedding.indexOf('await runBatches(pendingConditions'), 'old embeddings are deleted before replacement generation succeeds');
   assert(kernel.includes('const DB_SCHEMA_VERSION = 11') && kernel.includes('&[chatKey+char1+char2]'), 'encounter state is not isolated per chat');
@@ -592,6 +692,7 @@ function testSourceContracts() {
   assert(refinerDom.includes("exactButton(document, '수정 완료')"), 'native response-edit fallback does not submit the corrected message');
   assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');
   assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
+  assert(refinerCore.includes("feature: 'refinerQueryEmbed'") && refinerCore.includes("embeddingLane: 'interactive'") && refinerCore.includes('timeoutMs: 8000'), 'response correction semantic search can wait behind bulk embedding or a long query timeout');
   assert(injectionSource.includes('refreshCleanedMessageInDOM(currentText, clean.text, item.messageId)'), 'successful cleanup does not refresh the visible user message');
   assert(injectionSource.includes('safeMatch.ok || normalizedMatch'), 'cleanup queue reconciliation still requires byte-identical message text');
   assert(injectionSource.includes("mode: 'tag'"), 'cleanup cannot safely recover from server-normalized whitespace');
@@ -609,6 +710,7 @@ function testSourceContracts() {
 
   const search = read('embedding/core-search.js');
   assert(search.includes('eb.model !== model') && search.includes('eb.vector.length !== queryVec.length'), 'hybrid search can compare stale vectors from another model space');
+  assert(search.indexOf('const usableEmbeddings = allEmbs.filter') < search.indexOf('const queryVec = await C.embedText'), 'query embedding is called before confirming that usable document vectors exist');
 
   const platform = read('embedding/core-platform.js');
   assert(platform.includes("typeof log.isUser === 'function'") && platform.includes("typeof log.isBot === 'function'"), 'platform log normalization depends only on role fields');
@@ -637,6 +739,7 @@ function testSourceContracts() {
   const injection = read('embedding/injecter-5.js');
   assert(injection.includes('deriveAiMemoryTurns(recentMsgs, config)'), 'adaptive reinjection is not wired into injection');
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
+  assert(injection.includes("feature: 'injectQueryEmbed'") && injection.includes('timeoutMs: 8000') && !injection.includes('skipEmbeddingQueue: true'), 'live injection embedding bypasses diagnostics, uses the bulk lane, or can hold chat send too long');
   assert(!injection.includes('skipGenerationQueue: true') && injection.includes("generationLane: 'interactive'"), 'judge or rerank bypasses queue diagnostics and pacing');
   assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
   assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');

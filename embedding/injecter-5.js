@@ -801,7 +801,7 @@
       } catch (_) {}
     }
     const baseApiOpts = _w.__LoreInj.buildEmbeddingApiOpts
-      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001' }, { feature: 'embed', chatKey: chatKey || 'global' })
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001', embeddingLane: 'interactive', timeoutMs: 8000 }, { feature: 'injectQueryEmbed', chatKey: chatKey || 'global' })
       : {
         apiType: config.autoExtApiType === 'deepseek' ? 'key' : (config.autoExtApiType || 'key'),
         key: config.autoExtApiType === 'deepseek' ? config.autoExtFirebaseEmbedKey : config.autoExtKey,
@@ -809,11 +809,13 @@
         vertexLocation: config.autoExtVertexLocation || 'global', vertexProjectId: config.autoExtVertexProjectId,
         firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
         model: config.embeddingModel || 'gemini-embedding-001',
-        costContext: { feature: 'embed', chatKey: chatKey || 'global' }
+        embeddingLane: 'interactive',
+        timeoutMs: 8000,
+        costContext: { feature: 'injectQueryEmbed', chatKey: chatKey || 'global' }
       };
-    // A live chat query must not wait behind bulk search preparation. The same
-    // embedding request and scoring path are used; only the batch queue is bypassed.
-    const apiOpts = { ...baseApiOpts, skipEmbeddingQueue: true, maxRetries: 0 };
+    // Live queries use a paced interactive lane that is independent from bulk
+    // search preparation, so chat sends stay responsive without bypassing diagnostics.
+    const apiOpts = { ...baseApiOpts, embeddingLane: 'interactive', maxRetries: 0 };
     const searchConfig = {
       chatKey: chatKey, turnCounter: turnCounter,
       scanRange: config.scanRange || 6, scanOffset: config.scanOffset || 0,
