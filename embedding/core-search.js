@@ -144,7 +144,7 @@
     'promise', 'relationship', 'state', 'event', 'scene', 'memory'
   ]);
 
-  function normalizeRetrievalToken(value) {
+  function normalizeRetrievalToken(value, allowGeneric = false) {
     let token = String(value || '').trim().toLowerCase().replace(/^[~"'`()[\]{}]+|[~"'`()[\]{}.,!?;:]+$/g, '');
     if (!token || token.includes('&&')) return '';
     if (/^[가-힣]+$/.test(token)) {
@@ -163,15 +163,15 @@
         }
       }
     }
-    if (token.length < 2 || token.length > 16 || GENERIC_TRIGGER_TOKENS.has(token)) return '';
+    if (token.length < 2 || token.length > 16 || (!allowGeneric && GENERIC_TRIGGER_TOKENS.has(token))) return '';
     return token;
   }
 
-  function triggerWords(value) {
+  function triggerWords(value, allowGeneric = false) {
     return String(value || '')
       .replace(/&&/g, ' ')
       .split(/[^\w가-힣ぁ-んァ-ヶ一-龯]+/)
-      .map(normalizeRetrievalToken)
+      .map(token => normalizeRetrievalToken(token, allowGeneric))
       .filter(Boolean);
   }
 
@@ -193,17 +193,17 @@
     const participants = new Set(explicitParticipantTerms(entry));
     const tokens = [];
     const addToken = value => {
-      const token = normalizeRetrievalToken(value);
+      const token = normalizeRetrievalToken(value, scoped);
       if (!token || participants.has(token) || tokens.includes(token)) return;
       tokens.push(token);
     };
 
-    triggerWords(entry?.name).forEach(addToken);
+    triggerWords(entry?.name, scoped).forEach(addToken);
     for (const trigger of base) {
-      if (isClauseLikeTrigger(trigger)) triggerWords(trigger).forEach(addToken);
+      if (isClauseLikeTrigger(trigger)) triggerWords(trigger, scoped).forEach(addToken);
     }
     for (const fact of (Array.isArray(entry?.facts) ? entry.facts : [])) {
-      triggerWords([fact && fact.relation, fact && fact.value].filter(Boolean).join(' ')).forEach(addToken);
+      triggerWords([fact && fact.relation, fact && fact.value].filter(Boolean).join(' '), scoped).forEach(addToken);
       if (tokens.length >= 6) break;
     }
 

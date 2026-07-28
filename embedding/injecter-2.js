@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260727.14';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v4';
+  const VER = '1.4.0.260727.15';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v5';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -272,7 +272,7 @@ Conversation Log:
     ],
     "hooks": ["unresolved hook or future recall reason"],
     "linkedLore": ["related character/relationship/promise/location names"],
-    "recallTriggers": ["unique place or object", "participant&&distinctive scene cue", "distinctive quoted phrase"],
+    "recallTriggers": ["event-specific noun", "unique object&&place", "motif&&consequence"],
     "importance": 8,
     "emotional": 8,
     "confidence": 0.8
@@ -301,8 +301,9 @@ CRITICAL RULES:
 6. RECALL TRIGGERS:
    - Every trigger must distinguish this event from other events involving the same people.
    - A participant name alone is INVALID. Generic recall words such as "그때", "기억해", "전에", and "다시" are also INVALID as stored triggers.
-   - Use unique places, objects, faction names, short quoted phrases, or event-specific action phrases.
-   - A compound may pair a participant with a distinctive literal scene cue (A&&은빛 호각).
+   - Use short noun concepts for unique places, objects, faction names, motifs, consequences, or event-specific actions.
+   - Do not store a quotation, conjugated phrase, or sentence fragment as a trigger. Keep the exact line in summary.full or a key_quote entry instead.
+   - A compound may pair a participant with a distinctive scene noun (A&&은빛 호각).
    - Include at least one event-specific trigger containing no participant name.
 7. MEMORY FORMAT:
    - Produce one self-contained summary.full that expresses the same established continuity as facts, including ownership, direction, negation, uncertainty, conditions, time, and knowledge scope when present.
@@ -551,8 +552,8 @@ Conversation Log:
   const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB = ['6008:cdf91e6d', '6087:fff85132', '6282:b9cec30'];
   const LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES = ['2343:b62dcc66', '2391:98387c58', '2554:ea2c257c'];
   const LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES = ['1867:a23b0019', '1472:1026ef34', '1601:811db77a'];
-  const LEGACY_TEMPORAL_PROMPT_SIGNATURES = ['2101:e6c29640', '2149:97797312', '2312:70a6305c'];
-  const LEGACY_TEMPORAL_SCHEMA_SIGNATURES = ['1093:aadefd10', '1245:7d91ee86'];
+  const LEGACY_TEMPORAL_PROMPT_SIGNATURES = ['2101:e6c29640', '2149:97797312', '2312:70a6305c', '2633:f3e26376'];
+  const LEGACY_TEMPORAL_SCHEMA_SIGNATURES = ['1093:aadefd10', '1245:7d91ee86', '1278:29ceaf8a'];
 
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITH_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB);

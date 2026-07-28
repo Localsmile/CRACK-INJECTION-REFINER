@@ -290,6 +290,16 @@ async function testKernelHelpers() {
   assert(expandedClauseTriggers.includes('둔갑&&복귀'), 'sentence-like legacy triggers did not gain a usable noun compound');
   const recoveredClauseHit = C.triggerScan('둔갑이 완전히 복귀하려면 시간이 더 필요해.', [], [clauseTriggerEntry], {});
   assert(recoveredClauseHit.some(hit => hit.entry.id === 105 && hit.matchedTrigger === '둔갑&&복귀'), 'derived trigger compound cannot recall a legacy promise');
+  const quoteTriggerEntry = {
+    id: 106,
+    type: 'key_quote',
+    name: '비밀 약속 재확인',
+    triggers: ['누구에게도 말하지 않', '약속은 변하지 않'],
+    speaker: '김덕배',
+    facts: [{ subject: '김덕배', relation: '발언', value: '서하윤의 정체를 누구에게도 말하지 않겠다는 약속을 재확인' }]
+  };
+  const expandedQuoteTriggers = C.expandRetrievalTriggers(quoteTriggerEntry);
+  assert(expandedQuoteTriggers.includes('비밀&&약속'), 'key-quote clause fallback discarded a useful event-specific noun compound');
 
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
@@ -953,7 +963,9 @@ function testSourceContracts() {
   assert(read('embedding/injecter-2.js').includes('Resolve within the window: the latest explicit outcome overrides earlier uncertainty.'), 'extraction can preserve an uncertainty that is resolved later in the same window');
   assert(read('embedding/injecter-2.js').includes('exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions'), 'extraction prompt can discard exact numeric world constraints');
   assert(read('embedding/injecter-2.js').includes('They are NOT summaries, quotations, conditions, or sentence fragments'), 'default extraction prompt still encourages unusable sentence triggers');
+  assert(read('embedding/injecter-2.js').includes('Do not store a quotation, conjugated phrase, or sentence fragment as a trigger.'), 'timeline extraction still requests quoted or sentence-like triggers');
   assert(extractionSource.includes('RETRIEVAL TRIGGER CONTRACT:') && extractionSource.includes('Optional interactionStyle field for rel entries'), 'custom extraction prompts do not receive trigger or interaction-style contracts');
+  assert(extractionSource.includes('"recallTriggers": ["event-specific noun", "motif&&consequence"]'), 'important-line schema still encourages sentence-like quote triggers');
   assert(extractionSource.includes('mergeInteractionStyle(existing.interactionStyle, e.interactionStyle)'), 'updated relationship extraction discards contextual interaction profiles');
   assert(extractionSource.includes('extractionDiagnostics') && extractionSource.includes("stage: 'jsonRepair'"), 'extraction retries cannot be attributed to provider or JSON repair latency');
   assert(extractionSource.includes('Treat a one-off proper-name call, emotional exclamation'), 'custom extraction prompts can still promote a temporary vocative');
