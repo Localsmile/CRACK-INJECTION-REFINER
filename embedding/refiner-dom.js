@@ -164,6 +164,38 @@
     return container;
   }
 
+  function findRenderedResponseTarget(originalText, messageId) {
+    const byId = findMessageContainerById(messageId);
+    if (byId && document.contains(byId)) {
+      const md = byId.querySelector && byId.querySelector('.wrtn-markdown');
+      if (md) {
+        const parent = md.parentElement;
+        const hasRenderedSiblings = !!(parent && Array.from(parent.children).some(child =>
+          child !== md && (
+            child.classList?.contains('not-wrtn-markdown') ||
+            child.classList?.contains('wrtn-codeblock') ||
+            child.querySelector?.('.wrtn-codeblock')
+          )
+        ));
+        return {
+          element: hasRenderedSiblings ? parent : md,
+          container: byId,
+          source: 'message_id'
+        };
+      }
+    }
+
+    const oldPlain = stripMarkdown(originalText);
+    const oldSnippet = normalizeText(oldPlain.length > 36 ? oldPlain.slice(-36) : oldPlain);
+    if (!oldSnippet) return null;
+    for (const md of document.querySelectorAll('.wrtn-markdown')) {
+      if (normalizeText(md.textContent).includes(oldSnippet)) {
+        return { element: md, container: getMessageContainer(md), source: 'text' };
+      }
+    }
+    return null;
+  }
+
   function refreshMessageInDOM(originalText, newText, messageId) {
     const oldPlain = stripMarkdown(originalText);
     const newPlain = stripMarkdown(newText);
@@ -177,8 +209,13 @@
     let targetEl = null;
     const allMds = document.querySelectorAll('.wrtn-markdown');
 
+    // Message ids are the only reliable locator when a response ends in a native
+    // code block: the old text suffix then lives outside .wrtn-markdown.
+    const directTarget = findRenderedResponseTarget(originalText, messageId);
+    if (directTarget && directTarget.element) targetEl = directTarget.element;
+
     // pass 1: prefer the wrtn-markdown that contains old text but not new text (pre-edit bubble)
-    if (oldSnippet) {
+    if (!targetEl && oldSnippet) {
       for (const md of allMds) {
         const t = normalizeText(md.textContent);
         if (t.includes(oldSnippet) && !containsTextFingerprint(t, newPlain)) {
@@ -951,6 +988,7 @@
   R.isTextVisible = isTextVisible;
   R.waitForVisibleText = waitForVisibleText;
   R.rememberAssistantMessage = rememberAssistantMessage;
+  R.findRenderedResponseTarget = findRenderedResponseTarget;
   R.refreshMessageInDOM = refreshMessageInDOM;
   R.tryStoreUpdate = tryStoreUpdate;
   R.runPath0Mutation = runPath0Mutation;

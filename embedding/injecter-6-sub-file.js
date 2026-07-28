@@ -41,6 +41,39 @@
   function downloadJson(filename, data) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
+    if (typeof GM_download === 'function') {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      try {
+        GM_download({
+          url,
+          name: filename,
+          saveAs: false,
+          onload: finish,
+          onerror: () => {
+            finish();
+            downloadJsonWithAnchor(filename, blob);
+          },
+          ontimeout: () => {
+            finish();
+            downloadJsonWithAnchor(filename, blob);
+          }
+        });
+        setTimeout(finish, 60000);
+        return;
+      } catch (_) {
+        // Continue with the browser anchor fallback below.
+      }
+    }
+    downloadJsonWithAnchor(filename, blob, url);
+  }
+
+  function downloadJsonWithAnchor(filename, blob, existingUrl) {
+    const url = existingUrl || URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;

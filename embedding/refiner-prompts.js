@@ -6,7 +6,7 @@
   _w.__LoreRefiner = _w.__LoreRefiner || {};
   if (_w.__LoreRefiner.__promptsLoaded) return;
 
-  const PROMPT_VERSION = 'v1.4.0-callstate-topic-default';
+  const PROMPT_VERSION = 'v1.4.0-callstate-topic-default-2';
 
   const TEMPLATES = {
     full: {
@@ -32,14 +32,17 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
 3. NICKNAME / TITLE MISMATCH
 4. STATE CONTRADICTION
 5. PROMISE / ARC CONTRADICTION
+   - A proposal, negotiation, reconsideration, or conditional counteroffer is not a contradiction until the characters accept it or it directly violates a fixed established fact.
 6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뵙겠습니다", unfamiliarity.
 7. VOCATIVE CONTINUITY CHECK: Compare [New Speech] against the latest stable call-state.
    - A previous nickname or insult is not mandatory forever.
    - Current name/title is valid if [Recent Context] shows relationship normalization, direct name use, emotional cooling, formal setting, or a new scene.
+   - One isolated proper-name call or emotional exclamation does not establish a permanent new form of address.
    - Flag only when the speech contradicts the latest stable call-state or an explicit must-use term.
 8. USER IMPERSONATION: AI narrated the user's character's actions, decisions, dialogue, or internal thoughts WITHOUT user's explicit prior input.
    Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렘이 일었다" when user expressed no such feeling.
    Allowed: describing physical cues the AI's character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know.
+   The assistant character's own first-person narration or internal focalization is allowed. Identify whose perspective is being narrated before flagging.
 
 ## Truncation Repair
 A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.
@@ -53,6 +56,8 @@ No issues/repairs needed:
 
 Issues found (no markdown code fences):
 {"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}
+If several dependent sentences must change, use {"reason":"교정 이유","refined_text":"모순이 남지 않도록 전체 응답을 일관되게 수정한 본문"}.
+Before returning a correction, scan the entire corrected response once and ensure no later sentence still asserts the original contradiction.
 
 [Lore]:
 {lore}
@@ -147,10 +152,10 @@ Contradictions found (no markdown code fences):
     presence:      '2. PRESENCE / ABSENCE CONTRADICTION',
     nickname:      '3. NICKNAME / TITLE MISMATCH',
     state:         '4. STATE CONTRADICTION',
-    promise:       '5. PROMISE / ARC CONTRADICTION',
+    promise:       '5. PROMISE / ARC CONTRADICTION: A proposal, negotiation, reconsideration, or conditional counteroffer is not a contradiction until accepted or until it directly violates a fixed established fact.',
     reunion:       '6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뵙겠습니다", unfamiliarity.',
-    honorific:     '7. VOCATIVE CONTINUITY CHECK: Compare [New Speech] against the latest stable call-state. A previous nickname/insult is context, not a permanent requirement. Current name/title is valid when [Recent Context] shows normalization, direct name use, emotional cooling, formal setting, or a new scene. Flag only when the speech contradicts the latest stable call-state or an explicit must-use term.',
-    impersonation: '8. USER IMPERSONATION: AI narrated the user\'s character\'s actions, decisions, dialogue, or internal thoughts WITHOUT user\'s explicit prior input.\n   Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렘이 일었다" when user expressed no such feeling.\n   Allowed: describing physical cues the AI\'s character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know.',
+    honorific:     '7. VOCATIVE CONTINUITY CHECK: Compare [New Speech] against the latest stable call-state. A previous nickname/insult is context, not a permanent requirement. Current name/title is valid when [Recent Context] shows normalization, direct name use, emotional cooling, formal setting, or a new scene. One isolated proper-name call or emotional exclamation does not establish a permanent new form of address. Flag only when the speech contradicts the latest stable call-state or an explicit must-use term.',
+    impersonation: '8. USER IMPERSONATION: AI narrated the user\'s character\'s actions, decisions, dialogue, or internal thoughts WITHOUT user\'s explicit prior input.\n   Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렘이 일었다" when user expressed no such feeling.\n   Allowed: describing physical cues the AI\'s character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know. The assistant character\'s own first-person narration or internal focalization is allowed. Identify whose perspective is being narrated before flagging.',
   };
   const _REPAIR_BLOCKS = {
     truncSentence:    'A) SENTENCE TRUNCATION: Complete ONLY the final interrupted sentence.',
@@ -169,7 +174,7 @@ Contradictions found (no markdown code fences):
     let p = 'You are an RP Continuity Checker.\nRATE: PG-13 ~ NC-21\n\n## Scope\nYou receive:\n- [Lore]: partial character/world data\n- [Summaries]: memory snapshots\n- [Recent Context]: last N turns of dialogue\n- [New Speech]: the latest AI-generated RP response\n\n## Rule\nFlag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].\n';
     if (hasLogic)  { p += '\n## What Counts as an Error\n'; logicKeys.forEach(k => { p += _LOGIC_BLOCKS[k] + '\n'; }); }
     if (hasRepair) { p += '\n## Truncation Repair\n';        repairKeys.forEach(k => { p += _REPAIR_BLOCKS[k] + '\n'; }); }
-    p += '\n## Output Format\nReason MUST be in Korean.\nNo issues/repairs needed:\n{passWord}\n\nIssues found (no markdown code fences):\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\n\n[Lore]:\n{lore}\n\n[Summaries]:\n{memory}\n\n[Recent Context]:\n{context}\n\n[New Speech]:\n{message}';
+    p += '\n## Output Format\nReason MUST be in Korean.\nNo issues/repairs needed:\n{passWord}\n\nIssues found (no markdown code fences):\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\nIf several dependent sentences must change, use {"reason":"교정 이유","refined_text":"모순이 남지 않도록 전체 응답을 일관되게 수정한 본문"}.\nBefore returning a correction, scan the entire corrected response once and ensure no later sentence still asserts the original contradiction.\n\n[Lore]:\n{lore}\n\n[Summaries]:\n{memory}\n\n[Recent Context]:\n{context}\n\n[New Speech]:\n{message}';
     return p;
   }
 

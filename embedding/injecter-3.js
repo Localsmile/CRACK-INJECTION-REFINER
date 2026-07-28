@@ -859,7 +859,8 @@
             const savedVer = this.config.refinerPromptVersion || '';
             const norm = (s) => (s || '').trim().replace(/\s+/g, ' ');
             if (savedVer !== R2.PROMPT_VERSION) {
-              const isLegacy = !saved || R2.LEGACY_PROMPTS.some(p => norm(p) === norm(saved)) || norm(R2.DEFAULT_PROMPT) === norm(saved);
+              const isGeneratedDynamic = savedVer === 'v1.4.0-callstate-topic-default' && this.config.refinerUseDynamic !== false;
+              const isLegacy = isGeneratedDynamic || !saved || R2.LEGACY_PROMPTS.some(p => norm(p) === norm(saved)) || norm(R2.DEFAULT_PROMPT) === norm(saved);
               if (isLegacy) {
                 const topics = {};
                 if (R2.TOPICS) Object.keys(R2.TOPICS).forEach(k => topics[k] = true);

@@ -6,7 +6,7 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260727.11';
+  const VER = '1.4.0.260727.12';
   const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v4';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
@@ -32,7 +32,7 @@ EXTRACTION PRIORITIES (in order of importance):
 1. IDENTITY AND STATE: names, aliases, forms, roles, goals, knowledge, secrets, injuries, conditions, and current situation.
 2. RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, first meetings, reunions, and meaningful changes.
 3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and their current lifecycle.
-4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules.
+4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules. Preserve exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions when stated.
 5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks that may matter later.
 6. IMPORTANT LINES: only distinctive source dialogue likely to be deliberately recalled, mirrored, or quoted later. Never force one from ordinary dialogue.`;
   const MEMORY_FORMAT_RULES = `MEMORY FORMAT RULES:
@@ -42,7 +42,7 @@ EXTRACTION PRIORITIES (in order of importance):
 - "openLoops": unresolved goals, promises, questions, threats, or conflicts. Omit when none.
 - Resolve within the window: the latest explicit outcome overrides earlier uncertainty. If a goal, question, threat, promise condition, injury, disguise, or other state is visibly resolved later in the same conversation window, do not keep the earlier uncertainty in openLoops or current state. Record the outcome instead.
 - Do not output summary.compact, summary.micro, inject, or embed_text. The application derives them from facts.
-- "callState": current vocative state. previousTerms are context only, not permanent requirements.
+- "callState": current stable vocative state. previousTerms are context only, not permanent requirements. A one-off proper-name call, emotional exclamation, quoted line, or situational address does not replace an established term unless the dialogue explicitly establishes a lasting change or repeats the new term.
 - "timeline": event turn/order/scene/observed recency. Do not invent in-story days.
 - "entities": participating characters/places/items.
 - "state": current situation in noun phrases. Replace entirely on update.
@@ -89,8 +89,9 @@ ${TRIGGER_QUALITY_RULES}
    - For each rel, set "parties": ["A","B"].
    - Scan dialogue for VOCATIVE terms (how A actually addressed B).
    - Korean cues: "~아/야/씨/님", "너/당신/자기/여보/오빠/누나".
-   - Set "call" to the LATEST term used in this window.
-   - If the term differs from prior history, also output "callDelta" with from/to/term/prevTerm/turnApprox.
+   - Set "call" to the latest STABLE term used in this window.
+   - A single proper-name call, emotional exclamation, quoted line, or situational address does not replace an established term.
+   - Output "callDelta" only when a lasting change is explicit or the new term is repeated. Include scope="stable" and confidence when that evidence exists.
 11. EVENT ACCUMULATION (character/rel/identity only):
    - Significant events are APPENDED to "eventHistory" array, NEVER overwriting prior events.
    - Each event: {turn, summary, imp(1-10), emo(1-10)}
@@ -377,8 +378,9 @@ ${TRIGGER_QUALITY_RULES}
    - For each rel, set "parties": ["A","B"].
    - Scan dialogue for VOCATIVE terms (how A actually addressed B).
    - Korean cues: "~아/야/씨/님", "너/당신/자기/여보/오빠/누나".
-   - Set "call" to the LATEST term used in this window.
-   - If the term differs from prior history, also output "callDelta" with from/to/term/prevTerm/turnApprox.
+   - Set "call" to the latest STABLE term used in this window.
+   - A single proper-name call, emotional exclamation, quoted line, or situational address does not replace an established term.
+   - Output "callDelta" only when a lasting change is explicit or the new term is repeated. Include scope="stable" and confidence when that evidence exists.
 12. EVENT ACCUMULATION (character/rel/identity only):
     - CRITICAL: Check existing "eventHistory" for each entity in the DB context. Do NOT duplicate events already recorded.
     - Significant events are APPENDED to "eventHistory" array, NEVER overwriting prior events.
@@ -454,8 +456,9 @@ CRITICAL RULES:
    - For each rel, set "parties": ["A","B"].
    - Scan dialogue for VOCATIVE terms (how A actually addressed B).
    - Korean cues: "~아/야/씨/님", "너/당신/자기/여보/오빠/누나".
-   - Set "call" to the LATEST term used in this window.
-   - If the term differs from prior history, also output "callDelta" with from/to/term/prevTerm/turnApprox.
+   - Set "call" to the latest STABLE term used in this window.
+   - A single proper-name call, emotional exclamation, quoted line, or situational address does not replace an established term.
+   - Output "callDelta" only when a lasting change is explicit or the new term is repeated. Include scope="stable" and confidence when that evidence exists.
 10. EVENT ACCUMULATION (character/rel/identity only):
     - CRITICAL: Check existing "eventHistory" for each entity in the DB context. Do NOT duplicate events already recorded.
     - Significant events are APPENDED to "eventHistory" array, NEVER overwriting prior events.

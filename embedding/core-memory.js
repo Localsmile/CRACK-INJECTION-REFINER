@@ -754,8 +754,18 @@
         }
         for (const k in byKey) {
           const arr = byKey[k].sort((a,b) => (a.turn||0) - (b.turn||0));
-          const last = arr[arr.length-1];
-          const prevTerms = Array.from(new Set(arr.slice(0, -1).map(h => h.term).filter(t => t && t !== last.term)));
+          const latest = arr[arr.length-1];
+          let last = latest;
+          if (arr.length > 1) {
+            const prior = arr[arr.length - 2];
+            const latestRecentCount = arr.slice(-4).filter(h => h.term === latest.term).length;
+            const reason = String(latest.reason || '');
+            const explicitStable = latest.stable === true || latest.explicitChange === true ||
+              (latest.scope === 'stable' && Number(latest.confidence || 0) >= 0.8) ||
+              /(호칭.*(변경|정착|합의)|앞으로.*부르|계속.*부르|stable|permanent|explicit)/i.test(reason);
+            if (latest.term !== prior.term && latestRecentCount < 2 && !explicitStable) last = prior;
+          }
+          const prevTerms = Array.from(new Set(arr.filter(h => h !== last).map(h => h.term).filter(t => t && t !== last.term)));
           if (prevTerms.length) prevMap[k] = prevTerms[prevTerms.length - 1];
           const pair = parseCallKey(k);
           if (pair) setCallState(matrix, states, pair.from, pair.to, {
@@ -790,7 +800,10 @@
         if (!cur) continue;
         const prevTerms = Array.from(new Set([...(state.previousTerms || []), prevMap && prevMap[k]].filter(Boolean))).filter(t => t !== cur);
         let line = `${from}${particle(from, '은', '는')} ${to}${particle(to, '을', '를')} '${cur}'라고 부름`;
-        if (prevTerms.length) line += ` (이전 호칭 ${prevTerms.slice(-1)[0]}은 참고만)`;
+        if (prevTerms.length) {
+          const prev = prevTerms.slice(-1)[0];
+          line += ` (이전 호칭 ${prev}${particle(prev, '은', '는')} 참고만)`;
+        }
         lines.push(line);
       }
     }

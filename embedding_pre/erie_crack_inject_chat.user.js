@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Chat)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0.260727.11
+// @version     1.4.0.260727.12
 // @description 채팅방에서만 @require로 안정 부트스트랩되는 로어 인젝터 본체
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/stories/*/episodes/*
@@ -50,6 +50,7 @@
 // @require     https://raw.githubusercontent.com/Localsmile/CRACK-INJECTION-REFINER/260727-memory-v2/embedding/injecter-6-ui.js
 // @grant       GM_addStyle
 // @grant       GM_xmlhttpRequest
+// @grant       GM_download
 // @grant       unsafeWindow
 // @sandbox     raw
 // @connect     generativelanguage.googleapis.com

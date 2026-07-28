@@ -108,9 +108,9 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     const t = normalizeExtractTopics(topics);
     const rows = [
       ['identityState', 'IDENTITY AND CURRENT STATE: identities, aliases, roles, goals, knowledge, secrets, injuries, conditions, and current situation.'],
-      ['relationships', 'RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, and meaningful changes.'],
+      ['relationships', 'RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, and meaningful changes. Treat a one-off proper-name call, emotional exclamation, quoted line, or situational address as temporary unless a lasting change is explicit or repeated.'],
       ['obligations', 'OBLIGATIONS: promises, contracts, debts, duties, conditions, and lifecycle changes.'],
-      ['worldContinuity', 'WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and setting rules.'],
+      ['worldContinuity', 'WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and setting rules. Preserve exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions when stated.'],
       ['majorScenes', 'MAJOR SCENES: reveals, decisions, conflicts, milestones, victories, losses, consequences, and unresolved hooks.'],
       ['importantLines', 'IMPORTANT LINES: type="key_quote" only for a distinctive source line likely to be deliberately recalled, mirrored, or quoted later because it carries a reveal, decision, promise, threat, confession, boundary, or recurring motif. Do not force a quote and do not paraphrase ordinary dialogue into one.']
     ];
@@ -599,7 +599,17 @@ Structured output reminder:
 - Return exactly one valid json object.
 - The top-level shape is {"entries":[...]}.
 - No markdown, no prose, no comments, no trailing text.` : prompt;
+    const extractionDiagnostics = [];
     let res = await C.callGeminiApi(finalPrompt, { ...apiOpts, diagnosticStage: 'primary' });
+    extractionDiagnostics.push({
+      stage: 'primary',
+      status: Number(res && res.status) || 0,
+      retries: Number(res && res.retries) || 0,
+      requestAttempts: Number(res && res.requestAttempts) || 0,
+      fallbackAttempts: Number(res && res.fallbackAttempts) || 0,
+      timing: res && res.timing ? { ...res.timing } : null,
+      outputChars: res && res.text ? String(res.text).length : 0
+    });
     let parsed = parseJsonLoose(res && res.text);
     let validStructure = isRecognizedExtractResponse(parsed);
     const shouldRepair = !!(res && res.text) && !validStructure && apiOpts;
@@ -620,6 +630,15 @@ Structured output reminder:
           responseMimeType: 'application/json',
           diagnosticStage: 'jsonRepair'
       });
+      extractionDiagnostics.push({
+        stage: 'jsonRepair',
+        status: Number(res && res.status) || 0,
+        retries: Number(res && res.retries) || 0,
+        requestAttempts: Number(res && res.requestAttempts) || 0,
+        fallbackAttempts: Number(res && res.fallbackAttempts) || 0,
+        timing: res && res.timing ? { ...res.timing } : null,
+        outputChars: res && res.text ? String(res.text).length : 0
+      });
       parsed = parseJsonLoose(res && res.text);
       validStructure = isRecognizedExtractResponse(parsed);
       if (res && firstCost && res.cost) {
@@ -636,8 +655,26 @@ Structured output reminder:
         };
       }
     }
+    if (res && typeof res === 'object') {
+      res.extractionDiagnostics = extractionDiagnostics;
+      res.extractionRepairRetry = extractionDiagnostics.some(row => row.stage === 'jsonRepair');
+    }
     if (!validStructure) parsed = null;
     return { res, parsed };
+  }
+
+  function buildExtractionApiLog(res) {
+    if (!res) return null;
+    return {
+      status: res.status,
+      error: res.error,
+      retries: Number(res.retries) || 0,
+      requestAttempts: Number(res.requestAttempts) || 0,
+      fallbackAttempts: Number(res.fallbackAttempts) || 0,
+      repairRetry: !!res.extractionRepairRetry,
+      timing: res.timing ? { ...res.timing } : null,
+      stages: Array.isArray(res.extractionDiagnostics) ? res.extractionDiagnostics : []
+    };
   }
 
   function temporalDigestForExtract(e) {
@@ -744,7 +781,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       : { ...apiOpts, ...temporalOverrides, costContext: { feature: 'temporalExtract', chatKey: chatKey || 'global' } };
     const t0 = Date.now();
     const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
-    const apiLog = res ? { status: res.status, error: res.error, retries: res.retries } : null;
+    const apiLog = buildExtractionApiLog(res);
     if (!res || !res.text) throw new Error('시간축 AI 응답없음 (' + ((res && res.error) || '알수없음') + ')');
     if (!parsed) throw new Error('시간축 JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
     const rawItems = normalizeExtractItems(parsed);
@@ -813,7 +850,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const { res, parsed } = await callGeminiJsonWithRepair(prompt, temporalApiOpts, 'Use patch objects only when a real timeline memory changes.');
       _tmpElapsedMs = Date.now() - _tmpT0;
       _tmpCost = (res && res.cost) || null;
-      apiLog = res ? { status: res.status, error: res.error, retries: res.retries } : null;
+      apiLog = buildExtractionApiLog(res);
       if (!res || !res.text) throw new Error('시간축 AI 응답없음 (' + ((res && res.error) || '알수없음') + ')');
       if (!parsed) throw new Error('시간축 JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       let patchedCount = 0;
@@ -1357,7 +1394,12 @@ ${TEMPORAL_PATCH_SCHEMA}`;
       const { res, parsed } = await callGeminiJsonWithRepair(prompt, apiOpts, 'Return the requested JSON shape only. For DeepSeek use {"entries":[...]} with no markdown.');
       _extElapsedMs = Date.now() - _extT0;
       _extCost = (res && res.cost) || null;
-      apiLog = res ? { status: res.status, error: res.error, retries: res.retries } : null;
+      apiLog = buildExtractionApiLog(res);
+      console.info('[Lore:extract:diagnostics]', {
+        mode: isManual ? 'manual' : 'auto',
+        elapsedMs: _extElapsedMs,
+        api: apiLog
+      });
       if (!res || !res.text) throw new Error('AI 응답없음 (' + ((res && res.error) || '알수없음') + ')');
       if (!parsed) throw new Error('JSON 파싱 실패 (응답 스니포: ' + (res.text || '').slice(0, 100) + ')');
       const parsedItems = normalizeExtractItems(parsed);

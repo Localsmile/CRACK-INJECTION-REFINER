@@ -240,6 +240,26 @@ async function testKernelHelpers() {
   const relationHits = C.triggerScan('게렉터는 김덕배를 바라보았다.', [], triggerEntries, {});
   assert(relationHits.some(hit => hit.entry.id === 104), 'bidirectional relationship compounds stopped working');
 
+  const stableCall = C.buildHonorificMatrix([{
+    type: 'rel',
+    parties: ['서하윤', '김덕배'],
+    callHistory: [
+      { from: '서하윤', to: '김덕배', term: '너', turn: 1 },
+      { from: '서하윤', to: '김덕배', term: '김덕배', turn: 2, reason: '한 번 이름을 외침' }
+    ]
+  }], ['서하윤', '김덕배']);
+  assert.strictEqual(stableCall.matrix['서하윤']['김덕배'], '너', 'one-off proper-name call replaced a stable vocative');
+  assert(C.formatHonorificMatrix(stableCall, 500).includes('김덕배는 참고만'), 'Korean particle for a prior vocative is malformed');
+  const explicitCall = C.buildHonorificMatrix([{
+    type: 'rel',
+    parties: ['서하윤', '김덕배'],
+    callHistory: [
+      { from: '서하윤', to: '김덕배', term: '너', turn: 1 },
+      { from: '서하윤', to: '김덕배', term: '김덕배', turn: 2, scope: 'stable', confidence: 0.9 }
+    ]
+  }], ['서하윤', '김덕배']);
+  assert.strictEqual(explicitCall.matrix['서하윤']['김덕배'], '김덕배', 'an explicit stable vocative change was ignored');
+
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
   assert.strictEqual(new Set(variants.map(v => JSON.stringify(v))).size, variants.length, 'OpenAI compatibility variants are not unique');
@@ -739,6 +759,7 @@ function testSourceContracts() {
   assert(settings.includes("const dT = this.config.templates.find(t => t.isDefault || t.id === 'default')"), 'default-template targeting changed');
   assert(settings.includes('(signatures || []).includes(signature(t[key]))'), 'custom prompt migration is not exact-signature guarded');
   assert(settings.includes('LEGACY_TEMPORAL_PROMPT_SIGNATURES') && settings.includes('LEGACY_TEMPORAL_SCHEMA_SIGNATURES'), 'saved default temporal prompts are not migrated without touching edits');
+  assert(settings.includes("savedVer === 'v1.4.0-callstate-topic-default' && this.config.refinerUseDynamic !== false"), 'the previous generated refiner prompt does not migrate to the corrected default');
   assert(settings.includes("'autoExtOpenAIFormat'"), 'OpenAI transport format is not preserved by API-only settings reset');
   assert(!settings.includes('persistStorageIfPossible()'), 'persistent storage permission is still requested during settings saves');
   assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
@@ -796,6 +817,7 @@ function testSourceContracts() {
   assert(refinerDom.includes("exactButton(document, '수정 완료')"), 'native response-edit fallback does not submit the corrected message');
   assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');
   assert(refinerDom.includes('[data-message-group-id]') && refinerDom.includes("el.getAttribute('data-message-group-id')"), 'current Crack message-group ids are not recognized by response correction');
+  assert(refinerDom.includes('function findRenderedResponseTarget') && refinerDom.includes("source: 'message_id'"), 'response correction does not target code-block messages by their server id');
   assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
   assert(refinerCore.lastIndexOf('if (!visible && hasCodeFence && R.refreshMessageInDOM)') > refinerCore.indexOf('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'code-block correction lacks a final visible fallback after native refresh fails');
   assert(refinerCore.includes("feature: 'refinerQueryEmbed'") && refinerCore.includes("embeddingLane: 'interactive'") && refinerCore.includes('timeoutMs: 8000'), 'response correction semantic search can wait behind bulk embedding or a long query timeout');
@@ -875,6 +897,7 @@ function testSourceContracts() {
   const backup = read('embedding/injecter-6-sub-backup.js');
   const fileTools = read('embedding/injecter-6-sub-file.js');
   assert(fileTools.includes('setTimeout(() => URL.revokeObjectURL(url), 60000)') && !fileTools.includes('document.body.removeChild(a);\n    URL.revokeObjectURL(url);'), 'JSON downloads can revoke their Blob URL before mobile browsers consume it');
+  assert(chatBootstrap.includes('// @grant       GM_download') && fileTools.includes("typeof GM_download === 'function'"), 'asynchronous backup generation can lose the browser download action');
   assert(backup.includes("parts[0] !== 'v1' && parts[0] !== 'v2gzip'"), 'legacy encrypted server backups are no longer accepted');
   assert(backup.includes('includeEmbeddings: false, includeHistory: false, serverSlim: true'), 'new server backups are not slim');
   assert(backup.includes('const packs = Array.from(new Set(((report && report.touchedPacks) || [])'), 'server restore does not limit embedding rebuild to restored packs');
@@ -887,7 +910,14 @@ function testSourceContracts() {
   assert(backup.includes("makeBtn('기기 저장소 보호 요청'"), 'persistent storage permission has no explicit user action');
 
   assert(coreMemory.includes("particle(from, '은', '는')") && coreMemory.includes("particle(to, '을', '를')"), 'Korean honorific injection still emits invalid fixed particles');
+  assert(coreMemory.includes("particle(prev, '은', '는')"), 'previous vocatives still use a fixed Korean subject particle');
   assert(read('embedding/injecter-2.js').includes('Resolve within the window: the latest explicit outcome overrides earlier uncertainty.'), 'extraction can preserve an uncertainty that is resolved later in the same window');
+  assert(read('embedding/injecter-2.js').includes('exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions'), 'extraction prompt can discard exact numeric world constraints');
+  assert(extractionSource.includes('extractionDiagnostics') && extractionSource.includes("stage: 'jsonRepair'"), 'extraction retries cannot be attributed to provider or JSON repair latency');
+  assert(extractionSource.includes('Treat a one-off proper-name call, emotional exclamation'), 'custom extraction prompts can still promote a temporary vocative');
+  const refinerPrompts = read('embedding/refiner-prompts.js');
+  assert(refinerPrompts.includes('proposal, negotiation, reconsideration') && refinerPrompts.includes('internal focalization is allowed'), 'refiner prompt still confuses RP negotiation or assistant focalization with an error');
+  assert(refinerPrompts.includes('scan the entire corrected response once'), 'refiner can leave a stale contradiction in a later sentence');
   assert(!backup.includes("title.textContent = '저장 공간 정리'") && !backup.includes('사용하지 않는 데이터 정리'), 'storage cleanup UI is still present');
   assert(!settings.includes('deletePackData, cleanupUnusedLoreStorage,'), 'manual storage cleanup remains publicly exposed');
 
