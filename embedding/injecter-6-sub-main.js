@@ -162,7 +162,7 @@
         panel.addBoxedField('', '', { onInit: (nd) => {
           C.setFullWidth(nd);
           const tr = document.createElement('div'); tr.textContent = '추가 정보 주입'; tr.style.cssText = 'font-size:14px;color:#4a9;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #333;'; nd.appendChild(tr);
-          nd.appendChild(C.createToggleRow('호칭 정보', '캐릭터 간 호칭 정보 함께 전달함.', settings.config.honorificMatrixEnabled !== false, (v) => { settings.config.honorificMatrixEnabled = v; settings.save(); }));
+          nd.appendChild(C.createToggleRow('관계 표현', '상황별 호칭과 기본 말투·태도를 함께 전달함.', settings.config.honorificMatrixEnabled !== false, (v) => { settings.config.honorificMatrixEnabled = v; settings.save(); }));
           nd.appendChild(C.createToggleRow('첫 만남/재회 관리', '첫 만남/재회 여부 자동 전달함.', settings.config.firstEncounterWarning !== false, (v) => { settings.config.firstEncounterWarning = v; settings.save(); }));
         }});
 

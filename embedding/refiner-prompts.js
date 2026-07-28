@@ -6,7 +6,7 @@
   _w.__LoreRefiner = _w.__LoreRefiner || {};
   if (_w.__LoreRefiner.__promptsLoaded) return;
 
-  const PROMPT_VERSION = 'v1.4.0-callstate-topic-default-2';
+  const PROMPT_VERSION = 'v1.4.0-callstate-topic-default-3';
 
   const TEMPLATES = {
     full: {
@@ -38,6 +38,7 @@ Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stat
    - A previous nickname or insult is not mandatory forever.
    - Current name/title is valid if [Recent Context] shows relationship normalization, direct name use, emotional cooling, formal setting, or a new scene.
    - One isolated proper-name call or emotional exclamation does not establish a permanent new form of address.
+   - Several address terms, speech registers, tones, and stances may all be valid under different interactionStyle conditions. Prefer a condition matched by [Recent Context]; do not enforce one default when a valid contextual variant exists.
    - Flag only when the speech contradicts the latest stable call-state or an explicit must-use term.
 8. USER IMPERSONATION: AI narrated the user's character's actions, decisions, dialogue, or internal thoughts WITHOUT user's explicit prior input.
    Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렘이 일었다" when user expressed no such feeling.
@@ -154,7 +155,7 @@ Contradictions found (no markdown code fences):
     state:         '4. STATE CONTRADICTION',
     promise:       '5. PROMISE / ARC CONTRADICTION: A proposal, negotiation, reconsideration, or conditional counteroffer is not a contradiction until accepted or until it directly violates a fixed established fact.',
     reunion:       '6. REUNION VIOLATION: Characters who already know each other (per [Lore] rel entries or [Reunion] tag) behaving as strangers — self-introduction, "처음 뵙겠습니다", unfamiliarity.',
-    honorific:     '7. VOCATIVE CONTINUITY CHECK: Compare [New Speech] against the latest stable call-state. A previous nickname/insult is context, not a permanent requirement. Current name/title is valid when [Recent Context] shows normalization, direct name use, emotional cooling, formal setting, or a new scene. One isolated proper-name call or emotional exclamation does not establish a permanent new form of address. Flag only when the speech contradicts the latest stable call-state or an explicit must-use term.',
+    honorific:     '7. VOCATIVE CONTINUITY CHECK: Compare [New Speech] against the latest stable call-state and interactionStyle. A previous nickname/insult is context, not a permanent requirement. Current name/title is valid when [Recent Context] shows normalization, direct name use, emotional cooling, formal setting, or a new scene. One isolated proper-name call or emotional exclamation does not establish a permanent new form of address. Several address terms, speech registers, tones, and stances may all be valid under different interactionStyle conditions. Prefer a condition matched by [Recent Context]; do not enforce one default when a valid contextual variant exists. Flag only when the speech contradicts an explicit condition or must-use term.',
     impersonation: '8. USER IMPERSONATION: AI narrated the user\'s character\'s actions, decisions, dialogue, or internal thoughts WITHOUT user\'s explicit prior input.\n   Violation examples: "당신은 웃으며 대답했다" when user never said they laughed; "내심 설렘이 일었다" when user expressed no such feeling.\n   Allowed: describing physical cues the AI\'s character OBSERVES in the user (e.g., "당신의 눈빛을 보며"), but NOT internal states the AI cannot know. The assistant character\'s own first-person narration or internal focalization is allowed. Identify whose perspective is being narrated before flagging.',
   };
   const _REPAIR_BLOCKS = {

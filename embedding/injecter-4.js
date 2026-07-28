@@ -63,9 +63,27 @@ const OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED ENTRIES
 - For unchanged existing entries, output nothing.
 - Anchored entries: only append new triggers and eventHistory.`;
 
-  function buildExtractSchema(tpl) {
+  function buildExtractSchema(tpl, topics) {
     const baseSchema = (tpl && tpl.schema) || DEFAULT_AUTO_EXTRACT_SCHEMA;
+    const interactionSchema = normalizeExtractTopics(topics).interactionStyle && !/\binteractionStyle\b/.test(baseSchema)
+      ? `
+
+Optional interactionStyle field for rel entries:
+{
+  "interactionStyle": {
+    "CharA→CharB": {
+      "baseline": {"register":"speech register","tone":["recurring tone"],"stance":["recurring stance"]},
+      "addressVariants": [
+        {"terms":["exact address term"],"when":"concrete situation selecting this variant","register":"","tone":[],"confidence":0.8}
+      ],
+      "behaviorCues": ["recurring way of treating the target"],
+      "boundaries": ["public/private or emotional condition"],
+      "lastObservedTurn": 0
+    }
+  }
+}` : '';
     return `${baseSchema}
+${interactionSchema}
 
 Optional important-line entry when the selected scope includes it:
 {
@@ -91,6 +109,7 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
   const DEFAULT_EXTRACT_TOPICS = {
     identityState: true,
     relationships: true,
+    interactionStyle: true,
     obligations: true,
     worldContinuity: true,
     majorScenes: true,
@@ -104,11 +123,12 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     return out;
   }
 
-  function buildExtractionScope(topics) {
+  function buildExtractionScope(topics, includeTriggerContract = true) {
     const t = normalizeExtractTopics(topics);
     const rows = [
       ['identityState', 'IDENTITY AND CURRENT STATE: identities, aliases, roles, goals, knowledge, secrets, injuries, conditions, and current situation.'],
-      ['relationships', 'RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, and meaningful changes. Treat a one-off proper-name call, emotional exclamation, quoted line, or situational address as temporary unless a lasting change is explicit or repeated.'],
+      ['relationships', 'RELATIONSHIPS: dynamics, boundaries, private/public state, and meaningful changes.'],
+      ['interactionStyle', 'INTERACTION STYLE (rel entries): directional forms of address, speech register, recurring tone, stance, behavior cues, and public/private differences. Preserve multiple valid address variants with concrete selection conditions in interactionStyle. Treat a one-off proper-name call, emotional exclamation, quoted line, or situational address as temporary unless a lasting change is explicit or repeated.'],
       ['obligations', 'OBLIGATIONS: promises, contracts, debts, duties, conditions, and lifecycle changes.'],
       ['worldContinuity', 'WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and setting rules. Preserve exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions when stated.'],
       ['majorScenes', 'MAJOR SCENES: reveals, decisions, conflicts, milestones, victories, losses, consequences, and unresolved hooks.'],
@@ -116,7 +136,18 @@ ${DEFAULT_AUTO_EXTRACT_PATCH_SCHEMA || '[]'}`;
     ];
     const enabled = rows.filter(([key]) => t[key]).map(([, text]) => '- ' + text);
     const disabled = rows.filter(([key]) => !t[key]).map(([, text]) => '- Do not extract ' + text.split(':')[0].toLowerCase() + ' in this run.');
-    return `\n\nEXTRACTION SCOPE FOR THIS RUN:\n${enabled.length ? enabled.join('\n') : '- No general category selected. Return the required empty JSON shape.'}${disabled.length ? '\n' + disabled.join('\n') : ''}`;
+    const triggerContract = includeTriggerContract ? `
+
+RETRIEVAL TRIGGER CONTRACT:
+- A trigger is a short recall key likely to appear naturally in a later message, never a summary, quotation, condition, or conjugated clause.
+- Prefer exact names and stable nouns, normally 2-12 characters per term.
+- Use conceptA&&conceptB when one term is broad. For event, timeline_event, prom, and key_quote, participant-only triggers are invalid.
+- Convert wording such as "곁에서 돕는다", "비밀로 한다", or "가능할 때까지" into short noun concepts and compounds instead of storing the sentence fragment.` : '';
+    return `\n\nEXTRACTION SCOPE FOR THIS RUN:\n${enabled.length ? enabled.join('\n') : '- No general category selected. Return the required empty JSON shape.'}${disabled.length ? '\n' + disabled.join('\n') : ''}${triggerContract}`;
+  }
+
+  function extractionPromptHasTriggerContract(prompt) {
+    return /TRIGGER QUALITY BY ENTRY TYPE:|RETRIEVAL TRIGGER CONTRACT:/i.test(String(prompt || ''));
   }
 
 const TEMPORAL_OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
@@ -232,6 +263,52 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
     return base;
   }
 
+  function mergeInteractionStyle(existing, incoming) {
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return existing;
+    const base = existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? JSON.parse(JSON.stringify(existing))
+      : {};
+    const mergeList = (a, b) => Array.from(new Set([
+      ...(Array.isArray(a) ? a : []),
+      ...(Array.isArray(b) ? b : [])
+    ].map(value => typeof value === 'string' ? value.trim() : value).filter(Boolean)));
+    for (const [pair, raw] of Object.entries(incoming)) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+      const prior = base[pair] && typeof base[pair] === 'object' ? base[pair] : {};
+      const priorBaseline = prior.baseline && typeof prior.baseline === 'object' ? prior.baseline : {};
+      const nextBaseline = raw.baseline && typeof raw.baseline === 'object' ? raw.baseline : {};
+      const variants = [];
+      const seen = new Map();
+      for (const variant of [...(prior.addressVariants || []), ...(raw.addressVariants || [])]) {
+        if (!variant || typeof variant !== 'object') continue;
+        const terms = mergeList([], variant.terms || (variant.term ? [variant.term] : []));
+        if (!terms.length) continue;
+        const key = terms.slice().sort().join('|') + '::' + String(variant.when || variant.condition || variant.scope || '');
+        const normalized = { ...variant, terms };
+        if (seen.has(key)) Object.assign(variants[seen.get(key)], normalized);
+        else {
+          seen.set(key, variants.length);
+          variants.push(normalized);
+        }
+      }
+      base[pair] = {
+        ...prior,
+        ...raw,
+        baseline: {
+          ...priorBaseline,
+          ...nextBaseline,
+          tone: mergeList(priorBaseline.tone, nextBaseline.tone),
+          stance: mergeList(priorBaseline.stance, nextBaseline.stance)
+        },
+        addressVariants: variants.slice(-8),
+        behaviorCues: mergeList(prior.behaviorCues, raw.behaviorCues).slice(-8),
+        boundaries: mergeList(prior.boundaries, raw.boundaries).slice(-8),
+        lastObservedTurn: Math.max(Number(prior.lastObservedTurn) || 0, Number(raw.lastObservedTurn) || 0)
+      };
+    }
+    return base;
+  }
+
   function mergeInject(existing, incoming, name, state) {
     if (!incoming || typeof incoming !== 'object') return existing;
     const base = existing && typeof existing === 'object' ? JSON.parse(JSON.stringify(existing)) : {};
@@ -251,14 +328,14 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
       const name = String(e.name || '').toLowerCase();
       const hay = [
         e.name,
-        ...(e.triggers || []),
+        ...(C.expandRetrievalTriggers ? C.expandRetrievalTriggers(e) : (e.triggers || [])),
         e.embed_text || '',
         ...(e.entities || []),
         ...(e.parties || []),
         ...((e.detail && e.detail.parties) || [])
       ].join(' ').toLowerCase();
       if (name && ctx.includes(name)) s += 120;
-      for (const t of (e.triggers || [])) {
+      for (const t of (C.expandRetrievalTriggers ? C.expandRetrievalTriggers(e) : (e.triggers || []))) {
         if (!t || t.length < 2) continue;
         const parts = String(t).split('&&').map(p => p.trim().toLowerCase()).filter(Boolean);
         if (parts.length && parts.every(p => ctx.includes(p))) { s += parts.length > 1 ? 80 : 30; break; }
@@ -294,6 +371,7 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
       anchor: e.anchor === true ? true : undefined
     };
     if (e.callState) out.callState = e.callState;
+    if (e.interactionStyle) out.interactionStyle = e.interactionStyle;
     if (Array.isArray(e.eventHistory) && e.eventHistory.length) out.eventHistoryTail = e.eventHistory.slice(-3);
     if (e.type === 'prom' || e.type === 'promise') out.cond = e.cond || e.detail?.condition || '';
     return out;
@@ -398,6 +476,7 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
       : set.facts;
     if (Array.isArray(set.openLoops)) existing.openLoops = mergeArrayUnique([], set.openLoops);
     if (set.callState) existing.callState = mergeCallState(existing.callState, set.callState);
+    if (set.interactionStyle) existing.interactionStyle = mergeInteractionStyle(existing.interactionStyle, set.interactionStyle);
     if (set.timeline) existing.timeline = { ...(existing.timeline || {}), ...set.timeline };
     if (Array.isArray(set.entities)) existing.entities = mergeArrayUnique(existing.entities, set.entities);
     if (set.detail && typeof set.detail === 'object') existing.detail = { ...(existing.detail || {}), ...set.detail };
@@ -440,6 +519,11 @@ const TEMPORAL_OUTPUT_MODE_FULL = `OUTPUT MODE: FULL UPDATED SCENE MEMORIES
           to: h.to,
           term: h.term,
           prevTerm: h.prevTerm || null,
+          scope: h.scope || '',
+          confidence: h.confidence,
+          reason: h.reason || '',
+          stable: h.stable === true,
+          explicitChange: h.explicitChange === true,
           ts: Date.now()
         });
       }
@@ -980,6 +1064,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           detail: existing.detail ? JSON.parse(JSON.stringify(existing.detail)) : undefined,
           call: existing.call ? JSON.parse(JSON.stringify(existing.call)) : undefined,
           callState: existing.callState ? JSON.parse(JSON.stringify(existing.callState)) : undefined,
+          interactionStyle: existing.interactionStyle ? JSON.parse(JSON.stringify(existing.interactionStyle)) : undefined,
           callHistory: existing.callHistory ? JSON.parse(JSON.stringify(existing.callHistory)) : undefined,
           inject: existing.inject ? JSON.parse(JSON.stringify(existing.inject)) : undefined,
           facts: existing.facts ? JSON.parse(JSON.stringify(existing.facts)) : undefined,
@@ -1010,6 +1095,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         if (e.state !== undefined) existing.state = e.state;
         if (e.call) existing.call = { ...(existing.call || {}), ...e.call };
         if (e.callState) existing.callState = mergeCallState(existing.callState, e.callState);
+        if (e.interactionStyle) existing.interactionStyle = mergeInteractionStyle(existing.interactionStyle, e.interactionStyle);
         if (e.timeline) existing.timeline = { ...(existing.timeline || {}), ...e.timeline };
         if (e.entities) existing.entities = mergeArrayUnique(existing.entities, e.entities);
         if (Array.isArray(e.callDelta) && e.callDelta.length > 0) {
@@ -1019,7 +1105,13 @@ ${TEMPORAL_PATCH_SCHEMA}`;
             existing.callHistory.push({
               turn: d.turnApprox || getTurnCounter(chatKey),
               from: d.from, to: d.to, term: d.term,
-              prevTerm: d.prevTerm || null, ts: Date.now()
+              prevTerm: d.prevTerm || null,
+              scope: d.scope || '',
+              confidence: d.confidence,
+              reason: d.reason || '',
+              stable: d.stable === true,
+              explicitChange: d.explicitChange === true,
+              ts: Date.now()
             });
           }
           if (existing.callHistory.length > 30) existing.callHistory = existing.callHistory.slice(-30);
@@ -1362,14 +1454,16 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     }
     const tpl = settings.getActiveTemplate();
     const promptTpl = getLoreExtractPrompt(tpl, settings.config.autoExtIncludeDb, apiType);
-    const extractSchema = buildExtractSchema(tpl);
+    const extractSchema = buildExtractSchema(tpl, topics);
     const outputModeText = settings.config.autoExtIncludeDb ? providerOutputMode(_patchOn ? OUTPUT_MODE_PATCH : OUTPUT_MODE_FULL, { apiType }, 'extract') : '';
     const shouldRunTemporalExtract = topics.majorScenes && settings.config.temporalExtractEnabled !== false &&
       (isManual || settings.config.temporalExtractAutoEnabled === true);
     const temporalCoordination = shouldRunTemporalExtract
       ? '\n\nDo not output type="timeline_event" in this response; scene memories are extracted separately.'
       : '';
-    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText) + buildExtractionScope(topics) + temporalCoordination;
+    const prompt = personaPrefix + promptTpl.replace('{context}', context).replace('{entries}', entriesText).replace('{schema}', extractSchema).replace('{outputMode}', outputModeText)
+      + buildExtractionScope(topics, !extractionPromptHasTriggerContract(promptTpl))
+      + temporalCoordination;
 
     const _extModel = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     let apiLog = null, _extElapsedMs = 0, _extCost = null;
@@ -1578,7 +1672,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const model = settings.config.autoExtModel === '_custom' ? settings.config.autoExtCustomModel : settings.config.autoExtModel;
     const template = settings.getActiveTemplate();
     const promptTemplate = getLoreExtractPrompt(template, settings.config.autoExtIncludeDb, apiType);
-    const extractSchema = buildExtractSchema(template);
+    const extractSchema = buildExtractSchema(template, topics);
     const patchOn = settings.config.autoExtIncludeDb && settings.config.autoExtPatchMode !== false;
     const runTemporal = topics.majorScenes && settings.config.temporalExtractEnabled !== false && settings.config.temporalExtractBatchEnabled === true;
     let personaPrefix = '';
@@ -1629,7 +1723,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
         .replace('{entries}', entriesText)
         .replace('{schema}', extractSchema)
         .replace('{outputMode}', outputMode)
-        + buildExtractionScope(topics)
+        + buildExtractionScope(topics, !extractionPromptHasTriggerContract(promptTemplate))
         + temporalCoordination;
 
       let generalItems = null;

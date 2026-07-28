@@ -370,11 +370,29 @@
     const temporalText = String(e.type || '').toLowerCase() === (C.TIMELINE_EVENT_TYPE || 'timeline_event')
       ? [e.title, e.location, (e.actions || []).join(' '), (e.hooks || []).join(' '), (e.recallTriggers || []).join(' '), e.when?.anchor, (e.linkedLore || []).join(' ')].filter(Boolean).join(' ')
       : '';
+    const interactionText = e.interactionStyle && typeof e.interactionStyle === 'object'
+      ? Object.entries(e.interactionStyle).map(([pair, profile]) => {
+          const normalized = C.normalizeInteractionProfile ? C.normalizeInteractionProfile(profile) : profile;
+          if (!normalized) return '';
+          const variants = (normalized.addressVariants || []).flatMap(item => [
+            ...(item.terms || []), item.when, item.register, ...(item.tone || [])
+          ]);
+          return [
+            pair,
+            normalized.baseline && normalized.baseline.register,
+            ...((normalized.baseline && normalized.baseline.tone) || []),
+            ...((normalized.baseline && normalized.baseline.stance) || []),
+            ...variants,
+            ...(normalized.behaviorCues || []),
+            ...(normalized.boundaries || [])
+          ].filter(Boolean).join(' ');
+        }).join(' ')
+      : '';
     const factText = facts.map(fact => [
       fact.subject, fact.relation, fact.value, fact.time, fact.condition,
       ...(fact.knownBy || []), ...(fact.hiddenFrom || [])
     ].filter(Boolean).join(' ')).join(' ');
-    const derivedEmbedText = clampText([e.name, temporalText, importantLineText, entities, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
+    const derivedEmbedText = clampText([e.name, temporalText, importantLineText, interactionText, entities, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
     const previousDerivedEmbedText = clampText([e.name, temporalText, importantLineText, priorEntitiesText, (e.triggers || []).join(' '), factText, e.summary.full, e.state].filter(Boolean).join(' '), 500);
     const markedDerivedEmbed = e.memoryDerivedEmbed === true && (
       !e.memoryDerivedEmbedSignature ||
@@ -405,21 +423,35 @@
 
   const IMPORT_PROMPT_TEMPLATE = `Convert the source material into structured continuity entries.<br><br>RULES:<br>1. JSON ONLY. Output a valid JSON array. No markdown.<br>2. Use the ORIGINAL LANGUAGE of the source. Korean source → Korean output.<br>3. Support every genre and tone. Treat identities, relationships, private relationship state, goals, secrets, conditions, factions, ownership, abilities, costs, limits, locations, items, and world rules as continuity data when present.<br>4. Extract only information useful in later scenes. Do not dump broad encyclopedia facts.<br>5. Every entry needs type, name, 3-5 exact triggers, summary.full, facts, imp, sur, and emo. Omit uncertain optional modules instead of fabricating them.<br>6. Every fact needs an explicit subject, relation, and value. Keep each attribute attached to its owner.<br>7. Preserve relationship direction, quantity, time, negation, uncertainty, conditions, and who knows or does not know a fact.<br>8. summary.full must express the same established continuity as facts in natural language, including those bindings and scopes.<br>9. Trigger rules by type:<br>   - character/identity: an exact name or unique nickname may stand alone.<br>   - rel: use bidirectional compounds A&&B and B&&A.<br>   - event/prom/key_quote: a participant name alone is invalid. Use a unique place, object, quoted phrase, or event-specific action phrase; a compound may pair a participant with a distinctive literal cue.<br>   - location/item/faction/ability/rule/condition: use the unique exact name or literal alias.<br>   - Never store generic recall words such as "그때", "전에", "기억해", or "다시" by themselves.<br>   - Every event/prom/key_quote needs at least one event-specific trigger containing no participant name.<br>10. Do not output summary.compact, summary.micro, inject, or embed_text. They are derived from facts.<br>11. Extract callState, timeline, entities, state, and openLoops when inferable.<br>12. For long source, prefer stable entities, relationships, rules, locations, unresolved hooks, and repeated constraints.<br>13. Maximum {maxEntries} entries.<br><br>Schema:<br>{schema}<br><br>Source Material:<br>{source}`;
 
+  const IMPORT_MEMORY_EXTENSION = `<br><br>RETRIEVAL AND INTERACTION MEMORY:<br>
+- Triggers are short retrieval keys likely to appear naturally in a later message, not sentence fragments or summaries.<br>
+- Prefer exact names and stable nouns. Each term should normally be 2-12 characters; combine two concepts with && when one term is broad.<br>
+- For event/prom/key_quote, use two event-specific concepts such as object&&place, ability&&condition, or motif&&consequence. A participant name alone is invalid.<br>
+- Never output a conjugated clause such as "곁에서 돕는다" or a whole condition such as "가능할 때까지". Store its recall nouns as a compound instead.<br>
+- For rel entries, optionally output "interactionStyle": {"CharA→CharB":{"baseline":{"register":"speech register","tone":[],"stance":[]},"addressVariants":[{"terms":["exact address"],"when":"concrete context","register":"","tone":[],"confidence":0.8}],"behaviorCues":[],"boundaries":[],"lastObservedTurn":0}}.<br>
+- interactionStyle may keep several valid address terms with concrete conditions, speech register, tone, stance, and boundaries. Do not collapse them into one mandatory term or infer a stable pattern from one ordinary line.`;
+
+  function appendImportMemoryExtension(prompt) {
+    const text = String(prompt || '');
+    if (text.includes('RETRIEVAL AND INTERACTION MEMORY:')) return text;
+    return text + IMPORT_MEMORY_EXTENSION.replace(/<br\s*\/?>/gi, '\n');
+  }
 
   function adaptImportPromptForProvider(prompt, apiOpts, values = {}) {
     const objectEnvelope = !!(apiOpts && (apiOpts.apiType === 'deepseek' || apiOpts.apiType === 'openai'));
-    if (!objectEnvelope) return prompt;
+    if (!objectEnvelope) return appendImportMemoryExtension(prompt);
     if (apiOpts.apiType === 'deepseek' && apiOpts.deepSeekPromptOverridesEnabled !== false) {
       const fullPrompt = String(apiOpts.deepSeekImportPrompt || (_w.__LoreInj && _w.__LoreInj.DEFAULT_DEEPSEEK_IMPORT_PROMPT) || '').trim();
       if (fullPrompt) {
-        return fullPrompt
+        return appendImportMemoryExtension(fullPrompt
           .replace('{source}', values.source || '')
           .replace('{schema}', values.schema || '')
-          .replace('{maxEntries}', String(values.maxEntries || DEFAULTS.importMaxEntries));
+          .replace('{maxEntries}', String(values.maxEntries || DEFAULTS.importMaxEntries)));
       }
     }
-    return String(prompt || '')
+    return appendImportMemoryExtension(String(prompt || '')
       .replace('JSON ONLY. Output a valid JSON array. No markdown.', 'JSON ONLY. Output one valid JSON object with top-level shape {"entries":[...]}. No markdown.')
+    )
       + '\n\nStructured output:\n'
       + '- Top-level object shape must be exactly {"entries":[...]}.\n'
       + '- Put every converted lore entry inside entries.\n'
@@ -636,8 +668,19 @@
     return duplicates;
   }
 
-  const DEFAULT_IMPORT_PROMPT_TEXT = IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n');
-  const DEFAULT_IMPORT_SCHEMA_TEXT = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n');
+  const DEFAULT_IMPORT_PROMPT_TEXT = appendImportMemoryExtension(IMPORT_PROMPT_TEMPLATE.replace(/<br\s*\/?>/gi, '\n'));
+  const DEFAULT_IMPORT_SCHEMA_TEXT = IMPORT_SCHEMA.replace(/<br\s*\/?>/gi, '\n') + `
+
+Optional for rel entries:
+"interactionStyle": {
+  "CharA→CharB": {
+    "baseline": {"register":"speech register","tone":[],"stance":[]},
+    "addressVariants":[{"terms":["exact address"],"when":"concrete context","register":"","tone":[],"confidence":0.8}],
+    "behaviorCues":[],
+    "boundaries":[],
+    "lastObservedTurn":0
+  }
+}`;
 
   Object.assign(C, {
     importFromText, importFromJson, importFromUrl, detectDuplicatesInSummary,

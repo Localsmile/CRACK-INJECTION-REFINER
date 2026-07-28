@@ -703,12 +703,55 @@
     states[`${from}→${to}`] = state;
   }
 
+  function normalizeInteractionProfile(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const baselineRaw = raw.baseline && typeof raw.baseline === 'object' ? raw.baseline : {};
+    const toList = value => Array.from(new Set((Array.isArray(value) ? value : (value ? [value] : []))
+      .map(item => String(item || '').trim()).filter(Boolean)));
+    const variants = (Array.isArray(raw.addressVariants) ? raw.addressVariants : [])
+      .map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const terms = toList(item.terms || item.term);
+        if (!terms.length) return null;
+        return {
+          terms,
+          when: String(item.when || item.condition || item.scope || '').trim(),
+          register: String(item.register || '').trim(),
+          tone: toList(item.tone),
+          confidence: item.confidence
+        };
+      })
+      .filter(Boolean);
+    return {
+      baseline: {
+        register: String(baselineRaw.register || raw.register || '').trim(),
+        tone: toList(baselineRaw.tone || raw.tone),
+        stance: toList(baselineRaw.stance || raw.stance)
+      },
+      addressVariants: variants,
+      behaviorCues: toList(raw.behaviorCues),
+      boundaries: toList(raw.boundaries),
+      lastObservedTurn: Number(raw.lastObservedTurn || 0) || 0
+    };
+  }
+
   function buildHonorificMatrix(entries, activeNames) {
     const matrix = {};
     const prevMap = {};
     const states = {};
+    const styles = {};
     for (const e of entries) {
       if (e.type !== 'rel' && e.type !== 'relationship') continue;
+
+      const interactionStyle = e.interactionStyle || e.detail?.interactionStyle;
+      if (interactionStyle && typeof interactionStyle === 'object') {
+        for (const [key, raw] of Object.entries(interactionStyle)) {
+          const pair = parseCallKey(key);
+          if (!pair || !isActiveCallPair(pair.from, pair.to, activeNames)) continue;
+          const profile = normalizeInteractionProfile(raw);
+          if (profile) styles[key] = profile;
+        }
+      }
 
       const nicknames = e.call || (e.detail?.nicknames) || null;
       if (nicknames && typeof nicknames === 'object') {
@@ -780,34 +823,53 @@
         }
       }
     }
-    return { matrix, prevMap, states };
+    return { matrix, prevMap, states, styles };
   }
 
   function formatHonorificMatrix(result, budget) {
-    const src = result && typeof result === 'object' && result.matrix ? result : { matrix: result || {}, prevMap: {}, states: {} };
-    const { matrix, prevMap, states } = src;
+    const src = result && typeof result === 'object' && result.matrix ? result : { matrix: result || {}, prevMap: {}, states: {}, styles: {} };
+    const { matrix, prevMap, states, styles = {} } = src;
     const lines = [];
     const particle = (word, consonant, vowel) => {
       const text = String(word || '').trim();
       const last = text.charCodeAt(text.length - 1);
       return last >= 0xAC00 && last <= 0xD7A3 && (last - 0xAC00) % 28 !== 0 ? consonant : vowel;
     };
-    for (const [from, targets] of Object.entries(matrix)) {
-      for (const [to, hon] of Object.entries(targets)) {
-        const k = `${from}→${to}`;
-        const state = states && states[k] ? states[k] : normalizeCallState({ currentTerm: hon, previousTerms: prevMap && prevMap[k] ? [prevMap[k]] : [] }, hon);
-        const cur = state.currentTerm || hon;
-        if (!cur) continue;
-        const prevTerms = Array.from(new Set([...(state.previousTerms || []), prevMap && prevMap[k]].filter(Boolean))).filter(t => t !== cur);
-        let line = `${from}${particle(from, '은', '는')} ${to}${particle(to, '을', '를')} '${cur}'라고 부름`;
-        if (prevTerms.length) {
-          const prev = prevTerms.slice(-1)[0];
-          line += ` (이전 호칭 ${prev}${particle(prev, '은', '는')} 참고만)`;
-        }
-        lines.push(line);
-      }
+    const pairKeys = new Set([...Object.keys(states || {}), ...Object.keys(styles || {})]);
+    for (const [from, targets] of Object.entries(matrix || {})) {
+      for (const to of Object.keys(targets || {})) pairKeys.add(`${from}→${to}`);
     }
-    let out = lines.length ? '[호칭] ' + lines.join('; ') : '';
+    for (const k of pairKeys) {
+      const pair = parseCallKey(k);
+      if (!pair) continue;
+      const { from, to } = pair;
+      const hon = matrix && matrix[from] ? matrix[from][to] : '';
+      const state = states && states[k] ? states[k] : normalizeCallState({ currentTerm: hon, previousTerms: prevMap && prevMap[k] ? [prevMap[k]] : [] }, hon);
+      const cur = state.currentTerm || hon;
+      const profile = styles[k] || null;
+      const prevTerms = Array.from(new Set([...(state.previousTerms || []), prevMap && prevMap[k]].filter(Boolean))).filter(t => t !== cur);
+      const parts = [];
+      if (cur) parts.push(`기본 호칭 '${cur}'`);
+      if (profile && profile.addressVariants.length) {
+        const variants = profile.addressVariants.slice(0, 3).map(item => {
+          const term = item.terms.join('/');
+          return item.when ? `'${term}'(${item.when})` : `'${term}'`;
+        });
+        if (variants.length) parts.push(`상황별 ${variants.join(', ')}`);
+      } else if (prevTerms.length) {
+        const prev = prevTerms.slice(-1)[0];
+        parts.push(`다른 관찰 호칭 '${prev}'${particle(prev, '은', '는')} 문맥상 참고`);
+      }
+      if (profile) {
+        const speech = [profile.baseline.register, ...profile.baseline.tone].filter(Boolean).join('/');
+        if (speech) parts.push(`말투 ${speech}`);
+        const stance = [...profile.baseline.stance, ...profile.behaviorCues].filter(Boolean).slice(0, 2);
+        if (stance.length) parts.push(`태도 ${stance.join('/')}`);
+        if (profile.boundaries.length) parts.push(`조건 ${profile.boundaries[0]}`);
+      }
+      if (parts.length) lines.push(`${from}${particle(from, '은', '는')} ${to}${particle(to, '을', '를')}: ${parts.join('; ')}`);
+    }
+    let out = lines.length ? '[관계 표현] 상황에 맞는 호칭·말투·태도를 선택. ' + lines.join('; ') : '';
     if (out.length > budget) out = out.slice(0, Math.max(0, budget - 1)).replace(/[;,(][^;,(]*$/, '') + '…';
     return out;
   }
@@ -883,7 +945,7 @@
     temporalRecencyScore, buildTemporalHint, buildRelationDeltaHint, formatTemporalHints,
     temporalRecallCueScore, temporalUserCuePool, distinctiveEntryTerms, distinctiveEntryMatches,
     entryRetrievalProvenance, resolveTemporalRecall,
-    buildHonorificMatrix, formatHonorificMatrix,
+    normalizeInteractionProfile, buildHonorificMatrix, formatHonorificMatrix,
     saveEntryVersion, getEntryVersions, restoreEntryVersion,
     __memoryLoaded: true
   });

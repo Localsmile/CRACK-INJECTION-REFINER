@@ -616,8 +616,8 @@
     deepSeekImportPrompt: DEFAULT_DEEPSEEK_IMPORT_PROMPT,
     autoExtKey: '', autoExtModel: 'gemini-3-flash-preview', autoExtCustomModel: '', autoExtReasoning: 'medium', autoExtBudget: 2048,
     manualExtScanRange: 5, manualExtOffset: 3,
-    autoExtractTopics: { identityState: true, relationships: true, obligations: true, worldContinuity: true, majorScenes: true, importantLines: true },
-    manualExtractTopics: { identityState: true, relationships: true, obligations: true, worldContinuity: true, majorScenes: true, importantLines: true },
+    autoExtractTopics: { identityState: true, relationships: true, interactionStyle: true, obligations: true, worldContinuity: true, majorScenes: true, importantLines: true },
+    manualExtractTopics: { identityState: true, relationships: true, interactionStyle: true, obligations: true, worldContinuity: true, majorScenes: true, importantLines: true },
     batchExtReasoning: 'medium', batchExtBudget: 2048,
     autoExtPrefix: '', autoExtSuffix: '', autoExtIncludeDb: true, autoExtIncludePersona: true,
     autoExtPatchMode: true, autoExtDbDigestLimit: 40,
@@ -859,7 +859,10 @@
             const savedVer = this.config.refinerPromptVersion || '';
             const norm = (s) => (s || '').trim().replace(/\s+/g, ' ');
             if (savedVer !== R2.PROMPT_VERSION) {
-              const isGeneratedDynamic = savedVer === 'v1.4.0-callstate-topic-default' && this.config.refinerUseDynamic !== false;
+              const isGeneratedDynamic = [
+                'v1.4.0-callstate-topic-default',
+                'v1.4.0-callstate-topic-default-2'
+              ].includes(savedVer) && this.config.refinerUseDynamic !== false;
               const isLegacy = isGeneratedDynamic || !saved || R2.LEGACY_PROMPTS.some(p => norm(p) === norm(saved)) || norm(R2.DEFAULT_PROMPT) === norm(saved);
               if (isLegacy) {
                 const topics = {};

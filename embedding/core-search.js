@@ -70,7 +70,7 @@
     if (!entry) return [];
     const values = [
       entry.name,
-      ...(entry.triggers || []),
+      ...expandRetrievalTriggers(entry),
       ...(entry.entities || []),
       ...(entry.parties || [])
     ].filter(Boolean).join(' ').toLowerCase();
@@ -138,6 +138,88 @@
     return String(value || '').trim().replace(/^~/, '').toLowerCase();
   }
 
+  const GENERIC_TRIGGER_TOKENS = new Set([
+    '약속', '관계', '상태', '사건', '장면', '기억', '현재', '이전', '변화',
+    '행동', '대화', '감정', '상황', '내용', '사실', '문제', '결과', '이야기',
+    'promise', 'relationship', 'state', 'event', 'scene', 'memory'
+  ]);
+
+  function normalizeRetrievalToken(value) {
+    let token = String(value || '').trim().toLowerCase().replace(/^[~"'`()[\]{}]+|[~"'`()[\]{}.,!?;:]+$/g, '');
+    if (!token || token.includes('&&')) return '';
+    if (/^[가-힣]+$/.test(token)) {
+      const suffixes = [
+        '으로부터', '에게서', '하면서', '한다는', '했다는', '이라서', '이어서',
+        '으로', '에게', '에서', '까지', '부터', '처럼', '보다', '만큼',
+        '한다', '했다', '하는', '하며', '하려', '되어', '됐다', '있을', '없을',
+        '하기', '되기', '시키기', '해야', '된다', '라고', '이라고',
+        '은', '는', '이', '가', '을', '를', '와', '과', '의', '도', '만', '로',
+        '할', '될', '한', '된', '기'
+      ];
+      for (const suffix of suffixes) {
+        if (token.endsWith(suffix) && token.length - suffix.length >= 2) {
+          token = token.slice(0, -suffix.length);
+          break;
+        }
+      }
+    }
+    if (token.length < 2 || token.length > 16 || GENERIC_TRIGGER_TOKENS.has(token)) return '';
+    return token;
+  }
+
+  function triggerWords(value) {
+    return String(value || '')
+      .replace(/&&/g, ' ')
+      .split(/[^\w가-힣ぁ-んァ-ヶ一-龯]+/)
+      .map(normalizeRetrievalToken)
+      .filter(Boolean);
+  }
+
+  function isClauseLikeTrigger(value) {
+    const text = String(value || '').trim();
+    if (!text || text.includes('&&') || text.startsWith('~')) return false;
+    const spaces = (text.match(/\s/g) || []).length;
+    return [...text].length > 14 || spaces >= 2 ||
+      /(한다|했다|하는|된다|됐다|있다|없다|때까지|것이다|하기로|하기를|한다고|라고)$/i.test(text);
+  }
+
+  function expandRetrievalTriggers(entry) {
+    const base = Array.from(new Set((Array.isArray(entry?.triggers) ? entry.triggers : [])
+      .map(value => String(value || '').trim()).filter(Boolean)));
+    if (!base.some(isClauseLikeTrigger)) return base;
+
+    const type = String(entry && entry.type || '').toLowerCase();
+    const scoped = EVENT_SCOPED_TRIGGER_TYPES.has(type);
+    const participants = new Set(explicitParticipantTerms(entry));
+    const tokens = [];
+    const addToken = value => {
+      const token = normalizeRetrievalToken(value);
+      if (!token || participants.has(token) || tokens.includes(token)) return;
+      tokens.push(token);
+    };
+
+    triggerWords(entry?.name).forEach(addToken);
+    for (const trigger of base) {
+      if (isClauseLikeTrigger(trigger)) triggerWords(trigger).forEach(addToken);
+    }
+    for (const fact of (Array.isArray(entry?.facts) ? entry.facts : [])) {
+      triggerWords([fact && fact.relation, fact && fact.value].filter(Boolean).join(' ')).forEach(addToken);
+      if (tokens.length >= 6) break;
+    }
+
+    const derived = [];
+    if (scoped) {
+      for (let i = 0; i < tokens.length && derived.length < 3; i++) {
+        for (let j = i + 1; j < tokens.length && derived.length < 3; j++) {
+          derived.push(`${tokens[i]}&&${tokens[j]}`);
+        }
+      }
+    } else {
+      derived.push(...tokens.slice(0, 3));
+    }
+    return Array.from(new Set([...base, ...derived])).slice(0, 12);
+  }
+
   function identityTriggerTerms(entries) {
     const terms = new Set();
     for (const entry of (entries || [])) {
@@ -185,7 +267,7 @@
     const identityTerms = identityTriggerTerms(entries);
     for (const e of (entries || [])) {
       if (!e || e.enabled === false) continue;
-      const triggers = Array.isArray(e.triggers) ? e.triggers : [];
+      const triggers = expandRetrievalTriggers(e);
       let hit = false, matched = '', score = 0;
       for (const raw of triggers) {
         const t = (raw || '').trim(); if (!t) continue;
@@ -523,7 +605,7 @@
   }
 
   Object.assign(C, {
-    bigramSimilarity, applyRetrievalProvenanceGuard, isGenericParticipantTrigger,
+    bigramSimilarity, applyRetrievalProvenanceGuard, isGenericParticipantTrigger, expandRetrievalTriggers,
     buildScanPool, selectDiverseCandidates, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });

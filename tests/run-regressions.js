@@ -249,7 +249,7 @@ async function testKernelHelpers() {
     ]
   }], ['서하윤', '김덕배']);
   assert.strictEqual(stableCall.matrix['서하윤']['김덕배'], '너', 'one-off proper-name call replaced a stable vocative');
-  assert(C.formatHonorificMatrix(stableCall, 500).includes('김덕배는 참고만'), 'Korean particle for a prior vocative is malformed');
+  assert(C.formatHonorificMatrix(stableCall, 500).includes("다른 관찰 호칭 '김덕배'는 문맥상 참고"), 'Korean particle for an alternate vocative is malformed');
   const explicitCall = C.buildHonorificMatrix([{
     type: 'rel',
     parties: ['서하윤', '김덕배'],
@@ -259,6 +259,37 @@ async function testKernelHelpers() {
     ]
   }], ['서하윤', '김덕배']);
   assert.strictEqual(explicitCall.matrix['서하윤']['김덕배'], '김덕배', 'an explicit stable vocative change was ignored');
+  const contextualCall = C.buildHonorificMatrix([{
+    type: 'rel',
+    parties: ['서하윤', '김덕배'],
+    callState: { '서하윤→김덕배': { currentTerm: '너', scope: 'stable' } },
+    interactionStyle: {
+      '서하윤→김덕배': {
+        baseline: { register: '반말', tone: ['퉁명스럽지만 의존적'], stance: ['경계하면서 곁을 찾음'] },
+        addressVariants: [
+          { terms: ['너'], when: '평소' },
+          { terms: ['오빠'], when: '사적으로 의지하거나 애교를 부릴 때' },
+          { terms: ['김덕배'], when: '다급하게 강조할 때' }
+        ],
+        boundaries: ['공개석상에서는 거리를 둠']
+      }
+    }
+  }], ['서하윤', '김덕배']);
+  const contextualText = C.formatHonorificMatrix(contextualCall, 500);
+  assert(contextualText.includes("'오빠'(사적으로 의지하거나 애교를 부릴 때)") && contextualText.includes('말투 반말'), 'contextual address or speech style was not injected');
+
+  const clauseTriggerEntry = {
+    id: 105,
+    type: 'prom',
+    name: '둔갑 복귀 돕기 약속',
+    triggers: ['둔갑할 수 있을 때까지', '곁에서 돕는다', '비밀로 한다'],
+    entities: ['서하윤', '김덕배'],
+    facts: [{ subject: '김덕배', relation: '약속', value: '서하윤의 둔갑 복귀를 돕고 비밀을 지킴' }]
+  };
+  const expandedClauseTriggers = C.expandRetrievalTriggers(clauseTriggerEntry);
+  assert(expandedClauseTriggers.includes('둔갑&&복귀'), 'sentence-like legacy triggers did not gain a usable noun compound');
+  const recoveredClauseHit = C.triggerScan('둔갑이 완전히 복귀하려면 시간이 더 필요해.', [], [clauseTriggerEntry], {});
+  assert(recoveredClauseHit.some(hit => hit.entry.id === 105 && hit.matchedTrigger === '둔갑&&복귀'), 'derived trigger compound cannot recall a legacy promise');
 
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
@@ -759,7 +790,7 @@ function testSourceContracts() {
   assert(settings.includes("const dT = this.config.templates.find(t => t.isDefault || t.id === 'default')"), 'default-template targeting changed');
   assert(settings.includes('(signatures || []).includes(signature(t[key]))'), 'custom prompt migration is not exact-signature guarded');
   assert(settings.includes('LEGACY_TEMPORAL_PROMPT_SIGNATURES') && settings.includes('LEGACY_TEMPORAL_SCHEMA_SIGNATURES'), 'saved default temporal prompts are not migrated without touching edits');
-  assert(settings.includes("savedVer === 'v1.4.0-callstate-topic-default' && this.config.refinerUseDynamic !== false"), 'the previous generated refiner prompt does not migrate to the corrected default');
+  assert(settings.includes("'v1.4.0-callstate-topic-default-2'") && settings.includes(".includes(savedVer) && this.config.refinerUseDynamic !== false"), 'previous generated refiner prompts do not migrate to the corrected default');
   assert(settings.includes("'autoExtOpenAIFormat'"), 'OpenAI transport format is not preserved by API-only settings reset');
   assert(!settings.includes('persistStorageIfPossible()'), 'persistent storage permission is still requested during settings saves');
   assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
@@ -789,7 +820,9 @@ function testSourceContracts() {
   assert(kernel.includes('const DB_SCHEMA_VERSION = 11') && kernel.includes('&[chatKey+char1+char2]'), 'encounter state is not isolated per chat');
   assert(coreMemory.includes('checkFirstEncounter(char1, char2, chatKey') && coreMemory.includes('payload.chatKey'), 'encounter helpers ignore the current chat scope');
   assert(coreSearch.includes('isGenericParticipantTrigger') && coreSearch.includes('EVENT_SCOPED_TRIGGER_TYPES'), 'legacy event triggers are not protected from participant-only matches');
+  assert(coreSearch.includes('function expandRetrievalTriggers') && coreSearch.includes('isClauseLikeTrigger'), 'sentence-like legacy triggers have no deterministic retrieval fallback');
   assert(coreImporter.includes('a participant name alone is invalid') && coreImporter.includes('event-specific trigger containing no participant name'), 'knowledge conversion lacks the event trigger contract');
+  assert(coreImporter.includes('RETRIEVAL AND INTERACTION MEMORY:') && coreImporter.includes('interactionStyle may keep several valid address terms'), 'knowledge conversion lacks retrieval-key or interaction-style guidance');
 
   const menu = read('embedding/injecter-6.js');
   for (const label of ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', 'API 설정', '활동', '도움말']) {
@@ -823,6 +856,7 @@ function testSourceContracts() {
   assert(refinerCore.includes("feature: 'refinerQueryEmbed'") && refinerCore.includes("embeddingLane: 'interactive'") && refinerCore.includes('timeoutMs: 8000'), 'response correction semantic search can wait behind bulk embedding or a long query timeout');
   assert(refinerCore.includes('<ooc_lore_context>') && refinerCore.includes('stripInjectedOOCForRefiner(m.message, m.role)'), 'response correction still feeds injected OOC back into retrieval or recent context');
   assert(refinerCore.includes("chatKey: refinerChatKey") && refinerCore.includes("turnCounter: refinerTurn"), 'response correction retrieval ignores chat provenance and turn order');
+  assert(refinerCore.includes('allowed-contextual-variants=') && refinerCore.includes('Do not flag a valid variant'), 'response correction still treats one vocative as globally mandatory');
   assert(extractionSource.includes('sanitizeExtractionMessages(await C.fetchLogs') && extractionSource.match(/sanitizeExtractionMessages\(await C\.fetchLogs/g)?.length >= 2, 'automatic or full extraction still summarizes injected OOC as RP text');
   assert(injectionSource.includes("m.role === 'user' ? (cleanLoreContextTags(m.message) || m.message)"), 'live retrieval still feeds prior injected OOC back into scoring');
   assert(injectionSource.includes('refreshCleanedMessageInDOM(currentText, clean.text, item.messageId)'), 'successful cleanup does not refresh the visible user message');
@@ -863,6 +897,7 @@ function testSourceContracts() {
   const extractionUi = read('embedding/injecter-6-sub-extract.js');
   assert(extractionUi.includes('시간과 생성 API 사용량이 늘어남'), 'extra temporal API call is not disclosed in the UI');
   assert(extractionUi.includes("appendTopicChecklist(nd, 'autoExtractTopics')") && extractionUi.includes("appendTopicChecklist(nd, 'manualExtractTopics')"), 'automatic and manual extraction topics are not separate');
+  assert(extractionUi.includes("['interactionStyle', '호칭·말투·대하는 방식']"), 'interaction style is not independently selectable during extraction');
   assert(extractionUi.includes('실패 구간만 다시 시도'), 'persistent failed-batch action is missing');
 
   const coreUi = read('embedding/core-ui.js');
@@ -875,9 +910,11 @@ function testSourceContracts() {
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
   assert(injection.includes("feature: 'injectQueryEmbed'") && injection.includes('liveEmbeddingTimeoutMs') && injection.includes('Math.min(1500, deadlineAt - Date.now())') && !injection.includes('skipEmbeddingQueue: true'), 'live injection embedding bypasses diagnostics, uses the bulk lane, or can hold chat send too long');
   assert(injection.includes('awaitWithinInjectionDeadline') && injection.includes("latency.fallback = 'recent_logs_timeout'") && injection.includes('__lastInjectionDiagnostics'), 'live injection lacks a bounded deterministic fallback or internal stage diagnostics');
+  assert(injection.includes('latency.apiCalls =') && injection.includes('requestAttempts') && injection.includes('getEmbeddingApiDiagnostics'), 'live injection diagnostics cannot reveal duplicate provider requests');
   assert(!injection.includes('skipGenerationQueue: true') && injection.includes("generationLane: 'interactive'"), 'judge or rerank bypasses queue diagnostics and pacing');
   assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
   assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');
+  assert(injection.includes('C.buildHonorificMatrix(enabled, activeNames), 180'), 'contextual address and speech profiles are truncated to the old single-term budget');
   assert(extraction.includes('_extQ.pendingTurns += Math.max(1, Number(settings.config.autoExtTurns) || 1)') && extraction.includes('_doExtract(isManual, carriedTurns)'), 'automatic extraction can leave an unscanned gap while a prior pass is running');
   assert(extraction.includes('if (packWasCreated) await setPackEnabled(packName, true)'), 'automatic extraction re-enables an existing pack against the user selection');
   const featureGenerationSources = [extraction, read('embedding/core-importer.js'), refinerCore, injection, read('embedding/core-search.js'), apiUi];
@@ -913,6 +950,9 @@ function testSourceContracts() {
   assert(coreMemory.includes("particle(prev, '은', '는')"), 'previous vocatives still use a fixed Korean subject particle');
   assert(read('embedding/injecter-2.js').includes('Resolve within the window: the latest explicit outcome overrides earlier uncertainty.'), 'extraction can preserve an uncertainty that is resolved later in the same window');
   assert(read('embedding/injecter-2.js').includes('exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions'), 'extraction prompt can discard exact numeric world constraints');
+  assert(read('embedding/injecter-2.js').includes('They are NOT summaries, quotations, conditions, or sentence fragments'), 'default extraction prompt still encourages unusable sentence triggers');
+  assert(extractionSource.includes('RETRIEVAL TRIGGER CONTRACT:') && extractionSource.includes('Optional interactionStyle field for rel entries'), 'custom extraction prompts do not receive trigger or interaction-style contracts');
+  assert(extractionSource.includes('mergeInteractionStyle(existing.interactionStyle, e.interactionStyle)'), 'updated relationship extraction discards contextual interaction profiles');
   assert(extractionSource.includes('extractionDiagnostics') && extractionSource.includes("stage: 'jsonRepair'"), 'extraction retries cannot be attributed to provider or JSON repair latency');
   assert(extractionSource.includes('Treat a one-off proper-name call, emotional exclamation'), 'custom extraction prompts can still promote a temporary vocative');
   const refinerPrompts = read('embedding/refiner-prompts.js');

@@ -6,7 +6,7 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260727.12';
+  const VER = '1.4.0.260727.13';
   const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v4';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
@@ -30,7 +30,8 @@
 
 EXTRACTION PRIORITIES (in order of importance):
 1. IDENTITY AND STATE: names, aliases, forms, roles, goals, knowledge, secrets, injuries, conditions, and current situation.
-2. RELATIONSHIPS: dynamics, boundaries, forms of address, private/public state, first meetings, reunions, and meaningful changes.
+2. RELATIONSHIPS: dynamics, boundaries, private/public state, first meetings, reunions, and meaningful changes.
+2A. INTERACTION STYLE: directional forms of address, speech register, recurring tone, stance, behavioral cues, public/private differences, and the concrete conditions that select among valid variants.
 3. OBLIGATIONS: promises, contracts, debts, duties, conditions, and their current lifecycle.
 4. WORLD CONTINUITY: locations, factions, items, ownership, abilities, costs, limits, systems, and genre-specific rules. Preserve exact numeric thresholds, durations, deadlines, quantities, ranges, and failure conditions when stated.
 5. MAJOR SCENES: reveals, decisions, conflicts, intimacy milestones, victories, losses, and unresolved hooks that may matter later.
@@ -43,6 +44,7 @@ EXTRACTION PRIORITIES (in order of importance):
 - Resolve within the window: the latest explicit outcome overrides earlier uncertainty. If a goal, question, threat, promise condition, injury, disguise, or other state is visibly resolved later in the same conversation window, do not keep the earlier uncertainty in openLoops or current state. Record the outcome instead.
 - Do not output summary.compact, summary.micro, inject, or embed_text. The application derives them from facts.
 - "callState": current stable vocative state. previousTerms are context only, not permanent requirements. A one-off proper-name call, emotional exclamation, quoted line, or situational address does not replace an established term unless the dialogue explicitly establishes a lasting change or repeats the new term.
+- "interactionStyle": directional relationship expression profiles. Preserve several valid address terms and attach each to a concrete condition. Also record recurring speech register, tone, stance, behavior cues, and public/private boundaries. Do not infer a stable pattern from one ordinary line.
 - "timeline": event turn/order/scene/observed recency. Do not invent in-story days.
 - "entities": participating characters/places/items.
 - "state": current situation in noun phrases. Replace entirely on update.
@@ -50,11 +52,14 @@ EXTRACTION PRIORITIES (in order of importance):
 - Source field is not needed in output (injector adds it).`;
 
   const TRIGGER_QUALITY_RULES = `TRIGGER QUALITY BY ENTRY TYPE:
-   - A trigger must distinguish this entry from other lore, not merely name one participant.
+   - Triggers are retrieval keys likely to appear naturally in a later user message or narration. They are NOT summaries, quotations, conditions, or sentence fragments.
+   - Prefer exact names and stable nouns. Each term should normally be 2-12 characters. Remove particles and conjugated endings.
+   - Use A&&B when one term is broad: the scanner then recalls the entry when both short concepts appear anywhere in recent context.
    - character/identity: the character's exact name or unique nickname may be a standalone trigger.
    - rel: use both parties' names as bidirectional compounds (A&&B and B&&A).
-   - event/timeline_event/prom/key_quote: a participant name alone is INVALID. Use a unique place, object, faction, quoted phrase, or event-specific action phrase. A compound may pair a participant with one distinctive literal scene cue (A&&붉은 봉인문).
+   - event/timeline_event/prom/key_quote: a participant name alone is INVALID. Use two event-specific concepts such as object&&place, ability&&condition, motif&&consequence, or a participant paired with one distinctive scene noun.
    - location/item/faction/ability/rule/condition: use the exact unique name or a literal alias that identifies that subject.
+   - Never output conjugated clauses such as "곁에서 돕는다", "비밀로 한다", or whole conditions such as "가능할 때까지". Convert the underlying recall concepts to short noun compounds.
    - Never store generic recall words such as "그때", "전에", "기억해", or "다시" as triggers by themselves.
    - At least one trigger for every event/timeline_event/prom/key_quote must be event-specific and contain no participant name.
    - Avoid short aliases that also occur inside another common name unless the alias is explicitly used on its own in the conversation.`;
@@ -66,9 +71,9 @@ ${EXTRACTION_COVERAGE}
 CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
 2. REQUIRED CORE: Every entry needs type, name, 2-4 triggers, summary.full, facts, imp, sur, and emo.
-3. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit an uncertain optional module instead of emitting empty or fabricated fields.
+3. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, interactionStyle, cond, timeline, entities, or eventHistory only when relevant. Omit an uncertain optional module instead of emitting empty or fabricated fields.
 4. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
-5. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
+5. RETRIEVAL TRIGGERS: Provide 2-4 short, high-specificity recall keys derived from the RP wording.
 ${TRIGGER_QUALITY_RULES}
 6. CONTENT DEPTH: Capture relationship evolution, group dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
 7. FACT BINDING:
@@ -151,6 +156,17 @@ Conversation Log:
     },
     "call": {"CharA→CharB": "latest vocative"},
     "callDelta": [{"from":"CharA","to":"CharB","term":"newHonorific","prevTerm":"oldHonorific","turnApprox":0}],
+    "interactionStyle": {
+      "CharA→CharB": {
+        "baseline": {"register":"반말|존댓말|혼합","tone":["recurring tone"],"stance":["recurring stance"]},
+        "addressVariants": [
+          {"terms":["exact address term"],"when":"concrete situation selecting this variant","register":"","tone":[],"confidence":0.8}
+        ],
+        "behaviorCues": ["recurring way of treating the target"],
+        "boundaries": ["public/private or emotional condition"],
+        "lastObservedTurn": 0
+      }
+    },
     "timeline": ${TIMELINE_SCHEMA},
     "entities": ["CharA", "CharB"],
     "imp": 5, "sur": 5, "emo": 5
@@ -216,6 +232,7 @@ Conversation Log:
       "facts": [],
       "openLoops": [],
       "callState": {},
+      "interactionStyle": {},
       "timeline": {},
       "entities": [],
       "cond": ""
@@ -357,9 +374,9 @@ CRITICAL RULES:
 1. JSON ONLY: Output ONLY a valid JSON array. No markdown. Empty array [] if nothing new.
 2. INTEGRATE AND UPDATE: If the entity already exists in the Lore Database, DO NOT duplicate it. Keep the exact same "name".
 3. REQUIRED CORE: Every added entry needs type, name, 2-4 triggers, summary.full, facts, imp, sur, and emo.
-4. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit uncertain optional modules instead of emitting empty or fabricated fields.
+4. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, interactionStyle, cond, timeline, entities, or eventHistory only when relevant. Omit uncertain optional modules instead of emitting empty or fabricated fields.
 5. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
-6. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
+6. RETRIEVAL TRIGGERS: Provide 2-4 short, high-specificity recall keys derived from the RP wording.
 ${TRIGGER_QUALITY_RULES}
 7. CONTENT DEPTH: Capture relationship evolution, faction dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
 8. FACT BINDING:

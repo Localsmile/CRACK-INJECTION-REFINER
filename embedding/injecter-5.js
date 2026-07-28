@@ -776,6 +776,12 @@
   async function inject(userInput, runtime = {}) {
     const startedAt = Date.now();
     const config = settings.config;
+    const generationDiagnosticsAtStart = C.getGenerationApiDiagnostics
+      ? C.getGenerationApiDiagnostics().length
+      : 0;
+    const embeddingDiagnosticsAtStart = C.getEmbeddingApiDiagnostics
+      ? C.getEmbeddingApiDiagnostics().length
+      : 0;
     const liveDeadlineEnabled = runtime.deadlineMs > 0
       && config.rerankEnabled !== true
       && config.temporalRecallJudgeEnabled !== true;
@@ -792,6 +798,28 @@
     const publishLatency = (extra = {}) => {
       latency.totalMs = Date.now() - startedAt;
       Object.assign(latency, extra);
+      const summarizeCalls = rows => {
+        const out = {};
+        for (const row of rows) {
+          const feature = String(row && row.feature || 'unknown');
+          if (!out[feature]) out[feature] = { calls: 0, requestAttempts: 0, providerMs: 0, ok: 0 };
+          out[feature].calls++;
+          out[feature].requestAttempts += Math.max(0, Number(row.requestAttempts) || 0);
+          out[feature].providerMs += Math.max(0, Number(row.providerMs) || 0);
+          if (row.ok) out[feature].ok++;
+        }
+        return out;
+      };
+      const generationRows = C.getGenerationApiDiagnostics
+        ? C.getGenerationApiDiagnostics().slice(generationDiagnosticsAtStart).filter(row => Number(row.queuedAt || 0) >= startedAt)
+        : [];
+      const embeddingRows = C.getEmbeddingApiDiagnostics
+        ? C.getEmbeddingApiDiagnostics().slice(embeddingDiagnosticsAtStart).filter(row => Number(row.queuedAt || 0) >= startedAt)
+        : [];
+      latency.apiCalls = {
+        generation: summarizeCalls(generationRows),
+        embedding: summarizeCalls(embeddingRows)
+      };
       _w.__LoreInj.__lastInjectionDiagnostics = { ...latency, at: Date.now() };
       return { ...latency };
     };
@@ -1126,7 +1154,7 @@
     }
 
     let honorifics = '';
-    if (config.honorificMatrixEnabled !== false) honorifics = C.formatHonorificMatrix(C.buildHonorificMatrix(enabled, activeNames), 80);
+    if (config.honorificMatrixEnabled !== false) honorifics = C.formatHonorificMatrix(C.buildHonorificMatrix(enabled, activeNames), 180);
     let unmetPairs = [];
     if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames, chatKey); } catch(e) {}
     if (unmetPairs.length > 0) {

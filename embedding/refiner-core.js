@@ -162,6 +162,24 @@
       out.push(`${key}: current=${current}${prev.length ? `; previous-context=${prev.join(', ')}` : ''}${meta.length ? `; ${meta.join('; ')}` : ''}`);
     };
 
+    if (Core.buildHonorificMatrix) {
+      const resolved = Core.buildHonorificMatrix([entry], []);
+      for (const [key, state] of Object.entries(resolved.states || {})) addState(key, state);
+      for (const [key, profile] of Object.entries(resolved.styles || {})) {
+        const variants = (profile.addressVariants || []).map(item => {
+          const terms = (item.terms || []).join('/');
+          return item.when ? `${terms}[when=${item.when}]` : terms;
+        }).filter(Boolean);
+        const baseline = [
+          profile.baseline && profile.baseline.register,
+          ...((profile.baseline && profile.baseline.tone) || []),
+          ...((profile.baseline && profile.baseline.stance) || [])
+        ].filter(Boolean);
+        out.push(`${key}: allowed-contextual-variants=${variants.join(', ') || 'none'}${baseline.length ? `; baseline=${baseline.join(', ')}` : ''}${profile.boundaries?.length ? `; boundaries=${profile.boundaries.join(', ')}` : ''}`);
+      }
+      if (out.length) return Array.from(new Set(out)).join(' | ');
+    }
+
     const callState = entry.callState || entry.detail?.callState;
     if (Array.isArray(callState)) {
       callState.forEach(cs => addState(`${cs.from || cs.speaker || '?'}→${cs.to || cs.target || cs.addressee || '?'}`, cs));
@@ -189,10 +207,10 @@
   }
 
   function buildCallChangeContext(entries, recentMsgs) {
-    const hasCallData = entries.some(e => e.call || e.callState || e.detail?.nicknames || e.detail?.callState || (Array.isArray(e.callHistory) && e.callHistory.length));
+    const hasCallData = entries.some(e => e.call || e.callState || e.interactionStyle || e.detail?.nicknames || e.detail?.callState || e.detail?.interactionStyle || (Array.isArray(e.callHistory) && e.callHistory.length));
     if (!hasCallData) return '';
     const recent = (recentMsgs || []).slice(-4).map(m => `${m.role}: ${m.message || ''}`).join('\n');
-    return `[Call Continuity Context]\nPrevious nicknames/insults are context, not permanent requirements. Prefer the latest stable call-state. Current name/title is valid when recent context shows normalization, direct name use, emotional cooling, formal setting, or a new scene.\n${recent}`;
+    return `[Call Continuity Context]\nForms of address, speech register, tone, and stance may have several valid contextual variants. Prefer an explicitly matched interactionStyle condition; otherwise use the stable baseline. Previous or one-off terms are context, not permanent requirements. Do not flag a valid variant merely because it differs from one stored default.\n${recent}`;
   }
 
   function renderLoreForRefiner(entries) {
@@ -236,7 +254,8 @@
     const pool = [text.toLowerCase(), ...recentMsgs.map(m => (m.message || '').toLowerCase())].join(' ');
     return entries.filter(e => {
       if (!e.triggers || !e.triggers.length) return false;
-      for (const t of e.triggers) {
+      const triggers = Core.expandRetrievalTriggers ? Core.expandRetrievalTriggers(e) : e.triggers;
+      for (const t of triggers) {
         if (!t || t.length < 2) continue;
         if (t.split('&&').map(p => p.trim().toLowerCase()).every(p => pool.includes(p))) return true;
       }

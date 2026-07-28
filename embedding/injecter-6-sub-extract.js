@@ -86,7 +86,8 @@
 
   const EXTRACT_TOPIC_OPTIONS = [
     ['identityState', '인물·현재 상태'],
-    ['relationships', '관계·호칭'],
+    ['relationships', '관계 변화'],
+    ['interactionStyle', '호칭·말투·대하는 방식'],
     ['obligations', '약속·의무'],
     ['worldContinuity', '세계·장소·물건·능력'],
     ['majorScenes', '중요 장면'],
