@@ -787,10 +787,12 @@ function testSourceContracts() {
   assert(batchExtractionUi.includes('Array.isArray(runOpts.failedBatchIndexes)'), 'failed-only retry button does not pass saved batch indexes');
 
   const settings = read('embedding/injecter-3.js');
+  const refinerPrompts = read('embedding/refiner-prompts.js');
   assert(settings.includes("const dT = this.config.templates.find(t => t.isDefault || t.id === 'default')"), 'default-template targeting changed');
   assert(settings.includes('(signatures || []).includes(signature(t[key]))'), 'custom prompt migration is not exact-signature guarded');
   assert(settings.includes('LEGACY_TEMPORAL_PROMPT_SIGNATURES') && settings.includes('LEGACY_TEMPORAL_SCHEMA_SIGNATURES'), 'saved default temporal prompts are not migrated without touching edits');
-  assert(settings.includes("'v1.4.0-callstate-topic-default-2'") && settings.includes(".includes(savedVer) && this.config.refinerUseDynamic !== false"), 'previous generated refiner prompts do not migrate to the corrected default');
+  assert(settings.includes("'v1.4.0-callstate-topic-default-3'") && settings.includes(".includes(savedVer) && this.config.refinerUseDynamic !== false"), 'previous generated refiner prompts do not migrate to the corrected default');
+  assert(refinerPrompts.includes('Metaphors, similes, idioms, hyperbole') && refinerPrompts.includes('are not literal continuity claims'), 'refiner prompt does not guard figurative language from factual contradiction checks');
   assert(settings.includes("'autoExtOpenAIFormat'"), 'OpenAI transport format is not preserved by API-only settings reset');
   assert(!settings.includes('persistStorageIfPossible()'), 'persistent storage permission is still requested during settings saves');
   assert(settings.includes('async function requestPersistentStorage()'), 'user-triggered persistent storage request is missing');
@@ -955,7 +957,6 @@ function testSourceContracts() {
   assert(extractionSource.includes('mergeInteractionStyle(existing.interactionStyle, e.interactionStyle)'), 'updated relationship extraction discards contextual interaction profiles');
   assert(extractionSource.includes('extractionDiagnostics') && extractionSource.includes("stage: 'jsonRepair'"), 'extraction retries cannot be attributed to provider or JSON repair latency');
   assert(extractionSource.includes('Treat a one-off proper-name call, emotional exclamation'), 'custom extraction prompts can still promote a temporary vocative');
-  const refinerPrompts = read('embedding/refiner-prompts.js');
   assert(refinerPrompts.includes('proposal, negotiation, reconsideration') && refinerPrompts.includes('internal focalization is allowed'), 'refiner prompt still confuses RP negotiation or assistant focalization with an error');
   assert(refinerPrompts.includes('scan the entire corrected response once'), 'refiner can leave a stale contradiction in a later sentence');
   assert(!backup.includes("title.textContent = '저장 공간 정리'") && !backup.includes('사용하지 않는 데이터 정리'), 'storage cleanup UI is still present');

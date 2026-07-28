@@ -861,7 +861,8 @@
             if (savedVer !== R2.PROMPT_VERSION) {
               const isGeneratedDynamic = [
                 'v1.4.0-callstate-topic-default',
-                'v1.4.0-callstate-topic-default-2'
+                'v1.4.0-callstate-topic-default-2',
+                'v1.4.0-callstate-topic-default-3'
               ].includes(savedVer) && this.config.refinerUseDynamic !== false;
               const isLegacy = isGeneratedDynamic || !saved || R2.LEGACY_PROMPTS.some(p => norm(p) === norm(saved)) || norm(R2.DEFAULT_PROMPT) === norm(saved);
               if (isLegacy) {

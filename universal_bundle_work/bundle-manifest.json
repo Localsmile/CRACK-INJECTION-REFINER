@@ -1,6 +1,6 @@
 {
   "name": "erie_crack_inject_universal",
-  "version": "1.4.0.260727.13",
+  "version": "1.4.0.260727.14",
   "baseScript": "embedding_pre/erie_crack_inject_chat.user.js",
   "keepExternalRequires": [
     "https://cdn.jsdelivr.net/npm/dexie@4.2.1/dist/dexie.min.js"

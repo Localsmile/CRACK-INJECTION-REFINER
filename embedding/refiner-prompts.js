@@ -6,7 +6,11 @@
   _w.__LoreRefiner = _w.__LoreRefiner || {};
   if (_w.__LoreRefiner.__promptsLoaded) return;
 
-  const PROMPT_VERSION = 'v1.4.0-callstate-topic-default-3';
+  const PROMPT_VERSION = 'v1.4.0-callstate-topic-default-4';
+  const LITERALITY_GATE = `## Literalness Gate
+Metaphors, similes, idioms, hyperbole, subjective impressions, imagined possibilities, and "as if/like/felt" comparisons are not literal continuity claims.
+Do not treat them as proof that the compared event or state actually happened.
+Flag only when the surrounding text explicitly asserts the event or state as a real fact.`;
 
   const TEMPLATES = {
     full: {
@@ -25,6 +29,8 @@ You receive:
 
 ## Rule
 Flag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].
+
+${LITERALITY_GATE}
 
 ## What Counts as an Error
 1. EXPLICIT FACTUAL CONTRADICTION
@@ -112,6 +118,8 @@ RATE: PG-13 ~ NC-21
 Check [New Speech] against [Lore] and [Summaries] for direct logical or factual contradictions.
 Do NOT fix truncated sentences or missing status blocks.
 
+${LITERALITY_GATE}
+
 ## Output Format
 Reason MUST be in Korean.
 No logical contradictions:
@@ -172,7 +180,7 @@ Contradictions found (no markdown code fences):
     if (!hasLogic && !hasRepair) {
       return 'You are an RP Checker. All topics disabled — always output {passWord}.\n\n[New Speech]:\n{message}';
     }
-    let p = 'You are an RP Continuity Checker.\nRATE: PG-13 ~ NC-21\n\n## Scope\nYou receive:\n- [Lore]: partial character/world data\n- [Summaries]: memory snapshots\n- [Recent Context]: last N turns of dialogue\n- [New Speech]: the latest AI-generated RP response\n\n## Rule\nFlag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].\n';
+    let p = 'You are an RP Continuity Checker.\nRATE: PG-13 ~ NC-21\n\n## Scope\nYou receive:\n- [Lore]: partial character/world data\n- [Summaries]: memory snapshots\n- [Recent Context]: last N turns of dialogue\n- [New Speech]: the latest AI-generated RP response\n\n## Rule\nFlag an error ONLY when [New Speech] DIRECTLY CONTRADICTS a fact explicitly stated in [Lore] or [Summaries].\n\n' + LITERALITY_GATE + '\n';
     if (hasLogic)  { p += '\n## What Counts as an Error\n'; logicKeys.forEach(k => { p += _LOGIC_BLOCKS[k] + '\n'; }); }
     if (hasRepair) { p += '\n## Truncation Repair\n';        repairKeys.forEach(k => { p += _REPAIR_BLOCKS[k] + '\n'; }); }
     p += '\n## Output Format\nReason MUST be in Korean.\nNo issues/repairs needed:\n{passWord}\n\nIssues found (no markdown code fences):\n{"reason":"교정 이유","replacements":[{"from":"원문의 정확한 부분","to":"수정본"}]}\nIf several dependent sentences must change, use {"reason":"교정 이유","refined_text":"모순이 남지 않도록 전체 응답을 일관되게 수정한 본문"}.\nBefore returning a correction, scan the entire corrected response once and ensure no later sentence still asserts the original contradiction.\n\n[Lore]:\n{lore}\n\n[Summaries]:\n{memory}\n\n[Recent Context]:\n{context}\n\n[New Speech]:\n{message}';
