@@ -411,8 +411,8 @@
     const raw = String(text || '').toLowerCase();
     if (!raw) return 0;
     const cues = [
-      '그때', '전에', '기억', '지난번', '처음', '이후', '그 후', '그날', '예전', '아까', '방금',
-      '지난', '앞서', '이전', '나중', '다시', '재회', '약속', 'remember', 'before', 'after',
+      '그때', '전에', '기억', '지난번', '처음', '그날', '예전',
+      '지난', '앞서', '이전', '재회', '약속', 'remember', 'before', 'after',
       'last time', 'first time', 'back then', 'previously'
     ];
     // B26 fix(test.43): 영문 cue는 단어 경계 적용. 이전에는 includes만 사용해서
@@ -438,6 +438,69 @@
   function temporalRecallPool(userInput, recentMsgs, range = 4) {
     const tail = Array.isArray(recentMsgs) ? recentMsgs.slice(-range).map(m => m && m.message || '').join(' ') : '';
     return String((userInput || '') + ' ' + tail).toLowerCase();
+  }
+
+  function temporalUserCuePool(userInput, recentMsgs, range = 4) {
+    const tail = Array.isArray(recentMsgs)
+      ? recentMsgs.slice(-range).filter(m => String(m && m.role || '').toLowerCase() === 'user').map(m => m && m.message || '').join(' ')
+      : '';
+    return String((userInput || '') + ' ' + tail).toLowerCase();
+  }
+
+  function normalizeChatScope(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const m = raw.match(/(?:^|\/)(?:chats|episodes|c)\/([a-f0-9]+)/i);
+    if (m) return 'chat:' + m[1].toLowerCase();
+    const c = raw.match(/^chat:([a-f0-9]+)$/i);
+    return c ? 'chat:' + c[1].toLowerCase() : raw;
+  }
+
+  function distinctiveEntryTerms(entry, activeNames) {
+    if (!entry) return [];
+    const active = _arr(activeNames).map(x => String(x || '').trim().toLowerCase()).filter(Boolean);
+    const raw = _uniq([])
+      .concat(_arr(entry.triggers))
+      .concat(_arr(entry.recallTriggers))
+      .concat(_arr(entry.hooks))
+      .concat(_arr([entry.title, entry.name]));
+    const out = [];
+    for (const value of raw) {
+      const parts = String(value || '').split('&&').map(x => x.trim()).filter(Boolean);
+      for (const part of parts) {
+        const low = part.toLowerCase();
+        if (low.length < 3) continue;
+        if (active.some(name => name === low || name.includes(low) || low.includes(name))) continue;
+        out.push(part);
+      }
+    }
+    return _uniq(out);
+  }
+
+  function distinctiveEntryMatches(entry, text, activeNames) {
+    const pool = String(text || '').toLowerCase();
+    if (!pool) return [];
+    return distinctiveEntryTerms(entry, activeNames)
+      .filter(term => pool.includes(String(term).toLowerCase()))
+      .slice(0, 6);
+  }
+
+  function entryRetrievalProvenance(entry, opts = {}) {
+    const chatKey = normalizeChatScope(opts.chatKey);
+    const sourceScope = normalizeChatScope(entry && (entry.arcId || entry.sceneId || entry.sourceChatId || entry.sourceUrl));
+    const sameArc = !!(chatKey && sourceScope && chatKey === sourceScope);
+    const crossArc = !!(chatKey && sourceScope && chatKey !== sourceScope);
+    const currentTurn = Number(opts.currentTurn || 0);
+    const eventTurn = Number(entry && (entry.eventTurn || entry.timeline?.eventTurn || entry.createdTurn || 0));
+    const futureTurnRisk = !!(
+      isTimelineEvent(entry) &&
+      currentTurn > 0 &&
+      eventTurn > currentTurn + 1 &&
+      !sameArc
+    );
+    const specificMatches = distinctiveEntryMatches(entry, opts.userCuePool || opts.userInput || '', opts.activeNames || []);
+    const hasSpecificCue = specificMatches.length > 0;
+    return { chatKey, sourceScope, sameArc, crossArc, currentTurn, eventTurn, futureTurnRisk, specificMatches, hasSpecificCue };
   }
 
   function temporalTokenize(text) {
@@ -517,7 +580,8 @@
     const limit = opts.limit || 4;
     const activeNames = opts.activeNames || [];
     const pool = temporalRecallPool(userInput, recentMsgs, opts.range || 4);
-    const cue = temporalRecallCueScore(pool);
+    const userCuePool = temporalUserCuePool(userInput, recentMsgs, opts.range || 4);
+    const cue = temporalRecallCueScore(userCuePool);
     const out = [];
     for (const e of entries || []) {
       if (!isTimelineEvent(e) || e.enabled === false) continue;
@@ -526,18 +590,36 @@
       const entity = graphOverlapScore(e, activeNames);
       const recency = temporalRecencyScore(e, currentTurn);
       const unresolved = unresolvedPriorityScore(e);
+      const provenance = entryRetrievalProvenance(e, {
+        chatKey: opts.chatKey,
+        currentTurn,
+        activeNames,
+        userCuePool
+      });
+      const hasExplicitCue = cue > 0 || provenance.hasSpecificCue;
+      const blockedByProvenance = (provenance.crossArc || provenance.futureTurnRisk) && !hasExplicitCue;
       let score = cue * 0.22 + overlap.score * 0.38 + anchor * 0.22 + entity * 0.1 + recency * 0.05 + unresolved * 0.08;
       if (!cue && overlap.score < 0.22 && anchor < 0.35) score *= 0.35;
+      if (blockedByProvenance) score *= 0.12;
       if (score <= 0.08) continue;
       out.push({
         entry: e,
         score: Math.min(1, score),
-        matchedTriggers: overlap.matched,
-        components: { cue, overlap: overlap.score, anchor, entity, recency, unresolved }
+        matchedTriggers: provenance.specificMatches.length ? provenance.specificMatches : overlap.matched,
+        hasExplicitCue,
+        blockedByProvenance,
+        provenance,
+        components: { cue, overlap: overlap.score, anchor, entity, recency, unresolved, specificCue: provenance.hasSpecificCue ? 1 : 0 }
       });
     }
     out.sort((a, b) => b.score - a.score);
-    return { candidates: out.slice(0, limit), hasCue: cue > 0, cueScore: cue, pool };
+    return {
+      candidates: out.slice(0, limit),
+      hasCue: cue > 0 || out.some(row => row.hasExplicitCue),
+      cueScore: cue,
+      pool,
+      userCuePool
+    };
   }
 
   // 호칭 매트릭스
@@ -740,7 +822,8 @@
     isTimelineEvent, stableTimelineEventId, normalizeTimelineEvent,
     relationshipGraphScore, unresolvedPriorityScore, maintenanceRecallScore,
     temporalRecencyScore, buildTemporalHint, buildRelationDeltaHint, formatTemporalHints,
-    temporalRecallCueScore, resolveTemporalRecall,
+    temporalRecallCueScore, temporalUserCuePool, distinctiveEntryTerms, distinctiveEntryMatches,
+    entryRetrievalProvenance, resolveTemporalRecall,
     buildHonorificMatrix, formatHonorificMatrix,
     saveEntryVersion, getEntryVersions, restoreEntryVersion,
     __memoryLoaded: true

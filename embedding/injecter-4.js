@@ -22,6 +22,20 @@
     DEFAULT_TEMPORAL_EXTRACT_SCHEMA
   } = _w.__LoreInj;
 
+  const EXTRACT_LORE_CONTEXT_PATTERN = /\s*<ooc_lore_context>[\s\S]*?<\/ooc_lore_context>\s*/gi;
+  function stripInjectedContextForExtraction(message, role) {
+    const text = String(message || '');
+    if (!text || role !== 'user' || text.indexOf('<ooc_lore_context>') < 0) return text;
+    EXTRACT_LORE_CONTEXT_PATTERN.lastIndex = 0;
+    return text.replace(EXTRACT_LORE_CONTEXT_PATTERN, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function sanitizeExtractionMessages(messages) {
+    return (Array.isArray(messages) ? messages : []).map(m => ({
+      ...m,
+      message: stripInjectedContextForExtraction(m.message, m.role)
+    }));
+  }
+
   // v1.4.0-test.56: patch ON/OFF must not change the DB context payload. Only output instructions differ.
 const OUTPUT_MODE_PATCH = `OUTPUT MODE: SAVE ONLY CHANGES
 - Existing entries are provided as focused digests with stable "id".
@@ -1290,7 +1304,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     const topics = normalizeExtractTopics(isManual ? settings.config.manualExtractTopics : settings.config.autoExtractTopics);
     const extraTurns = Math.max(0, Number(queuedExtraTurns) || 0);
     const effectiveRange = scanR + extraTurns; const fetchCount = (effectiveRange + scanOffset) * 2;
-    let recentMsgs = await C.fetchLogs(fetchCount > 0 ? fetchCount : 20);
+    let recentMsgs = sanitizeExtractionMessages(await C.fetchLogs(fetchCount > 0 ? fetchCount : 20));
     if (!recentMsgs.length) { if (isManual) throw new Error('대화 기록 없음.'); return; }
     const offsetCount = scanOffset * 2;
     if (offsetCount > 0 && recentMsgs.length > offsetCount) recentMsgs = recentMsgs.slice(0, recentMsgs.length - offsetCount);
@@ -1492,7 +1506,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
     if (missingReason) throw new Error(missingReason);
 
     extBadgeShow('에리가 전체 대화 가져오는 중');
-    const allMsgs = await C.fetchLogs(99999);
+    const allMsgs = sanitizeExtractionMessages(await C.fetchLogs(99999));
     if (!allMsgs || !allMsgs.length) { extBadgeHide(); throw new Error('대화 기록 없음'); }
     const batches = splitConversationBatches(allMsgs, turnsPerBatch, overlap);
     const priorJob = getBatchRetryJob(chatKey);

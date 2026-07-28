@@ -244,6 +244,18 @@
     });
   }
 
+  function stripInjectedOOCForRefiner(msg, role) {
+    if (!msg || role !== 'user') return msg;
+    return String(msg)
+      .replace(/\s*<ooc_lore_context>[\s\S]*?<\/ooc_lore_context>\s*/gi, '\n')
+      .replace(/\*\*OOC:[\s\S]*?\*\*/g, '')
+      .replace(/\[System:[\s\S]*?\[\/System\]/g, '')
+      .replace(/\(Narrator's note:[\s\S]*?\(End note\)/g, '')
+      .replace(/\/\*\*[\s\S]*?\*\*\//g, '')
+      .replace(/Remember these established facts[\s\S]*?(?=\n\n|$)/g, '')
+      .trim();
+  }
+
   // 메인 로직
   async function refineMessage(assistantText, force, enqueueCallback, requestedMsgId) {
     const config = ConfigGetter();
@@ -292,7 +304,8 @@
 
     if (activeEntries.length > 0) {
       const matchTurns = config.refinerMatchTurns || 5;
-      const _tMsgs = await Core.fetchLogs(Math.max(4, matchTurns * 2));
+      const _tMsgs = (await Core.fetchLogs(Math.max(4, matchTurns * 2)))
+        .map(m => ({ ...m, message: stripInjectedOOCForRefiner(m.message, m.role) }));
 
       let _lE = [];
       if (config.refinerLoreMode === 'semantic' && config.embeddingEnabled) {
@@ -310,7 +323,17 @@
             timeoutMs: 8000,
             costContext: { feature: 'refinerQueryEmbed', chatKey: chatRoomId || 'global' }
           };
-        const searchConfig = { scanRange: matchTurns, strictMatch: true, similarityMatch: true, embeddingEnabled: true, embeddingWeight: 0.5 };
+        const refinerChatKey = 'chat:' + chatRoomId;
+        const refinerTurn = Number(_w.__LoreInj?.getTurnCounter?.(refinerChatKey) || 0);
+        const searchConfig = {
+          chatKey: refinerChatKey,
+          turnCounter: refinerTurn,
+          scanRange: matchTurns,
+          strictMatch: true,
+          similarityMatch: true,
+          embeddingEnabled: true,
+          embeddingWeight: 0.5
+        };
         try {
           const searchResult = await Core.hybridSearch(assistantText, _tMsgs, activeEntries, searchConfig, apiOpts);
           _lE = searchResult.scored.slice(0, 10).map(s => s.entry);
@@ -346,17 +369,6 @@
     } catch (e) {}
 
     // 3. 컨텍스트
-    // user 턴 OOC 제거
-    function stripInjectedOOC(msg, role) {
-      if (!msg || role !== 'user') return msg;
-      return msg
-        .replace(/\*\*OOC:[\s\S]*?\*\*/g, '')
-        .replace(/\[System:[\s\S]*?\[\/System\]/g, '')
-        .replace(/\(Narrator's note:[\s\S]*?\(End note\)/g, '')
-        .replace(/\/\*\*[\s\S]*?\*\*\//g, '')
-        .replace(/Remember these established facts[\s\S]*?(?=\n\n|$)/g, '')
-        .trim();
-    }
     // turns=N → 2N+1 메시지 (New Speech 중복 제거)
     let contextText = '최근 대화 내역 없음.';
     let allMsgsForContext = [];
@@ -374,7 +386,7 @@
         }
         ctxMsgs = ctxMsgs.slice(-(turns * 2 + 1));
         if (ctxMsgs.length > 0) {
-          contextText = ctxMsgs.map(m => `${m.role}: ${stripInjectedOOC(m.message, m.role)}`).join('\n\n');
+          contextText = ctxMsgs.map(m => `${m.role}: ${stripInjectedOOCForRefiner(m.message, m.role)}`).join('\n\n');
         }
       }
     }
@@ -639,6 +651,7 @@
   R.renderLoreForRefiner = renderLoreForRefiner;
   R.buildCallChangeContext = buildCallChangeContext;
   R.matchEntriesByTrigger = matchEntriesByTrigger;
+  R.stripInjectedOOCForRefiner = stripInjectedOOCForRefiner;
   R.refineMessage = refineMessage;
   R.setCallbacks = function(coreInstance, configGetterFn, logCb, toastCb, getPacksCb) {
     Core = coreInstance;

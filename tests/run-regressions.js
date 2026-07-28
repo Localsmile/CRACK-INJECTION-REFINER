@@ -147,6 +147,57 @@ async function testKernelHelpers() {
   ], 2);
   assert.deepStrictEqual(Array.from(diverse.map(row => row.entry.id)), [1, 3], 'deterministic diversity selection still allowed a duplicate topic to occupy the next slot');
 
+  assert.strictEqual(C.temporalRecallCueScore('방금 전까지 아무 일도 없었다'), 0, 'immediate narration still triggers historical recall');
+  const futureTimeline = {
+    id: 90,
+    type: 'timeline_event',
+    name: '은빛 호각 재회 신호',
+    triggers: ['게렉터', '은빛 호각', '두 번 짧게'],
+    entities: ['김덕배', '게렉터'],
+    eventTurn: 12,
+    arcId: 'chat:oldroom',
+    summary: { compact: '은빛 호각을 불어 재회했다.' }
+  };
+  const guardedRecall = C.resolveTemporalRecall(
+    '배수로로 따라와, 게렉터.',
+    [{ role: 'assistant', message: '방금 전까지 게렉터는 골목에 서 있었다.' }],
+    [futureTimeline],
+    { currentTurn: 1, chatKey: 'chat:newroom', activeNames: ['김덕배', '게렉터'] }
+  );
+  assert.strictEqual(guardedRecall.hasCue, false, 'assistant narration leaked a false temporal cue into retrieval');
+  assert(
+    guardedRecall.candidates.length === 0 || guardedRecall.candidates[0].blockedByProvenance === true,
+    'a future event from another chat was not guarded'
+  );
+  const explicitRecall = C.resolveTemporalRecall(
+    '그때 네게 준 은빛 호각을 두 번 짧게 불었지.',
+    [],
+    [futureTimeline],
+    { currentTurn: 1, chatKey: 'chat:newroom', activeNames: ['김덕배', '게렉터'] }
+  );
+  assert(explicitRecall.candidates[0]?.hasExplicitCue, 'an explicit event cue cannot recover cross-chat lore');
+  assert.strictEqual(explicitRecall.candidates[0]?.blockedByProvenance, false, 'explicit recall stayed blocked by provenance');
+
+  const scopedBudget = C.buildLoreBudgetPlan([
+    {
+      id: 91,
+      name: '게렉터',
+      type: 'character',
+      inject: { full: 'F'.repeat(300), compact: 'C'.repeat(120), micro: '게렉터=상공인' },
+      _maxInjectionLevel: 'micro',
+      _retrievalScore: 1
+    }
+  ], 500, { compressionMode: 'auto' });
+  assert.strictEqual(scopedBudget.variants[0]?.level, 'micro', 'cross-chat current state was not capped to a stable reference');
+
+  const guardedCharacter = C.applyRetrievalProvenanceGuard(2, { type: 'character' }, { crossArc: true, futureTurnRisk: false, hasSpecificCue: false }, false);
+  assert.strictEqual(guardedCharacter.score, 0.7, 'cross-chat character identity received the wrong relevance penalty');
+  assert.strictEqual(guardedCharacter.maxInjectionLevel, 'micro', 'cross-chat character identity was not retained as micro lore');
+  const guardedPromise = C.applyRetrievalProvenanceGuard(2, { type: 'prom' }, { crossArc: true, futureTurnRisk: false, hasSpecificCue: false }, false);
+  assert.strictEqual(guardedPromise.score, 0, 'cross-chat promise entered the current scene without a user cue');
+  const recalledPromise = C.applyRetrievalProvenanceGuard(2, { type: 'prom' }, { crossArc: true, futureTurnRisk: false, hasSpecificCue: true }, false);
+  assert.strictEqual(recalledPromise.score, 2, 'an explicit user cue cannot recover a cross-chat promise');
+
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
   assert.strictEqual(new Set(variants.map(v => JSON.stringify(v))).size, variants.length, 'OpenAI compatibility variants are not unique');
@@ -678,6 +729,7 @@ function testSourceContracts() {
 
   const refinerDom = read('embedding/refiner-dom.js');
   const refinerCore = read('embedding/refiner-core.js');
+  const extractionSource = read('embedding/injecter-4.js');
   const injectionSource = read('embedding/injecter-5.js');
   const chatBootstrap = read('embedding_pre/erie_crack_inject_chat.user.js');
   const routerBootstrap = read('embedding_pre/erie_crack_inject.user.js');
@@ -693,6 +745,10 @@ function testSourceContracts() {
   assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');
   assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
   assert(refinerCore.includes("feature: 'refinerQueryEmbed'") && refinerCore.includes("embeddingLane: 'interactive'") && refinerCore.includes('timeoutMs: 8000'), 'response correction semantic search can wait behind bulk embedding or a long query timeout');
+  assert(refinerCore.includes('<ooc_lore_context>') && refinerCore.includes('stripInjectedOOCForRefiner(m.message, m.role)'), 'response correction still feeds injected OOC back into retrieval or recent context');
+  assert(refinerCore.includes("chatKey: refinerChatKey") && refinerCore.includes("turnCounter: refinerTurn"), 'response correction retrieval ignores chat provenance and turn order');
+  assert(extractionSource.includes('sanitizeExtractionMessages(await C.fetchLogs') && extractionSource.match(/sanitizeExtractionMessages\(await C\.fetchLogs/g)?.length >= 2, 'automatic or full extraction still summarizes injected OOC as RP text');
+  assert(injectionSource.includes("m.role === 'user' ? (cleanLoreContextTags(m.message) || m.message)"), 'live retrieval still feeds prior injected OOC back into scoring');
   assert(injectionSource.includes('refreshCleanedMessageInDOM(currentText, clean.text, item.messageId)'), 'successful cleanup does not refresh the visible user message');
   assert(injectionSource.includes('safeMatch.ok || normalizedMatch'), 'cleanup queue reconciliation still requires byte-identical message text');
   assert(injectionSource.includes("mode: 'tag'"), 'cleanup cannot safely recover from server-normalized whitespace');

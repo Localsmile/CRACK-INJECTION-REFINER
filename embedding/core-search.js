@@ -28,6 +28,24 @@
     return (2 * inter) / (A.size + B.size);
   }
 
+  function applyRetrievalProvenanceGuard(score, entry, provenance, hasTemporalCue) {
+    let adjusted = Number(score) || 0;
+    let maxInjectionLevel = null;
+    let scope = '';
+    const hasCrossArcCue = !!(provenance && (provenance.hasSpecificCue || hasTemporalCue));
+    if (provenance?.crossArc && !hasCrossArcCue) {
+      const stableReference = entry?.type === 'character' || entry?.type === 'identity' || entry?.type === 'rel' || entry?.type === 'relationship';
+      adjusted = stableReference ? adjusted * 0.35 : 0;
+      if (stableReference) maxInjectionLevel = 'micro';
+      scope = 'cross_arc_reference';
+    }
+    if (provenance?.futureTurnRisk && !hasCrossArcCue) {
+      adjusted = 0;
+      scope = 'future_turn_guard';
+    }
+    return { score: adjusted, maxInjectionLevel, scope, hasCrossArcCue };
+  }
+
   function workingMemoryText(memory) {
     if (!memory || typeof memory !== 'object') return '';
     return [
@@ -265,6 +283,7 @@
         const resolvedTemporal = C.resolveTemporalRecall(userInput, recentMsgs, enabled, {
           currentTurn: turnCounter || 0,
           activeNames,
+          chatKey: cfg.chatKey || '',
           limit: timelineRecallLimit,
           range: cfg.scanRange || 4
         });
@@ -339,10 +358,34 @@
           if (tr) {
             components.timelineRecall = tr.score || 0;
             if (!matched && tr.matchedTriggers && tr.matchedTriggers.length) matched = tr.matchedTriggers.join(',');
-            let recallBoost = components.timelineRecall * timelineRecallWeight * (temporalRecallHasCue ? 1 : timelineNoCuePenalty);
-            if (!temporalRecallHasCue && tScore <= 0 && eScore <= 0 && components.timelineRecall < 0.45) recallBoost = 0;
+            const rowHasCue = !!tr.hasExplicitCue;
+            let recallBoost = tr.blockedByProvenance
+              ? 0
+              : components.timelineRecall * timelineRecallWeight * (rowHasCue ? 1 : timelineNoCuePenalty);
+            if (!rowHasCue && tScore <= 0 && eScore <= 0 && components.timelineRecall < 0.45) recallBoost = 0;
             score += recallBoost;
           }
+        }
+
+        if (C.entryRetrievalProvenance) {
+          const userCuePool = C.temporalUserCuePool ? C.temporalUserCuePool(userInput, recentMsgs, cfg.scanRange || 4) : userInput;
+          const provenance = C.entryRetrievalProvenance(e, {
+            chatKey: cfg.chatKey || '',
+            currentTurn: turnCounter || 0,
+            activeNames,
+            userCuePool
+          });
+          const hasTemporalCue = C.temporalRecallCueScore ? C.temporalRecallCueScore(userCuePool) > 0 : false;
+          components.crossArc = provenance.crossArc ? 1 : 0;
+          components.futureTurnRisk = provenance.futureTurnRisk ? 1 : 0;
+          components.specificCue = provenance.hasSpecificCue ? 1 : 0;
+          components.temporalCue = hasTemporalCue ? 1 : 0;
+          delete e._maxInjectionLevel;
+          delete e._retrievalScope;
+          const guarded = applyRetrievalProvenanceGuard(score, e, provenance, hasTemporalCue);
+          score = guarded.score;
+          if (guarded.maxInjectionLevel) e._maxInjectionLevel = guarded.maxInjectionLevel;
+          if (guarded.scope) e._retrievalScope = guarded.scope;
         }
       }
 
@@ -436,7 +479,8 @@
   }
 
   Object.assign(C, {
-    bigramSimilarity, buildScanPool, selectDiverseCandidates, triggerScan, hybridSearch, smartRerank,
+    bigramSimilarity, applyRetrievalProvenanceGuard,
+    buildScanPool, selectDiverseCandidates, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });
   console.log('[LoreCore:search] loaded v1.3.9');

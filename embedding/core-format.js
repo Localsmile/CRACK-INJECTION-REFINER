@@ -420,7 +420,10 @@
         const text = formatEntryAtLevel(row.e, level);
         variants[level] = { text, len: charLen(text) };
       }
-      return { ...row, variants, level: initialLevel, dropped: false };
+      const cap = ['full', 'compact', 'micro'].includes(row.e._maxInjectionLevel) ? row.e._maxInjectionLevel : null;
+      const rank = { micro: 0, compact: 1, full: 2 };
+      const level = cap && rank[initialLevel] > rank[cap] ? cap : initialLevel;
+      return { ...row, variants, level, dropped: false };
     });
     const totalLength = () => {
       const live = rows.filter(row => !row.dropped && row.variants[row.level]?.text);

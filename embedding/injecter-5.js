@@ -705,7 +705,10 @@
     if (!rows.length) return empty;
     const validDecision = decision && !decision.error && !decision.fallback && decision.recall;
     const selected = new Set(validDecision && Array.isArray(decision.eventIds) ? decision.eventIds.map(String) : []);
-    const hasTemporalSignal = (s) => selected.has(temporalCandidateId(s.entry)) || !!s.temporalRecall || Number(s.components?.timelineRecall || 0) > 0;
+    const hasTemporalSignal = (s) => {
+      if (s.temporalRecall?.blockedByProvenance && !s.temporalRecall?.hasExplicitCue) return false;
+      return selected.has(temporalCandidateId(s.entry)) || !!s.temporalRecall || Number(s.components?.timelineRecall || 0) > 0;
+    };
     const explicitMax = Math.max(1, config.temporalRecallExplicitMaxEvents || 3);
     const naturalMax = Math.max(1, config.temporalRecallMaxEvents || 2);
     let picked;
@@ -786,7 +789,10 @@
     }
 
     const fetchCount = Math.max(48, (settings.config.scanRange || 6) * 3);
-    const recentMsgs = await C.fetchLogs(fetchCount);
+    const recentMsgs = (await C.fetchLogs(fetchCount)).map(m => ({
+      ...m,
+      message: m.role === 'user' ? (cleanLoreContextTags(m.message) || m.message) : m.message
+    }));
 
     const config = settings.config;
     const effectiveAiMemoryTurns = C.deriveAiMemoryTurns
@@ -844,7 +850,7 @@
       const r = await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts);
       scored = r.scored || []; activeNames = r.activeNames || [];
       if (C.resolveTemporalRecall && config.timelineRetrievalEnabled !== false) {
-        const resolved = C.resolveTemporalRecall(userInput, recentMsgs, enabled, { currentTurn: turnCounter, activeNames, limit: 4 });
+        const resolved = C.resolveTemporalRecall(userInput, recentMsgs, enabled, { currentTurn: turnCounter, activeNames, chatKey, limit: 4 });
         if (resolved && resolved.candidates && resolved.candidates.length && (config.periodicRecallEnabled !== false || resolved.hasCue)) {
           const byId = new Map(scored.map(s => [s.entry.id, s]));
           for (const c of resolved.candidates) {
