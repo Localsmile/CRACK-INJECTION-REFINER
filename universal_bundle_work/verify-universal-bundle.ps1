@@ -33,6 +33,7 @@ Assert-True ($bundle.Contains('packWholeSection') -and $bundle.Contains('section
 Assert-True ($bundle.Contains('ambiguous_multi_value_replace')) 'multi-value fact conflict guard missing'
 Assert-True ($bundle.Contains('memoryDerivedFullSignature') -and $bundle.Contains('memoryDerivedEmbedSignature')) 'derived Full or embedding synchronization missing'
 Assert-True ($bundle.Contains('_retrievalScore')) 'retrieval score is not forwarded to budget planning'
+Assert-True ($bundle.Contains('a participant name alone is INVALID') -and $bundle.Contains('distinctive scene cue')) 'type-specific trigger prompt contract missing'
 Assert-True ($bundle.Contains('buildLoreBudgetPlan') -and $bundle.Contains('variants') -and $bundle.Contains('downgraded') -and $bundle.Contains('compact') -and $bundle.Contains('micro')) 'global lore budget planner missing'
 Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI compatibility helper missing'
 Assert-True ($bundle.Contains('anthropic_messages') -and $bundle.Contains('custom') -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'

@@ -169,6 +169,9 @@ async function testKernelHelpers() {
     guardedRecall.candidates.length === 0 || guardedRecall.candidates[0].blockedByProvenance === true,
     'a future event from another chat was not guarded'
   );
+  if (guardedRecall.candidates.length) {
+    assert.strictEqual(guardedRecall.candidates[0].components.overlap, 0, 'participant names still count as event-specific temporal overlap');
+  }
   const explicitRecall = C.resolveTemporalRecall(
     '그때 네게 준 은빛 호각을 두 번 짧게 불었지.',
     [],
@@ -177,6 +180,11 @@ async function testKernelHelpers() {
   );
   assert(explicitRecall.candidates[0]?.hasExplicitCue, 'an explicit event cue cannot recover cross-chat lore');
   assert.strictEqual(explicitRecall.candidates[0]?.blockedByProvenance, false, 'explicit recall stayed blocked by provenance');
+  const shortCjkCue = C.entryRetrievalProvenance(
+    { ...futureTimeline, triggers: ['게렉터', '호각'] },
+    { chatKey: 'chat:newroom', currentTurn: 1, activeNames: ['김덕배', '게렉터'], userCuePool: '호각을 불었다.' }
+  );
+  assert(shortCjkCue.hasSpecificCue && shortCjkCue.specificMatches.includes('호각'), 'a distinctive two-character CJK cue cannot recover cross-chat lore');
 
   const scopedBudget = C.buildLoreBudgetPlan([
     {
@@ -197,6 +205,40 @@ async function testKernelHelpers() {
   assert.strictEqual(guardedPromise.score, 0, 'cross-chat promise entered the current scene without a user cue');
   const recalledPromise = C.applyRetrievalProvenanceGuard(2, { type: 'prom' }, { crossArc: true, futureTurnRisk: false, hasSpecificCue: true }, false);
   assert.strictEqual(recalledPromise.score, 2, 'an explicit user cue cannot recover a cross-chat promise');
+
+  const triggerEntries = [
+    { id: 101, type: 'character', name: '게렉터', triggers: ['게렉터', '렉터'] },
+    {
+      id: 102,
+      type: 'timeline_event',
+      name: '붉은 봉인문 약속',
+      participants: ['게렉터', '김덕배'],
+      triggers: ['렉터', '붉은 봉인문', '게렉터&&청동 열쇠']
+    },
+    {
+      id: 103,
+      type: 'key_quote',
+      name: '은빛 호각 재회 신호',
+      speaker: '김덕배',
+      triggers: ['김덕배', '두 번 짧게', '은빛 호각']
+    },
+    {
+      id: 104,
+      type: 'rel',
+      name: '게렉터와 김덕배',
+      parties: ['게렉터', '김덕배'],
+      triggers: ['게렉터&&김덕배', '김덕배&&게렉터']
+    }
+  ];
+  const participantOnlyHits = C.triggerScan('배수로로 따라와, 렉터.', [], triggerEntries, {});
+  assert(participantOnlyHits.some(hit => hit.entry.id === 101), 'character aliases stopped working as direct triggers');
+  assert(!participantOnlyHits.some(hit => hit.entry.id === 102), 'a participant alias still deterministically triggers an unrelated event');
+  const eventCueHits = C.triggerScan('붉은 봉인문 앞에서 청동 열쇠를 꺼냈다.', [], triggerEntries, {});
+  assert(eventCueHits.some(hit => hit.entry.id === 102 && hit.matchedTrigger === '붉은 봉인문'), 'a distinctive event cue no longer triggers its event');
+  const quoteCueHits = C.triggerScan('은빛 호각을 두 번 짧게 불었다.', [], triggerEntries, {});
+  assert(quoteCueHits.some(hit => hit.entry.id === 103), 'a distinctive quote/event cue no longer triggers its memory');
+  const relationHits = C.triggerScan('게렉터는 김덕배를 바라보았다.', [], triggerEntries, {});
+  assert(relationHits.some(hit => hit.entry.id === 104), 'bidirectional relationship compounds stopped working');
 
   const variants = C.buildOpenAICompatVariants(true, 4096, ['nested', 'flat', 'none']);
   assert(variants.length <= 6, 'OpenAI compatibility variants exceeded the hard limit');
@@ -625,6 +667,9 @@ function testPromptContract() {
   assert(Array.from(L.LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB || []).includes('7822:83cfc73b'), 'previous Memory V2 DB prompt is not eligible for exact-default migration');
   assert(Array.from(L.LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB || []).includes('5830:5a632fb0'), 'previous Memory V2 no-DB prompt is not eligible for exact-default migration');
   assert(L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB.includes('same established continuity as facts'), 'Full and structured facts are not required to preserve the same meaning');
+  assert(L.DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB.includes('a participant name alone is INVALID'), 'event-scoped trigger contract is missing');
+  assert(L.DEFAULT_TEMPORAL_EXTRACT_PROMPT.includes('Generic recall words') && L.DEFAULT_TEMPORAL_EXTRACT_PROMPT.includes('containing no participant name'), 'timeline recall triggers remain ambiguous');
+  assert(L.DEFAULT_AUTO_EXTRACT_SCHEMA.includes('participant&&distinctive scene cue'), 'schema examples still encourage participant-only event triggers');
   assert(L.DEFAULT_DEEPSEEK_IMPORT_PROMPT.includes('{"entries":[...]}') && L.DEFAULT_DEEPSEEK_IMPORT_PROMPT.includes('{"entries":[]}'), 'DeepSeek import prompt is empty or uses the wrong top-level JSON shape');
   assert(L.DEFAULT_AUTO_EXTRACT_PROMPT_WITH_DB.includes('{outputMode}'), 'DB prompt lost the output-mode placeholder');
   const promptText = [
@@ -705,6 +750,8 @@ function testSourceContracts() {
   const kernel = read('embedding/core-kernel.js');
   const coreEmbedding = read('embedding/core-embedding.js');
   const coreMemory = read('embedding/core-memory.js');
+  const coreSearch = read('embedding/core-search.js');
+  const coreImporter = read('embedding/core-importer.js');
   assert(kernel.includes("interactive: Promise.resolve()") && kernel.includes("background: Promise.resolve()"), 'interactive and background generation work still share one blocking queue');
   assert(kernel.includes('getGenerationApiDiagnostics') && kernel.includes('queueWaitMs') && kernel.includes('providerMs'), 'generation diagnostics do not separate queue wait from provider time');
   assert(kernel.includes('getEmbeddingApiDiagnostics') && kernel.includes('diagnosticInputChars'), 'embedding calls are not covered by internal diagnostics');
@@ -720,6 +767,8 @@ function testSourceContracts() {
   assert(coreEmbedding.lastIndexOf('cleanup = await cleanupStaleEmbeddings(packName, apiOpts)') > coreEmbedding.indexOf('await runBatches(pendingConditions'), 'old embeddings are deleted before replacement generation succeeds');
   assert(kernel.includes('const DB_SCHEMA_VERSION = 11') && kernel.includes('&[chatKey+char1+char2]'), 'encounter state is not isolated per chat');
   assert(coreMemory.includes('checkFirstEncounter(char1, char2, chatKey') && coreMemory.includes('payload.chatKey'), 'encounter helpers ignore the current chat scope');
+  assert(coreSearch.includes('isGenericParticipantTrigger') && coreSearch.includes('EVENT_SCOPED_TRIGGER_TYPES'), 'legacy event triggers are not protected from participant-only matches');
+  assert(coreImporter.includes('a participant name alone is invalid') && coreImporter.includes('event-specific trigger containing no participant name'), 'knowledge conversion lacks the event trigger contract');
 
   const menu = read('embedding/injecter-6.js');
   for (const label of ['홈', '로어 관리', '로어 추출/변환', '백업', '응답 교정', 'API 설정', '활동', '도움말']) {

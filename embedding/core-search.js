@@ -132,6 +132,48 @@
     return selected;
   }
 
+  const EVENT_SCOPED_TRIGGER_TYPES = new Set(['event', 'timeline_event', 'prom', 'promise', 'key_quote']);
+
+  function normalizedTriggerTerm(value) {
+    return String(value || '').trim().replace(/^~/, '').toLowerCase();
+  }
+
+  function identityTriggerTerms(entries) {
+    const terms = new Set();
+    for (const entry of (entries || [])) {
+      const type = String(entry && entry.type || '').toLowerCase();
+      if (type !== 'character' && type !== 'identity') continue;
+      const values = [entry.name].concat(Array.isArray(entry.triggers) ? entry.triggers : []);
+      for (const value of values) {
+        if (String(value || '').includes('&&')) continue;
+        const term = normalizedTriggerTerm(value);
+        if (term.length >= 2) terms.add(term);
+      }
+    }
+    return terms;
+  }
+
+  function explicitParticipantTerms(entry) {
+    const values = []
+      .concat(Array.isArray(entry?.participants) ? entry.participants : [])
+      .concat(Array.isArray(entry?.parties) ? entry.parties : [])
+      .concat([entry?.speaker, entry?.maker, entry?.target, entry?.from, entry?.to]);
+    return values.map(normalizedTriggerTerm).filter(term => term.length >= 2);
+  }
+
+  function isGenericParticipantTrigger(entry, trigger, identityTerms) {
+    const type = String(entry && entry.type || '').toLowerCase();
+    const raw = String(trigger || '').trim();
+    if (!EVENT_SCOPED_TRIGGER_TYPES.has(type) || !raw || raw.includes('&&') || raw.startsWith('~')) return false;
+    const term = normalizedTriggerTerm(raw);
+    if (term.length < 2) return false;
+    const names = new Set([...(identityTerms || []), ...explicitParticipantTerms(entry)]);
+    for (const name of names) {
+      if (name === term || name.endsWith(term) || term.endsWith(name)) return true;
+    }
+    return false;
+  }
+
 
   // ---- 트리거 스캔 ----
   function triggerScan(userInput, recentMsgs, entries, config) {
@@ -140,12 +182,14 @@
     const strict = cfg.strictMatch !== false;
     const similar = cfg.similarityMatch === true;
     const hits = [];
+    const identityTerms = identityTriggerTerms(entries);
     for (const e of (entries || [])) {
       if (!e || e.enabled === false) continue;
       const triggers = Array.isArray(e.triggers) ? e.triggers : [];
       let hit = false, matched = '', score = 0;
       for (const raw of triggers) {
         const t = (raw || '').trim(); if (!t) continue;
+        if (isGenericParticipantTrigger(e, t, identityTerms)) continue;
         if (t.includes('&&')) {
           const parts = t.split('&&').map(s => s.trim().toLowerCase()).filter(Boolean);
           if (parts.length && parts.every(p => pool.includes(p))) { hit = true; matched = t; score = 1.0; break; }
@@ -479,7 +523,7 @@
   }
 
   Object.assign(C, {
-    bigramSimilarity, applyRetrievalProvenanceGuard,
+    bigramSimilarity, applyRetrievalProvenanceGuard, isGenericParticipantTrigger,
     buildScanPool, selectDiverseCandidates, triggerScan, hybridSearch, smartRerank,
     __searchLoaded: true
   });

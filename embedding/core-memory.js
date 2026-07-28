@@ -456,9 +456,38 @@
     return c ? 'chat:' + c[1].toLowerCase() : raw;
   }
 
+  const GENERIC_RECALL_TRIGGER_TERMS = new Set([
+    '그때', '전에', '이전', '기억해', '기억나', '기억', '다시', '아까',
+    '과거', '옛날', '언젠가', '나중', '이후', '그 후', '그후',
+    'before', 'again', 'remember', 'memory', 'past', 'later'
+  ]);
+
+  function isGenericRecallTrigger(value) {
+    return GENERIC_RECALL_TRIGGER_TERMS.has(String(value || '').trim().toLowerCase());
+  }
+
+  function temporalParticipantTerms(entry, extraNames) {
+    return _uniq([])
+      .concat(_arr(entry && entry.participants))
+      .concat(_arr(entry && entry.parties))
+      .concat(_arr([entry && entry.speaker, entry && entry.maker, entry && entry.target]))
+      .concat(_arr(extraNames))
+      .map(x => String(x || '').trim().toLowerCase())
+      .filter(x => x.length >= 2);
+  }
+
+  function isParticipantOnlyTemporalTerm(value, participantTerms) {
+    const raw = String(value || '').trim();
+    if (!raw || raw.includes('&&')) return false;
+    const term = raw.replace(/^~/, '').toLowerCase();
+    if (term.length < 2) return false;
+    return _arr(participantTerms).some(name => name === term || name.endsWith(term) || term.endsWith(name));
+  }
+
   function distinctiveEntryTerms(entry, activeNames) {
     if (!entry) return [];
     const active = _arr(activeNames).map(x => String(x || '').trim().toLowerCase()).filter(Boolean);
+    const participants = temporalParticipantTerms(entry, active);
     const raw = _uniq([])
       .concat(_arr(entry.triggers))
       .concat(_arr(entry.recallTriggers))
@@ -469,7 +498,10 @@
       const parts = String(value || '').split('&&').map(x => x.trim()).filter(Boolean);
       for (const part of parts) {
         const low = part.toLowerCase();
-        if (low.length < 3) continue;
+        const minLength = /[가-힣\u3400-\u9fff]/.test(low) ? 2 : 3;
+        if (low.length < minLength) continue;
+        if (isGenericRecallTrigger(low)) continue;
+        if (isTimelineEvent(entry) && isParticipantOnlyTemporalTerm(low, participants)) continue;
         if (active.some(name => name === low || name.includes(low) || low.includes(name))) continue;
         out.push(part);
       }
@@ -538,8 +570,13 @@
     const lowPool = String(pool || '').toLowerCase();
     if (!entry || !lowPool) return { score: 0, matched: [] };
     const terms = temporalFieldTerms(entry).map(t => String(t || '').trim()).filter(Boolean);
+    const participants = temporalParticipantTerms(entry);
+    const specificTerms = terms.filter(term =>
+      !isGenericRecallTrigger(term) &&
+      !isParticipantOnlyTemporalTerm(term, participants)
+    );
     const matched = [];
-    for (const raw of terms) {
+    for (const raw of specificTerms) {
       const t = raw.toLowerCase();
       if (t.length < 2) continue;
       if (t.includes('&&')) {
@@ -551,7 +588,11 @@
     }
     const direct = Math.min(1, matched.length * 0.18);
     const poolTokens = temporalTokenize(lowPool);
-    const entryTokens = temporalTokenize(terms.join(' '));
+    const participantTokens = new Set(temporalTokenize(participants.join(' ')));
+    const entryTokens = temporalTokenize(specificTerms.join(' ')).filter(token =>
+      !isGenericRecallTrigger(token) &&
+      !participantTokens.has(token)
+    );
     let tokenHits = 0;
     for (const t of entryTokens) {
       if (poolTokens.includes(t) || poolTokens.some(p => p.length >= 2 && (p.includes(t) || t.includes(p)))) tokenHits++;

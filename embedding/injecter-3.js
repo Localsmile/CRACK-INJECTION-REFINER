@@ -824,7 +824,7 @@
             return `${text.length}:${(hash >>> 0).toString(16)}`;
           };
           let changed = false;
-          if (['1783:6fa83999', '1367:e3318e85'].includes(signature(this.config.importPrompt))) {
+          if (['1783:6fa83999', '1367:e3318e85', '1496:e6eeecc1'].includes(signature(this.config.importPrompt))) {
             this.config.importPrompt = DEFAULT_IMPORT_PROMPT || C.DEFAULT_IMPORT_PROMPT;
             changed = true;
           }

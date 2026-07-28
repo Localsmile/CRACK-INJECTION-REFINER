@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260727.8';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v2';
+  const VER = '1.4.0.260727.9';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v3';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -48,6 +48,16 @@ EXTRACTION PRIORITIES (in order of importance):
 - Field abbreviations: importance→imp, surprise→sur, emotional→emo.
 - Source field is not needed in output (injector adds it).`;
 
+  const TRIGGER_QUALITY_RULES = `TRIGGER QUALITY BY ENTRY TYPE:
+   - A trigger must distinguish this entry from other lore, not merely name one participant.
+   - character/identity: the character's exact name or unique nickname may be a standalone trigger.
+   - rel: use both parties' names as bidirectional compounds (A&&B and B&&A).
+   - event/timeline_event/prom/key_quote: a participant name alone is INVALID. Use a unique place, object, faction, quoted phrase, or event-specific action phrase. A compound may pair a participant with one distinctive literal scene cue (A&&붉은 봉인문).
+   - location/item/faction/ability/rule/condition: use the exact unique name or a literal alias that identifies that subject.
+   - Never store generic recall words such as "그때", "전에", "기억해", or "다시" as triggers by themselves.
+   - At least one trigger for every event/timeline_event/prom/key_quote must be event-specific and contain no participant name.
+   - Avoid short aliases that also occur inside another common name unless the alias is explicitly used on its own in the conversation.`;
+
   const DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB = `Extract NEW established continuity facts from the conversation that may matter in later scenes.
 
 ${EXTRACTION_COVERAGE}
@@ -58,10 +68,7 @@ CRITICAL RULES:
 3. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit an uncertain optional module instead of emitting empty or fabricated fields.
 4. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
 5. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
-   PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
-   AVOID: Abstract notions (신뢰/배신/욕망/암컷/온도/분노/안도), emotions, generic conditions, physical descriptors (eyes/posture), common verbs, generic roles alone (회장/조교/방문객 단독).
-   COMPOUND (A&&B): Both operands MUST be proper nouns. Never combine a proper noun with an abstract term. Bad: "배신&&채린", "욕망&&도윤". Good: "채린&&도윤", "채린&&결계석".
-   For relationships: use both parties' names bidirectionally (A&&B and B&&A).
+${TRIGGER_QUALITY_RULES}
 6. CONTENT DEPTH: Capture relationship evolution, group dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
 7. FACT BINDING:
    - Every fact needs an explicit subject, relation, and value.
@@ -103,7 +110,7 @@ Conversation Log:
   {
     "type": "identity|character|location|faction|item|ability|rule|condition|event|concept|setting|key_quote",
     "name": "Entity Name",
-    "triggers": ["keyword1", "CharName&&keyword2"],
+    "triggers": ["unique literal alias", "specific place or object", "Character&&distinctive scene cue"],
     "summary": {"full": "Complete self-contained continuity record."},
     "facts": [
       ${FACT_SHAPE_SCHEMA}
@@ -148,7 +155,7 @@ Conversation Log:
   {
     "type": "prom",
     "name": "Promise title",
-    "triggers": ["Maker&&keyword", "Target&&keyword"],
+    "triggers": ["Maker&&unique object", "Target&&distinctive phrase"],
     "summary": {"full": "who promised what, why it matters, current status, condition"},
     "facts": [
       {"subject": "Maker→Target", "relation": "promise", "value": "exact promised action", "time": "current", "polarity": "affirmed", "condition": "trigger condition", "knownBy": ["Maker", "Target"], "hiddenFrom": []}
@@ -164,7 +171,7 @@ Conversation Log:
     "type": "timeline_event",
     "name": "Stable scene recall handle",
     "title": "Short scene title",
-    "triggers": ["participant", "place or unique object"],
+    "triggers": ["place or unique object", "participant&&distinctive scene cue"],
     "summary": {"full": "who, where, what changed, consequence, unresolved hook"},
     "facts": [
       {"subject": "exact participant or scene", "relation": "action or consequence", "value": "bound event fact", "time": "past", "polarity": "affirmed", "knownBy": [], "hiddenFrom": []}
@@ -245,7 +252,7 @@ Conversation Log:
     ],
     "hooks": ["unresolved hook or future recall reason"],
     "linkedLore": ["related character/relationship/promise/location names"],
-    "recallTriggers": ["literal words, aliases, scene cues, memory question cues"],
+    "recallTriggers": ["unique place or object", "participant&&distinctive scene cue", "distinctive quoted phrase"],
     "importance": 8,
     "emotional": 8,
     "confidence": 0.8
@@ -272,8 +279,11 @@ CRITICAL RULES:
    - Explain what changed because of the event: relationship, trust, promise, conflict, fear, debt, secret, or unresolved hook.
    - Preserve why the event may matter later.
 6. RECALL TRIGGERS:
-   - Include literal names, places, actions, nicknames, objects, and user recall cues such as "그때", "기억해", "전에".
-   - Include both concrete scene terms and semantic cues.
+   - Every trigger must distinguish this event from other events involving the same people.
+   - A participant name alone is INVALID. Generic recall words such as "그때", "기억해", "전에", and "다시" are also INVALID as stored triggers.
+   - Use unique places, objects, faction names, short quoted phrases, or event-specific action phrases.
+   - A compound may pair a participant with a distinctive literal scene cue (A&&은빛 호각).
+   - Include at least one event-specific trigger containing no participant name.
 7. MEMORY FORMAT:
    - Produce one self-contained summary.full that expresses the same established continuity as facts, including ownership, direction, negation, uncertainty, conditions, time, and knowledge scope when present.
    - Produce facts with an explicit subject, relation, and value.
@@ -347,10 +357,7 @@ CRITICAL RULES:
 4. OPTIONAL MODULES: Add state, openLoops, detail, parties, callState, cond, timeline, entities, or eventHistory only when relevant. Omit uncertain optional modules instead of emitting empty or fabricated fields.
 5. NATIVE LANGUAGE: The 'name' and 'triggers' MUST use the exact language of the conversation.
 6. EXACT TRIGGERS: Provide 2-4 HIGH-SPECIFICITY triggers that MUST literally appear in RP dialogue or narration.
-   PREFER: Proper nouns (character names, unique nicknames, specific place/faction/item/event names).
-   AVOID: Abstract notions (신뢰/배신/욕망/암컷/온도/분노/안도), emotions, generic conditions, physical descriptors (eyes/posture), common verbs, generic roles alone (회장/조교/방문객 단독).
-   COMPOUND (A&&B): Both operands MUST be proper nouns. Never combine a proper noun with an abstract term. Bad: "배신&&채린", "욕망&&도윤". Good: "채린&&도윤", "채린&&결계석".
-   For relationships: use both parties' names bidirectionally (A&&B and B&&A).
+${TRIGGER_QUALITY_RULES}
 7. CONTENT DEPTH: Capture relationship evolution, faction dynamics, promises made. If CharA and CharB meet for the first time, briefly describe what happened and their emotions in the relationship's summary to avoid duplicate encounter entries.
 8. FACT BINDING:
    - Every fact needs an explicit subject, relation, and value.
@@ -516,13 +523,13 @@ Conversation Log:
 {context}`
   ];
   */
-  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB = ['7055:1e3201f9', '7595:1ddfdc4', '7822:83cfc73b'];
-  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB = ['5751:3da5c7e7', '5830:5a632fb0'];
-  const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITH_DB = ['7852:86d21868', '8079:de8a3c7b'];
-  const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB = ['6008:cdf91e6d', '6087:fff85132'];
-  const LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES = ['2343:b62dcc66', '2391:98387c58'];
-  const LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES = ['1867:a23b0019', '1472:1026ef34'];
-  const LEGACY_TEMPORAL_PROMPT_SIGNATURES = ['2101:e6c29640', '2149:97797312'];
+  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITH_DB = ['7055:1e3201f9', '7595:1ddfdc4', '7822:83cfc73b', '8017:f2596651'];
+  const LEGACY_AUTO_EXTRACT_PROMPT_SIGNATURES_WITHOUT_DB = ['5751:3da5c7e7', '5830:5a632fb0', '6025:164303c0'];
+  const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITH_DB = ['7852:86d21868', '8079:de8a3c7b', '8274:7d77a93'];
+  const LEGACY_DEEPSEEK_PROMPT_SIGNATURES_WITHOUT_DB = ['6008:cdf91e6d', '6087:fff85132', '6282:b9cec30'];
+  const LEGACY_DEEPSEEK_TEMPORAL_PROMPT_SIGNATURES = ['2343:b62dcc66', '2391:98387c58', '2554:ea2c257c'];
+  const LEGACY_DEEPSEEK_IMPORT_PROMPT_SIGNATURES = ['1867:a23b0019', '1472:1026ef34', '1601:811db77a'];
+  const LEGACY_TEMPORAL_PROMPT_SIGNATURES = ['2101:e6c29640', '2149:97797312', '2312:70a6305c'];
   const LEGACY_TEMPORAL_SCHEMA_SIGNATURES = ['1093:aadefd10', '1245:7d91ee86'];
 
   const DEFAULT_DEEPSEEK_AUTO_EXTRACT_PROMPT_WITHOUT_DB = toJsonObjectPrompt(DEFAULT_AUTO_EXTRACT_PROMPT_WITHOUT_DB);
