@@ -171,14 +171,25 @@
     return btn;
   }
 
+  function isEntryButtonReachable(btn) {
+    if (!isElementVisible(btn)) return false;
+    const r = btn.getBoundingClientRect();
+    const x = Math.max(0, Math.min(window.innerWidth - 1, r.left + r.width / 2));
+    const y = Math.max(0, Math.min(window.innerHeight - 1, r.top + r.height / 2));
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) return false;
+    const top = document.elementFromPoint(x, y);
+    return !!(top && (top === btn || btn.contains(top)));
+  }
+
   function mountFloatingEntryButton() {
     if (document.getElementById(ENTRY_BUTTON_ID)) return false;
     const btn = createEntryButton();
+    btn.setAttribute('data-lore-inj-floating', 'true');
     btn.style.cssText += [
       'position:fixed',
       'right:12px',
       'bottom:calc(76px + env(safe-area-inset-bottom, 0px))',
-      'z-index:2147483646',
+      'z-index:2147483647',
       'height:34px',
       'min-width:52px',
       'margin:0',
@@ -289,7 +300,17 @@
 
   // 2) 채팅창 헤더/입력 영역에 컴팩트 진입 버튼 삽입
   async function injectBannerButton() {
-    if (document.getElementById(ENTRY_BUTTON_ID)) return;
+    const existing = document.getElementById(ENTRY_BUTTON_ID);
+    if (existing) {
+      if (isEntryButtonReachable(existing)) return;
+      if (existing.getAttribute('data-lore-inj-floating') === 'true') {
+        existing.style.zIndex = '2147483647';
+        return;
+      }
+      existing.remove();
+      mountFloatingEntryButton();
+      return;
+    }
     const targets = [
       findLegacyBannerTarget(),
       findModernHeaderTarget(),

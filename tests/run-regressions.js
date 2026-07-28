@@ -775,6 +775,9 @@ function testSourceContracts() {
     assert(menu.includes(`name: '${label}'`), `menu group missing: ${label}`);
   }
   assert(!menu.includes('flatMenuAdapter'), 'flat menu adapter is still active');
+  const uiBootstrap = read('embedding/injecter-6-ui.js');
+  assert(uiBootstrap.includes('isEntryButtonReachable') && uiBootstrap.includes('document.elementFromPoint(x, y)'), 'entry button does not detect site overlays');
+  assert(uiBootstrap.includes("data-lore-inj-floating") && uiBootstrap.includes("'z-index:2147483647'"), 'occluded entry button lacks a top-level floating fallback');
 
   const refinerDom = read('embedding/refiner-dom.js');
   const refinerCore = read('embedding/refiner-core.js');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        에리의 크랙 로어 인젝터 (Chat)
 // @namespace   에리의 크랙 로어 인젝터
-// @version     1.4.0.260727.9
+// @version     1.4.0.260727.10
 // @description 채팅방에서만 @require로 안정 부트스트랩되는 로어 인젝터 본체
 // @author      로컬AI
 // @match       https://crack.wrtn.ai/stories/*/episodes/*
@@ -68,7 +68,7 @@
   const _w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   _w.__LoreInj = _w.__LoreInj || {};
   const L = _w.__LoreInj;
-  L.chatBootstrapVersion = '1.4.0.260727.9';
+  L.chatBootstrapVersion = '1.4.0.260727.10';
 
   if (!_w.__LoreInjReady) {
     let resolveReady;

@@ -39,6 +39,7 @@ Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI comp
 Assert-True ($bundle.Contains('anthropic_messages') -and $bundle.Contains('custom') -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'
 Assert-True ($bundle.Contains('lore-batch-extraction-jobs-v1')) 'resumable batch state missing'
 Assert-True ($bundle.Contains('lore-inj-modal')) 'scoped Lore modal styling missing'
+Assert-True ($bundle.Contains('data-lore-inj-floating') -and $bundle.Contains('2147483647')) 'occluded Lore entry fallback missing'
 Assert-True (!$bundle.Contains('flatMenuAdapter')) 'legacy flat menu adapter remains'
 Assert-True ($bundle.Contains('로어 관리') -and $bundle.Contains('로어 추출/변환') -and $bundle.Contains('응답 교정') -and $bundle.Contains('API 설정') -and $bundle.Contains('활동')) 'task-oriented menu groups missing'
 Assert-True ($bundle.Contains('선택한 로어 AI 병합') -and $bundle.Contains('유사도 후보 필터') -and -not $bundle.Contains('keep-longest')) 'selected-only AI merge contract missing'
