@@ -13,15 +13,19 @@
   const _injectInFlight = new Map();
   const INJECTION_DEDUPE_MS = 1500;
 
-  function runInjection(original) {
+  function runInjection(original, meta = {}) {
     const key = String(_w.location && _w.location.pathname || '') + '\u0000' + String(original || '');
     const cached = _injectInFlight.get(key);
-    if (cached && cached.expiresAt > Date.now()) return cached.task;
-    const task = Promise.resolve().then(() => _injectFn(original));
-    const record = { task, expiresAt: Date.now() + INJECTION_DEDUPE_MS };
+    if (cached && (!cached.settled || cached.expiresAt > Date.now())) return cached.task;
+    const task = Promise.resolve().then(() => _injectFn(original, meta));
+    const record = { task, settled: false, expiresAt: Infinity };
     _injectInFlight.set(key, record);
     task.then(
-      () => setTimeout(() => { if (_injectInFlight.get(key) === record) _injectInFlight.delete(key); }, INJECTION_DEDUPE_MS),
+      () => {
+        record.settled = true;
+        record.expiresAt = Date.now() + INJECTION_DEDUPE_MS;
+        setTimeout(() => { if (_injectInFlight.get(key) === record) _injectInFlight.delete(key); }, INJECTION_DEDUPE_MS);
+      },
       () => { if (_injectInFlight.get(key) === record) _injectInFlight.delete(key); }
     );
     return task;
@@ -40,7 +44,7 @@
               const orig = arr[1].message;
               (async () => {
                 try {
-                  const mod = await runInjection(orig);
+                  const mod = await runInjection(orig, { transport: 'websocket', deadlineMs: 1800 });
                   if (orig !== mod) {
                     arr[1].message = mod;
                     _origWsSend.call(ws, prefix + JSON.stringify(arr));
@@ -81,7 +85,7 @@
                   if (body.messages[i].role === 'user' && typeof body.messages[i].content === 'string') {
                     if (!body.messages[i].content.includes('OOC:')) {
                       const original = body.messages[i].content;
-                      body.messages[i].content = await runInjection(original);
+                      body.messages[i].content = await runInjection(original, { transport: 'fetch', deadlineMs: 1800 });
                       if (original !== body.messages[i].content) injected = true;
                     }
                     break;
@@ -93,7 +97,7 @@
                   if (body[key] !== undefined && typeof body[key] === 'string') {
                     if (!body[key].includes('OOC:')) {
                       const original = body[key];
-                      body[key] = await runInjection(original);
+                      body[key] = await runInjection(original, { transport: 'fetch', deadlineMs: 1800 });
                       if (original !== body[key]) injected = true;
                     }
                     break;
@@ -105,7 +109,7 @@
                   if (body.variables[key] !== undefined && typeof body.variables[key] === 'string') {
                     if (!body.variables[key].includes('OOC:')) {
                       const original = body.variables[key];
-                      body.variables[key] = await runInjection(original);
+                      body.variables[key] = await runInjection(original, { transport: 'fetch', deadlineMs: 1800 });
                       if (original !== body.variables[key]) injected = true;
                     }
                     break;

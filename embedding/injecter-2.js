@@ -6,8 +6,8 @@
   _w.__LoreInj = _w.__LoreInj || {};
   if (_w.__LoreInj.__constLoaded) return;
 
-  const VER = '1.4.0.260727.10';
-  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v3';
+  const VER = '1.4.0.260727.11';
+  const AUTO_EXTRACT_PROMPT_VERSION = 'v1.4.0.260727-memory-facts-v4';
   const OOC_FORMAT_VERSION = 'v1.4.0-ooc-reference-soft2';
   function toJsonObjectPrompt(prompt, opts = {}) {
     const empty = opts.empty || '{"entries":[]}';
@@ -40,6 +40,7 @@ EXTRACTION PRIORITIES (in order of importance):
 - "facts": lossless structured facts used to create a dense injection form. Do not omit a fact from facts merely because it already appears in summary.full.
 - Fact shape: ${FACT_SHAPE_SCHEMA}.
 - "openLoops": unresolved goals, promises, questions, threats, or conflicts. Omit when none.
+- Resolve within the window: the latest explicit outcome overrides earlier uncertainty. If a goal, question, threat, promise condition, injury, disguise, or other state is visibly resolved later in the same conversation window, do not keep the earlier uncertainty in openLoops or current state. Record the outcome instead.
 - Do not output summary.compact, summary.micro, inject, or embed_text. The application derives them from facts.
 - "callState": current vocative state. previousTerms are context only, not permanent requirements.
 - "timeline": event turn/order/scene/observed recency. Do not invent in-story days.
@@ -75,6 +76,7 @@ ${TRIGGER_QUALITY_RULES}
    - Keep each attribute attached to its owner. Never put several people and several attributes into one unbound list.
    - Keep relationship direction, quantity, negation, uncertainty, conditions, and who knows or does not know a fact.
    - Use time="current" for the latest state and time="past" for an earlier state that still matters.
+   - Read the window in order. When a later explicit outcome resolves an earlier question or temporary state, facts, state, summary.full, and openLoops must all agree with that latest outcome.
 8. SUMMARY QUALITY: Produce one self-contained summary.full.
    Bad full: "동맹 관계" Good full: "대한제국과 영국의 상호방위 동맹. 군수물자 지원과 관세 양보를 교환하며 현재 군사 지원 약속이 미해결."
 9. IMPORTANCE GATING: Rate each entry on three axes (1-10):

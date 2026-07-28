@@ -46,7 +46,7 @@
 
   function getMessageContainer(el) {
     if (!el) return null;
-    return el.closest?.('[data-message-id], [data-id], [data-testid*="message"], [class*="message"], article, section, li')
+    return el.closest?.('[data-message-group-id], [data-message-id], [data-id], [data-testid*="message"], [class*="message"], article, section, li')
         || el.closest?.('div')
         || el;
   }
@@ -54,9 +54,10 @@
   function findMessageContainerById(messageId) {
     if (!messageId) return null;
     const id = String(messageId);
-    const candidates = document.querySelectorAll('[data-message-id], [data-id], [id], [href], [data-testid]');
+    const candidates = document.querySelectorAll('[data-message-group-id], [data-message-id], [data-id], [id], [href], [data-testid]');
     for (const el of candidates) {
       const vals = [
+        el.getAttribute('data-message-group-id'),
         el.getAttribute('data-message-id'),
         el.getAttribute('data-id'),
         el.getAttribute('id'),

@@ -748,7 +748,53 @@
     };
   }
 
-  async function inject(userInput) {
+  function injectionDeadlineError(stage) {
+    const error = new Error('injection_deadline:' + stage);
+    error.code = 'LORE_INJECTION_DEADLINE';
+    error.stage = stage;
+    return error;
+  }
+
+  async function awaitWithinInjectionDeadline(taskOrFactory, deadlineAt, stage) {
+    const startTask = () => typeof taskOrFactory === 'function' ? taskOrFactory() : taskOrFactory;
+    if (!deadlineAt) return await startTask();
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) throw injectionDeadlineError(stage);
+    let timer = null;
+    try {
+      return await Promise.race([
+        startTask(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(injectionDeadlineError(stage)), remaining);
+        })
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function inject(userInput, runtime = {}) {
+    const startedAt = Date.now();
+    const config = settings.config;
+    const liveDeadlineEnabled = runtime.deadlineMs > 0
+      && config.rerankEnabled !== true
+      && config.temporalRecallJudgeEnabled !== true;
+    const deadlineAt = liveDeadlineEnabled ? startedAt + Number(runtime.deadlineMs) : 0;
+    const latency = {
+      transport: runtime.transport || 'unknown',
+      deadlineMs: liveDeadlineEnabled ? Number(runtime.deadlineMs) : 0,
+      packReadMs: 0,
+      logFetchMs: 0,
+      searchMs: 0,
+      totalMs: 0,
+      fallback: ''
+    };
+    const publishLatency = (extra = {}) => {
+      latency.totalMs = Date.now() - startedAt;
+      Object.assign(latency, extra);
+      _w.__LoreInj.__lastInjectionDiagnostics = { ...latency, at: Date.now() };
+      return { ...latency };
+    };
     const _url = C.getCurUrl(); const chatKey = getChatKey();
     const turnCounter = incrementTurnCounter(chatKey);
     scheduleInjectionCleanup('turn-start', 2500);
@@ -774,7 +820,9 @@
       });
       return userInput;
     }
+    const packReadAt = Date.now();
     const allForPacks = await db.entries.where('packName').anyOf(activePacksArr).toArray();
+    latency.packReadMs = Date.now() - packReadAt;
     const disabledSet = new Set(typeof _w.__LoreInj.getDisabledEntriesForUrl === 'function'
       ? _w.__LoreInj.getDisabledEntriesForUrl(_url)
       : (resolveActivePackState(_url).disabled || []));
@@ -789,12 +837,24 @@
     }
 
     const fetchCount = Math.max(48, (settings.config.scanRange || 6) * 3);
-    const recentMsgs = (await C.fetchLogs(fetchCount)).map(m => ({
+    const logFetchAt = Date.now();
+    let rawRecentMsgs = [];
+    try {
+      rawRecentMsgs = await awaitWithinInjectionDeadline(() => C.fetchLogs(fetchCount), deadlineAt, 'recent_logs');
+    } catch (error) {
+      if (error && error.code === 'LORE_INJECTION_DEADLINE') {
+        latency.fallback = 'recent_logs_timeout';
+        console.warn('[Lore] 실시간 로그 조회 지연, 현재 입력 기반 검색으로 전환');
+      } else {
+        throw error;
+      }
+    }
+    latency.logFetchMs = Date.now() - logFetchAt;
+    const recentMsgs = rawRecentMsgs.map(m => ({
       ...m,
       message: m.role === 'user' ? (cleanLoreContextTags(m.message) || m.message) : m.message
     }));
 
-    const config = settings.config;
     const effectiveAiMemoryTurns = C.deriveAiMemoryTurns
       ? C.deriveAiMemoryTurns(recentMsgs, config)
       : (config.aiMemoryTurns || 4);
@@ -806,8 +866,11 @@
         if (memory && age >= 0 && age <= Math.max(1, Number(config.workingMemoryMaxAgeTurns || 3))) priorMemory = memory;
       } catch (_) {}
     }
+    const liveEmbeddingTimeoutMs = liveDeadlineEnabled
+      ? Math.max(250, Math.min(1500, deadlineAt - Date.now()))
+      : 8000;
     const baseApiOpts = _w.__LoreInj.buildEmbeddingApiOpts
-      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001', embeddingLane: 'interactive', timeoutMs: 8000 }, { feature: 'injectQueryEmbed', chatKey: chatKey || 'global' })
+      ? _w.__LoreInj.buildEmbeddingApiOpts({ model: config.embeddingModel || 'gemini-embedding-001', embeddingLane: 'interactive', timeoutMs: liveEmbeddingTimeoutMs }, { feature: 'injectQueryEmbed', chatKey: chatKey || 'global' })
       : {
         apiType: config.autoExtApiType === 'deepseek' ? 'key' : (config.autoExtApiType || 'key'),
         key: config.autoExtApiType === 'deepseek' ? config.autoExtFirebaseEmbedKey : config.autoExtKey,
@@ -816,7 +879,7 @@
         firebaseScript: config.autoExtFirebaseScript, firebaseEmbedKey: config.autoExtFirebaseEmbedKey,
         model: config.embeddingModel || 'gemini-embedding-001',
         embeddingLane: 'interactive',
-        timeoutMs: 8000,
+        timeoutMs: liveEmbeddingTimeoutMs,
         costContext: { feature: 'injectQueryEmbed', chatKey: chatKey || 'global' }
       };
     // Live queries use a paced interactive lane that is independent from bulk
@@ -846,8 +909,13 @@
     };
 
     let scored = [], activeNames = [], temporalJudgeDecision = null;
+    const searchAt = Date.now();
     try {
-      const r = await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts);
+      const r = await awaitWithinInjectionDeadline(
+        () => C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts),
+        deadlineAt,
+        'hybrid_search'
+      );
       scored = r.scored || []; activeNames = r.activeNames || [];
       if (C.resolveTemporalRecall && config.timelineRetrievalEnabled !== false) {
         const resolved = C.resolveTemporalRecall(userInput, recentMsgs, enabled, { currentTurn: turnCounter, activeNames, chatKey, limit: 4 });
@@ -905,10 +973,15 @@
         _ls.setItem(sk, JSON.stringify(st));
       }
     } catch(e) {
+      if (e && e.code === 'LORE_INJECTION_DEADLINE') {
+        latency.fallback = e.stage || 'hybrid_search_timeout';
+        console.warn('[Lore] 의미 검색 지연, 트리거 검색으로 전환:', latency.fallback);
+      }
       const tr = C.triggerScan(userInput, recentMsgs, enabled, searchConfig);
       scored = tr.map(r => ({ entry: r.entry, score: r.triggerScore }));
       activeNames = C.detectActiveCharacters(recentMsgs, enabled);
     }
+    latency.searchMs = Date.now() - searchAt;
 
     if (config.pendingPromiseBoost !== false) {
       for (const s of scored) { if (s.entry.type === 'promise' && s.entry.detail?.status === 'pending') s.score = Math.max(s.score, 0.3); }
@@ -1028,11 +1101,12 @@
       });
     } catch(e) {}
     if (!topEntries.length && !temporalPlan.text) {
+      const latencyInfo = publishLatency();
       if (!cooldownFilteredAll) {
         addInjLog(chatKey, {
           time: new Date().toLocaleTimeString(), turn: turnCounter,
           matched: [], count: 0, note: '삽입 후보 없음',
-          reason: 'no_injection_candidates',
+          reason: 'no_injection_candidates', latency: latencyInfo,
           activePacks: activePacksArr.slice(0, 8)
         });
       }
@@ -1178,6 +1252,7 @@
       _ls.setItem(_deltaKey, JSON.stringify(_recentInj));
     } catch(e) {}
 
+    const latencyInfo = publishLatency();
     addInjLog(chatKey, {
       time: new Date().toLocaleTimeString(), turn: turnCounter,
       matched: allIncluded.map(e => e.name), count: allIncluded.length,
@@ -1192,6 +1267,7 @@
       finalChars: _finalChars,
       reason: fmtResult.reason || 'ok',
       temporalJudge: temporalJudgeDecision,
+      latency: latencyInfo,
       temporalInjection: {
         source: temporalPlan.source,
         mode: temporalPlan.mode,

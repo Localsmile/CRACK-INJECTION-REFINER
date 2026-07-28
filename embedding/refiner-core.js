@@ -587,6 +587,13 @@
                     }
                   }
 
+                  if (!visible && hasCodeFence && R.refreshMessageInDOM) {
+                    let fallbackResult = null;
+                    try { fallbackResult = R.refreshMessageInDOM(originalForDom, serverText, serverMessageId); } catch (_) {}
+                    _w.__LR_LAST_DOM_FALLBACK = fallbackResult;
+                    visible = !!(fallbackResult === true || (fallbackResult && (fallbackResult.applied || fallbackResult.visible)));
+                  }
+
                   if (!visible && delayMs && R.showReloadAction) R.showReloadAction('서버 수정 완료. 화면이 아직 예전 응답이면 새로고침 필요.');
                   return visible;
                 };

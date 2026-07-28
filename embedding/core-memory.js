@@ -777,6 +777,11 @@
     const src = result && typeof result === 'object' && result.matrix ? result : { matrix: result || {}, prevMap: {}, states: {} };
     const { matrix, prevMap, states } = src;
     const lines = [];
+    const particle = (word, consonant, vowel) => {
+      const text = String(word || '').trim();
+      const last = text.charCodeAt(text.length - 1);
+      return last >= 0xAC00 && last <= 0xD7A3 && (last - 0xAC00) % 28 !== 0 ? consonant : vowel;
+    };
     for (const [from, targets] of Object.entries(matrix)) {
       for (const [to, hon] of Object.entries(targets)) {
         const k = `${from}→${to}`;
@@ -784,7 +789,7 @@
         const cur = state.currentTerm || hon;
         if (!cur) continue;
         const prevTerms = Array.from(new Set([...(state.previousTerms || []), prevMap && prevMap[k]].filter(Boolean))).filter(t => t !== cur);
-        let line = `${from}는 ${to}를 '${cur}'라고 부름`;
+        let line = `${from}${particle(from, '은', '는')} ${to}${particle(to, '을', '를')} '${cur}'라고 부름`;
         if (prevTerms.length) line += ` (이전 호칭 ${prevTerms.slice(-1)[0]}은 참고만)`;
         lines.push(line);
       }

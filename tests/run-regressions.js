@@ -795,7 +795,9 @@ function testSourceContracts() {
   assert(refinerDom.includes("exactButton(document, '수정')"), 'native response-edit fallback does not open the current message editor');
   assert(refinerDom.includes("exactButton(document, '수정 완료')"), 'native response-edit fallback does not submit the corrected message');
   assert(refinerDom.includes('haystack.includes(expected)'), 'response visibility still relies on a partial unchanged suffix');
+  assert(refinerDom.includes('[data-message-group-id]') && refinerDom.includes("el.getAttribute('data-message-group-id')"), 'current Crack message-group ids are not recognized by response correction');
   assert(refinerCore.includes('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'response correction does not await visible native fallback');
+  assert(refinerCore.lastIndexOf('if (!visible && hasCodeFence && R.refreshMessageInDOM)') > refinerCore.indexOf('await R.nudgeMessageNativeRender(serverMessageId, serverText, originalForDom)'), 'code-block correction lacks a final visible fallback after native refresh fails');
   assert(refinerCore.includes("feature: 'refinerQueryEmbed'") && refinerCore.includes("embeddingLane: 'interactive'") && refinerCore.includes('timeoutMs: 8000'), 'response correction semantic search can wait behind bulk embedding or a long query timeout');
   assert(refinerCore.includes('<ooc_lore_context>') && refinerCore.includes('stripInjectedOOCForRefiner(m.message, m.role)'), 'response correction still feeds injected OOC back into retrieval or recent context');
   assert(refinerCore.includes("chatKey: refinerChatKey") && refinerCore.includes("turnCounter: refinerTurn"), 'response correction retrieval ignores chat provenance and turn order');
@@ -814,7 +816,9 @@ function testSourceContracts() {
   assert(injectionSource.includes('C.findUnmetPairs(activeNames, chatKey)') && injectionSource.includes('C.findReunionPairs(activeNames, turnCounter, 10, chatKey)'), 'live encounter lookup is not scoped to the current chat');
 
   const interceptor = read('embedding/injecter-1.js');
-  assert(interceptor.includes('const _injectInFlight = new Map()') && interceptor.includes('const INJECTION_DEDUPE_MS = 1500') && interceptor.includes('runInjection(original)'), 'adjacent transport hooks can run the same injection twice');
+  assert(interceptor.includes('const _injectInFlight = new Map()') && interceptor.includes('const INJECTION_DEDUPE_MS = 1500') && interceptor.includes('runInjection(original, meta = {})'), 'adjacent transport hooks can run the same injection twice');
+  assert(interceptor.includes('!cached.settled || cached.expiresAt > Date.now()') && interceptor.includes('record.expiresAt = Date.now() + INJECTION_DEDUPE_MS'), 'long-running injection can outlive the transport dedupe window');
+  assert(interceptor.includes("{ transport: 'websocket', deadlineMs: 1800 }") && interceptor.includes("{ transport: 'fetch', deadlineMs: 1800 }"), 'live transports can wait indefinitely for lore retrieval');
 
   const search = read('embedding/core-search.js');
   assert(search.includes('eb.model !== model') && search.includes('eb.vector.length !== queryVec.length'), 'hybrid search can compare stale vectors from another model space');
@@ -847,7 +851,8 @@ function testSourceContracts() {
   const injection = read('embedding/injecter-5.js');
   assert(injection.includes('deriveAiMemoryTurns(recentMsgs, config)'), 'adaptive reinjection is not wired into injection');
   assert(injection.includes('scanRange: config.scanRange'), 'scene-local trigger scan configuration disappeared');
-  assert(injection.includes("feature: 'injectQueryEmbed'") && injection.includes('timeoutMs: 8000') && !injection.includes('skipEmbeddingQueue: true'), 'live injection embedding bypasses diagnostics, uses the bulk lane, or can hold chat send too long');
+  assert(injection.includes("feature: 'injectQueryEmbed'") && injection.includes('liveEmbeddingTimeoutMs') && injection.includes('Math.min(1500, deadlineAt - Date.now())') && !injection.includes('skipEmbeddingQueue: true'), 'live injection embedding bypasses diagnostics, uses the bulk lane, or can hold chat send too long');
+  assert(injection.includes('awaitWithinInjectionDeadline') && injection.includes("latency.fallback = 'recent_logs_timeout'") && injection.includes('__lastInjectionDiagnostics'), 'live injection lacks a bounded deterministic fallback or internal stage diagnostics');
   assert(!injection.includes('skipGenerationQueue: true') && injection.includes("generationLane: 'interactive'"), 'judge or rerank bypasses queue diagnostics and pacing');
   assert(injection.includes('turnCounter % settings.config.autoExtTurns === 0'), 'automatic extraction is not scheduled from the chat turn counter');
   assert(injection.includes('maxInputChars: MAX_INPUT_CHARS'), '2000-character injection planner is not used');
@@ -868,6 +873,8 @@ function testSourceContracts() {
   assert(importer.includes('mergeImportedEntries(allEntries)'), 'knowledge conversion does not consolidate cross-chunk duplicates');
 
   const backup = read('embedding/injecter-6-sub-backup.js');
+  const fileTools = read('embedding/injecter-6-sub-file.js');
+  assert(fileTools.includes('setTimeout(() => URL.revokeObjectURL(url), 60000)') && !fileTools.includes('document.body.removeChild(a);\n    URL.revokeObjectURL(url);'), 'JSON downloads can revoke their Blob URL before mobile browsers consume it');
   assert(backup.includes("parts[0] !== 'v1' && parts[0] !== 'v2gzip'"), 'legacy encrypted server backups are no longer accepted');
   assert(backup.includes('includeEmbeddings: false, includeHistory: false, serverSlim: true'), 'new server backups are not slim');
   assert(backup.includes('const packs = Array.from(new Set(((report && report.touchedPacks) || [])'), 'server restore does not limit embedding rebuild to restored packs');
@@ -878,6 +885,9 @@ function testSourceContracts() {
   assert(backup.includes("makeBtn('선택 백업을 현재 데이터에 추가'"), 'server merge action is still ambiguous');
   assert(backup.includes('기존 백업은 덮어쓰지 않습니다'), 'server backup behavior is not explained');
   assert(backup.includes("makeBtn('기기 저장소 보호 요청'"), 'persistent storage permission has no explicit user action');
+
+  assert(coreMemory.includes("particle(from, '은', '는')") && coreMemory.includes("particle(to, '을', '를')"), 'Korean honorific injection still emits invalid fixed particles');
+  assert(read('embedding/injecter-2.js').includes('Resolve within the window: the latest explicit outcome overrides earlier uncertainty.'), 'extraction can preserve an uncertainty that is resolved later in the same window');
   assert(!backup.includes("title.textContent = '저장 공간 정리'") && !backup.includes('사용하지 않는 데이터 정리'), 'storage cleanup UI is still present');
   assert(!settings.includes('deletePackData, cleanupUnusedLoreStorage,'), 'manual storage cleanup remains publicly exposed');
 
