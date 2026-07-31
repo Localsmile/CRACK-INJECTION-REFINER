@@ -26,7 +26,7 @@
     'gemini-embedding-001':          { in: 0.15,  out: 0 },
     // prefix 폴백: 미등록 임베딩 변종 기본 단가.
     'gemini-embedding':              { in: 0.15,  out: 0 },
-    // DeepSeek V4 official pricing, 2026-05 docs. Cache hit is tracked separately when usage exposes it.
+    // DeepSeek V4 official pricing, 2026-07-31 docs. Flash alias currently serves DeepSeek-V4-Flash-0731.
     'deepseek-v4-flash':             { in: 0.14,  out: 0.28, cacheHitIn: 0.0028 },
     'deepseek-v4-pro':               { in: 0.435, out: 0.87, cacheHitIn: 0.003625 }
   };

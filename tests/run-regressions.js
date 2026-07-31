@@ -339,6 +339,9 @@ function testSourceContracts() {
   assert(injectionSource.includes("scheduleInjectionCleanup('queue-drain', 5000)"), 'tracked cleanup does not drain an eligible backlog');
 
   const apiUi = read('embedding/injecter-6-sub-api.js');
+  const pricingSource = read('embedding/core-pricing.js');
+  assert(apiUi.includes("['V4 Flash (0731)', 'deepseek-v4-flash']"), 'current DeepSeek V4 Flash version is not identified in the model selector');
+  assert(pricingSource.includes("'deepseek-v4-flash':             { in: 0.14,  out: 0.28, cacheHitIn: 0.0028 }") && pricingSource.includes('2026-07-31 docs'), 'DeepSeek V4 Flash 0731 pricing metadata is stale');
   assert(apiUi.includes('{ hideModeSelector: true }'), 'duplicate provider selector is still visible in API settings');
   assert(apiUi.includes("['Anthropic Messages (/v1/messages)', 'anthropic_messages']"), 'Anthropic Messages format selector is missing');
   assert(apiUi.includes("['Responses (/responses)', 'responses']"), 'Responses format selector is missing');

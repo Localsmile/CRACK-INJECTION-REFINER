@@ -223,7 +223,7 @@
     const apiType = settings.config.autoExtApiType || 'key';
     if (apiType === 'deepseek') {
       return [
-        ['DeepSeek V4', [['V4 Flash', 'deepseek-v4-flash'], ['V4 Pro', 'deepseek-v4-pro']]]
+        ['DeepSeek V4', [['V4 Flash (0731)', 'deepseek-v4-flash'], ['V4 Pro', 'deepseek-v4-pro']]]
       ];
     }
     if (apiType === 'openai') {
@@ -241,7 +241,7 @@
     const apiType = settings.config.autoExtApiType || 'key';
     if (apiType === 'deepseek') {
       return [
-        ['DeepSeek V4', [['V4 Flash', 'deepseek-v4-flash'], ['V4 Pro', 'deepseek-v4-pro']]]
+        ['DeepSeek V4', [['V4 Flash (0731)', 'deepseek-v4-flash'], ['V4 Pro', 'deepseek-v4-pro']]]
       ];
     }
     if (apiType === 'openai') {

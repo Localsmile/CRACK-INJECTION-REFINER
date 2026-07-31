@@ -72,7 +72,7 @@
     "sections": [
       {
         "label": "[API 연결]",
-        "text": "지원 방식은 5종.\nGemini API Key: 가장 단순함. 처음 설정 권장.\nFirebase: Firebase 설정 스크립트로 생성하고, 의미 검색은 별도 AI Studio Gemini API 키를 사용함.\nVertex JSON: 서비스 계정 JSON으로 생성함. 의미 검색용 Gemini API 키를 입력하면 의미 검색은 해당 키를 우선 사용함.\nDeepSeek: V4 Flash/Pro 생성 호출에 사용함. 의미 검색은 별도 Gemini API 키를 사용함.\nOpenAI 호환: URL, API 키, 모델명을 직접 입력함. 의미 검색은 별도 Gemini API 키를 사용함."
+        "text": "지원 방식은 5종.\nGemini API Key: 가장 단순함. 처음 설정 권장.\nFirebase: Firebase 설정 스크립트로 생성하고, 의미 검색은 별도 AI Studio Gemini API 키를 사용함.\nVertex JSON: 서비스 계정 JSON으로 생성함. 의미 검색용 Gemini API 키를 입력하면 의미 검색은 해당 키를 우선 사용함.\nDeepSeek: V4 Flash (0731)/Pro 생성 호출에 사용함. 의미 검색은 별도 Gemini API 키를 사용함.\nOpenAI 호환: URL, API 키, 모델명을 직접 입력함. 의미 검색은 별도 Gemini API 키를 사용함."
       },
       {
         "label": "[모델 선택]",
