@@ -201,7 +201,7 @@ WebSocket `send` 인터셉트로 유저 메시지 직전에 로어를 끼워 넣
 
 1. [Tampermonkey](https://www.tampermonkey.net/) 또는 [Violentmonkey](https://violentmonkey.github.io/) 설치
 2. 아래 링크로 유저스크립트 설치
-https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js
+https://github.com/Localsmile/CRACK-INJECTION-REFINER/raw/refs/heads/260827-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js
 
 ---
 

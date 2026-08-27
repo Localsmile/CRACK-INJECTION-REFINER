@@ -491,6 +491,7 @@ async function testMenuRuntime() {
 }
 
 async function main() {
+  await require('./send-regressions')();
   testSourceSyntax();
   await testKernelHelpers();
   testPromptContract();

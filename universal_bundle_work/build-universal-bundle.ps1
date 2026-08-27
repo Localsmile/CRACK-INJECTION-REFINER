@@ -31,6 +31,7 @@ const terser = require("terser");
 const inputPath = process.argv[2];
 const input = fs.readFileSync(inputPath, "utf8");
 terser.minify(input, {
+  ecma: 2015,
   compress: {
     passes: 1,
     unsafe: false,
@@ -74,7 +75,7 @@ $meta = $metaMatch.Value
 $meta = [regex]::Replace($meta, '// @name\s+.*', '// @name        에리의 크랙 로어 인젝터 (Universal)')
 $meta = [regex]::Replace($meta, '// @version\s+.*', '// @version     ' + [string]$manifest.version)
 $meta = [regex]::Replace($meta, '// @description\s+.*', '// @description 에리를 죽인 크랙을 때린다.')
-$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260706-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
+$universalUrl = 'https://cdn.jsdelivr.net/gh/Localsmile/CRACK-INJECTION-REFINER@260827-hotfix/universal_bundle_work/dist/erie_crack_inject_universal.user.js'
 $meta = [regex]::Replace($meta, '// @updateURL\s+.*', '// @updateURL   ' + $universalUrl)
 $meta = [regex]::Replace($meta, '// @downloadURL\s+.*', '// @downloadURL ' + $universalUrl)
 
@@ -120,7 +121,7 @@ foreach ($rel in @($manifest.modules)) {
   $bodyParts.Add("`n/* ===== BEGIN $rel ===== */`n$code`n/* ===== END $rel ===== */`n")
 }
 
-$requiredCore = @("'__interceptorLoaded'", "'__constLoaded'", "'__settingsLoaded'", "'__extractLoaded'", "'__injectLoaded'", "'__inject6Loaded'") -join ', '
+$requiredCore = @("'__interceptorLoaded'", "'__composerLoaded'", "'__constLoaded'", "'__settingsLoaded'", "'__extractLoaded'", "'__injectLoaded'", "'__inject6Loaded'") -join ', '
 $requiredSubs = @("'__subMainLoaded'", "'__subLoreLoaded'", "'__subMergeLoaded'", "'__subSnapshotLoaded'", "'__subFileLoaded'", "'__subBackupLoaded'", "'__subExtractLoaded'", "'__subRefinerLoaded'", "'__subLogLoaded'", "'__subSessionLoaded'", "'__subApiLoaded'", "'__subHelpLoaded'") -join ', '
 
 $gate = @"

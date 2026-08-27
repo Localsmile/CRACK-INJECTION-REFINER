@@ -737,13 +737,25 @@
     };
   }
 
-  async function inject(userInput) {
+  async function inject(userInput, runtime = {}) {
     const _url = C.getCurUrl(); const chatKey = getChatKey();
-    const turnCounter = incrementTurnCounter(chatKey);
-    scheduleInjectionCleanup('turn-start', 2500);
-    if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => runAutoExtract(false), 100);
+    const chatId = currentChatIdSafe();
+    const afterSend = typeof runtime.onCommit === 'function' ? runtime.onCommit : effect => effect();
+    const turnCounter = runtime.onCommit ? getTurnCounter(chatKey) + 1 : incrementTurnCounter(chatKey);
+    const logInjection = (key, item) => afterSend(() => addInjLog(key, item));
+    const checkActive = () => {
+      if (runtime.signal?.aborted) throw new DOMException('Send cancelled', 'AbortError');
+    };
+    checkActive();
+    afterSend(() => {
+      if (runtime.onCommit) incrementTurnCounter(chatKey);
+      scheduleInjectionCleanup('turn-start', 2500);
+      if (settings.config.autoExtEnabled && turnCounter > 0 && turnCounter % settings.config.autoExtTurns === 0) setTimeout(() => {
+        if (getChatKey() === chatKey) runAutoExtract(false);
+      }, 100);
+    });
     if (settings.config.enabled === false) {
-      addInjLog(chatKey, {
+      logInjection(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
         matched: [], count: 0, note: '자동 삽입 꺼짐', reason: 'injection_disabled', url: _url
       });
@@ -754,7 +766,7 @@
       ? _w.__LoreInj.getActivePacksForUrl(_url)
       : (resolveActivePackState(_url).packs || []);
     if (!activePacksArr.length) {
-      addInjLog(chatKey, {
+      logInjection(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
         matched: [], count: 0, note: '활성 로어팩 없음',
         reason: 'no_active_packs', url: _url
@@ -762,12 +774,13 @@
       return userInput;
     }
     const allForPacks = await db.entries.where('packName').anyOf(activePacksArr).toArray();
+    checkActive();
     const disabledSet = new Set(typeof _w.__LoreInj.getDisabledEntriesForUrl === 'function'
       ? _w.__LoreInj.getDisabledEntriesForUrl(_url)
       : (resolveActivePackState(_url).disabled || []));
     let enabled = allForPacks.filter(e => !disabledSet.has(e.id));
     if (!enabled.length) {
-      addInjLog(chatKey, {
+      logInjection(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
         matched: [], count: 0, note: '사용 가능한 로어 없음',
         reason: 'no_enabled_entries', activePacks: activePacksArr.slice(0, 8)
@@ -777,6 +790,7 @@
 
     const fetchCount = Math.max(48, (settings.config.scanRange || 6) * 3);
     const recentMsgs = await C.fetchLogs(fetchCount);
+    checkActive();
 
     const config = settings.config;
     const effectiveAiMemoryTurns = C.deriveAiMemoryTurns
@@ -795,7 +809,7 @@
       };
     // A live chat query must not wait behind bulk search preparation. The same
     // embedding request and scoring path are used; only the batch queue is bypassed.
-    const apiOpts = { ...baseApiOpts, skipEmbeddingQueue: true, maxRetries: 0 };
+    const apiOpts = { ...baseApiOpts, skipEmbeddingQueue: true, maxRetries: 0, signal: runtime.signal };
     const searchConfig = {
       chatKey: chatKey, turnCounter: turnCounter,
       scanRange: config.scanRange || 6, scanOffset: config.scanOffset || 0,
@@ -821,6 +835,7 @@
     let scored = [], activeNames = [], temporalJudgeDecision = null;
     try {
       const r = await C.hybridSearch(userInput, recentMsgs, enabled, searchConfig, apiOpts);
+      checkActive();
       scored = r.scored || []; activeNames = r.activeNames || [];
       if (C.resolveTemporalRecall && config.timelineRetrievalEnabled !== false) {
         const resolved = C.resolveTemporalRecall(userInput, recentMsgs, enabled, { currentTurn: turnCounter, activeNames, limit: 4 });
@@ -846,10 +861,11 @@
         }
       }
       temporalJudgeDecision = await runTemporalRecallJudge(userInput, recentMsgs, scored, config, apiOpts);
+      checkActive();
       if (temporalJudgeDecision && !temporalJudgeDecision.fallback && !temporalJudgeDecision.error) {
         scored = applyTemporalJudge(scored, temporalJudgeDecision);
       }
-      if (r.searchStats && config.embeddingEnabled) {
+      if (r.searchStats && config.embeddingEnabled) afterSend(() => {
         const sk = 'lore-hybrid-stats';
         const st = JSON.parse(_ls.getItem(sk) || '{"to":0,"eo":0,"b":0,"n":0,"injLog":[],"lastInjected":[]}');
         st.to += r.searchStats.trigOnly; st.eo += r.searchStats.embOnly; st.b += r.searchStats.both; st.n++;
@@ -876,8 +892,9 @@
           }
         }
         _ls.setItem(sk, JSON.stringify(st));
-      }
+      });
     } catch(e) {
+      checkActive();
       const tr = C.triggerScan(userInput, recentMsgs, enabled, searchConfig);
       scored = tr.map(r => ({ entry: r.entry, score: r.triggerScore }));
       activeNames = C.detectActiveCharacters(recentMsgs, enabled);
@@ -893,17 +910,20 @@
     }
     scored.sort((a,b) => b.score - a.score);
 
+    const stagedEncounters = new Set();
     if (activeNames.length >= 2 && config.firstEncounterWarning !== false) {
       for (let i = 0; i < activeNames.length; i++) {
         for (let j = i + 1; j < activeNames.length; j++) {
           try {
-            await C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter });
+            await afterSend(() => C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter }));
+            stagedEncounters.add([activeNames[i], activeNames[j]].sort().join('|'));
           } catch(e) {}
         }
       }
     }
 
     if (config.rerankEnabled) {
+      checkActive();
       try {
         C.showStatusBadge('에리가 로어 재정렬 중');
         const last2 = recentMsgs.slice(-4).map(m => m.role + ': ' + m.message).join('\n');
@@ -912,6 +932,7 @@
           || (_w.__LoreInj.getGenerationFallbackModel ? _w.__LoreInj.getGenerationFallbackModel(config) : 'gemini-3-flash-preview');
         const rerankApiOpts = _w.__LoreInj.buildGenerationApiOpts ? _w.__LoreInj.buildGenerationApiOpts({
           model: rerankModel,
+          signal: runtime.signal,
           skipGenerationQueue: true,
           costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
         }, { feature: 'rerank', chatKey: chatKey || 'global' }) : {
@@ -921,6 +942,7 @@
           vertexProjectId: config.autoExtVertexProjectId,
           firebaseScript: config.autoExtFirebaseScript,
           model: rerankModel,
+          signal: runtime.signal,
           skipGenerationQueue: true,
           costContext: { feature: 'rerank', chatKey: chatKey || 'global' }
         };
@@ -929,11 +951,12 @@
       // 리랭크 직후 hide 대신 "응답 기다리는 중"으로 전환 — Refiner가 실제 응답 감지 시 다음 상태로 교체/hide 담당
       C.showStatusBadge('에리가 응답 기다리는 중');
     }
+    checkActive();
 
     let cooldownFilteredAll = false;
     const scoredCountBeforeCooldown = scored.length;
     if (config.cooldownEnabled) {
-      const cMap = getCooldownMap(chatKey);
+      const cMap = { ...getCooldownMap(chatKey) };
       let staleCooldownCount = 0;
       scored = scored.filter(s => {
         const last = cMap[s.entry.id];
@@ -944,10 +967,14 @@
         }
         return last === undefined || (turnCounter - last) >= config.cooldownTurns;
       });
-      if (staleCooldownCount > 0) settings.save();
+      if (staleCooldownCount > 0) afterSend(() => {
+        const live = getCooldownMap(chatKey);
+        for (const id of Object.keys(live)) if (Number(live[id]) > turnCounter) delete live[id];
+        settings.save();
+      });
       cooldownFilteredAll = scoredCountBeforeCooldown > 0 && !scored.length;
       if (cooldownFilteredAll) {
-        addInjLog(chatKey, {
+        logInjection(chatKey, {
           time: new Date().toLocaleTimeString(), turn: turnCounter,
           matched: [], count: 0, note: '삽입 쿨타임 대기',
           reason: 'cooldown_filtered_all',
@@ -986,7 +1013,7 @@
     const topEntries = topScored.map(s => { if (s.components) s.entry._nway = s.components; return s.entry; });
     if (!topEntries.length && !temporalPlan.text) {
       if (!cooldownFilteredAll) {
-        addInjLog(chatKey, {
+        logInjection(chatKey, {
           time: new Date().toLocaleTimeString(), turn: turnCounter,
           matched: [], count: 0, note: '삽입 후보 없음',
           reason: 'no_injection_candidates',
@@ -999,7 +1026,7 @@
     const pfx = config.prefix || OOC_FORMATS.default.prefix;
     const sfx = config.suffix || OOC_FORMATS.default.suffix;
     if (C.charLen(userInput) >= MAX_INPUT_CHARS - 20) {
-      addInjLog(chatKey, {
+      logInjection(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
         matched: [], count: 0, note: '공간부족',
         budgetPlan: { userChars: C.charLen(userInput), maxInputChars: MAX_INPUT_CHARS },
@@ -1012,6 +1039,7 @@
     if (config.honorificMatrixEnabled !== false) honorifics = C.formatHonorificMatrix(C.buildHonorificMatrix(enabled, activeNames), 80);
     let unmetPairs = [];
     if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames); } catch(e) {}
+    unmetPairs = unmetPairs.filter(pair => !stagedEncounters.has([...pair].sort().join('|')));
     if (unmetPairs.length > 0) {
       const knownPairs = new Set();
       for (const r of enabled) {
@@ -1042,7 +1070,7 @@
           const pick = fresh[0];
           firstEncounterBlock = C.formatFirstEncounterBlock(pick);
           log.push({ key: [...pick].sort().join('|'), turn: turnCounter });
-          _ls.setItem(feKey, JSON.stringify(log.slice(-20)));
+          afterSend(() => _ls.setItem(feKey, JSON.stringify(log.slice(-20))));
           unmetPairs = unmetPairs.filter(p => p !== pick);
         }
       } catch(e) {}
@@ -1051,7 +1079,8 @@
     let reunionTags = '';
     if (config.firstEncounterWarning !== false) {
       try {
-        const reunions = await C.findReunionPairs(activeNames, turnCounter, 10);
+        const reunions = (await C.findReunionPairs(activeNames, turnCounter, 10))
+          .filter(row => !stagedEncounters.has([...row.pair].sort().join('|')));
         if (reunions.length > 0) {
           reunionTags = reunions.slice(0, 2).map(r => C.formatReunionTag(r.pair, r.gap)).join('\n');
         }
@@ -1067,13 +1096,13 @@
     }
 
     try {
-      await C.updateWorkingMemory(_url, {
+      await afterSend(() => C.updateWorkingMemory(_url, {
         turn: turnCounter,
         activeChars: activeNames.slice(0, 5),
         scene: sceneTag,
         lastAction: (recentMsgs[recentMsgs.length - 1]?.message || '').slice(0, 80),
         updatedAt: Date.now()
-      });
+      }));
     } catch(e) {}
 
     const temporalHints = (config.firstEncounterWarning !== false && C.formatTemporalHints)
@@ -1096,7 +1125,7 @@
       suffix: sfx
     }) : { injected: '', included: [], usedChars: 0, level: 'none', reason: 'planner_missing', finalChars: C.charLen(userInput), budgetPlan: {} };
     if (!fmtResult.injected) {
-      addInjLog(chatKey, {
+      logInjection(chatKey, {
         time: new Date().toLocaleTimeString(), turn: turnCounter,
         matched: [], count: 0, note: '주입 취소',
         budgetPlan: fmtResult.budgetPlan || {},
@@ -1115,24 +1144,26 @@
       return Array.from(m.values());
     })();
 
-    try {
+    afterSend(async () => { try {
       for (const e of allIncluded) {
         recordEntryMention(chatKey, e.id);
         setCooldownLastTurn(chatKey, e.id, turnCounter);
+      }
+      for (const e of allIncluded) {
         try { await db.entries.update(e.id, { lastMentionedTurn: turnCounter }); } catch(_) {}
       }
-    } catch(e) {}
+    } catch(e) {} });
 
-    try {
+    afterSend(() => { try {
       const sk = 'lore-hybrid-stats'; const st = JSON.parse(_ls.getItem(sk) || '{}');
       st.lastInjected = allIncluded.map(e => e.name); _ls.setItem(sk, JSON.stringify(st));
-    } catch(e) {}
+    } catch(e) {} });
 
     const _injectedLen = C.charLen(injected);
     const _userLen = C.charLen(userInput);
     const _finalChars = fmtResult.finalChars || (_userLen + _injectedLen + 2);
     // Delta skip 기록 갱신
-    try {
+    afterSend(() => { try {
       for (const e of allIncluded) {
         _recentInj[e.id] = { turn: turnCounter, sig: String(e.lastUpdated || e.ts || '') };
       }
@@ -1140,9 +1171,9 @@
         if (turnCounter - (_recentInj[k].turn || 0) > 20) delete _recentInj[k];
       }
       _ls.setItem(_deltaKey, JSON.stringify(_recentInj));
-    } catch(e) {}
+    } catch(e) {} });
 
-    addInjLog(chatKey, {
+    logInjection(chatKey, {
       time: new Date().toLocaleTimeString(), turn: turnCounter,
       matched: allIncluded.map(e => e.name), count: allIncluded.length,
       budget: fmtResult.budgetPlan?.loreBudget || 0, used: fmtResult.usedChars, level: fmtResult.level,
@@ -1177,11 +1208,12 @@
     });
 
     const finalMessage = buildInjectedMessage(userInput, injected, config.position);
-    try {
-      queueInjectionCleanup(chatKey, currentChatIdSafe(), userInput, injected, finalMessage, turnCounter, config.position);
+    checkActive();
+    afterSend(() => { try {
+      queueInjectionCleanup(chatKey, chatId, userInput, injected, finalMessage, turnCounter, config.position);
     } catch (e) {
       console.warn('[Lore] cleanup queue failed:', e);
-    }
+    } });
     return finalMessage;
   }
 
