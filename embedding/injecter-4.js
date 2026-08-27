@@ -1068,7 +1068,7 @@ ${TEMPORAL_PATCH_SCHEMA}`;
           }
           if (parties && parties.length >= 2) {
             const [c1, c2] = parties;
-            try { await C.recordFirstEncounter(c1, c2, { turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
+            try { await C.recordFirstEncounter(c1, c2, { chatKey, turnApprox: getTurnCounter(chatKey), timestamp: Date.now() }); } catch(ex) {}
           }
         }
         // Narrative Anchor: 보호 필드 복원

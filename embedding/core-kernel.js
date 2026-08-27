@@ -9,7 +9,7 @@
 
   // 버전 / 최종 마이그레이션 타깃
   const VER = '1.4.0-test';
-  const DB_SCHEMA_VERSION = 10;
+  const DB_SCHEMA_VERSION = 11;
   const LOCAL_MIGRATION_VERSION = '1.4.0-test-pass11-local';
   const TIMELINE_EVENT_TYPE = 'timeline_event';
   const TIMELINE_SCHEMA_VERSION = 1;
@@ -190,6 +190,20 @@ Entries:
       entryVersions: '++id, entryId, ts, turn',
       cleanupQueue: 'id, chatId, chatKey, status, createdAt, completedAt'
     });
+    // v11: encounter state is scoped per chat. The old global pair index could
+    // leak a meeting/reunion from one RP room into another room using the same names.
+    _db.version(11).stores({
+      entries: '++id, name, type, packName, project, rootId, isCurrentArc, createdTurn, updatedTurn, lastMentionedTurn, eventTurn, sceneId, arcId, realTimestamp, *entities, *subjects, *objects, *locations, *promises, *triggers',
+      packs: 'name, entryCount, project',
+      snapshots: '++id, packName, timestamp, type',
+      embeddings: '++id, entryId, packName, model, field, sourceHash, entryUpdatedAt, schemaVersion, &[entryId+field]',
+      workingMemory: 'url',
+      encounters: '++id, chatKey, &[chatKey+char1+char2], lastSeenTurn',
+      entryVersions: '++id, entryId, ts, turn',
+      cleanupQueue: 'id, chatId, chatKey, status, createdAt, completedAt'
+    }).upgrade(tx => tx.table('encounters').toCollection().modify(row => {
+      if (!row.chatKey) row.chatKey = '';
+    }));
     return _db;
   }
 

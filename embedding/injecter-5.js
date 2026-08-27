@@ -915,7 +915,7 @@
       for (let i = 0; i < activeNames.length; i++) {
         for (let j = i + 1; j < activeNames.length; j++) {
           try {
-            await afterSend(() => C.recordFirstEncounter(activeNames[i], activeNames[j], { turnApprox: turnCounter }));
+            await afterSend(() => C.recordFirstEncounter(activeNames[i], activeNames[j], { chatKey, turnApprox: turnCounter }));
             stagedEncounters.add([activeNames[i], activeNames[j]].sort().join('|'));
           } catch(e) {}
         }
@@ -1038,7 +1038,7 @@
     let honorifics = '';
     if (config.honorificMatrixEnabled !== false) honorifics = C.formatHonorificMatrix(C.buildHonorificMatrix(enabled, activeNames), 80);
     let unmetPairs = [];
-    if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames); } catch(e) {}
+    if (config.firstEncounterWarning !== false) try { unmetPairs = await C.findUnmetPairs(activeNames, chatKey); } catch(e) {}
     unmetPairs = unmetPairs.filter(pair => !stagedEncounters.has([...pair].sort().join('|')));
     if (unmetPairs.length > 0) {
       const knownPairs = new Set();
@@ -1079,7 +1079,7 @@
     let reunionTags = '';
     if (config.firstEncounterWarning !== false) {
       try {
-        const reunions = (await C.findReunionPairs(activeNames, turnCounter, 10))
+        const reunions = (await C.findReunionPairs(activeNames, turnCounter, 10, chatKey))
           .filter(row => !stagedEncounters.has([...row.pair].sort().join('|')));
         if (reunions.length > 0) {
           reunionTags = reunions.slice(0, 2).map(r => C.formatReunionTag(r.pair, r.gap)).join('\n');

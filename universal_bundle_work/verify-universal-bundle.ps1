@@ -25,6 +25,8 @@ Assert-True ($bundle.Contains('// @grant       GM_xmlhttpRequest')) 'missing GM_
 Assert-True ($bundle.Contains('// @grant       unsafeWindow')) 'missing unsafeWindow grant'
 Assert-True ($bundle.Contains('// @sandbox     raw')) 'missing raw sandbox'
 Assert-True ($bundle.Contains('nativeContextTokenBudget')) 'adaptive native-context setting missing'
+Assert-True (($bundle -match 'DB_SCHEMA_VERSION\s*[:=]\s*11\b') -and $bundle.Contains('[chatKey+char1+char2]')) 'trial-compatible encounter schema missing'
+Assert-True ($bundle.Contains('로어 저장소를 읽지 못해 백업을 중단했습니다.')) 'failed database read can produce an empty backup'
 Assert-True ($bundle.Contains('deriveAiMemoryTurns')) 'adaptive reinjection helper missing'
 Assert-True ($bundle.Contains('buildOpenAICompatVariants')) 'bounded OpenAI compatibility helper missing'
 Assert-True ($bundle.Contains('anthropic_messages') -and (($bundle -match 'raw\s*={2,3}\s*["'']custom["'']') -or ($bundle -match '["'']custom["'']\s*={2,3}\s*raw')) -and $bundle.Contains('openAICompatResponseText')) 'OpenAI-compatible transport adapters missing'

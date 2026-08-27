@@ -1,0 +1,11 @@
+{
+  "name": "lore-injector-regressions",
+  "private": true,
+  "scripts": {
+    "test": "node run-regressions.js"
+  },
+  "devDependencies": {
+    "dexie": "4.2.1",
+    "fake-indexeddb": "6.2.5"
+  }
+}

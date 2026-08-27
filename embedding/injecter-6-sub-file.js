@@ -189,7 +189,10 @@
         continue;
       }
       try { tables[name] = db[name] ? await db[name].toArray() : []; }
-      catch (_) { tables[name] = []; }
+      catch (error) {
+        console.warn('[Lore] backup read failed:', name, error);
+        throw new Error('로어 저장소를 읽지 못해 백업을 중단했습니다.');
+      }
     }
     const localStorageData = {};
     for (const key of LS_KEYS) {
@@ -460,6 +463,7 @@
       if (!db[name]) continue;
       for (const raw of rows) {
         const row = clonePlain(raw);
+        if (name === 'encounters' && !row.chatKey) row.chatKey = '';
         if (!replace && row.id != null) delete row.id;
         if (name === 'entryVersions' && row.entryId != null && idMap[row.entryId] != null) row.entryId = idMap[row.entryId];
         try { await db[name].put(row); } catch (_) {}
@@ -610,16 +614,17 @@
       const renderPackUI = async (panel) => {
         panel.addBoxedField('', '', { onInit: async (nd) => {
           C.setFullWidth(nd);
-          const rawPacks = await db.packs.toArray();
           const packs = [];
-          for (const p of rawPacks) {
-            const count = await db.entries.where('packName').equals(p.name).count();
-            if (count <= 0) {
-              await deletePackData(p.name);
-              continue;
+          try {
+            const rawPacks = await db.packs.toArray();
+            for (const p of rawPacks) {
+              const count = await db.entries.where('packName').equals(p.name).count();
+              packs.push({ ...p, entryCount: count });
             }
-            if ((p.entryCount || 0) !== count) await db.packs.update(p.name, { entryCount: count });
-            packs.push({ ...p, entryCount: count });
+          } catch (error) {
+            console.warn('[Lore] pack list read failed:', error);
+            nd.textContent = '로어팩을 불러오지 못했습니다. 빈 목록으로 확인된 것이 아니므로 사이트 데이터를 삭제하거나 교체 복원하지 마세요.';
+            return;
           }
           if (!packs.length) { const empty = document.createElement('div'); empty.textContent = '등록된 팩이 없습니다.'; empty.style.cssText = 'color:#666;text-align:center;padding:20px;font-size:12px;'; nd.appendChild(empty); return; }
           const curUrl = C.getCurUrl(); const enabledPacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(curUrl) : (settings.config.urlPacks?.[curUrl] || []);

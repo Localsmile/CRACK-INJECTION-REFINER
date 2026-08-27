@@ -19,7 +19,13 @@
       const renderPanel = async (panel) => {
         const _url = C.getCurUrl(); const activePacks = _w.__LoreInj.getActivePacksForUrl ? _w.__LoreInj.getActivePacksForUrl(_url) : (settings.config.urlPacks?.[_url] || []);
         if (!activePacks.length) { panel.addText('활성화된 팩이 없습니다. 로어팩 관리에서 사용할 팩을 켜 주세요.'); return; }
-        const entries = await db.entries.toArray();
+        let entries;
+        try { entries = await db.entries.toArray(); }
+        catch (error) {
+          console.warn('[Lore] lore list read failed:', error);
+          panel.addText('로어를 불러오지 못했습니다. 빈 목록으로 확인된 것이 아니므로 사이트 데이터를 삭제하거나 교체 복원하지 마세요.');
+          return;
+        }
         const filtered = entries.filter(e => activePacks.includes(e.packName));
         if (!filtered.length) { panel.addText('활성 항목 없음.'); return; }
         const byPack = {}; filtered.forEach(e => { (byPack[e.packName] = byPack[e.packName] || []).push(e); });
